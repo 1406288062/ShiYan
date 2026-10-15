@@ -40,7 +40,7 @@ struct SettingsView: View {
                             }
                             .buttonStyle(.plain)
                             .accessibilityIdentifier("settings-memory")
-                            Text("管理拾燕用于个性化回复的偏好和细节。")
+                            Text("自动记住重要信息，让回复更贴合你。")
                                 .font(.subheadline).foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                                 .padding(.horizontal, 20)

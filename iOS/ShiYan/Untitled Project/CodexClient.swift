@@ -114,7 +114,7 @@ final class CodexClient {
         for (key, value) in try AgentIdentity.shared.headers(method: method, path: fullPath, body: data) { req.setValue(value, forHTTPHeaderField: key) }
         return req
     }
-    private func response(_ request: URLRequest, timeout: TimeInterval = 35, rejectDotsErrors: Bool = false, rejectScheduleErrors: Bool = false, rejectMemoryErrors: Bool = false) async throws -> PinnedHTTPSResponse {
+    private func response(_ request: URLRequest, timeout: TimeInterval = 35, rejectDotsErrors: Bool = false, rejectScheduleErrors: Bool = false) async throws -> PinnedHTTPSResponse {
         guard let url = request.url else { throw AgentClientError.message("服务地址无效") }
         let route = url.path + (url.query.map { "?" + $0 } ?? "")
         let result = try await PinnedHTTPSClient.shared.request(host: host, method: request.httpMethod ?? "GET", path: route,
@@ -128,9 +128,6 @@ final class CodexClient {
             if result.statusCode == 401 { enrolled = false }
             let message = (try? JSONSerialization.jsonObject(with: result.body) as? [String: Any])?["error"] as? String
             let rejectionCode = (try? JSONSerialization.jsonObject(with: result.body) as? [String: Any])?["code"] as? String
-            if rejectMemoryErrors && result.statusCode == 409 {
-                throw ShiyanMemoryConflict(message: message ?? "这条记忆已在另一端更新，请选择如何处理草稿")
-            }
             if rejectScheduleErrors && [400, 403, 404, 409, 422].contains(result.statusCode) {
                 throw ScheduledTaskRejected(status: result.statusCode, message: message ?? "服务器未接受此修改（\(result.statusCode)）")
             }
@@ -168,40 +165,15 @@ final class CodexClient {
         let bytes = try await response(request(method: operation.method, route: operation.route, object: object), rejectScheduleErrors: true).body
         return try JSONDecoder().decode(ScheduledTaskMutationReply.self, from: bytes)
     }
-    func memoryListing() async throws -> ShiyanMemoryListing {
+    func memorySettings() async throws -> ShiyanMemorySettings {
         try await prepareConnection()
-        let bytes = try await send(request(method: "GET", route: "memory"))
-        return try await Task.detached(priority: .utility) {
-            try JSONDecoder().decode(ShiyanMemoryListing.self, from: bytes)
-        }.value
+        let bytes = try await send(request(method: "GET", route: "memory/settings"))
+        return try JSONDecoder().decode(ShiyanMemorySettings.self, from: bytes)
     }
-    func setMemoryEnabled(_ enabled: Bool) async throws {
+    func setMemoryEnabled(_ enabled: Bool) async throws -> ShiyanMemorySettings {
         try await prepareConnection()
-        _ = try await send(request(method: "PATCH", route: "memory/settings", object: ["enabled": enabled]))
-    }
-    func addMemory(content: String, category: String) async throws {
-        try await prepareConnection()
-        _ = try await send(request(method: "POST", route: "memory", object: ["content": content, "category": category]))
-    }
-    func updateMemory(_ memory: ShiyanMemory, content: String) async throws {
-        try await prepareConnection()
-        let route = "memory/" + (try Self.memoryPathID(memory.id))
-        _ = try await response(request(method: "PATCH", route: route, object: ["content": content, "revision": memory.revision]), rejectMemoryErrors: true)
-    }
-    func deleteMemory(_ id: String) async throws {
-        try await prepareConnection()
-        _ = try await send(request(method: "DELETE", route: "memory/" + (try Self.memoryPathID(id))))
-    }
-    func clearMemories() async throws {
-        try await prepareConnection()
-        _ = try await send(request(method: "DELETE", route: "memory"))
-    }
-    private static func memoryPathID(_ id: String) throws -> String {
-        let allowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
-        guard !id.isEmpty, id.count <= 128, id.unicodeScalars.allSatisfy({ allowed.contains($0) }) else {
-            throw AgentClientError.message("记忆标识无效，请刷新后重试")
-        }
-        return id
+        let bytes = try await send(request(method: "PATCH", route: "memory/settings", object: ["enabled": enabled]))
+        return try JSONDecoder().decode(ShiyanMemorySettings.self, from: bytes)
     }
 
     func executionDetails(messageID: UUID) async throws -> AgentExecutionPayload {

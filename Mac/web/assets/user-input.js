@@ -22,18 +22,16 @@
  function refresh(entry){
   const {node,request:r}=entry;
   if(r.status==='cancelled'||r.status==='expired'){node.innerHTML='<div class="user-input-heading">'+(r.status==='cancelled'?'问题已取消':'问题已过期')+'</div>';return;}
-  if(r.status==='answered'){
-   node.innerHTML='<div class="user-input-heading">已回答</div>'+r.questions.map(q=>'<div class="user-input-answer"><p>'+esc(q.question)+'</p><strong>'+esc(r.answers?.[q.id]?.answers?.join('；')||'已提交')+'</strong></div>').join('');return;
-  }
+  if(r.status==='answered'){node.remove();return;}
   const form=node.querySelector('form');
   if(!form)return;
-  const button=form.querySelector('button[type=submit]');button.disabled=entry.submitting||!valid(r.questions,form);button.textContent=entry.submitting?'正在提交…':'提交回答';
+  const button=form.querySelector('button[type=submit]');button.disabled=entry.submitting||!valid(r.questions,form);button.textContent=entry.submitting?'提交中…':'确认';
   const status=node.querySelector('[data-answer-status]');status.textContent=entry.error||'';
  }
  function create(r,ctx){
   const node=document.createElement('section');node.className='user-input-card';node.setAttribute('aria-label','回答问题');
   const entry={node,request:r,context:ctx,submitting:false,error:''};
-  node.innerHTML='<div class="user-input-heading">需要你的选择</div><form>'+r.questions.map((q,i)=>'<fieldset data-question-id="'+esc(q.id)+'"><legend>'+esc(q.question)+'</legend>'+(q.options?.length?q.options.map((o,j)=>'<label class="user-input-option"><input type="radio" name="question-'+i+'" value="'+esc(o.label)+'"><span><strong>'+esc(o.label)+'</strong>'+(o.description?'<small>'+esc(o.description)+'</small>':'')+'</span></label>').join('')+'<label class="user-input-option"><input type="radio" name="question-'+i+'" data-custom="true"><span><strong>自己填写</strong></span></label>':'')+'<textarea aria-label="'+esc(q.options?.length?'填写自己的回答':q.question)+'" placeholder="'+(q.options?.length?'也可以填写自己的回答':'填写回答')+'" rows="2" maxlength="10000"></textarea></fieldset>').join('')+'<footer><span data-answer-status role="status" aria-live="polite"></span><button type="submit" disabled>提交回答</button></footer></form>';
+  node.innerHTML='<div class="user-input-heading">请选择</div><form>'+r.questions.map((q,i)=>'<fieldset data-question-id="'+esc(q.id)+'"><legend>'+esc(q.question)+'</legend>'+(q.options?.length?q.options.map((o,j)=>'<label class="user-input-option"><input type="radio" name="question-'+i+'" value="'+esc(o.label)+'"><span><strong>'+esc(o.label)+'</strong>'+(o.description?'<small>'+esc(o.description)+'</small>':'')+'</span></label>').join('')+'<label class="user-input-option"><input type="radio" name="question-'+i+'" data-custom="true"><span><strong>其他</strong></span></label>':'')+'<textarea aria-label="'+esc(q.options?.length?'填写自己的回答':q.question)+'" placeholder="'+(q.options?.length?'填写其他回答':'填写回答')+'" rows="2" maxlength="10000"></textarea></fieldset>').join('')+'<footer><span data-answer-status role="status" aria-live="polite"></span><button type="submit" disabled>确认</button></footer></form>';
   node.addEventListener('input',e=>{const group=e.target.closest('fieldset');if(e.target.matches('textarea')&&group){const custom=group.querySelector('[data-custom]');if(custom)custom.checked=true;}entry.error='';refresh(entry);});
   node.addEventListener('change',()=>{entry.error='';refresh(entry);});
   node.querySelector('form').addEventListener('submit',async e=>{
@@ -50,7 +48,7 @@
  }
  function mount(ctx){
   for(const entry of entries.values()){
-   if(!ctx||entry.context.key!==ctx.key||window.shiyan?.getView?.()!=='agent'){entry.node.remove();continue;}
+   if(entry.request.status==='answered'||!ctx||entry.context.key!==ctx.key||window.shiyan?.getView?.()!=='agent'){entry.node.remove();continue;}
    const article=document.querySelector('#messages>article[data-message-id="'+CSS.escape(ctx.messageId)+'"]');
    const target=article?.querySelector('.message-content');
    if(target&&entry.node.parentNode!==target){
@@ -71,12 +69,13 @@
    for(const r of data.pendingQuestions||[]){
     if(r.jobId!==ctx.jobId||!['pending','answered','cancelled','expired'].includes(r.status)||!r.questions?.length)continue;
     const key=ctx.key+':'+r.id;let entry=entries.get(key);
+    if(r.status==='answered'){if(entry){entry.node.remove();entries.delete(key);}continue;}
     if(!entry){entry=create(r,ctx);entries.set(key,entry);}
     else if(r.status!=='pending'&&entry.request.status!==r.status){entry.request=r;refresh(entry);}
    }
    while(entries.size>40){const key=entries.keys().next().value;entries.get(key).node.remove();entries.delete(key);}
    mount(ctx);
-  }catch(_){/* Keep typed answers and retry the small request on the next poll. */}
+  }catch(_){}
   finally{requesting=false;}
  }
  function update(){const ctx=context();mount(ctx);if(ctx?.key!==lastContext){lastContext=ctx?.key||'';clearTimeout(timer);timer=setTimeout(poll,0);}}

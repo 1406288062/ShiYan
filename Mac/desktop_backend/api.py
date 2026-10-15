@@ -294,6 +294,10 @@ def create_app(directory, root, legacy=None):
         suffix="?query="+quote(query[:200],safe="") if query else ""
         return await runtime(request).gateway.json("GET","memory"+suffix)
 
+    @app.get("/api/memory/settings")
+    async def memory_settings_read(request:Request):
+        return await runtime(request).gateway.json("GET","memory/settings")
+
     @app.patch("/api/memory/settings")
     async def memory_settings(request:Request):
         return await runtime(request).gateway.json("PATCH","memory/settings",await object_body(request))
