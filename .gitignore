@@ -1,0 +1,88 @@
+# Local OS, editors and Python environments
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.claude/
+.codex/
+.shiyan/
+.idea/
+.vscode/
+
+# Credentials and local runtime data
+.env
+.env.*
+!.env.example
+*.p12
+*.pfx
+*.mobileprovision
+*.key
+*.pem
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.sqlite3-*
+*.db
+*.db-*
+*.log
+*.pid
+conversations.json
+sync-state.json
+
+# Build output and backups
+.backups/
+.reconstruction-backup-*/
+*.before*
+*.orig
+*.bak
+*.backup
+dist/
+build/
+.build/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+*.app/
+*.ipa
+*.dmg
+
+# Only the current iOS project and supporting scripts
+/iOS/*
+!/iOS/ShiYan/
+!/iOS/scripts/
+/iOS/ShiYan/output/
+/iOS/ShiYan/tmp/
+/iOS/ShiYan/qa/
+/iOS/ShiYan/Tests/Artifacts/
+/iOS/ShiYan/Tests/UX-*/
+
+# Desktop generated state and migration reports
+/migration-verification.json
+/Mac/desktop_backend/verification-*.json
+/Mac/outputs/*
+!/Mac/outputs/sample_4x.jpg
+/Mac/inputs/*
+!/Mac/inputs/sample.jpg
+
+# Keep reproducible QA source; omit local runs and evidence
+/Mac/qa/*
+!/Mac/qa/*fixture_server.py
+!/Mac/qa/*regression*.cjs
+!/Mac/qa/*check.cjs
+!/Mac/qa/*test.py
+!/Mac/qa/*smoke.py
+!/Mac/qa/upload-compression-20261015/
+/Mac/qa/upload-compression-20261015/*
+!/Mac/qa/upload-compression-20261015/test_upload_image.py
+
+# Model weights stay local and are not uploaded.
+/Mac/models/
+/iOS/ShiYan/Untitled Project/Models/

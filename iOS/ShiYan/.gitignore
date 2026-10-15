@@ -1,0 +1,28 @@
+
+.DS_Store
+
+
+xcuserdata/
+*.xcuserstate
+DerivedData/
+build/
+
+
+.build/
+Packages/
+Package.resolved
+
+
+*.mobileprovision
+*.p12
+*.cer
+
+
+
+Tests/Artifacts/
+
+# Public certificate required by PinnedHTTPSClient
+!/Untitled Project/boss-codex.cer
+
+# Models stay local; restore them before building iOS.
+Untitled Project/Models/

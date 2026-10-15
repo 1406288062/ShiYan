@@ -1,0 +1,1333 @@
+{
+  "schema_version": 1,
+  "source": "Codex Pets",
+  "active_pet_id": "pet_6ac34fca9ed8819191d26a7488e27b61",
+  "pets": [
+    {
+      "id": "codex",
+      "name": "Codex",
+      "description": "The original Codex companion.",
+      "is_active": false,
+      "is_custom": false,
+      "filename": "codex.webp",
+      "preview_filename": "codex-idle.webp",
+      "thumbnail_filename": "codex-thumb.png",
+      "sprite_url": "/static/dots-pets/codex.webp",
+      "preview_url": "/static/dots-pets/codex-idle.webp",
+      "thumbnail_url": "/static/dots-pets/codex-thumb.png",
+      "width": 1536,
+      "height": 1872,
+      "cell_width": 192,
+      "cell_height": 208,
+      "columns": 8,
+      "rows": 9,
+      "sprite_version": 1,
+      "bytes": 887954,
+      "has_alpha": true,
+      "states": [
+        {
+          "name": "idle",
+          "row": 0,
+          "frames": 6,
+          "fps": 6
+        },
+        {
+          "name": "running-right",
+          "row": 1,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "running-left",
+          "row": 2,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "waving",
+          "row": 3,
+          "frames": 4,
+          "fps": 8
+        },
+        {
+          "name": "jumping",
+          "row": 4,
+          "frames": 5,
+          "fps": 8
+        },
+        {
+          "name": "failed",
+          "row": 5,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "waiting",
+          "row": 6,
+          "frames": 6,
+          "fps": 8
+        },
+        {
+          "name": "running",
+          "row": 7,
+          "frames": 6,
+          "fps": 8
+        },
+        {
+          "name": "review",
+          "row": 8,
+          "frames": 6,
+          "fps": 8
+        }
+      ]
+    },
+    {
+      "id": "dewey",
+      "name": "Dewey",
+      "description": "A calm companion for focused workspace days",
+      "is_active": false,
+      "is_custom": false,
+      "filename": "dewey.webp",
+      "preview_filename": "dewey-idle.webp",
+      "thumbnail_filename": "dewey-thumb.png",
+      "sprite_url": "/static/dots-pets/dewey.webp",
+      "preview_url": "/static/dots-pets/dewey-idle.webp",
+      "thumbnail_url": "/static/dots-pets/dewey-thumb.png",
+      "width": 1536,
+      "height": 1872,
+      "cell_width": 192,
+      "cell_height": 208,
+      "columns": 8,
+      "rows": 9,
+      "sprite_version": 1,
+      "bytes": 782352,
+      "has_alpha": true,
+      "states": [
+        {
+          "name": "idle",
+          "row": 0,
+          "frames": 6,
+          "fps": 6
+        },
+        {
+          "name": "running-right",
+          "row": 1,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "running-left",
+          "row": 2,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "waving",
+          "row": 3,
+          "frames": 4,
+          "fps": 8
+        },
+        {
+          "name": "jumping",
+          "row": 4,
+          "frames": 5,
+          "fps": 8
+        },
+        {
+          "name": "failed",
+          "row": 5,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "waiting",
+          "row": 6,
+          "frames": 6,
+          "fps": 8
+        },
+        {
+          "name": "running",
+          "row": 7,
+          "frames": 6,
+          "fps": 8
+        },
+        {
+          "name": "review",
+          "row": 8,
+          "frames": 6,
+          "fps": 8
+        }
+      ]
+    },
+    {
+      "id": "fireball",
+      "name": "Fireball",
+      "description": "Hot path energy for fast iteration.",
+      "is_active": false,
+      "is_custom": false,
+      "filename": "fireball.webp",
+      "preview_filename": "fireball-idle.webp",
+      "thumbnail_filename": "fireball-thumb.png",
+      "sprite_url": "/static/dots-pets/fireball.webp",
+      "preview_url": "/static/dots-pets/fireball-idle.webp",
+      "thumbnail_url": "/static/dots-pets/fireball-thumb.png",
+      "width": 1536,
+      "height": 1872,
+      "cell_width": 192,
+      "cell_height": 208,
+      "columns": 8,
+      "rows": 9,
+      "sprite_version": 1,
+      "bytes": 1032498,
+      "has_alpha": true,
+      "states": [
+        {
+          "name": "idle",
+          "row": 0,
+          "frames": 6,
+          "fps": 6
+        },
+        {
+          "name": "running-right",
+          "row": 1,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "running-left",
+          "row": 2,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "waving",
+          "row": 3,
+          "frames": 4,
+          "fps": 8
+        },
+        {
+          "name": "jumping",
+          "row": 4,
+          "frames": 5,
+          "fps": 8
+        },
+        {
+          "name": "failed",
+          "row": 5,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "waiting",
+          "row": 6,
+          "frames": 6,
+          "fps": 8
+        },
+        {
+          "name": "running",
+          "row": 7,
+          "frames": 6,
+          "fps": 8
+        },
+        {
+          "name": "review",
+          "row": 8,
+          "frames": 6,
+          "fps": 8
+        }
+      ]
+    },
+    {
+      "id": "hoots",
+      "name": "Hoots",
+      "description": "A sharp-eyed owl for polished work in a blink.",
+      "is_active": false,
+      "is_custom": false,
+      "filename": "hoots.webp",
+      "preview_filename": "hoots-idle.webp",
+      "thumbnail_filename": "hoots-thumb.png",
+      "sprite_url": "/static/dots-pets/hoots.webp",
+      "preview_url": "/static/dots-pets/hoots-idle.webp",
+      "thumbnail_url": "/static/dots-pets/hoots-thumb.png",
+      "width": 1536,
+      "height": 1872,
+      "cell_width": 192,
+      "cell_height": 208,
+      "columns": 8,
+      "rows": 9,
+      "sprite_version": 1,
+      "bytes": 1845668,
+      "has_alpha": true,
+      "states": [
+        {
+          "name": "idle",
+          "row": 0,
+          "frames": 6,
+          "fps": 6
+        },
+        {
+          "name": "running-right",
+          "row": 1,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "running-left",
+          "row": 2,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "waving",
+          "row": 3,
+          "frames": 4,
+          "fps": 8
+        },
+        {
+          "name": "jumping",
+          "row": 4,
+          "frames": 5,
+          "fps": 8
+        },
+        {
+          "name": "failed",
+          "row": 5,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "waiting",
+          "row": 6,
+          "frames": 6,
+          "fps": 8
+        },
+        {
+          "name": "running",
+          "row": 7,
+          "frames": 6,
+          "fps": 8
+        },
+        {
+          "name": "review",
+          "row": 8,
+          "frames": 6,
+          "fps": 8
+        }
+      ]
+    },
+    {
+      "id": "rocky",
+      "name": "Rocky",
+      "description": "A steady rock for when the inbox gets out of control",
+      "is_active": false,
+      "is_custom": false,
+      "filename": "rocky.webp",
+      "preview_filename": "rocky-idle.webp",
+      "thumbnail_filename": "rocky-thumb.png",
+      "sprite_url": "/static/dots-pets/rocky.webp",
+      "preview_url": "/static/dots-pets/rocky-idle.webp",
+      "thumbnail_url": "/static/dots-pets/rocky-thumb.png",
+      "width": 1536,
+      "height": 1872,
+      "cell_width": 192,
+      "cell_height": 208,
+      "columns": 8,
+      "rows": 9,
+      "sprite_version": 1,
+      "bytes": 659540,
+      "has_alpha": true,
+      "states": [
+        {
+          "name": "idle",
+          "row": 0,
+          "frames": 6,
+          "fps": 6
+        },
+        {
+          "name": "running-right",
+          "row": 1,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "running-left",
+          "row": 2,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "waving",
+          "row": 3,
+          "frames": 4,
+          "fps": 8
+        },
+        {
+          "name": "jumping",
+          "row": 4,
+          "frames": 5,
+          "fps": 8
+        },
+        {
+          "name": "failed",
+          "row": 5,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "waiting",
+          "row": 6,
+          "frames": 6,
+          "fps": 8
+        },
+        {
+          "name": "running",
+          "row": 7,
+          "frames": 6,
+          "fps": 8
+        },
+        {
+          "name": "review",
+          "row": 8,
+          "frames": 6,
+          "fps": 8
+        }
+      ]
+    },
+    {
+      "id": "seedy",
+      "name": "Seedy",
+      "description": "Small green shoots for new ideas.",
+      "is_active": false,
+      "is_custom": false,
+      "filename": "seedy.webp",
+      "preview_filename": "seedy-idle.webp",
+      "thumbnail_filename": "seedy-thumb.png",
+      "sprite_url": "/static/dots-pets/seedy.webp",
+      "preview_url": "/static/dots-pets/seedy-idle.webp",
+      "thumbnail_url": "/static/dots-pets/seedy-thumb.png",
+      "width": 1536,
+      "height": 1872,
+      "cell_width": 192,
+      "cell_height": 208,
+      "columns": 8,
+      "rows": 9,
+      "sprite_version": 1,
+      "bytes": 914490,
+      "has_alpha": true,
+      "states": [
+        {
+          "name": "idle",
+          "row": 0,
+          "frames": 6,
+          "fps": 6
+        },
+        {
+          "name": "running-right",
+          "row": 1,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "running-left",
+          "row": 2,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "waving",
+          "row": 3,
+          "frames": 4,
+          "fps": 8
+        },
+        {
+          "name": "jumping",
+          "row": 4,
+          "frames": 5,
+          "fps": 8
+        },
+        {
+          "name": "failed",
+          "row": 5,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "waiting",
+          "row": 6,
+          "frames": 6,
+          "fps": 8
+        },
+        {
+          "name": "running",
+          "row": 7,
+          "frames": 6,
+          "fps": 8
+        },
+        {
+          "name": "review",
+          "row": 8,
+          "frames": 6,
+          "fps": 8
+        }
+      ]
+    },
+    {
+      "id": "stacky",
+      "name": "Stacky",
+      "description": "A balanced stack for deep work.",
+      "is_active": false,
+      "is_custom": false,
+      "filename": "stacky.webp",
+      "preview_filename": "stacky-idle.webp",
+      "thumbnail_filename": "stacky-thumb.png",
+      "sprite_url": "/static/dots-pets/stacky.webp",
+      "preview_url": "/static/dots-pets/stacky-idle.webp",
+      "thumbnail_url": "/static/dots-pets/stacky-thumb.png",
+      "width": 1536,
+      "height": 1872,
+      "cell_width": 192,
+      "cell_height": 208,
+      "columns": 8,
+      "rows": 9,
+      "sprite_version": 1,
+      "bytes": 749658,
+      "has_alpha": true,
+      "states": [
+        {
+          "name": "idle",
+          "row": 0,
+          "frames": 6,
+          "fps": 6
+        },
+        {
+          "name": "running-right",
+          "row": 1,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "running-left",
+          "row": 2,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "waving",
+          "row": 3,
+          "frames": 4,
+          "fps": 8
+        },
+        {
+          "name": "jumping",
+          "row": 4,
+          "frames": 5,
+          "fps": 8
+        },
+        {
+          "name": "failed",
+          "row": 5,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "waiting",
+          "row": 6,
+          "frames": 6,
+          "fps": 8
+        },
+        {
+          "name": "running",
+          "row": 7,
+          "frames": 6,
+          "fps": 8
+        },
+        {
+          "name": "review",
+          "row": 8,
+          "frames": 6,
+          "fps": 8
+        }
+      ]
+    },
+    {
+      "id": "bsod",
+      "name": "BSOD",
+      "description": "A tiny blue-screen gremlin.",
+      "is_active": false,
+      "is_custom": false,
+      "filename": "bsod.webp",
+      "preview_filename": "bsod-idle.webp",
+      "thumbnail_filename": "bsod-thumb.png",
+      "sprite_url": "/static/dots-pets/bsod.webp",
+      "preview_url": "/static/dots-pets/bsod-idle.webp",
+      "thumbnail_url": "/static/dots-pets/bsod-thumb.png",
+      "width": 1536,
+      "height": 1872,
+      "cell_width": 192,
+      "cell_height": 208,
+      "columns": 8,
+      "rows": 9,
+      "sprite_version": 1,
+      "bytes": 953178,
+      "has_alpha": true,
+      "states": [
+        {
+          "name": "idle",
+          "row": 0,
+          "frames": 6,
+          "fps": 6
+        },
+        {
+          "name": "running-right",
+          "row": 1,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "running-left",
+          "row": 2,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "waving",
+          "row": 3,
+          "frames": 4,
+          "fps": 8
+        },
+        {
+          "name": "jumping",
+          "row": 4,
+          "frames": 5,
+          "fps": 8
+        },
+        {
+          "name": "failed",
+          "row": 5,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "waiting",
+          "row": 6,
+          "frames": 6,
+          "fps": 8
+        },
+        {
+          "name": "running",
+          "row": 7,
+          "frames": 6,
+          "fps": 8
+        },
+        {
+          "name": "review",
+          "row": 8,
+          "frames": 6,
+          "fps": 8
+        }
+      ]
+    },
+    {
+      "id": "null-signal",
+      "name": "Null Signal",
+      "description": "Quiet signal from the void.",
+      "is_active": false,
+      "is_custom": false,
+      "filename": "null-signal.webp",
+      "preview_filename": "null-signal-idle.webp",
+      "thumbnail_filename": "null-signal-thumb.png",
+      "sprite_url": "/static/dots-pets/null-signal.webp",
+      "preview_url": "/static/dots-pets/null-signal-idle.webp",
+      "thumbnail_url": "/static/dots-pets/null-signal-thumb.png",
+      "width": 1536,
+      "height": 1872,
+      "cell_width": 192,
+      "cell_height": 208,
+      "columns": 8,
+      "rows": 9,
+      "sprite_version": 1,
+      "bytes": 488690,
+      "has_alpha": true,
+      "states": [
+        {
+          "name": "idle",
+          "row": 0,
+          "frames": 6,
+          "fps": 6
+        },
+        {
+          "name": "running-right",
+          "row": 1,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "running-left",
+          "row": 2,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "waving",
+          "row": 3,
+          "frames": 4,
+          "fps": 8
+        },
+        {
+          "name": "jumping",
+          "row": 4,
+          "frames": 5,
+          "fps": 8
+        },
+        {
+          "name": "failed",
+          "row": 5,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "waiting",
+          "row": 6,
+          "frames": 6,
+          "fps": 8
+        },
+        {
+          "name": "running",
+          "row": 7,
+          "frames": 6,
+          "fps": 8
+        },
+        {
+          "name": "review",
+          "row": 8,
+          "frames": 6,
+          "fps": 8
+        }
+      ]
+    },
+    {
+      "id": "pet_6ac34fca9ed8819191d26a7488e27b61",
+      "name": "小莓·卡通",
+      "description": "戴草帽、双马尾，穿粉色水手风裙装与白袜乐福鞋的卡通桌宠，拥有九种动作和十六向视线。",
+      "is_active": true,
+      "is_custom": true,
+      "filename": "pet_6ac34fca9ed8819191d26a7488e27b61.png",
+      "preview_filename": "pet_6ac34fca9ed8819191d26a7488e27b61-idle.webp",
+      "thumbnail_filename": "pet_6ac34fca9ed8819191d26a7488e27b61-thumb.png",
+      "sprite_url": "/static/dots-pets/pet_6ac34fca9ed8819191d26a7488e27b61.png",
+      "preview_url": "/static/dots-pets/pet_6ac34fca9ed8819191d26a7488e27b61-idle.webp",
+      "thumbnail_url": "/static/dots-pets/pet_6ac34fca9ed8819191d26a7488e27b61-thumb.png",
+      "width": 1536,
+      "height": 2288,
+      "cell_width": 192,
+      "cell_height": 208,
+      "columns": 8,
+      "rows": 11,
+      "sprite_version": 2,
+      "bytes": 2937950,
+      "has_alpha": true,
+      "states": [
+        {
+          "name": "idle",
+          "row": 0,
+          "frames": 6,
+          "fps": 6
+        },
+        {
+          "name": "running-right",
+          "row": 1,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "running-left",
+          "row": 2,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "waving",
+          "row": 3,
+          "frames": 4,
+          "fps": 8
+        },
+        {
+          "name": "jumping",
+          "row": 4,
+          "frames": 5,
+          "fps": 8
+        },
+        {
+          "name": "failed",
+          "row": 5,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "waiting",
+          "row": 6,
+          "frames": 6,
+          "fps": 8
+        },
+        {
+          "name": "running",
+          "row": 7,
+          "frames": 6,
+          "fps": 8
+        },
+        {
+          "name": "review",
+          "row": 8,
+          "frames": 6,
+          "fps": 8
+        }
+      ]
+    },
+    {
+      "id": "pet_6ac10fef41608191a5e2a87e3e9f97f3",
+      "name": "yu-B",
+      "description": "Baby black kitten with a tilted head, round paws, glossy eyes and the approved broad-crown fur. Variant B.",
+      "is_active": false,
+      "is_custom": true,
+      "filename": "pet_6ac10fef41608191a5e2a87e3e9f97f3.png",
+      "preview_filename": "pet_6ac10fef41608191a5e2a87e3e9f97f3-idle.webp",
+      "thumbnail_filename": "pet_6ac10fef41608191a5e2a87e3e9f97f3-thumb.png",
+      "sprite_url": "/static/dots-pets/pet_6ac10fef41608191a5e2a87e3e9f97f3.png",
+      "preview_url": "/static/dots-pets/pet_6ac10fef41608191a5e2a87e3e9f97f3-idle.webp",
+      "thumbnail_url": "/static/dots-pets/pet_6ac10fef41608191a5e2a87e3e9f97f3-thumb.png",
+      "width": 1536,
+      "height": 2288,
+      "cell_width": 192,
+      "cell_height": 208,
+      "columns": 8,
+      "rows": 11,
+      "sprite_version": 2,
+      "bytes": 3801726,
+      "has_alpha": true,
+      "states": [
+        {
+          "name": "idle",
+          "row": 0,
+          "frames": 6,
+          "fps": 6
+        },
+        {
+          "name": "running-right",
+          "row": 1,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "running-left",
+          "row": 2,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "waving",
+          "row": 3,
+          "frames": 4,
+          "fps": 8
+        },
+        {
+          "name": "jumping",
+          "row": 4,
+          "frames": 5,
+          "fps": 8
+        },
+        {
+          "name": "failed",
+          "row": 5,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "waiting",
+          "row": 6,
+          "frames": 6,
+          "fps": 8
+        },
+        {
+          "name": "running",
+          "row": 7,
+          "frames": 6,
+          "fps": 8
+        },
+        {
+          "name": "review",
+          "row": 8,
+          "frames": 6,
+          "fps": 8
+        }
+      ]
+    },
+    {
+      "id": "pet_6ac10fc4f2e48191ab47f32e5c00d431",
+      "name": "yu-C",
+      "description": "Fluffy black kitten with broad cloud cheeks, round ears, glossy eyes and a gentle blue smile. Variant C.",
+      "is_active": false,
+      "is_custom": true,
+      "filename": "pet_6ac10fc4f2e48191ab47f32e5c00d431.png",
+      "preview_filename": "pet_6ac10fc4f2e48191ab47f32e5c00d431-idle.webp",
+      "thumbnail_filename": "pet_6ac10fc4f2e48191ab47f32e5c00d431-thumb.png",
+      "sprite_url": "/static/dots-pets/pet_6ac10fc4f2e48191ab47f32e5c00d431.png",
+      "preview_url": "/static/dots-pets/pet_6ac10fc4f2e48191ab47f32e5c00d431-idle.webp",
+      "thumbnail_url": "/static/dots-pets/pet_6ac10fc4f2e48191ab47f32e5c00d431-thumb.png",
+      "width": 1536,
+      "height": 2288,
+      "cell_width": 192,
+      "cell_height": 208,
+      "columns": 8,
+      "rows": 11,
+      "sprite_version": 2,
+      "bytes": 3782702,
+      "has_alpha": true,
+      "states": [
+        {
+          "name": "idle",
+          "row": 0,
+          "frames": 6,
+          "fps": 6
+        },
+        {
+          "name": "running-right",
+          "row": 1,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "running-left",
+          "row": 2,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "waving",
+          "row": 3,
+          "frames": 4,
+          "fps": 8
+        },
+        {
+          "name": "jumping",
+          "row": 4,
+          "frames": 5,
+          "fps": 8
+        },
+        {
+          "name": "failed",
+          "row": 5,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "waiting",
+          "row": 6,
+          "frames": 6,
+          "fps": 8
+        },
+        {
+          "name": "running",
+          "row": 7,
+          "frames": 6,
+          "fps": 8
+        },
+        {
+          "name": "review",
+          "row": 8,
+          "frames": 6,
+          "fps": 8
+        }
+      ]
+    },
+    {
+      "id": "pet_6ac10f98943881919d9c9d733a6401cd",
+      "name": "yu-A",
+      "description": "Soft round black kitten with giant glossy eyes, yellow inner ears and a tiny blue mouth. Variant A.",
+      "is_active": false,
+      "is_custom": true,
+      "filename": "pet_6ac10f98943881919d9c9d733a6401cd.png",
+      "preview_filename": "pet_6ac10f98943881919d9c9d733a6401cd-idle.webp",
+      "thumbnail_filename": "pet_6ac10f98943881919d9c9d733a6401cd-thumb.png",
+      "sprite_url": "/static/dots-pets/pet_6ac10f98943881919d9c9d733a6401cd.png",
+      "preview_url": "/static/dots-pets/pet_6ac10f98943881919d9c9d733a6401cd-idle.webp",
+      "thumbnail_url": "/static/dots-pets/pet_6ac10f98943881919d9c9d733a6401cd-thumb.png",
+      "width": 1536,
+      "height": 2288,
+      "cell_width": 192,
+      "cell_height": 208,
+      "columns": 8,
+      "rows": 11,
+      "sprite_version": 2,
+      "bytes": 3854019,
+      "has_alpha": true,
+      "states": [
+        {
+          "name": "idle",
+          "row": 0,
+          "frames": 6,
+          "fps": 6
+        },
+        {
+          "name": "running-right",
+          "row": 1,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "running-left",
+          "row": 2,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "waving",
+          "row": 3,
+          "frames": 4,
+          "fps": 8
+        },
+        {
+          "name": "jumping",
+          "row": 4,
+          "frames": 5,
+          "fps": 8
+        },
+        {
+          "name": "failed",
+          "row": 5,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "waiting",
+          "row": 6,
+          "frames": 6,
+          "fps": 8
+        },
+        {
+          "name": "running",
+          "row": 7,
+          "frames": 6,
+          "fps": 8
+        },
+        {
+          "name": "review",
+          "row": 8,
+          "frames": 6,
+          "fps": 8
+        }
+      ]
+    },
+    {
+      "id": "pet_6abfe8a63f308191bcfc45ffbbc86821",
+      "name": "dot",
+      "description": "A soft black kitten with enormous glossy eyes, yellow inner ears and a tiny blue mouth, faithfully based on the supplied illustration.",
+      "is_active": false,
+      "is_custom": true,
+      "filename": "pet_6abfe8a63f308191bcfc45ffbbc86821.png",
+      "preview_filename": "pet_6abfe8a63f308191bcfc45ffbbc86821-idle.webp",
+      "thumbnail_filename": "pet_6abfe8a63f308191bcfc45ffbbc86821-thumb.png",
+      "sprite_url": "/static/dots-pets/pet_6abfe8a63f308191bcfc45ffbbc86821.png",
+      "preview_url": "/static/dots-pets/pet_6abfe8a63f308191bcfc45ffbbc86821-idle.webp",
+      "thumbnail_url": "/static/dots-pets/pet_6abfe8a63f308191bcfc45ffbbc86821-thumb.png",
+      "width": 1536,
+      "height": 2288,
+      "cell_width": 192,
+      "cell_height": 208,
+      "columns": 8,
+      "rows": 11,
+      "sprite_version": 2,
+      "bytes": 3573526,
+      "has_alpha": true,
+      "states": [
+        {
+          "name": "idle",
+          "row": 0,
+          "frames": 6,
+          "fps": 6
+        },
+        {
+          "name": "running-right",
+          "row": 1,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "running-left",
+          "row": 2,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "waving",
+          "row": 3,
+          "frames": 4,
+          "fps": 8
+        },
+        {
+          "name": "jumping",
+          "row": 4,
+          "frames": 5,
+          "fps": 8
+        },
+        {
+          "name": "failed",
+          "row": 5,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "waiting",
+          "row": 6,
+          "frames": 6,
+          "fps": 8
+        },
+        {
+          "name": "running",
+          "row": 7,
+          "frames": 6,
+          "fps": 8
+        },
+        {
+          "name": "review",
+          "row": 8,
+          "frames": 6,
+          "fps": 8
+        }
+      ]
+    },
+    {
+      "id": "pet_6abd0eab12a48191b7fbf8d7f68d393d",
+      "name": "桃桃水手",
+      "description": "A polished sailor-themed desktop companion inspired by a pink-and-navy school-uniform outfit and lace straw hat.",
+      "is_active": false,
+      "is_custom": true,
+      "filename": "pet_6abd0eab12a48191b7fbf8d7f68d393d.png",
+      "preview_filename": "pet_6abd0eab12a48191b7fbf8d7f68d393d-idle.webp",
+      "thumbnail_filename": "pet_6abd0eab12a48191b7fbf8d7f68d393d-thumb.png",
+      "sprite_url": "/static/dots-pets/pet_6abd0eab12a48191b7fbf8d7f68d393d.png",
+      "preview_url": "/static/dots-pets/pet_6abd0eab12a48191b7fbf8d7f68d393d-idle.webp",
+      "thumbnail_url": "/static/dots-pets/pet_6abd0eab12a48191b7fbf8d7f68d393d-thumb.png",
+      "width": 1536,
+      "height": 2288,
+      "cell_width": 192,
+      "cell_height": 208,
+      "columns": 8,
+      "rows": 11,
+      "sprite_version": 2,
+      "bytes": 2775605,
+      "has_alpha": true,
+      "states": [
+        {
+          "name": "idle",
+          "row": 0,
+          "frames": 6,
+          "fps": 6
+        },
+        {
+          "name": "running-right",
+          "row": 1,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "running-left",
+          "row": 2,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "waving",
+          "row": 3,
+          "frames": 4,
+          "fps": 8
+        },
+        {
+          "name": "jumping",
+          "row": 4,
+          "frames": 5,
+          "fps": 8
+        },
+        {
+          "name": "failed",
+          "row": 5,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "waiting",
+          "row": 6,
+          "frames": 6,
+          "fps": 8
+        },
+        {
+          "name": "running",
+          "row": 7,
+          "frames": 6,
+          "fps": 8
+        },
+        {
+          "name": "review",
+          "row": 8,
+          "frames": 6,
+          "fps": 8
+        }
+      ]
+    },
+    {
+      "id": "pet_6abd0e66c2188191b4f64af03acfd145",
+      "name": "Luma",
+      "description": "A glossy midnight-ink cat with luminous lime ears and curious magenta eyes.",
+      "is_active": false,
+      "is_custom": true,
+      "filename": "pet_6abd0e66c2188191b4f64af03acfd145.png",
+      "preview_filename": "pet_6abd0e66c2188191b4f64af03acfd145-idle.webp",
+      "thumbnail_filename": "pet_6abd0e66c2188191b4f64af03acfd145-thumb.png",
+      "sprite_url": "/static/dots-pets/pet_6abd0e66c2188191b4f64af03acfd145.png",
+      "preview_url": "/static/dots-pets/pet_6abd0e66c2188191b4f64af03acfd145-idle.webp",
+      "thumbnail_url": "/static/dots-pets/pet_6abd0e66c2188191b4f64af03acfd145-thumb.png",
+      "width": 1536,
+      "height": 2288,
+      "cell_width": 192,
+      "cell_height": 208,
+      "columns": 8,
+      "rows": 11,
+      "sprite_version": 2,
+      "bytes": 3161193,
+      "has_alpha": true,
+      "states": [
+        {
+          "name": "idle",
+          "row": 0,
+          "frames": 6,
+          "fps": 6
+        },
+        {
+          "name": "running-right",
+          "row": 1,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "running-left",
+          "row": 2,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "waving",
+          "row": 3,
+          "frames": 4,
+          "fps": 8
+        },
+        {
+          "name": "jumping",
+          "row": 4,
+          "frames": 5,
+          "fps": 8
+        },
+        {
+          "name": "failed",
+          "row": 5,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "waiting",
+          "row": 6,
+          "frames": 6,
+          "fps": 8
+        },
+        {
+          "name": "running",
+          "row": 7,
+          "frames": 6,
+          "fps": 8
+        },
+        {
+          "name": "review",
+          "row": 8,
+          "frames": 6,
+          "fps": 8
+        }
+      ]
+    },
+    {
+      "id": "pet_6abd0e3ddfb081918bff78b308d733f6",
+      "name": "星瞳",
+      "description": "一只拥有巨大奶白眼眶、玫红虹膜高光、黄绿色耳内和蓝色小鼻子的圆润深紫黑猫桌宠。.",
+      "is_active": false,
+      "is_custom": true,
+      "filename": "pet_6abd0e3ddfb081918bff78b308d733f6.png",
+      "preview_filename": "pet_6abd0e3ddfb081918bff78b308d733f6-idle.webp",
+      "thumbnail_filename": "pet_6abd0e3ddfb081918bff78b308d733f6-thumb.png",
+      "sprite_url": "/static/dots-pets/pet_6abd0e3ddfb081918bff78b308d733f6.png",
+      "preview_url": "/static/dots-pets/pet_6abd0e3ddfb081918bff78b308d733f6-idle.webp",
+      "thumbnail_url": "/static/dots-pets/pet_6abd0e3ddfb081918bff78b308d733f6-thumb.png",
+      "width": 1536,
+      "height": 2288,
+      "cell_width": 192,
+      "cell_height": 208,
+      "columns": 8,
+      "rows": 11,
+      "sprite_version": 2,
+      "bytes": 3396894,
+      "has_alpha": true,
+      "states": [
+        {
+          "name": "idle",
+          "row": 0,
+          "frames": 6,
+          "fps": 6
+        },
+        {
+          "name": "running-right",
+          "row": 1,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "running-left",
+          "row": 2,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "waving",
+          "row": 3,
+          "frames": 4,
+          "fps": 8
+        },
+        {
+          "name": "jumping",
+          "row": 4,
+          "frames": 5,
+          "fps": 8
+        },
+        {
+          "name": "failed",
+          "row": 5,
+          "frames": 8,
+          "fps": 8
+        },
+        {
+          "name": "waiting",
+          "row": 6,
+          "frames": 6,
+          "fps": 8
+        },
+        {
+          "name": "running",
+          "row": 7,
+          "frames": 6,
+          "fps": 8
+        },
+        {
+          "name": "review",
+          "row": 8,
+          "frames": 6,
+          "fps": 8
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,548 @@
+ 
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const icons = {
+    copy:'<rect x="8" y="3" width="13" height="13" rx="3"/><rect x="3" y="8" width="13" height="13" rx="3"/>',
+    read:'<path d="M11 4 6 8H3v8h3l5 4V4Z M15 8a6 6 0 0 1 0 8 M18 5a10 10 0 0 1 0 14"/>',
+    stop:'<rect x="6" y="6" width="12" height="12" rx="2"/>',
+    chat:'<path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H5l-3 2v-7A8.5 8.5 0 1 1 21 11.5Z"/>',
+    clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    file:'<path d="M14 2H5v20h14V7Z M14 2v5h5"/>',
+    image:'<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.5"/><path d="m3 16 6-6 12 11"/>',
+    forward:'<path d="m10 5 7 7-7 7"/>',
+    back:'<path d="m14 5-7 7 7 7"/>', close:'<path d="m6 6 12 12M18 6 6 18"/>',
+    more:'<path d="m6 9 6 6 6-6"/>', add:'<path d="M12 4v16M4 12h16"/>',
+    download:'<path d="M12 2v13m-5-5 5 5 5-5M4 16v5h16v-5"/>',
+    check:'<path d="m5 12 4 4L19 6"/>',
+  };
+  const icon = kind => '<svg class="dots-panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(icons[kind] || icons.file)+'</svg>';
+  const colors = ['#bdc4d5','#00b4ef','#ffd139','#d469da','#bada10','#ed729c','#f79557','#7293f1'];
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+  let C, profile = {}, pets = [], cataloguePromise, snapshot = {}, activities = [], outputs = [];
+  let loading = false, activityError = '', expanded = false, outputExpanded = false, lastActivityFetch = 0, refreshTimer;
+  let profileDraft, profileDialog, conversationDialog, scheduleDialog, outputDialog, returnFocus;
+  let currentConversation, conversationFull = false, conversationVersion = 0, scheduleValue, scheduleBusy = false;
+  let conversationTimer, conversationPolling = false;
+  let readSession=null, readingIndex=-1, readUtterance=null;
+  let currentModal, savedSignature = '', activitySignature = '', lastOpen = false, outputRaw = '';
+  const api = (route, method = 'GET', data) => C.api(route, method, data);
+  const rejected = error => [400,403,404,422].includes(error.status) && error.code !== 'action_uncertain';
+  const name = () => profile.name || 'Dots';
+  const petById = id => pets.find(p => p.id === id) || pets.find(p => p.is_active) || pets[0];
+  const imageURL = pet => pet ? (reduced.matches ? pet.thumbnail_url : pet.preview_url).replace('/static/dots-pets/','/assets/dots-pets/') : '';
+  const petImage = (id, cls = '', size = '') => {
+    const pet = petById(id);
+    return pet ? '<img class="dots-pet '+cls+'" data-dots-pet="'+esc(pet.id)+'" src="'+esc(imageURL(pet))+'" alt="'+esc(pet.name)+'"'+size+'>' : '<span class="dots-pet dots-pet-empty" aria-hidden="true">'+icon('chat')+'</span>';
+  };
+  const avatar = () => petById(profile.petId) ? petImage(profile.petId,'dots-nav-pet') : '';
+  const time = value => value ? new Date(value < 1e12 ? value * 1000 : value).toLocaleString('zh-CN', {month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+  const ago = value => {
+    if (!value) return '尚无活动';
+    const stamp = value < 1e12 ? value * 1000 : value, minutes = Math.max(0, Math.floor((Date.now() - stamp) / 60000));
+    return minutes < 1 ? '刚刚' : minutes < 60 ? minutes+'分钟前' : minutes < 1440 ? Math.floor(minutes/60)+'小时前' : time(stamp);
+  };
+  const localURL = value => String(value || '').replace(/^\/(?:shiyan\/)?v1\/dots\//, '/api/dots/');
+  function getCatalogue() {
+    if (!cataloguePromise) cataloguePromise = Promise.all([api('/profile'),api('/pets')]).then(([p, list]) => {
+      profile = p.profile || {}; pets = list.pets || [];
+      if (!profile.petId && list.active_pet_id) profile.petId = list.active_pet_id;
+      document.documentElement.style.setProperty('--dots-profile-accent',profile.accent || colors[0]); C.nameChanged(); renderPanel(); return list;
+    }).catch(error => { cataloguePromise = null; throw error; });
+    return cataloguePromise;
+  }
+  function identityStatus(value = snapshot) {
+    const tasks = (value.tasks || []).filter(t => t.legacyImported !== true);
+    if (value.notice) return value.notice;
+    if (value.connection && !['已连接','定时同步'].includes(value.connection)) return value.connection;
+    if (value.uploading) return '正在上传…';
+    if (value.busy) return '正在发送…';
+    if (value.pendingMessage) return '发送结果待确认';
+    if (value.manager?.status === 'paused') return '已暂停';
+    if (value.manager?.status === 'cancelled') return '已停止';
+    if (Number(value.manager?.runningWorkers) > 0 || tasks.some(t => t.status === 'running')) return 'Thinking';
+    if (tasks.some(t => t.status === 'waiting_approval')) return '等待确认';
+    if (tasks.some(t => t.status === 'done' && t.acceptanceStatus === 'pending')) return '正在验收…';
+    if (tasks.some(t => ['active','pending','queued'].includes(t.status))) return '等待执行';
+    if (tasks[0]?.status === 'failed') return '处理失败';
+    if (value.loading && !value.messages?.length) return '正在加载…';
+    if (value.messages?.at(-1)?.role === 'user') return 'Thinking';
+    return '';
+  }
+  // A persistent pet keeps its animation frame while travelling between anchors.
+  function positionPet() {
+    const floating = $('dotsFloatingPet'), area = $('mainWorkspace') || $('dotsView');
+    if (!floating || !area) return;
+    const visible = window.shiyan.getView() === 'dots' && !conversationVisible();
+    floating.hidden = !visible;
+    if (!visible) return;
+    const pet = petById(profile.petId);
+    if (pet && floating.dataset.petId !== pet.id) {
+      floating.dataset.petId = pet.id;
+      floating.innerHTML = '<div class="dots-floating-art">'+petImage(pet.id, 'dots-profile-pet')+'</div><div class="dots-floating-status" role="status" aria-live="polite" aria-atomic="true"></div>';
+    }
+    floating.classList.toggle('is-docked',!!snapshot.drawerOpen);
+    const panelBadge = $('dotsActivity')?.querySelector('.dots-panel-status');
+    if (panelBadge) { const status = identityStatus(); panelBadge.textContent = status; panelBadge.title = status; panelBadge.hidden = !status; }
+    const badge = floating.querySelector('.dots-floating-status');
+    if (badge) { const status = identityStatus(); badge.textContent = status || name(); badge.classList.toggle('is-working',!!status); }
+    const bounds = area.getBoundingClientRect(), header = $('desktopToolbar').getBoundingClientRect();
+    const panel = $('dotsActivity'), slot = panel?.querySelector('.dots-pet-anchor');
+    const docked = snapshot.drawerOpen && !panel?.hidden;
+    const panelBounds = docked ? panel.getBoundingClientRect() : null;
+    const target = docked ? (slot?.getClientRects().length ? slot.getBoundingClientRect() :
+      {left:panelBounds.left + 18,top:panelBounds.top + 18}) : null;
+    const left = target ? target.left : bounds.left + (bounds.width - 66) / 2;
+    const top = target ? target.top : Math.max(0, header.top + 2);
+    floating.style.transform = `translate3d(${left}px,${top}px,0)`;
+    if (!floating.classList.contains('is-placed')) requestAnimationFrame(() => floating.classList.add('is-placed'));
+  }
+  function positionPanel() {
+    const panel = $('dotsActivity'), button = $('dotsTasksButton');
+    if (!panel || !button || panel.hidden) { positionPet(); return; }
+    const rect = button.getBoundingClientRect(), width = Math.min(368, innerWidth - 24);
+    const conversation=$('dotsView'),bounds=$('mainWorkspace')?.getBoundingClientRect();
+    const panelGap=10;
+    const rightLimit=Math.min(innerWidth,bounds&&bounds.width>0?bounds.right:innerWidth)-panelGap;
+    const left=Math.max(panelGap,rightLimit-width);
+    panel.style.width = width+'px';
+    panel.style.left = left+'px';
+    panel.style.top = Math.min(rect.bottom + panelGap, innerHeight - 180)+'px';
+    panel.style.maxHeight = Math.max(160, innerHeight - rect.bottom - 26)+'px';
+    if(previewOpen()){const voice=$('dotsVoiceCard'),reserve=voice&&!voice.hidden?voice.offsetHeight+14:0;conversationDialog.style.height=Math.max(160,parseFloat(panel.style.maxHeight)-34-reserve)+'px';}
+    if(conversation){const area=conversation.getBoundingClientRect();conversation.style.setProperty('--dots-activity-reserved',area.width>=760?Math.max(0,area.right-left+16)+'px':'0px');}
+    positionPet();
+  }
+  async function loadActivity(force = false) {
+    if (loading || (!force && Date.now() - lastActivityFetch < 1800)) return;
+    loading = true; activityError = ''; renderPanel();
+    try {
+      await getCatalogue();
+      const result = await api('/activity');
+      activities = result.activities || []; outputs = result.outputs || []; lastActivityFetch = Date.now();
+    } catch (error) { activityError = error.message || String(error); }
+    finally { loading = false; savedSignature = ''; renderPanel(); }
+  }
+  function renderPanel() {
+    const panel = $('dotsActivity'); if (!panel || panel.hidden) { positionPet(); return; }
+    if(previewOpen()){positionPanel();C.voiceUpdated?.();return;}
+    const recent = expanded ? activities : activities.slice(0, 5), files = outputExpanded ? outputs : outputs.slice(0, 5);
+    const newest = Math.max(0, ...activities.map(a => a.updatedAt || a.createdAt || 0));
+    const signature = JSON.stringify([name(),profile.petId,profile.accent,recent,files,loading,activityError,expanded,outputExpanded,profile.seenActivities]);
+    if (savedSignature === signature) { positionPanel(); C.voiceUpdated?.(); return; }
+    const top = panel.scrollTop, voiceFocus = $('dotsVoiceCard')?.contains(document.activeElement) ? document.activeElement : null; savedSignature = signature;
+    panel.innerHTML = '<div class="dots-profile-identity">'+'<span class="dots-pet-anchor" aria-hidden="true"></span>'+'<div><strong>'+esc(name())+'</strong><span>上次活跃：'+esc(ago(newest))+'</span><div class="dots-panel-status" role="status" aria-live="polite" hidden></div></div></div>'+
+      '<section class="dots-panel-section"><header><h3>最近活动</h3><button type="button" class="dots-mini-button" data-dots-new-schedule aria-label="新建定时任务" title="新建定时任务">'+icon('add')+'</button></header><div class="dots-activity-rows">'+
+      recent.map(a => {
+        const isSchedule = a.type === 'schedule', id = isSchedule ? (a.scheduleId || a.schedule?.id || String(a.id).replace(/^schedule:/,'')) : (a.taskId || a.id);
+        const key = a.type+':'+id, unread = (a.updatedAt || a.createdAt || 0) > (profile.seenActivities?.[key] || 0);
+        return '<button type="button" class="dots-activity-row" '+(isSchedule?'data-dots-schedule':'data-dots-task')+'="'+esc(id)+'" title="'+esc(a.title)+'">'+icon(isSchedule?'clock':'chat')+'<span><strong>'+esc(a.title || '未命名任务')+'</strong>'+(isSchedule?'<small>'+esc(a.schedule?.enabled === false ? '已暂停' : scheduleDescription(a.schedule || a))+'</small>':'')+'</span>'+(unread?'<i class="dots-unread-dot" aria-label="有更新"></i>':'')+'</button>';
+      }).join('')+(recent.length?'':'<p class="dots-panel-empty">'+(loading?'正在读取…':'还没有活动')+'</p>')+'</div>'+
+      (activities.length>5?'<button class="dots-show-more" type="button" data-dots-show-more>'+icon('more')+(expanded?'收起':'显示更多')+'</button>':'')+'</section>'+
+      '<section class="dots-panel-section dots-output-section"><header><h3>输出内容</h3></header>'+files.map(o=>'<button type="button" class="dots-activity-row dots-output-row" data-dots-panel-output="'+esc(o.id)+'" title="'+esc(o.filename || o.title || o.summary || '')+'">'+icon(String(o.mimeType || '').startsWith('image/')?'image':'file')+'<span><strong>'+esc(o.filename || o.title || '任务结果')+'</strong></span></button>').join('')+(files.length?'':'<p class="dots-panel-empty">任务产出会显示在这里</p>')+(outputs.length>5?'<button class="dots-show-more" type="button" data-dots-show-outputs>'+icon('more')+(outputExpanded?'收起':'显示更多')+'</button>':'')+'</section>'+
+      (activityError?'<p class="dots-dialog-error" role="alert">'+esc(activityError)+'</p>':'');
+    panel.scrollTop = top; positionPanel(); C.voiceUpdated?.(voiceFocus);
+  }
+  function scheduleDescription(s) {
+    const repeats = {once:'仅一次',daily:'每天',weekdays:'工作日',weekly:'每周',monthly:'每月'};
+    return (repeats[s.repeat] || '定时任务')+(s.time?' · '+s.time:'');
+  }
+  function render(value) {
+    snapshot = value;
+    const panel = $('dotsActivity'), button = $('dotsTasksButton'); if (!panel) return;
+    $('dotsView')?.classList.toggle('has-activity-panel',!!value.drawerOpen);
+    if(!value.drawerOpen&&previewOpen())closeDialog();
+    panel.hidden = !value.drawerOpen; button?.setAttribute('aria-expanded', String(value.drawerOpen)); button?.classList.toggle('is-selected', !!value.drawerOpen);
+    if (value.drawerOpen) {
+      const sig = JSON.stringify([value.manager?.activityCursor,value.tasks]);
+      if (!lastOpen || sig !== activitySignature) { activitySignature = sig; loadActivity(!lastOpen); }
+      renderPanel();
+      if (!refreshTimer) refreshTimer = setInterval(() => { if (snapshot.drawerOpen && !document.hidden) loadActivity(true); }, 10000);
+    } else { clearInterval(refreshTimer); refreshTimer = null; savedSignature = ''; }
+    positionPet();
+    lastOpen = !!value.drawerOpen;
+  }
+  function makeDialog(id, cls) {
+    let node = $(id); if (node) return node;
+    node = document.createElement('div'); node.id = id; node.hidden = true; node.className = 'wb-modal dots-dialog-overlay '+cls;
+    document.body.appendChild(node); return node;
+  }
+  function showDialog(dialog, target) {
+    if(dialog!==conversationDialog){stopReading();clearInterval(conversationTimer);conversationTimer=null;}
+    if (currentModal && currentModal !== dialog) currentModal.hidden = true;
+    else if (!currentModal) { const focused=document.activeElement;returnFocus=focused?.closest('.dots-menu')?.querySelector('[data-dots-more]') || (focused?.getClientRects().length?focused:$('dotsTasksButton')); }
+    currentModal = dialog; dialog.hidden = false; dialog.tabIndex=-1; dialog.setAttribute('role','dialog'); dialog.setAttribute('aria-modal','true');
+    C.scheduleNative?.(); requestAnimationFrame(() => (target || dialog.querySelector('input,button,textarea,select') || dialog)?.focus({preventScroll:true}));
+    positionPet();
+  }
+  function closeDialog() {
+    if (!currentModal && previewOpen()) {
+      stopReading();conversationDialog.hidden=true;conversationDialog.classList.remove('is-inline');document.body.appendChild(conversationDialog);
+      $('dotsActivity')?.classList.remove('is-conversation-preview');conversationVersion++;
+      clearInterval(conversationTimer);conversationTimer=null;savedSignature='';renderPanel();C.scheduleNative?.();$('dotsTasksButton')?.focus({preventScroll:true});return;
+    }
+    if (!currentModal) return;
+    if (scheduleBusy) return;
+    if(currentModal===conversationDialog)stopReading();
+    currentModal.hidden = true; currentModal = null; conversationVersion++;
+    clearInterval(conversationTimer);conversationTimer=null;
+    if(previewOpen()){clearInterval(conversationTimer);conversationTimer=setInterval(refreshConversation,4000);}
+    C.scheduleNative?.();const target=returnFocus?.isConnected&&returnFocus.getClientRects().length?returnFocus:$('dotsTasksButton');target?.focus({preventScroll:true});
+    positionPet();
+  }
+  async function openProfile() {
+    try {
+      await getCatalogue();
+      profileDraft = {...profile, petId:petById(profile.petId)?.id, accent:profile.accent || colors[0]};
+      profileDialog = makeDialog('dotsProfileDialog','dots-profile-overlay');
+      renderProfile(); showDialog(profileDialog, profileDialog);
+    } catch (error) { C.showError(error); }
+  }
+  function petChoices(custom) {
+    return pets.filter(p=>!!p.is_custom===custom).map(p=>'<button type="button" class="dots-pet-option '+(p.id===profileDraft.petId?'is-selected':'')+'" data-dots-select-pet="'+esc(p.id)+'" aria-label="'+esc(p.name)+'" aria-pressed="'+String(p.id===profileDraft.petId)+'" title="'+esc(p.name)+'">'+petImage(p.id)+'</button>').join('');
+  }
+  function profileSectionTitle(label) {
+    return '<div class="dots-choice-header"><h3>'+label+'</h3><div class="dots-choice-arrows"><button type="button" data-dots-scroll="-1" aria-label="'+label+'向左">'+icon('back')+'</button><button type="button" data-dots-scroll="1" aria-label="'+label+'向右">'+icon('forward')+'</button></div></div>';
+  }
+  function renderProfile() {
+    const offsets=Array.from(profileDialog.querySelectorAll('.dots-color-options,.dots-pet-options'),row=>row.scrollLeft);
+    profileDialog.innerHTML = '<form class="dots-profile-card" id="dotsProfileForm"><div class="dots-profile-options"><h2>自定义你的 Dot</h2>'+
+      '<section>'+profileSectionTitle('颜色')+'<div class="dots-color-options">'+colors.map(color=>'<button type="button" class="dots-color-option '+(color===profileDraft.accent?'is-selected':'')+'" data-dots-select-color="'+color+'" style="--pet-color:'+color+'" aria-label="选择颜色 '+color+'" aria-pressed="'+String(color===profileDraft.accent)+'"></button>').join('')+'</div></section>'+
+      '<section>'+profileSectionTitle('角色')+'<div class="dots-pet-options">'+petChoices(false)+'</div></section><section>'+profileSectionTitle('虚拟宠物')+'<div class="dots-pet-options">'+petChoices(true)+'</div></section></div>'+
+      '<div class="dots-profile-preview" style="--profile-accent:'+profileDraft.accent+'"><button type="button" class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button><input id="dotsProfileName" type="text" value="'+esc(profileDraft.name || name())+'" aria-label="名称" maxlength="40" autocomplete="off" required><div class="dots-large-pet">'+petImage(profileDraft.petId)+'</div><p class="dots-dialog-error" data-profile-error role="alert" hidden></p><button type="submit" class="dots-white-button" data-dots-profile-save>保存</button></div></form>';
+    profileDialog.querySelectorAll('.dots-color-options,.dots-pet-options').forEach((row,i)=>{row.scrollLeft=offsets[i]||0;});
+    profileDialog.querySelectorAll('.dots-color-options,.dots-pet-options').forEach(row => {
+      const buttons = row.closest('section').querySelectorAll('[data-dots-scroll]');
+      const update = () => {
+        const end = Math.max(0, row.scrollWidth - row.clientWidth);
+        buttons[0].disabled = row.scrollLeft <= 1;
+        buttons[1].disabled = row.scrollLeft >= end - 1;
+      };
+      row.addEventListener('scroll', update, {passive:true});
+      const observer = new ResizeObserver(() => { if (row.isConnected) update(); else observer.disconnect(); });
+      observer.observe(row);
+      buttons.forEach(button => button.onclick = () => row.scrollBy({
+        left:Number(button.dataset.dotsScroll)*Math.max(100,row.clientWidth*.65),
+        behavior:reduced.matches?'instant':'smooth'
+      }));
+      requestAnimationFrame(update);
+    });
+    $('dotsProfileName').oninput = e => { profileDraft.name = e.target.value; };
+    $('dotsProfileForm').onsubmit = async e => {
+      e.preventDefault(); const button = profileDialog.querySelector('[data-dots-profile-save]'), error = profileDialog.querySelector('[data-profile-error]');
+      const value = {name:$('dotsProfileName').value.trim(),accent:profileDraft.accent,petId:profileDraft.petId};
+      if (!value.name) { error.textContent='请输入名称';error.hidden=false;return; }
+      button.disabled = true;
+      try { const result = await api('/profile','PATCH',value);profile={...profile,...result.profile};document.documentElement.style.setProperty('--dots-profile-accent',profile.accent || colors[0]);C.nameChanged();savedSignature='';renderPanel();closeDialog(); }
+      catch (cause) { error.textContent=cause.message;error.hidden=false; }
+      finally { button.disabled=false; }
+    };
+  }
+  async function markSeen(type,id) {
+    const item = activities.find(a => a.type===type && String(type==='schedule'?(a.scheduleId||a.schedule?.id||String(a.id).replace(/^schedule:/,'')):(a.taskId||a.id))===String(id));
+    const seen = {...profile.seenActivities,[type+':'+id]:item?.updatedAt || Date.now()};
+    const limited = Object.fromEntries(Object.entries(seen).sort((a,b)=>b[1]-a[1]).slice(0,500));
+    profile.seenActivities=limited;savedSignature='';renderPanel();
+    try { await api('/profile','PATCH',{seenActivities:limited}); } catch (error) { C.showError(error); }
+  }
+  function previewOpen() { return !!conversationDialog && !conversationDialog.hidden && conversationDialog.classList.contains('is-inline'); }
+  function conversationVisible() { return !!conversationDialog && !conversationDialog.hidden && (previewOpen() || currentModal===conversationDialog); }
+  function messageTime(value) {
+    let stamp=Number(value);if(!Number.isFinite(stamp))stamp=Date.parse(value);
+    if(!stamp)return '';if(stamp<1e12)stamp*=1000;
+    return new Date(stamp).toLocaleString('zh-CN',{weekday:'long',hour:'2-digit',minute:'2-digit',hour12:false});
+  }
+  function messageTools(message,index) {
+    const stamp=messageTime(message.createdAt);
+    return '<div class="dots-message-tools"><button type="button" data-dots-copy-message="'+index+'" aria-label="复制消息" title="复制">'+icon('copy')+'</button>'+
+      (message.role==='assistant'?'<button type="button" data-dots-read-message="'+index+'" aria-label="朗读消息" aria-pressed="false" title="朗读">'+icon('read')+'</button>':'')+
+      (stamp?'<time>'+esc(stamp)+'</time>':'')+'</div>';
+  }
+  function syncReadButtons() {
+    conversationDialog?.querySelectorAll('[data-dots-read-message]').forEach(button=>{
+      const active=!!readSession && readingIndex===Number(button.dataset.dotsReadMessage);
+      button.classList.toggle('is-reading',active);button.setAttribute('aria-pressed',String(active));
+      button.setAttribute('aria-label',active?'停止朗读':'朗读消息');button.title=active?'停止朗读':'朗读';
+      button.innerHTML=icon(active?'stop':'read');
+    });
+  }
+  function stopReading() {
+    const session=readSession;readSession=null;readingIndex=-1;
+    if(session)window.webkit?.messageHandlers?.native?.postMessage({action:'stopMessageReading',sessionId:session});
+    if(readUtterance){window.speechSynthesis?.cancel();readUtterance=null;}
+    syncReadButtons();
+  }
+  function readError(error) {
+    stopReading();const label=conversationDialog?.querySelector('.dots-read-error');
+    if(label){label.textContent=error.message||String(error);label.hidden=false;}else C.showError(error);
+  }
+  function readMessage(index) {
+    if(readSession && readingIndex===index){stopReading();return;}
+    const message=currentConversation?.messages?.[index];if(message?.role!=='assistant')return;
+    const call=$('dotsVoiceCard');if(call&&!call.hidden){readError(Error('请结束语音通话后再朗读消息'));return;}
+    const body=conversationDialog?.querySelector('[data-dots-message-index="'+index+'"] .message-body');
+    const text=body?.innerText?.trim() || String(message.content || message.text || '').trim();if(!text)return;
+    if(text.length>20000){readError(Error('这条消息过长，暂时无法完整朗读'));return;}
+    stopReading();readSession=crypto.randomUUID();readingIndex=index;
+    const label=conversationDialog?.querySelector('.dots-read-error');if(label)label.hidden=true;
+    const bridge=window.webkit?.messageHandlers?.native;
+    if(bridge){bridge.postMessage({action:'readMessage',sessionId:readSession,text});syncReadButtons();return;}
+    if(!window.speechSynthesis || !window.SpeechSynthesisUtterance){readError(Error('当前环境不支持朗读，请使用拾燕桌面应用'));return;}
+    const utterance=new SpeechSynthesisUtterance(text),session=readSession;
+    utterance.lang='zh-CN';utterance.voice=speechSynthesis.getVoices().find(v=>v.lang==='zh-CN') || null;
+    utterance.onend=()=>{if(readSession===session){readSession=null;readingIndex=-1;readUtterance=null;syncReadButtons();}};
+    utterance.onerror=event=>{if(readSession===session)readError(Error(event.error==='not-allowed'?'请允许浏览器播放语音':'朗读未能完成，请重试'));};
+    readUtterance=utterance;speechSynthesis.speak(utterance);syncReadButtons();
+  }
+  async function openConversation(id, full = false) {
+    stopReading();clearInterval(conversationTimer);conversationTimer=null;
+    if(currentModal&&currentModal===conversationDialog){currentModal.hidden=true;currentModal=null;}
+    conversationFull=full;const version=++conversationVersion;
+    conversationDialog=makeDialog('dotsConversationDialog','dots-conversation-overlay');
+    const panel=$('dotsActivity');
+    conversationDialog.classList.toggle('is-inline',!full);if(full)conversationDialog.style.height='';
+    panel?.classList.toggle('is-conversation-preview',!full);
+    conversationDialog.innerHTML='<section class="dots-conversation-card"><button type="button" class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button><p class="dots-panel-empty">正在读取对话…</p></section>';
+    if(full){
+      document.body.appendChild(conversationDialog);savedSignature='';renderPanel();showDialog(conversationDialog);
+    }else{
+      panel.appendChild(conversationDialog);conversationDialog.hidden=false;conversationDialog.tabIndex=-1;
+      conversationDialog.setAttribute('role','region');conversationDialog.setAttribute('aria-label','任务对话预览');conversationDialog.removeAttribute('aria-modal');
+      positionPanel();C.scheduleNative?.();
+    }
+    try {
+      const [record,detail]=await Promise.all([api('/goals/'+id+'/conversation'),api('/goals/'+id)]);
+      if(version!==conversationVersion)return;
+      currentConversation={...record,goal:{...record.goal,...detail.goal},id};renderConversation();
+      requestAnimationFrame(()=>conversationDialog.querySelector(full?'textarea':'button')?.focus({preventScroll:true}));markSeen('conversation',id);
+      clearInterval(conversationTimer);conversationTimer=setInterval(refreshConversation,4000);
+    }catch(error){
+      if(version!==conversationVersion)return;
+      conversationDialog.innerHTML='<section class="dots-conversation-card"><button class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button><p class="dots-dialog-error">'+esc(error.message)+'</p></section>';
+    }
+  }
+  function conversationBody(data) {
+    const goal=data.goal || {}, rows=data.messages || [];
+    const messages=conversationFull?rows:rows.slice(-8);
+    const offset=conversationFull?0:Math.max(0,rows.length-8);
+    return messages.map((m,i)=>{
+      const index=offset+i;
+      return '<article class="dots-child-message '+(m.role==='user'?'is-user':'is-assistant')+'" data-dots-message-index="'+index+'">'+
+        (m.role==='assistant'&&m.source==='worker_summary'?'<small class="dots-message-source">任务结果</small>':'')+
+        '<div class="message-body">'+(m.role==='user'?'<p>'+esc(m.content || m.text || '').replace(/\n/g,'<br>')+'</p>':C.markdown(m.content || m.text || ''))+'</div>'+messageTools(m,index)+'</article>';
+    }).join('')+(messages.length?'':'<p class="dots-panel-empty">任务还没有回复</p>')+(conversationFull?renderTaskActions(goal):'');
+  }
+  async function refreshConversation() {
+    if(conversationPolling||!conversationVisible()||document.hidden||!currentConversation)return;
+    const version=conversationVersion,id=currentConversation.id;conversationPolling=true;
+    try{
+      const [record,detail]=await Promise.all([api('/goals/'+id+'/conversation'),api('/goals/'+id)]);
+      if(version!==conversationVersion||!conversationVisible())return;
+      const next={...record,goal:{...record.goal,...detail.goal},id};
+      const signature=data=>JSON.stringify([data.messages,data.goal.status,data.goal.approvals]);
+      if(signature(next)===signature(currentConversation))return;
+      currentConversation=next;
+      const box=conversationDialog.querySelector('.dots-conversation-messages'),follow=box.scrollHeight-box.clientHeight-box.scrollTop<70,top=box.scrollTop;
+      box.innerHTML=conversationBody(next);box.scrollTop=follow?box.scrollHeight:top;syncReadButtons();
+      const input=conversationDialog.querySelector('textarea');if(input)input.placeholder=['done','completed','cancelled','failed'].includes(next.goal.status)?'补充要求…':'发送消息…';
+    }catch(_){ }
+    finally{conversationPolling=false;}
+  }
+  function renderConversation() {
+    const data=currentConversation, goal=data.goal || {}, ended=['done','completed','cancelled','failed'].includes(goal.status);
+    conversationDialog.classList.toggle('is-full',conversationFull);
+    conversationDialog.innerHTML='<section class="dots-conversation-card"><header><button type="button" class="dots-conversation-back" '+(conversationFull?'data-dots-preview-chat':'data-dots-close-dialog')+'>'+icon('back')+'<strong>'+esc(goal.title || '任务对话')+'</strong></button><button type="button" class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button></header><p class="dots-dialog-error dots-read-error" role="alert" hidden></p><div class="dots-conversation-messages">'+
+      conversationBody(data)+'</div>'+
+      (conversationFull?'<form class="dots-child-composer" id="dotsChildComposer"><textarea rows="1" maxlength="16000" placeholder="'+(ended?'补充要求…':'发送消息…')+'" aria-label="给任务发送消息" required></textarea><button type="submit" class="send-button" aria-label="发送">↑</button><p class="dots-dialog-error" role="alert" hidden></p></form>':'<button type="button" class="dots-white-button" data-dots-open-chat>'+icon('chat')+'打开聊天</button>')+'</section>';
+    if(conversationFull) {
+      const form=$('dotsChildComposer');form.onsubmit=submitChildMessage;
+      const pending=C.pending()['dotsChild:'+data.id];
+      if(pending){form.querySelector('textarea').value=pending.message;form.querySelector('textarea').readOnly=true;form.querySelector('button').setAttribute('aria-label','重试发送');}
+    }
+    syncReadButtons();positionPanel();
+    requestAnimationFrame(()=>{const scroller=conversationDialog.querySelector('.dots-conversation-messages');if(scroller)scroller.scrollTop=scroller.scrollHeight;});
+  }
+  function renderTaskActions(goal) {
+    const pending=(goal.approvals||[]).filter(a=>['pending','awaiting_approval','requested'].includes(a.status));
+    const ended=['done','completed','cancelled','failed'].includes(goal.status);
+    return (ended?'':'<div class="dots-child-actions"><button type="button" data-dots-child-control="'+(['paused','blocked'].includes(goal.status)?'resume':'pause')+'">'+(['paused','blocked'].includes(goal.status)?'继续任务':'暂停任务')+'</button><button type="button" data-dots-child-control="cancel">停止任务</button></div>')+
+      pending.map(a=>'<section class="dots-child-approval"><h3>需要你确认</h3><p>'+esc(a.reason || '核对以下命令')+'</p><pre><code>'+esc(a.command || '')+'</code></pre><div><button type="button" data-dots-child-approval="'+a.id+'" data-decision="approve">批准此命令</button><button type="button" data-dots-child-approval="'+a.id+'" data-decision="reject">拒绝</button></div></section>').join('');
+  }
+  async function submitChildMessage(e) {
+    e.preventDefault();const form=e.target,input=form.querySelector('textarea'),button=form.querySelector('button'),error=form.querySelector('.dots-dialog-error');const message=input.value.trim();if(!message)return;
+    const id=currentConversation.id,slot='dotsChild:'+id,prior=C.pending()[slot],ended=prior?!!prior.taskId:['done','completed','cancelled','failed'].includes(currentConversation.goal.status),route=ended?'/manager/messages':'/goals/'+id+'/instruct';
+    const payload=C.request(slot,ended?{message,taskId:Number(id),host:'shiyan_desktop'}:{message});button.disabled=true;input.readOnly=true;error.hidden=true;
+    try { await C.persist();await api(route,'POST',payload);await C.releaseRequest(slot);input.value='';await C.refresh();await openConversation(id,true); }
+    catch(cause){if(rejected(cause))await C.releaseRequest(slot);error.textContent=cause.message;error.hidden=false;}
+    finally{button.disabled=false;input.readOnly=!!C.pending()[slot];button.setAttribute('aria-label',input.readOnly?'重试发送':'发送');}
+  }
+  function today() { const d=new Date();return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); }
+  async function openSchedule(id) {
+    try {
+      scheduleValue=id?(await api('/schedules/'+id)).schedule:{title:'',instruction:'',enabled:true,repeat:'daily',time:'21:00',timezone:'Asia/Shanghai',startDate:today(),endDate:null};
+      scheduleDialog=makeDialog('dotsScheduleDialog','dots-schedule-overlay');renderSchedule();showDialog(scheduleDialog,$('dotsScheduleTitle'));if(id)markSeen('schedule',id);
+    } catch(error){C.showError(error);}
+  }
+  function renderSchedule() {
+    const s={...scheduleValue,...C.pending()['dotsSchedule:'+(scheduleValue.id||'new')]};const selected=(a,b)=>a===b?' selected':'';const recurring=s.repeat!=='once';
+    scheduleDialog.innerHTML='<form class="dots-schedule-card" id="dotsScheduleForm"><header><h2>'+(s.id?'编辑任务':'新建定时任务')+'</h2><button type="button" class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button></header><input id="dotsScheduleTitle" class="dots-schedule-title" aria-label="任务名称" value="'+esc(s.title)+'" placeholder="任务名称" maxlength="120" required><textarea id="dotsSchedulePrompt" aria-label="任务要求" rows="5" placeholder="你希望 Dots 在这个时间做什么？" maxlength="16000" required>'+esc(s.instruction)+'</textarea>'+
+      '<div class="dots-schedule-settings"><label class="dots-setting-row"><span>重复执行任务</span><input id="dotsScheduleRepeating" type="checkbox" role="switch"'+(recurring?' checked':'')+'></label><label class="dots-setting-row" id="dotsRepeatRow"><span>重复</span><select id="dotsScheduleRepeat" aria-label="重复频率">'+[['daily','每天'],['weekdays','工作日'],['weekly','每周'],['monthly','每月']].map(([v,l])=>'<option value="'+v+'"'+selected(s.repeat,v)+'>'+l+'</option>').join('')+'</select></label><div class="dots-setting-row"><label for="dotsScheduleTime">时间</label><div class="dots-time-controls"><select id="dotsScheduleTimezone" aria-label="时区">'+Array.from(new Set(['Asia/Shanghai','Asia/Singapore','UTC',s.timezone])).map(tz=>'<option value="'+tz+'"'+selected(s.timezone,tz)+'>'+esc({'Asia/Shanghai':'北京时间','Asia/Singapore':'新加坡时间',UTC:'UTC'}[tz]||tz)+'</option>').join('')+'</select><input id="dotsScheduleTime" type="time" value="'+esc(s.time)+'" required aria-label="执行时间"></div></div><label class="dots-setting-row" id="dotsEndRow"><span>结束重复</span><select id="dotsScheduleEnd" aria-label="结束重复"><option value="never"'+(!s.endDate?' selected':'')+'>永不</option><option value="date"'+(s.endDate?' selected':'')+'>指定日期</option></select></label><label class="dots-setting-row" id="dotsEndDateRow"'+(!s.endDate?' hidden':'')+'><span>结束日期</span><input id="dotsScheduleEndDate" type="date" value="'+esc(s.endDate || '')+'" aria-label="结束日期"></label></div>'+
+      '<details class="dots-schedule-advanced"><summary>高级 '+icon('more')+'</summary><label class="dots-setting-row"><span>开始日期</span><input id="dotsScheduleStart" type="date" value="'+esc(s.startDate || today())+'" required aria-label="开始日期"></label>'+(s.nextRunAt?'<p>下次执行：'+esc(time(s.nextRunAt))+'</p>':'')+'<label class="dots-setting-row"><span>启用任务</span><input id="dotsScheduleEnabled" type="checkbox" role="switch"'+(s.enabled?' checked':'')+'></label></details><p class="dots-dialog-error" id="dotsScheduleError" role="alert" hidden></p><footer>'+(s.id?'<button type="button" class="dots-secondary-button" data-dots-schedule-pause>'+(s.enabled?'暂停':'继续')+'</button>':'')+'<button type="submit" class="dots-white-button" data-dots-schedule-save>保存</button></footer></form>';
+    const toggle=()=>{$('dotsRepeatRow').hidden=!$('dotsScheduleRepeating').checked;$('dotsEndRow').hidden=!$('dotsScheduleRepeating').checked;$('dotsEndDateRow').hidden=!$('dotsScheduleRepeating').checked||$('dotsScheduleEnd').value==='never';};toggle();
+    $('dotsScheduleRepeating').onchange=toggle;$('dotsScheduleEnd').onchange=toggle;
+    $('dotsScheduleForm').onsubmit=saveSchedule;
+    syncSchedulePending();
+  }
+  function syncSchedulePending() {
+    const saving=!!C.pending()['dotsSchedule:'+(scheduleValue.id||'new')],controlling=!!C.pending()['dotsScheduleControl:'+scheduleValue.id];
+    scheduleDialog.querySelectorAll('input,textarea,select').forEach(field=>{field.disabled=saving||controlling||scheduleBusy;});
+    const save=scheduleDialog.querySelector('[data-dots-schedule-save]'),control=scheduleDialog.querySelector('[data-dots-schedule-pause]');
+    save.disabled=scheduleBusy||controlling;save.textContent=saving?'重试保存':'保存';
+    if(control){control.disabled=scheduleBusy||saving;control.textContent=controlling?'重试'+(C.pending()['dotsScheduleControl:'+scheduleValue.id].action==='pause'?'暂停':'继续'):(scheduleValue.enabled?'暂停':'继续');}
+  }
+  async function saveSchedule(e) {
+    e.preventDefault();if(scheduleBusy)return;
+    const id=scheduleValue.id,slot='dotsSchedule:'+(id||'new'),fields={title:$('dotsScheduleTitle').value.trim(),instruction:$('dotsSchedulePrompt').value.trim(),enabled:$('dotsScheduleEnabled').checked,repeat:$('dotsScheduleRepeating').checked?$('dotsScheduleRepeat').value:'once',time:$('dotsScheduleTime').value,timezone:$('dotsScheduleTimezone').value,startDate:$('dotsScheduleStart').value,endDate:$('dotsScheduleRepeating').checked&&$('dotsScheduleEnd').value==='date'?$('dotsScheduleEndDate').value:null};
+    const payload=C.request(slot,fields),error=$('dotsScheduleError');scheduleBusy=true;syncSchedulePending();error.hidden=true;
+    try{await C.persist();await api('/schedules'+(id?'/'+id:''),id?'PATCH':'POST',payload);await C.releaseRequest(slot);scheduleBusy=false;closeDialog();await loadActivity(true);}
+    catch(cause){if(rejected(cause))await C.releaseRequest(slot);error.textContent=cause.message;error.hidden=false;}
+    finally{scheduleBusy=false;if(currentModal===scheduleDialog)syncSchedulePending();}
+  }
+  async function controlSchedule() {
+    if(scheduleBusy||!scheduleValue.id)return;const slot='dotsScheduleControl:'+scheduleValue.id,payload=C.request(slot,{action:scheduleValue.enabled?'pause':'resume'}),button=scheduleDialog.querySelector('[data-dots-schedule-pause]');scheduleBusy=true;syncSchedulePending();
+    try{await C.persist();const result=await api('/schedules/'+scheduleValue.id+'/control','POST',payload);await C.releaseRequest(slot);scheduleValue.enabled=result.schedule.enabled;$('dotsScheduleEnabled').checked=scheduleValue.enabled;button.textContent=scheduleValue.enabled?'暂停':'继续';await loadActivity(true);}
+    catch(cause){if(rejected(cause))await C.releaseRequest(slot);$('dotsScheduleError').textContent=cause.message;$('dotsScheduleError').hidden=false;}
+    finally{scheduleBusy=false;syncSchedulePending();}
+  }
+  async function openOutput(id) {
+    const output=outputs.find(o=>String(o.id)===String(id));if(!output)return;
+    outputDialog=makeDialog('dotsOutputDialog','dots-output-overlay');
+    let content='',error='';outputRaw='';const url=localURL(output.downloadPath || output.downloadUrl || output.url || '/api/dots/outputs/'+id+'/file');
+    try {
+      if(String(output.mimeType || '').startsWith('image/'))content='<img class="dots-output-image" src="'+esc(url)+'" alt="'+esc(output.filename || '任务作品')+'">';
+      else if(output.outputId || /^\d+$/.test(String(id))){
+        const result=await api('/outputs/'+(output.outputId || id)),value=result.output || {};
+        outputRaw=value.raw_result || value.notification || value.summary || output.summary || '';
+        if(typeof outputRaw!=='string')outputRaw=JSON.stringify(outputRaw,null,2);
+        let readable=outputRaw;
+        try{const parsed=JSON.parse(outputRaw);readable=parsed.result || parsed.message || parsed.summary || JSON.stringify(parsed,null,2);}catch{}
+        content=C.markdown(typeof readable==='string'?readable:JSON.stringify(readable,null,2));
+        const preview=outputRaw.length>12000?outputRaw.slice(0,8000)+'\n… 可复制完整结果 …\n'+outputRaw.slice(-4000):outputRaw;
+        content+='<details class="dots-raw-result"><summary>原始结果</summary><pre><code>'+esc(preview)+'</code></pre><button type="button" data-dots-panel-copy-output>复制完整结果</button></details>';
+      }
+      else content='<p>'+esc(output.summary || output.title || output.filename || '文件已生成')+'</p>';
+    } catch(cause){error=cause.message;}
+    outputDialog.innerHTML='<section class="dots-output-card"><header><h2>'+esc(output.filename || output.title || '任务结果')+'</h2><button type="button" class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button></header><div class="dots-output-body message-body">'+content+(error?'<p class="dots-dialog-error">'+esc(error)+'</p>':'')+'</div><a class="dots-white-button" download href="'+esc(url)+'">'+icon('download')+'保存文件</a></section>';showDialog(outputDialog);
+  }
+  async function handle(e) {
+    const target=e.target.closest('button');if(!target)return;
+    try {
+      if(target.hasAttribute('data-dots-copy-message')){const m=currentConversation?.messages?.[Number(target.dataset.dotsCopyMessage)];if(m){await window.shiyan.copyText(m.content || m.text || '');target.title='已复制';}}
+      else if(target.hasAttribute('data-dots-read-message'))readMessage(Number(target.dataset.dotsReadMessage));
+      else if(target.hasAttribute('data-dots-close-panel')){e.stopPropagation();C.closePanel();}
+      else if(target.hasAttribute('data-dots-show-more')){e.stopPropagation();expanded=!expanded;savedSignature='';renderPanel();}
+      else if(target.hasAttribute('data-dots-show-outputs')){e.stopPropagation();outputExpanded=!outputExpanded;savedSignature='';renderPanel();}
+      else if(target.hasAttribute('data-dots-new-schedule')){e.stopPropagation();await openSchedule();}
+      else if(target.hasAttribute('data-dots-schedule')){e.stopPropagation();await openSchedule(target.dataset.dotsSchedule);}
+      else if(target.hasAttribute('data-dots-task')){e.stopPropagation();await openConversation(target.dataset.dotsTask);}
+      else if(target.hasAttribute('data-dots-panel-output')){e.stopPropagation();await openOutput(target.dataset.dotsPanelOutput);}
+      else if(target.hasAttribute('data-dots-panel-copy-output')){await window.shiyan.copyText(outputRaw);target.textContent='已复制';}
+      else if(target.hasAttribute('data-dots-close-dialog'))closeDialog();
+      else if(target.hasAttribute('data-dots-select-pet')){profileDraft.name=$('dotsProfileName').value;profileDraft.petId=target.dataset.dotsSelectPet;renderProfile();profileDialog.querySelector('[data-dots-select-pet="'+CSS.escape(profileDraft.petId)+'"]').focus();}
+      else if(target.hasAttribute('data-dots-select-color')){profileDraft.name=$('dotsProfileName').value;profileDraft.accent=target.dataset.dotsSelectColor;renderProfile();profileDialog.querySelector('[data-dots-select-color="'+profileDraft.accent+'"]').focus();}
+      else if(target.hasAttribute('data-dots-open-chat'))await openConversation(currentConversation.id,true);
+      else if(target.hasAttribute('data-dots-preview-chat'))await openConversation(currentConversation.id,false);
+      else if(target.hasAttribute('data-dots-schedule-pause'))await controlSchedule();
+      else if(target.hasAttribute('data-dots-child-control')){await api('/goals/'+currentConversation.id+'/control','POST',{requestId:crypto.randomUUID(),action:target.dataset.dotsChildControl});await openConversation(currentConversation.id,true);await C.refresh();}
+      else if(target.hasAttribute('data-dots-child-approval')){const approval=(currentConversation.goal.approvals||[]).find(a=>String(a.id)===target.dataset.dotsChildApproval);await api('/goals/'+currentConversation.id+'/approvals/'+approval.id+'/decision','POST',{requestId:crypto.randomUUID(),decision:target.dataset.decision,confirmedCommand:approval.command});await openConversation(currentConversation.id,true);await C.refresh();}
+    } catch(error){C.showError(error);}
+  }
+  const spriteImages=new Map();let pointer=null,petFrame=0;
+  function animatePanelPet(now) {
+    petFrame=0;
+    if(window.shiyan.getView()==='dots'&&!document.hidden&&!conversationVisible()) {
+      const panel=$('dotsFloatingPet'),pet=petById(profile.petId);
+      if(pet&&panel&&!reduced.matches) {
+        let image=spriteImages.get(pet.id);
+        if(!image){image=new Image();image.src=pet.sprite_url.replace('/static/dots-pets/','/assets/dots-pets/');spriteImages.set(pet.id,image);}
+        if(image.complete&&image.naturalWidth) {
+          let canvas=panel.querySelector('canvas.dots-profile-pet');
+          if(!canvas){const original=panel.querySelector('.dots-profile-pet');if(original){canvas=document.createElement('canvas');canvas.className='dots-pet dots-profile-pet';canvas.width=pet.cell_width;canvas.height=pet.cell_height;canvas.setAttribute('aria-label',pet.name);canvas.setAttribute('role','img');canvas.dataset.dotsPet=pet.id;original.replaceWith(canvas);}}
+          if(canvas) {
+            let row=0,col=0;const box=canvas.getBoundingClientRect();
+            const dx=pointer?pointer.x-(box.left+box.width/2):0,dy=pointer?pointer.y-(box.top+box.height/2):0;
+            if(pointer&&pet.sprite_version>=2&&Math.hypot(dx,dy)>16){const direction=Math.round(((Math.atan2(dx,-dy)*180/Math.PI+360)%360)/22.5)%16;row=9+Math.floor(direction/8);col=direction%8;}
+            else {const state=pet.states.find(s=>s.name===((snapshot.busy||(snapshot.manager?.runningWorkers||0)>0)?'running':snapshot.manager?.status==='paused'?'waiting':'idle'))||pet.states[0];row=state.row;col=Math.floor(now/1000*state.fps)%state.frames;}
+            const context=canvas.getContext('2d');context.clearRect(0,0,canvas.width,canvas.height);context.drawImage(image,col*pet.cell_width,row*pet.cell_height,pet.cell_width,pet.cell_height,0,0,canvas.width,canvas.height);
+          }
+        }
+      }
+    }
+    petFrame=requestAnimationFrame(animatePanelPet);
+  }
+  function install(context) {
+    C=context;
+    const floating = document.createElement('div');
+    floating.id = 'dotsFloatingPet'; floating.hidden = true;
+    document.body.appendChild(floating);
+    $('dotsActivity').addEventListener('scroll',positionPet,{passive:true});
+    document.addEventListener('pointermove',event=>{if(event.pointerType!=='touch')pointer={x:event.clientX,y:event.clientY};},{passive:true});
+    document.addEventListener('pointerleave',()=>{pointer=null;});window.addEventListener('blur',()=>{pointer=null;});
+    petFrame=requestAnimationFrame(animatePanelPet);
+     
+    $('app').appendChild($('dotsActivity'));
+    $('desktopToolbar').appendChild($('dotsToolbar'));
+    const alignToolbar=()=>{
+      const toolbar=$('dotsToolbar'),header=$('desktopToolbar'),toggle=$('toggleRightWorkspace');if(!toolbar||!header||!toggle)return;
+      const bounds=header.getBoundingClientRect(),button=toggle.getBoundingClientRect();
+      toolbar.style.right=Math.max(4,bounds.right-button.left+8)+'px';
+      toolbar.querySelector('.dots-toolbar-divider').style.visibility=toggle.getAttribute('aria-expanded')==='true'?'hidden':'visible';
+      positionPanel();
+    };
+    new ResizeObserver(alignToolbar).observe($('desktopToolbar'));
+    new MutationObserver(alignToolbar).observe($('toggleRightWorkspace'),{attributes:true,attributeFilter:['aria-expanded','hidden']});
+    window.addEventListener('resize',alignToolbar);requestAnimationFrame(alignToolbar);
+     
+    $('dotsActivity').classList.add('v2-popup');
+    window.addEventListener('shiyan-view',()=>{
+      positionPet();
+      if(window.shiyan.getView()!=='dots'){
+        C.closePanel();
+        if(currentModal)closeDialog();
+      }
+    });
+    $('dotsActivity').addEventListener('click',e=>{if(!e.target.closest('.dots-dialog-overlay'))handle(e);});
+    $('toggleRightWorkspace').addEventListener('click',()=>{
+      if(snapshot.drawerOpen&&$('toggleRightWorkspace').getAttribute('aria-expanded')!=='true')C.closePanel();
+    },true);
+    document.addEventListener('click',e=>{
+      if(e.target.closest('.dots-dialog-overlay'))handle(e);
+      if(currentModal&&e.target===currentModal)closeDialog();
+       
+
+    });
+    document.addEventListener('keydown',e=>{
+      if(currentModal || previewOpen()){
+        if(e.key==='Escape'){e.preventDefault();e.stopImmediatePropagation();closeDialog();return;}
+        if(currentModal&&e.key==='Tab'){
+          const controls=Array.from(currentModal.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href],summary')).filter(x=>x.getClientRects().length);
+          const first=controls[0],last=controls.at(-1);if(e.shiftKey&&(document.activeElement===first||!currentModal.contains(document.activeElement))){e.preventDefault();last?.focus();}else if(!e.shiftKey&&(document.activeElement===last||!currentModal.contains(document.activeElement))){e.preventDefault();first?.focus();}
+        }
+      }
+    },true);
+    window.addEventListener('resize',positionPanel);
+    if($('mainWorkspace'))new ResizeObserver(positionPanel).observe($('mainWorkspace'));
+    window.addEventListener('shiyan-view',()=>{if(window.shiyan.getView()!=='dots'){C.closePanel();closeDialog();}});
+    reduced.addEventListener('change',()=>{const floating=$('dotsFloatingPet');if(floating){delete floating.dataset.petId;positionPet();}document.querySelectorAll('img[data-dots-pet]').forEach(img=>{const pet=petById(img.dataset.dotsPet);if(pet)img.src=imageURL(pet);});});
+    window.addEventListener('shiyan-native',event=>{
+      const d=event.detail || {};if(d.type!=='voicePlaybackState' || d.sessionId!==readSession)return;
+      if(d.state==='error'){readError(Error(d.message || '朗读未能完成，请重试'));return;}
+      if(['finished','cancelled'].includes(d.state)){readSession=null;readingIndex=-1;syncReadButtons();}
+    });
+    document.addEventListener('visibilitychange',()=>{if(document.hidden)stopReading();});
+    window.addEventListener('pagehide',stopReading);
+    getCatalogue().catch(C.showError);
+  }
+  window.ShiYanDotsPanels={install,render,name,avatar,openProfile};
+})();
