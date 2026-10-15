@@ -86,3 +86,22 @@ xcuserdata/
 # Model weights stay local and are not uploaded.
 /Mac/models/
 /iOS/ShiYan/Untitled Project/Models/
+
+# Local backup directories and editor backup variants
+.backup/
+backup/
+backups/
+backup-*/
+*-backup/
+*-backup-*/
+*.bak.*
+*.orig.*
+*.backup.*
+*.old
+*.old.*
+*~
+
+# Unused timestamped icon copies; keep them only on the Mac.
+/iOS/ShiYan/Untitled Project/Assets.xcassets/animeEnhancementIcon.imageset/animeEnhancementIconDark 21.50.18.png
+/iOS/ShiYan/Untitled Project/Assets.xcassets/animeEnhancementIcon.imageset/animeEnhancementIconLight 21.50.18.png
+
