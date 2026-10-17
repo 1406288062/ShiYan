@@ -1,0 +1,57 @@
+/* The colour travels with the voice material, from orb to grains to composer. */
+.dots-voice-scene{position:absolute;inset:0;z-index:8;overflow:hidden;pointer-events:none;contain:layout paint style}
+.dots-voice-scene[hidden],.dots-voice-scene [hidden],.dots-voice-ink-canvas[hidden],.dots-voice-flow-handle[hidden]{display:none!important}
+/* Material and keyframes ported from resume-interview-coach's InterviewOrb,
+   styles.css and layout-refresh.css. Names are scoped to avoid workbench CSS.
+   The host clips this one persistent material as it becomes sand. */
+.dots-voice-material-clip{position:absolute;pointer-events:none}
+.dots-voice-material-light{position:absolute;pointer-events:none;border-radius:47% 53% 56% 44% / 47% 39% 61% 53%;box-shadow:0 30px 58px rgba(73,76,194,.27);animation:dots-orb-shape 8s ease-in-out infinite alternate}
+.dots-voice-material{filter:blur(var(--dots-orb-formation-blur,0px));position:relative;width:100%;height:100%;border-radius:47% 53% 56% 44% / 47% 39% 61% 53%;overflow:hidden;transform:translateZ(0);background:radial-gradient(circle at 32% 25%,rgba(255,255,255,.96) 0 7%,transparent 26%),conic-gradient(from 215deg at 48% 50%,#4eafea,#5e60ed 30%,#ab63df 54%,#f38186 72%,#58bedc 94%,#4eafea);box-shadow:inset 14px 12px 28px rgba(255,255,255,.44),inset -18px -20px 36px rgba(43,31,135,.25),0 0 0 1px rgba(255,255,255,.7);animation:dots-orb-shape 8s ease-in-out infinite alternate}
+.dots-voice-material::before,.dots-voice-material::after{content:"";position:absolute;border-radius:50%;filter:blur(7px);mix-blend-mode:screen}
+.dots-voice-material::before{inset:15% 8% 36% 35%;background:rgba(102,224,255,.63);animation:dots-orb-swim 4.8s ease-in-out infinite alternate}
+.dots-voice-material::after{inset:42% 30% 4% 5%;background:rgba(255,123,183,.54);animation:dots-orb-swim-two 5.6s ease-in-out infinite alternate}
+.dots-voice-material-sheen{position:absolute;inset:4px;border-radius:inherit;border:1px solid rgba(255,255,255,.55);box-shadow:inset 4px 5px 10px rgba(255,255,255,.22)}
+.dots-voice-material-core{position:absolute;width:22%;aspect-ratio:1;border-radius:50%;left:39%;top:40%;background:rgba(255,255,255,.42);filter:blur(5px);animation:dots-orb-core-pulse 2.4s ease-in-out infinite}
+/* Pointer light lives on the glass; it never moves the sand or its hit target. */
+/* Paint pointer light into the rounded glass; never translate a square layer. */
+.dots-voice-material-hover{position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:0;background:radial-gradient(ellipse at 50% 50%,rgba(186,221,255,.44),rgba(164,153,242,.17) 13%,transparent 31%);background-size:200% 200%;background-repeat:no-repeat;background-position:50% 65%}
+/* Keep pointer light on the sphere without detached outer rings. */
+.dots-voice-hover-halo,.dots-voice-material-halo{display:none}
+.dots-voice-scene[hidden] .dots-voice-material-light,.dots-voice-material-light[hidden],.dots-voice-scene[hidden] .dots-voice-material,.dots-voice-scene[hidden] .dots-voice-material::before,.dots-voice-scene[hidden] .dots-voice-material::after,.dots-voice-scene[hidden] .dots-voice-material-core,.dots-voice-material-clip[hidden] .dots-voice-material,.dots-voice-material-clip[hidden] .dots-voice-material::before,.dots-voice-material-clip[hidden] .dots-voice-material::after,.dots-voice-material-clip[hidden] .dots-voice-material-core{animation-play-state:paused}
+@keyframes dots-orb-shape{0%{border-radius:47% 53% 56% 44% / 47% 39% 61% 53%}100%{border-radius:56% 44% 45% 55% / 39% 54% 46% 61%}}
+@keyframes dots-orb-swim{to{transform:translate(-28px,31px) scale(1.22)}}
+@keyframes dots-orb-swim-two{to{transform:translate(31px,-23px) scale(.78)}}
+@keyframes dots-orb-core-pulse{50%{transform:scale(1.45);opacity:.58}}
+@media(prefers-reduced-motion:reduce){.dots-voice-material-light,.dots-voice-material,.dots-voice-material::before,.dots-voice-material::after,.dots-voice-material-core{animation:none}.dots-voice-material-hover,.dots-voice-hover-halo{display:none}}
+.dots-voice-scene-canvas{position:absolute;inset:0;display:block;pointer-events:none}
+.dots-voice-orb-hit{position:absolute;border-radius:50%;cursor:pointer;pointer-events:auto;touch-action:manipulation;-webkit-tap-highlight-color:transparent;outline:none}
+.dots-voice-orb-hit:focus-visible{outline:2px solid rgba(103,139,232,.65);outline-offset:7px}
+.dots-voice-orb-caption{position:absolute;display:flex;flex-direction:column;gap:9px;align-items:center;width:260px;transform:translateX(-50%);font-family:inherit;text-align:center;pointer-events:none}
+.dots-voice-orb-phase{color:transparent;background:linear-gradient(100deg,#6352e7 0%,#438ee9 52%,#e67477 100%);-webkit-background-clip:text;background-clip:text;font-size:14px;line-height:1.4;font-weight:500;letter-spacing:.035em}
+.dots-voice-live .dots-records{transition:opacity .42s ease,filter .42s ease}
+.dots-voice-immersive .dots-records{opacity:0;filter:blur(3px);pointer-events:none}
+.dots-voice-composer{position:relative;isolation:isolate;overflow:visible}
+.dots-voice-composer>.dots-voice-ink-canvas{position:absolute;inset:0;z-index:0;width:100%;height:100%;border-radius:inherit;pointer-events:none}
+.dots-voice-composer>:not(.dots-voice-ink-canvas):not(.dots-voice-flow-handle){position:relative;z-index:1}
+/* The canvas holds the orb's colour, while this transparent shell provides
+   optical depth. Both remain below text, IME selection and every input control. */
+.dots-voice-composer.dots-voice-composer-live{border-color:rgba(133,133,194,calc(.12 + var(--dots-voice-material,0)*.22));background:color-mix(in srgb,var(--v22-panel,var(--canvas,#f1f1f6)) calc(100% - var(--dots-voice-material,0)*34%),transparent);-webkit-backdrop-filter:blur(calc(var(--dots-voice-material,0)*16px)) saturate(calc(1 + var(--dots-voice-material,0)*.16));backdrop-filter:blur(calc(var(--dots-voice-material,0)*16px)) saturate(calc(1 + var(--dots-voice-material,0)*.16));box-shadow:0 8px 24px rgba(73,76,194,calc(var(--dots-voice-material,0)*.08));transition:border-color .3s ease}
+.dots-voice-composer-live>.dots-voice-ink-canvas{box-shadow:inset 0 1px 0 rgba(202,235,255,calc(var(--dots-voice-material,0)*.66)),inset 1px 0 0 rgba(78,175,234,calc(var(--dots-voice-material,0)*.18)),inset -1px 0 0 rgba(243,129,134,calc(var(--dots-voice-material,0)*.20)),inset 0 -1px 0 rgba(94,96,237,calc(var(--dots-voice-material,0)*.26)),inset 0 -7px 14px rgba(43,31,135,calc(var(--dots-voice-material,0)*.065))}
+/* Follow the arriving glass, so the expanded orb keeps neutral controls. */
+.dots-voice-composer-live{--dots-glass-control-ink:#5d62a9;--dots-glass-prompt-ink:#555d89;--dots-glass-input-ink:#000;--dots-glass-color-weight:calc(var(--dots-voice-material,0)*100%);--dots-glass-send-base:var(--accent);--dots-glass-send-ink:#fff}
+.dots-voice-composer-live #dotsAddFile{color:color-mix(in srgb,var(--text),var(--dots-glass-control-ink) var(--dots-glass-color-weight))}
+.dots-voice-composer-live #dotsSendButton.is-voice{--dots-glass-send-base:var(--text);--dots-glass-send-ink:var(--v22-panel)}
+.dots-voice-composer-live #dotsSendButton:not(:disabled){background:linear-gradient(135deg,color-mix(in srgb,var(--dots-glass-send-base),#625bd1 var(--dots-glass-color-weight)),color-mix(in srgb,var(--dots-glass-send-base),#8162b9 var(--dots-glass-color-weight)));color:color-mix(in srgb,var(--dots-glass-send-ink),#fff var(--dots-glass-color-weight))}
+.dots-voice-composer-live #dotsManagerInput{color:color-mix(in srgb,var(--text),var(--dots-glass-input-ink) var(--dots-glass-color-weight));-webkit-text-fill-color:currentColor;caret-color:currentColor}
+.dots-voice-composer-live #dotsManagerInput::selection{color:var(--text);-webkit-text-fill-color:currentColor;background:rgba(90,130,230,.28)}
+.dots-voice-composer-live #dotsManagerInput::placeholder{color:color-mix(in srgb,var(--secondary),var(--dots-glass-prompt-ink) var(--dots-glass-color-weight));-webkit-text-fill-color:currentColor;opacity:1}
+@media(prefers-color-scheme:dark){.dots-voice-composer-live{--dots-glass-control-ink:#bdc7f5;--dots-glass-prompt-ink:#c5c9e8;--dots-glass-input-ink:#fff}}
+.dots-voice-composer>.dots-voice-flow-handle{position:absolute;z-index:3;left:50%;top:-13px;width:126px;height:24px;transform:translateX(-50%);opacity:var(--dots-voice-material,0);cursor:default;pointer-events:none;touch-action:none;user-select:none;-webkit-user-select:none;outline:none}
+.dots-voice-flow-handle>span{position:absolute;left:7px;right:7px;top:10px;height:3px;border-radius:50%;background:linear-gradient(90deg,rgba(78,175,234,0),#4eafea 19%,#5e60ed 38%,#ab63df 58%,#f38186 78%,rgba(88,190,220,0));background-size:180% 100%;box-shadow:0 -1px 7px rgba(144,111,222,.14);transform-origin:50% 100%;transition:transform .22s ease,filter .22s ease,box-shadow .22s ease;animation:dots-voice-band-flow 8s ease-in-out infinite alternate}
+.dots-voice-composer>.dots-voice-flow-handle.dots-voice-flow-ready{pointer-events:auto;cursor:grab}
+.dots-voice-flow-ready:hover>span,.dots-voice-flow-ready:focus-visible>span{transform:translateY(-2px) scaleY(1.7);filter:saturate(1.12);box-shadow:0 -2px 10px rgba(144,111,222,.24)}
+.dots-voice-flow-ready:focus-visible{outline:2px solid rgba(103,139,232,.5);outline-offset:2px;border-radius:10px}
+.dots-voice-composer>.dots-voice-flow-handle.dots-voice-flow-dragging{cursor:grabbing}
+.dots-voice-flow-threshold>span{filter:saturate(1.3);box-shadow:0 -2px 14px rgba(144,111,222,.36)}
+@keyframes dots-voice-band-flow{from{background-position:0 50%}to{background-position:100% 50%}}
+@media(prefers-reduced-motion:reduce){.dots-voice-flow-handle>span{animation:none;transition:none}.dots-voice-live .dots-records{transition:opacity .16s ease;filter:none}}

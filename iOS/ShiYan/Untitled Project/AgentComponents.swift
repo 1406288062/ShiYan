@@ -93,13 +93,9 @@ struct AgentMarkdown: View {
                                             .padding(10)
                                     }
                                 }
-                                .background(Color.primary.opacity(row == 0 ? 0.08 : row % 2 == 0 ? 0.025 : 0))
                                 if row < rows.count - 1 { Divider() }
                             }
                         }
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.primary.opacity(0.12), lineWidth: 1))
-                        .padding(1)
                     }
                     .accessibilityLabel("对比表格，可横向滑动")
                 case .code(let language):

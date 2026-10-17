@@ -10,6 +10,10 @@ final class DotsStore: ObservableObject {
     @Published private(set) var sending = false
     @Published private(set) var uploading = false
     @Published private(set) var loadingEarlier = false
+    @Published private(set) var approvalNotice: String?
+    @Published private var checkingApproval: String?
+    private var loadingApprovals = false
+    private var approvalVersions: [Int: (version: String, time: Date)] = [:]
     private var historyChecked = false
     @Published private(set) var connection = ""
     @Published var notice: String?
@@ -18,6 +22,9 @@ final class DotsStore: ObservableObject {
     private var liveTask: Task<Void, Never>?
     private var recoveryTask: Task<Void, Never>?
     private var refreshTask: Task<Void, Never>?
+    private var streamSaveTask: Task<Void, Never>?
+    private var acknowledgementTask: Task<Void, Never>?
+    private var durableEventCursor = 0
     private var available = true
     private var refreshing = false
     private var refreshingIdentity = false
@@ -35,6 +42,36 @@ final class DotsStore: ObservableObject {
     var tasks: [DotsManagerTask] { state.managerTasks ?? [] }
     // Imported goals stay in task history, not in the manager's live status.
     var currentTasks: [DotsManagerTask] { tasks.filter { $0.legacyImported != true } }
+    var approvalGoals: [DotsGoal] {
+        var ids = Set(currentTasks.filter(\.requiresApproval).map(\.id))
+        if let operation = pendingApproval, let id = operation.goalId { ids.insert(id) }
+        return ids.sorted().compactMap { id in
+            state.details[String(id)] ?? goals.first { $0.id == id }
+        }
+    }
+    private var pendingApproval: DotsPendingOperation? {
+        guard let operation = state.pending, operation.route.contains("/approvals/"),
+              operation.route.hasSuffix("/decision") else { return nil }
+        return operation
+    }
+    var approvalStatus: String? {
+        if checkingApproval != nil || (sending && pendingApproval != nil) { return "正在提交你的决定…" }
+        if pendingApproval != nil { return "审批决定结果未知，请重试原决定" }
+        if currentTasks.contains(where: \.requiresApproval) { return "需要你批准操作" }
+        if currentTasks.contains(where: { task in
+            state.details[String(task.id)]?.approvals?.contains(where: { $0.status == "executing" }) == true
+        }) { return "正在执行已批准的操作…" }
+        return nil
+    }
+    func pendingApprovalDecision(goalId: Int, approvalId: Int) -> String? {
+        guard let operation = pendingApproval,
+              operation.route == "goals/\(goalId)/approvals/\(approvalId)/decision" else { return nil }
+        return operation.decision
+    }
+    func isSubmittingApproval(goalId: Int, approvalId: Int) -> Bool {
+        checkingApproval == "\(goalId):\(approvalId)" ||
+            (sending && pendingApprovalDecision(goalId: goalId, approvalId: approvalId) != nil)
+    }
     var hasMoreMessages: Bool { state.managerHasMoreMessages ?? false }
     var selected: DotsGoal? {
         guard let id = state.selectedGoalId else { return nil }
@@ -44,6 +81,12 @@ final class DotsStore: ObservableObject {
     var draft: String { state.drafts[draftKey] ?? "" }
     var attachments: [DotsAttachment] { state.draftAttachments ?? [] }
     var hasPending: Bool { state.pending != nil }
+    var hasPendingVoice: Bool {
+        guard let operation = state.pending else { return false }
+        return operation.route == "manager/messages" && operation.draftKey == nil &&
+            (operation.attachments ?? []).isEmpty && !(operation.text ?? "").isEmpty
+    }
+    var canStartVoice: Bool { !sending && !uploading && (!hasPending || hasPendingVoice) }
     var canSend: Bool {
         available && !sending && !uploading && !hasPending &&
             (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty)
@@ -68,6 +111,7 @@ final class DotsStore: ObservableObject {
            let cached = try? JSONDecoder().decode(DotsSavedState.self, from: bytes),
            cached.version == 1, cached.identity == identity { state = cached }
         else { state = DotsSavedState(identity: identity) }
+        durableEventCursor = state.cursor
         if state.readState == nil, let latest = state.managerMessages?.map(\.id).max() {
             state.readState = DotsMessageReadState(baseline: latest)
         }
@@ -76,6 +120,7 @@ final class DotsStore: ObservableObject {
         try configure()
         guard let stateURL else { throw AgentClientError.message("无法保存目标状态") }
         try JSONEncoder().encode(state).write(to: stateURL, options: .atomic)
+        durableEventCursor = max(durableEventCursor, state.cursor)
         try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: stateURL.path)
     }
     func setDraft(_ value: String) {
@@ -136,6 +181,9 @@ final class DotsStore: ObservableObject {
         liveTask?.cancel(); liveTask = nil
         recoveryTask?.cancel(); recoveryTask = nil
         refreshTask?.cancel(); refreshTask = nil
+        streamSaveTask?.cancel(); streamSaveTask = nil
+        if state.cursor > durableEventCursor { try? save() }
+        acknowledgementTask?.cancel(); acknowledgementTask = nil
         connection = ""
     }
     func activate() {
@@ -194,7 +242,7 @@ final class DotsStore: ObservableObject {
             try await observeLatestMessages(response.messages,
                 hasMore: response.hasMoreMessages ?? response.manager.hasMoreMessages ?? false)
             markLatestRead()
-             
+            await refreshApprovals(force: false)
              
             if let id = state.selectedGoalId {
                 let detail = try await client.dotsRead("goals/\(id)", as: DotsDetail.self)
@@ -236,7 +284,7 @@ final class DotsStore: ObservableObject {
                 for try await event in client.dotsEvents(after: state.cursor) {
                     try Task.checkCancellation()
                     try await accept(event)
-                    scheduleRefresh()
+                    if !event.isAssistantDelta { scheduleRefresh() }
                 }
                 if active { connection = "正在重新连接…" }
             } catch is CancellationError { return }
@@ -256,7 +304,9 @@ final class DotsStore: ObservableObject {
             let before = state.cursor
             for event in batch.events.sorted(by: { $0.seq < $1.seq }) { state.accept(event) }
              
+            if readingLatest, let latest = messages.last?.id { state.readState?.markRead(through: latest) }
             if state.cursor > before {
+                streamSaveTask?.cancel(); streamSaveTask = nil
                 do { try save() } catch { state = previous; throw error }
             }
             if state.cursor > 0 { try await client.dotsAcknowledge(consumerId: consumerId, cursor: state.cursor) }
@@ -264,12 +314,61 @@ final class DotsStore: ObservableObject {
         }
     }
     private var consumerId: String { "shiyan_mobile:" + state.identity }
+    func refreshApprovals(force: Bool = true) async {
+        guard !loadingApprovals else { return }
+        loadingApprovals = true
+        defer { loadingApprovals = false }
+        let waiting = currentTasks.filter(\.requiresApproval)
+        approvalNotice = nil
+        for task in waiting {
+            let version = "\(task.status ?? ""):\(task.updatedAt ?? 0):\(manager?.activityCursor ?? 0)"
+            if !force, let cached = approvalVersions[task.id], cached.version == version,
+               Date().timeIntervalSince(cached.time) < 10 { continue }
+            do {
+                let detail = try await client.dotsRead("goals/\(task.id)", as: DotsDetail.self)
+                try Task.checkCancellation()
+                state.details[String(task.id)] = detail.merged
+                approvalVersions[task.id] = (version, Date())
+            } catch is CancellationError { return }
+            catch { approvalNotice = "待批准操作的命令和原因暂时无法读取，请重新读取。" }
+        }
+    }
     private func accept(_ event: DotsEvent) async throws {
         guard event.seq > state.cursor else { return }
         let before = state
         state.accept(event)
+        if readingLatest, let latest = messages.last?.id { state.readState?.markRead(through: latest) }
+        if event.isAssistantDelta {
+            // Publish now, coalesce disk work, then acknowledge only persisted
+            // cursors. A crash before this save safely replays the snapshots.
+            scheduleStreamSave()
+            return
+        }
+        streamSaveTask?.cancel(); streamSaveTask = nil
         do { try save() } catch { state = before; throw error }
-        try await client.dotsAcknowledge(consumerId: consumerId, cursor: state.cursor)
+        scheduleAcknowledgement()
+    }
+    private func scheduleStreamSave() {
+        guard streamSaveTask == nil else { return }
+        streamSaveTask = Task { [weak self] in
+            do { try await Task.sleep(nanoseconds: 150_000_000) } catch { return }
+            guard let self else { return }
+            self.streamSaveTask = nil
+            do { try self.save(); self.scheduleAcknowledgement() }
+            catch { /* Keep the cursor unacknowledged; replay / refresh recovers it. */ }
+        }
+    }
+    private func scheduleAcknowledgement() {
+        guard acknowledgementTask == nil else { return }
+        acknowledgementTask = Task { [weak self] in
+            do { try await Task.sleep(nanoseconds: 250_000_000) } catch { return }
+            guard let self else { return }
+            let cursor = self.durableEventCursor
+            try? await self.client.dotsAcknowledge(consumerId: self.consumerId, cursor: cursor)
+            guard !Task.isCancelled else { return }
+            self.acknowledgementTask = nil
+            if self.durableEventCursor > cursor { self.scheduleAcknowledgement() }
+        }
     }
     private func scheduleRefresh() {
         guard refreshTask == nil else { return }
@@ -284,9 +383,55 @@ final class DotsStore: ObservableObject {
             route: "manager/messages", text: draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "请处理这些附件。" : draft, draftKey: draftKey, attachments: attachments)
         await perform(operation)
     }
+    /// Voice uses the same durable request and transport as typed messages.
+    /// Acknowledgement releases sending immediately; refresh is independent.
+    func submitVoice(_ text: String, requestID: String) async throws -> Int {
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard available, !text.isEmpty, text.count <= 20_000 else {
+            throw AgentClientError.message("语音消息暂不可发送")
+        }
+        let operation = DotsPendingOperation(requestId: requestID,
+            route: "manager/messages", text: text, attachments: [])
+        guard !sending, !uploading, state.pending == nil || state.pending == operation else {
+            throw AgentClientError.message("上一条消息尚未确认，请先重试原请求")
+        }
+        sending = true; notice = nil
+        defer { sending = false }
+        do {
+            try configure()
+            state.pending = operation
+            try save()
+            guard let id = try await client.dotsMutate(operation), id > 0 else {
+                throw AgentClientError.message("语音消息接收尚未确认")
+            }
+            mergeAcceptedUserMessage(operation, id: id)
+            let pendingState = state
+            state.acknowledged(operation)
+            do { try save() } catch { state = pendingState; throw error }
+            scheduleRefresh()
+            return id
+        } catch let error as DotsRejectedRequest {
+            let before = state
+            if state.pending?.requestId == requestID { state.pending = nil }
+            do { try save() } catch { state = before }
+            notice = error.localizedDescription
+            throw error
+        } catch {
+            notice = "未确认发送结果，语音内容已保留。请重试原请求。"
+            throw error
+        }
+    }
     private func mergeMessages(_ incoming: [DotsManagerMessage]) {
-        state.managerMessages = Array(Dictionary((messages + incoming).map { ($0.id, $0) }, uniquingKeysWith: { _, new in new }).values)
-            .sorted { $0.id < $1.id }
+        state.mergeManagerMessages(incoming)
+    }
+    private func mergeAcceptedUserMessage(_ operation: DotsPendingOperation, id: Int?) {
+        guard operation.route == "manager/messages", let id, id > 0,
+              !messages.contains(where: { $0.id == id }), let content = operation.text else { return }
+        // Use only a server-confirmed ID. A later canonical event replaces this
+        // same bubble; delayed history refresh must not hold the transcript back.
+        mergeMessages([DotsManagerMessage(id: id, role: "user", content: content,
+            attachments: operation.attachments, requestId: operation.requestId,
+            createdAt: Date().timeIntervalSince1970 * 1000)])
     }
     private func observeLatestMessages(_ incoming: [DotsManagerMessage], hasMore: Bool) async throws {
         let newest = incoming.map(\.id).max() ?? 0
@@ -365,10 +510,40 @@ final class DotsStore: ObservableObject {
         await perform(DotsPendingOperation(requestId: UUID().uuidString, route: "goals/\(id)/control", goalId: id, action: action))
     }
     func decide(_ approval: DotsApproval, approve: Bool) async {
-        guard let goalId = state.selectedGoalId, approval.isPending, let command = approval.command, !command.isEmpty else { return }
-        await perform(DotsPendingOperation(requestId: UUID().uuidString,
-            route: "goals/\(goalId)/approvals/\(approval.id)/decision", goalId: goalId,
-            decision: approve ? "approve" : "reject", confirmedCommand: command))
+        guard let goalId = state.selectedGoalId else { return }
+        await decide(approval, goalId: goalId, approve: approve)
+    }
+    func decide(_ approval: DotsApproval, goalId: Int, approve: Bool) async {
+        guard !sending, checkingApproval == nil else { return }
+        let route = "goals/\(goalId)/approvals/\(approval.id)/decision"
+        let decision = approve ? "approve" : "reject", command = approval.command ?? ""
+        if let pending = state.pending {
+            guard pending.route == route, pending.decision == decision, pending.confirmedCommand == command else {
+                notice = "上次操作的结果尚不明确，请重试原决定，不能改交其他决定。"; return
+            }
+            await perform(pending)
+            return
+        }
+        guard goalId > 0, approval.id > 0, approval.isPending else { return }
+        guard !approve || approval.canApproveCommand else {
+            notice = "命令尚未完整，无法批准；请让 Dots 补全具体命令。"; return
+        }
+        checkingApproval = "\(goalId):\(approval.id)"; sending = true; notice = nil
+        defer { checkingApproval = nil; sending = false }
+        do {
+            // Recheck the exact displayed command before creating a new decision.
+            // An uncertain prior decision above always reuses its original ID.
+            let detail = try await client.dotsRead("goals/\(goalId)", as: DotsDetail.self)
+            let current = detail.merged
+            state.details[String(goalId)] = current
+            guard let latest = current.approvals?.first(where: { $0.id == approval.id }),
+                  latest.isPending, (latest.command ?? "") == command else {
+                notice = "该操作的状态或命令已更新，请查看最新内容后再决定。"; return
+            }
+            sending = false
+            await perform(DotsPendingOperation(requestId: UUID().uuidString, route: route, goalId: goalId,
+                decision: decision, confirmedCommand: command))
+        } catch { notice = "无法核对待批准的操作，请重新读取后再决定。" }
     }
     func retryPending() async { if let operation = state.pending { await perform(operation) } }
     func output(_ id: Int) async throws -> DotsOutput {
@@ -383,6 +558,7 @@ final class DotsStore: ObservableObject {
             state.pending = operation
             try save()
             let goalId = try await client.dotsMutate(operation)
+            mergeAcceptedUserMessage(operation, id: goalId)
             let pendingState = state
             state.acknowledged(operation)
             if operation.route == "goals", let goalId { state.selectedGoalId = goalId }

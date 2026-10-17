@@ -113,6 +113,7 @@ final class SpeechController {
     }
 
     private func begin(_ token: UUID) {
+        guard session.isCurrent(token) else { return }
         guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "zh-CN")),
               recognizer.isAvailable || recognizer.supportsOnDeviceRecognition else {
             fail("中文语音识别暂时不可用，请检查系统语音服务后重试。")
@@ -132,7 +133,22 @@ final class SpeechController {
         self.engine = engine
         self.request = request
         lastText = ""
-        input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in request.append(buffer) }
+        var levelSampleCount = 0
+        input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
+            request.append(buffer)
+            levelSampleCount += Int(buffer.frameLength)
+            guard levelSampleCount >= Int(format.sampleRate / 20),
+                  let samples = buffer.floatChannelData?[0], buffer.frameLength > 0 else { return }
+            levelSampleCount = 0
+            var power: Float = 0
+            for index in 0..<Int(buffer.frameLength) { power += samples[index] * samples[index] }
+            let rms = sqrt(power / Float(buffer.frameLength))
+            let level = min(1, max(0, (20 * log10(max(rms, 0.00001)) + 55) / 45))
+            DispatchQueue.main.async {
+                guard let self = self, self.session.isCurrent(token) else { return }
+                self.send(["type": "speechLevel", "level": Double(level)])
+            }
+        }
         task = recognizer.recognitionTask(with: request) { [weak self] result, error in
             DispatchQueue.main.async {
                 guard let self = self, self.session.isCurrent(token) else { return }

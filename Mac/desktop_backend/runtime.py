@@ -274,14 +274,17 @@ class Runtime:
 
     def validate_assets(self, ids):
         if not isinstance(ids,list) or len(ids)>self.capabilities.get("maxUploadImages",8):
-            raise ValueError("本次最多添加 8 张图片")
+            raise ValueError(f"本次最多添加 {self.capabilities.get('maxUploadImages',8)} 个附件")
         result=[]
         for identifier in ids:
             asset = self.storage.asset(str(identifier))
-            if not asset["mimeType"].startswith("image/"):
-                raise ValueError("聊天输入目前支持图片附件")
-            self.storage.asset_path(str(identifier))
+            path = self.storage.asset_path(str(identifier))
+            if not asset["mimeType"].startswith("image/") and path.stat().st_size > 10 * 1024 * 1024:
+                raise ValueError("单个文档不能超过 10 MB")
             result.append(self.storage.public_asset(asset))
+        if any(not a["mimeType"].startswith("image/") for a in result):
+            if sum(self.storage.asset_path(a["id"]).stat().st_size for a in result) > 24 * 1024 * 1024:
+                raise ValueError("图片与文档合计不能超过 24 MB")
         return result
 
     async def connect(self, force=False):
@@ -337,9 +340,18 @@ class Runtime:
     def payload_images(self, assets, mask_ids=()):
         result=[]
         for asset in assets:
+            if not asset["mimeType"].startswith("image/"):
+                continue
             data,suffix=self.storage.request_image(asset["id"],mask=asset["id"] in mask_ids)
             result.append({"suffix":suffix,"data":base64.b64encode(data).decode()})
         return result
+
+    def payload_files(self, assets):
+        # Use the same document contract as iOS; images retain their upload path.
+        assets = self.validate_assets([a["id"] for a in assets])
+        return [{"filename":a["filename"],
+                 "data":base64.b64encode(self.storage.asset_path(a["id"]).read_bytes()).decode()}
+                for a in assets if not a["mimeType"].startswith("image/")]
 
     async def send(self, identifier, text, ids, editing=None, urgent=False, urgent_confirmed=False, from_queue=False):
         item=self.conversation(identifier)
@@ -355,7 +367,7 @@ class Runtime:
         text=str(text)
         assets=self.validate_assets(ids)
         if not text.strip() and not assets:
-            raise ValueError("请输入消息或添加图片")
+            raise ValueError("请输入消息或添加附件")
         if len(text)>200000:
             raise ValueError("消息过长")
         remote=item.get("remoteConversationId") or identifier
@@ -386,7 +398,7 @@ class Runtime:
             remote=target
             item["messages"]=item["messages"][:edit_index]
             if edit_index==0 and not item["titleIsManual"]:
-                item["title"]=text.replace("\n"," ").strip()[:20] or "图片对话"
+                item["title"]=text.replace("\n"," ").strip()[:20] or "附件对话"
                 item["titleWasGenerated"]=False
         model=self.conversation_model_capability(item,item.get("model",self.capabilities.get("model")))
         if item["reasoning"] not in model["reasoningEfforts"]:raise ValueError("当前模型不支持所选推理档位")
@@ -405,7 +417,7 @@ class Runtime:
         item.update(draft=item.get("draft","") if from_queue else "",draftAssets=item.get("draftAssets",[]) if from_queue else [],updatedAt=now(),pendingJobId=None,pendingMessageId=reply["id"],lastEventId=0,
                     remoteConversationId=remote,threadId=thread)
         if item["title"]=="新聊天":
-            item["title"]=text.replace("\n"," ").strip()[:20] or "图片对话"
+            item["title"]=text.replace("\n"," ").strip()[:20] or "附件对话"
         self.save_conversation(item)
         self.launch("conversation:"+identifier,self.run_agent(identifier))
         return reply
@@ -414,7 +426,7 @@ class Runtime:
         item=self.conversation(identifier)
         assets=self.validate_assets(ids)
         text=str(text)
-        if not text.strip() and not assets:raise ValueError("请输入消息或添加图片")
+        if not text.strip() and not assets:raise ValueError("请输入消息或添加附件")
         if len(text)>200000:raise ValueError("消息过长")
         queue=item.setdefault("messageQueue",[])
         if len(queue)>=30:raise ValueError("等待队列已满，请等待部分消息处理完成")
@@ -500,6 +512,7 @@ class Runtime:
                 index=item["messages"].index(message)
                 user=item["messages"][index-1]
                 job_id=await self.gateway.create_job({"prompt":user["text"],"images":await asyncio.to_thread(self.payload_images,user["assets"]),
+                          "files":await asyncio.to_thread(self.payload_files,user["assets"]),
                           "conversationId":item["remoteConversationId"],"syncConversationId":identifier,"projectId":item.get("projectId"),"userMessageId":user["id"],"assistantMessageId":message["id"],
                           "requestId":message["requestId"],"reasoning":message["reasoning"],"model":message.get("model",self.capabilities.get("model"))})
                 latest,current=self.pending_message(identifier)

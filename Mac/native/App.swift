@@ -29,8 +29,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
     private var startedAt = Date()
     private var startupLog: FileHandle?
     private let speech = SpeechController()
-    private let voicePlayback = VoicePlaybackController()
+    private let voicePlayback = QwenVoicePlaybackController()
     private let messagePlayback = VoicePlaybackController()
+    private var activeVoiceCallID: String?
+    private var voiceCallPresentation: VoiceCallPresentation?
+    private lazy var voiceCallPanel: VoiceCallPanelController = {
+        let controller = VoiceCallPanelController()
+        controller.onAction = { [weak self] callID, action in
+            guard let self = self, self.activeVoiceCallID == callID,
+                  self.window?.isMiniaturized == true else { return }
+            if action == "end" {
+                self.suspendVoiceSession()
+            } else if action == "mute" {
+                self.emit(["type": "dotsCallPanelAction", "callId": callID, "action": "mute"])
+            }
+        }
+        return controller
+    }()
     private var savedFiles: [String: URL] = [:]
     private var activeDownloads: [ObjectIdentifier: WKDownload] = [:]
     private var previewURL: URL?
@@ -353,7 +368,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
 
     @objc private func newConversation() {
         showWindow()
-        suspendVoiceSession()
+        if activeVoiceCallID == nil { suspendVoiceSession() }
         webView?.evaluateJavaScript("if(window.shiyan?.newConversation){window.shiyan.newConversation()}else{window.dispatchEvent(new CustomEvent('shiyan-native',{detail:{type:'newSession'}}))}")
     }
 
@@ -363,8 +378,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
     }
 
     func windowWillClose(_ notification: Notification) { suspendVoiceSession() }
-    func windowDidMiniaturize(_ notification: Notification) { suspendVoiceSession() }
-    func applicationDidHide(_ notification: Notification) { suspendVoiceSession() }
+    // Window visibility does not own an active Dots call.
+    func windowDidMiniaturize(_ notification: Notification) {
+        if activeVoiceCallID == nil { suspendVoiceSession() }
+        else { syncVoiceCallPanel() }
+    }
+    func windowDidDeminiaturize(_ notification: Notification) { voiceCallPanel.hide() }
+    func applicationDidHide(_ notification: Notification) {
+        if activeVoiceCallID == nil { suspendVoiceSession() }
+    }
+    func applicationDidUnhide(_ notification: Notification) { syncVoiceCallPanel() }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         showWindow()
@@ -375,7 +398,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
         quitting = true
         startupPanel?.close()
         browserWorkspace?.closeAll()
-        suspendVoiceSession()
+        suspendVoiceSession(waitForVoiceExit: true)
         readyTimer?.invalidate()
         webView?.configuration.userContentController.removeScriptMessageHandler(forName: "native")
         if backendPID > 0 {
@@ -414,11 +437,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
 
      
      
-    private func suspendVoiceSession() {
+    private func syncVoiceCallPanel() {
+        guard window?.isMiniaturized == true, let callID = activeVoiceCallID,
+              let presentation = voiceCallPresentation, presentation.callID == callID,
+              let baseURL = baseURL else { voiceCallPanel.hide(); return }
+        voiceCallPanel.update(presentation, baseURL: baseURL)
+        voiceCallPanel.show()
+    }
+
+    private func updateDotsVoiceCall(_ body: [String: Any]) {
+        guard let presentation = VoiceCallPresentation(body),
+              presentation.callID == activeVoiceCallID else { return }
+        voiceCallPresentation = presentation
+        syncVoiceCallPanel()
+    }
+
+    private func suspendVoiceSession(waitForVoiceExit: Bool = false) {
+        let suspendedCallID = activeVoiceCallID
+        activeVoiceCallID = nil
+        voiceCallPresentation = nil
+        voiceCallPanel.clear()
         speech.cancel()
-        voicePlayback.cancel()
+        voicePlayback.shutdown(waitForExit: waitForVoiceExit)
         messagePlayback.cancel()
-        emit(["type": "voiceSessionSuspended"])
+        var detail: [String: Any] = ["type": "voiceSessionSuspended"]
+        if let suspendedCallID = suspendedCallID { detail["callId"] = suspendedCallID }
+        emit(detail)
     }
 
      
@@ -489,6 +533,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
         case "startSpeech", "stopSpeech", "cancelSpeech":
             guard let sessionID = body["sessionId"] as? String,
                   UUID(uuidString: sessionID) != nil else { return }
+            // Ordinary dictation has no callId. A Dots request must belong to
+            // the live call, so queued old requests cannot reopen the mic.
+            if let callID = body["callId"] as? String, callID != activeVoiceCallID { return }
             if action == "startSpeech" {
                 let silence = (body["autoStopAfterSilence"] as? NSNumber)?.doubleValue
                 messagePlayback.cancel()
@@ -496,10 +543,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
             }
             else if action == "stopSpeech" { speech.stop(sessionID: sessionID) }
             else { speech.cancel(sessionID: sessionID) }
+        case "prepareVoicePlayback":
+            guard let callID = body["callId"] as? String,
+                  UUID(uuidString: callID) != nil else { return }
+            if activeVoiceCallID != nil && activeVoiceCallID != callID {
+                speech.cancel()
+                voicePlayback.shutdown()
+            }
+            if activeVoiceCallID != callID {
+                voiceCallPresentation = nil
+                voiceCallPanel.clear()
+            }
+            activeVoiceCallID = callID
+            voicePlayback.prepare()
+        case "updateDotsVoiceCall":
+            updateDotsVoiceCall(body)
+        case "endVoiceCall":
+            guard let callID = body["callId"] as? String,
+                  callID == activeVoiceCallID else { return }
+            activeVoiceCallID = nil
+            voiceCallPresentation = nil
+            voiceCallPanel.clear()
+            speech.cancel()
+            voicePlayback.shutdown()
         case "speakVoice", "cancelVoicePlayback":
             guard let sessionID = body["sessionId"] as? String,
                   UUID(uuidString: sessionID) != nil else { return }
+            if let callID = body["callId"] as? String, callID != activeVoiceCallID { return }
             if action == "speakVoice" {
+                guard let callID = body["callId"] as? String,
+                      callID == activeVoiceCallID else { return }
                 guard let text = body["text"] as? String, text.utf8.count <= 100000,
                       text.count <= 20000 else { return }
                 recordVoiceTrace("tts_requested", ["sessionId": sessionID, "characterCount": text.count])

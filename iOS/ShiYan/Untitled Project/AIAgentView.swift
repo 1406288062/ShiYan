@@ -185,6 +185,8 @@ struct AIAgentView: View {
     @ObservedObject var history: HistoryManager
     @StateObject private var store = AgentStore.shared
     @StateObject private var speech = AgentSpeechInput()
+    @ObservedObject private var dotsVoice = DotsVoiceSession.shared
+    @State private var dotsTaskSheetPresented = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scenePhase) private var scenePhase
@@ -387,6 +389,10 @@ struct AIAgentView: View {
                     model: Binding(get: { store.selectedModel.id }, set: { store.setModel($0) }),
                     effort: reasoning, bottomGap: composerBottom,
                     composerHeight: composerHeight, keyboardVisible: keyboardVisible)
+
+                DotsVoiceCallOverlay(isDotsVisible: featurePage == .dots && drawer == 0,
+                                     topInset: top, showsCallCard: !dotsTaskSheetPresented)
+                    .zIndex(40)
             }
             .clipped()
             .onChange(of: measuredCorners, initial: true) { _, value in
@@ -434,9 +440,12 @@ struct AIAgentView: View {
                 }
             }
         }
-        .alert("提示", isPresented: Binding(get: { store.notice != nil || speech.errorMessage != nil }, set: { if !$0 { store.notice = nil; speech.errorMessage = nil } })) {
-            Button("好", role: .cancel) { store.notice = nil; speech.errorMessage = nil }
-        } message: { Text(store.notice ?? speech.errorMessage ?? "") }
+        .onReceive(NotificationCenter.default.publisher(for: .dotsVoiceWillStart)) { _ in
+            speech.cancel(); speechConversationID = nil
+        }
+        .alert("提示", isPresented: Binding(get: { store.notice != nil || speech.errorMessage != nil || dotsVoice.errorMessage != nil }, set: { if !$0 { store.notice = nil; speech.errorMessage = nil; dotsVoice.dismissError() } })) {
+            Button("好", role: .cancel) { store.notice = nil; speech.errorMessage = nil; dotsVoice.dismissError() }
+        } message: { Text(store.notice ?? speech.errorMessage ?? dotsVoice.errorMessage ?? "") }
         .task {
             inputText = store.current?.draft ?? ""
             store.attach(history: history)
@@ -558,7 +567,9 @@ struct AIAgentView: View {
             HistoryView(history: history, topInset: top, bottomInset: bottom, hasUnread: hasUnread) { setDrawer(true) }
         case .dots:
             DotsView(topInset: top, bottomInset: bottom, hasUnread: hasUnread,
-                     isConversationVisible: drawer == 0 && dragOrigin == nil) { setDrawer(true) }
+                     isConversationVisible: drawer == 0 && dragOrigin == nil,
+                     onSidebar: { setDrawer(true) },
+                     onTaskSheetPresented: { dotsTaskSheetPresented = $0 })
         case .scheduled:
             ScheduledTasksView(topInset: top, bottomInset: bottom, hasUnread: hasUnread) { setDrawer(true) }
         case .settings:
@@ -1358,7 +1369,7 @@ struct AIAgentView: View {
                         }
                         Button {
                             if speech.isRecording { speech.stop() }
-                            else if !speech.isStarting { speechBase = inputText; speechConversationID = conversation.id; Task { await speech.start() } }
+                            else if !speech.isStarting { dotsVoice.end(); speechBase = inputText; speechConversationID = conversation.id; Task { await speech.start() } }
                         } label: {
                             Image(systemName: speech.isRecording ? "stop.fill" : "mic").font(.system(size: 20))
                                 .foregroundStyle(speech.isRecording ? Color.red : Color.primary).frame(width: 36, height: 40).contentShape(Rectangle())

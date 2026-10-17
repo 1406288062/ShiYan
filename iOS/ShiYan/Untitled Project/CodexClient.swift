@@ -176,6 +176,12 @@ final class CodexClient {
         return try JSONDecoder().decode(ShiyanMemorySettings.self, from: bytes)
     }
 
+    func accountQuota() async throws -> CodexQuota {
+        try await prepareConnection()
+        let bytes = try await response(request(method: "GET", route: "account/quota"), timeout: 20).body
+        return try JSONDecoder().decode(CodexQuotaResponse.self, from: bytes).quota
+    }
+
     func executionDetails(messageID: UUID) async throws -> AgentExecutionPayload {
         try await prepareConnection()
         let bytes = try await response(request(method: "GET", route: "sync/messages/" + messageID.uuidString.lowercased() + "/details"), timeout: 90).body
@@ -482,6 +488,14 @@ extension CodexClient: DotsTransport {
         try await prepareConnection()
         let bytes = try await response(request(method: operation.schedule?.id == nil ? "POST" : "PATCH", route: "dots/" + operation.route, object: operation.body), rejectDotsErrors: true).body
         let result = try JSONSerialization.jsonObject(with: bytes) as? [String: Any]
+        if operation.route == "manager/messages" {
+            guard result?["accepted"] as? Bool == true,
+                  let message = result?["message"] as? [String: Any],
+                  let id = message["id"] as? Int, id > 0 else {
+                throw AgentClientError.message("消息接收尚未确认，请重试原请求")
+            }
+            return id
+        }
         let goal = result?["goal"] as? [String: Any]
         return (goal?["id"] as? Int) ?? (result?["goalId"] as? Int)
     }

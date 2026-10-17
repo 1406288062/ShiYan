@@ -12,8 +12,9 @@
   <link rel="stylesheet" href="/assets/workbench.css?v=20261014-contrast-f574d522">
   <link rel="stylesheet" href="/assets/workbench-v2.css">
   <link rel="stylesheet" href="/assets/workbench-v21.css">
-  <link rel="stylesheet" href="/assets/workbench-v22.css?v=20261015-gray-scroll-83733eff">
-  <link rel="stylesheet" href="/assets/workbench-dots.css?v=20261014-unread-0335f342">
+  <link rel="stylesheet" href="/assets/workbench-v22.css?v=20261016-document-b33563">
+  <link rel="stylesheet" href="/assets/workbench-dots.css?v=20261016-center-5956ddb8">
+  <script src="/assets/composer-keys.js?v=20261016-session-56cf6e49" defer></script>
   <script src="/assets/vendor/xterm.js" defer></script>
   <script src="/assets/vendor/addon-fit.js" defer></script>
   <script src="/assets/workbench-message-details.js?v=20261015-c276" defer></script>
@@ -21,14 +22,16 @@
   <script src="/assets/vendor/markdown-it.min.js" defer></script>
   <script src="/assets/message-renderer.js?v=20261013-schedules-cards" defer></script>
   <script src="/assets/workbench-execution.js?v=20261015-details-c276" defer></script>
-  <link rel="stylesheet" href="/assets/workbench-dots-panels.css?v=20261015-panel-size-b74c17b0">
-  <script src="/assets/workbench-dots-panels.js?v=20261015-panel-size-b74c17b0" defer></script>
-  <script src="/assets/workbench-dots.js?v=20261015-identity-89d1ca48" defer></script>
-  <script src="/app.js?v=20261015-composer-fast-646ec03e" defer></script>
+  <link rel="stylesheet" href="/assets/workbench-dots-panels.css?v=20261016-session-56cf6e49">
+  <script src="/assets/workbench-dots-panels.js?v=20261016-outputs-d44bc78e" defer></script>
+  <link rel="stylesheet" href="/assets/dots-voice-orb.css?v=20261016-session-56cf6e49">
+  <script src="/assets/dots-voice-orb.js?v=20261016-session-56cf6e49" defer></script>
+  <script src="/assets/workbench-dots.js?v=20261016-plus-0ae1fa4c" defer></script>
+  <script src="/app.js?v=20261016-session-56cf6e49" defer></script>
   <link rel="stylesheet" href="/assets/user-input.css?v=20261016-compact-0aac7b99">
   <script src="/assets/user-input.js?v=20261016-compact-0aac7b99" defer></script>
-  <link rel="stylesheet" href="/assets/memory.css?v=20261015-copy-8f621846">
-  <script src="/assets/memory.js?v=20261015-copy-8f621846" defer></script>
+  <link rel="stylesheet" href="/assets/memory.css?v=20261016-quota-auto-7e85e0ab">
+  <script src="/assets/memory.js?v=20261016-quota-auto-7e85e0ab" defer></script>
   <script src="/assets/workbench-v2.js?v=20261015-native-layout-bc1da332" defer></script>
   <script src="/assets/workbench-v22.js" defer></script>
   <script src="/assets/workbench-schedules.js?v=20261013-schedules-cards" defer></script>
@@ -111,11 +114,11 @@
           <p id="agentNotice" class="agent-notice" role="status" hidden></p>
           <form id="composerForm" class="composer-form" autocomplete="off">
             <div id="editBanner" class="edit-banner" hidden><span id="editBannerText">编辑后重新发送</span><button id="cancelEditButton" class="icon-button" type="button" aria-label="取消编辑"><span class="symbol" data-symbol="xmark" aria-hidden="true"></span></button></div>
-            <div id="attachmentList" class="attachment-list" aria-label="待发送图片" hidden></div>
+            <div id="attachmentList" class="attachment-list" aria-label="待发送附件" hidden></div>
             <div id="messageQueue" class="message-queue" aria-label="等待消息" hidden></div>
             <div id="composerSurface" class="composer-surface glass-surface">
               <textarea id="messageInput" class="message-input" placeholder="发送消息" aria-label="发送消息" rows="1" spellcheck="false"></textarea>
-              <div class="composer-actions"><input id="attachmentInput" type="file" accept="image/*,.heic,.heif" multiple hidden><button id="addImageButton" class="icon-button add-image-button" type="button" aria-label="添加图片"><span class="symbol" data-symbol="plus" aria-hidden="true"></span></button><span class="composer-spacer"></span><button id="reasoningButton" class="icon-button reasoning-button" type="button" aria-label="推理档位：低" aria-expanded="false"><svg class="reasoning-gauge" viewBox="0 0 28 28" aria-hidden="true"><path id="gaugeRemainder" class="gauge-remainder" d="M5.5 22.5 A12 12 0 1 1 22.5 22.5"></path><path id="gaugeActive" class="gauge-active" d="M5.5 22.5 A12 12 0 0 1 3.9 7.8"></path><path id="gaugePointer" class="gauge-pointer" d="M11.6 12.5 L6 9"></path><circle class="gauge-hub" cx="14" cy="14" r="2.8"></circle></svg><span class="v23-composer-model"></span><span class="v22-strength-label">低</span><svg class="v22-strength-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6 L8 10 L12 6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button id="speechButton" class="icon-button speech-button" type="button" aria-label="语音转文字"><span class="symbol" data-symbol="mic" aria-hidden="true"></span></button><button id="sendButton" class="send-button is-empty" type="submit" aria-label="发送" disabled><span id="sendIcon" class="symbol" data-symbol="arrow.up" aria-hidden="true"></span></button></div>
+              <div class="composer-actions"><input id="attachmentInput" type="file" multiple hidden><button id="addImageButton" class="icon-button add-image-button" type="button" aria-label="添加文件"><span class="symbol" data-symbol="plus" aria-hidden="true"></span></button><span class="composer-spacer"></span><button id="reasoningButton" class="icon-button reasoning-button" type="button" aria-label="推理档位：低" aria-expanded="false"><svg class="reasoning-gauge" viewBox="0 0 28 28" aria-hidden="true"><path id="gaugeRemainder" class="gauge-remainder" d="M5.5 22.5 A12 12 0 1 1 22.5 22.5"></path><path id="gaugeActive" class="gauge-active" d="M5.5 22.5 A12 12 0 0 1 3.9 7.8"></path><path id="gaugePointer" class="gauge-pointer" d="M11.6 12.5 L6 9"></path><circle class="gauge-hub" cx="14" cy="14" r="2.8"></circle></svg><span class="v23-composer-model"></span><span class="v22-strength-label">低</span><svg class="v22-strength-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6 L8 10 L12 6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button id="speechButton" class="icon-button speech-button" type="button" aria-label="语音转文字"><span class="symbol" data-symbol="mic" aria-hidden="true"></span></button><button id="sendButton" class="send-button is-empty" type="submit" aria-label="发送" disabled><span id="sendIcon" class="symbol" data-symbol="arrow.up" aria-hidden="true"></span></button></div>
             </div>
           </form>
         </div>

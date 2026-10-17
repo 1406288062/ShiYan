@@ -5,6 +5,7 @@ import base64
 from contextlib import asynccontextmanager
 import io
 import json
+import mimetypes
 import os
 from pathlib import Path
 import tempfile
@@ -195,7 +196,7 @@ def create_app(directory, root, legacy=None):
                 await uploaded.close()
                 items.append((uploaded.filename,uploaded.content_type,data))
         if not items or len(items)>8:
-            raise ValueError("请选择 1 到 8 张图片")
+            raise ValueError("请选择 1 到 8 个附件")
         assets=[]
         for filename,mime,data in items:
             if len(data)>40*1024*1024:
@@ -213,8 +214,14 @@ def create_app(directory, root, legacy=None):
                     data=target.read_bytes()
                     filename=Path(filename).stem+".png"
                     mime="image/png"
-            if not (mime or "").startswith("image/"):
-                raise ValueError("请选择图片文件")
+            mime = (mime or "").split(";")[0].lower()
+            if not mime or mime == "application/octet-stream":
+                mime = mimetypes.guess_type(filename or "")[0] or "application/octet-stream"
+            if not mime.startswith("image/"):
+                if kind != "attachment":
+                    raise ValueError("请选择图片文件")
+                if len(data) > 10 * 1024 * 1024:
+                    raise ValueError("单个文档不能超过 10 MB")
             asset=await asyncio.to_thread(r.storage.save_bytes,data,filename,mime,normalize=kind!="mask",mask=kind=="mask")
             assets.append(asset)
         r.notify()

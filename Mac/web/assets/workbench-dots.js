@@ -49,7 +49,7 @@
   }
   readState.observedThrough=Math.max(readState.observedThrough,0,...ids);renderUnread();
  }
- const rawOutputs=new Map();let uploading=false;
+ const rawOutputs=new Map(),approvalVersions=new Map(),approvalErrors=new Map(),approvalBusy=new Set();let uploading=false;
  const attachments=()=>drafts.managerAttachments||[];
  const fileChip=(a,removable=false)=>'<span class="dots-file-chip"><span aria-hidden="true">'+C.icon('file')+'</span>'+(!removable?'<a download href="/api/dots/attachments/'+encodeURIComponent(a.id)+'">'+esc(a.filename)+'</a>':'<span>'+esc(a.filename)+'</span><button type="button" data-dots-remove-file="'+esc(a.id)+'" aria-label="移除 '+esc(a.filename)+'"'+(busy||pending.managerMessage?' disabled':'')+'>×</button>')+'</span>';
  async function uploadFiles(files){if(uploading||busy||pending.managerMessage)return;uploading=true;refreshContent();try{for(const file of files){if(attachments().length>=8)throw Error('最多添加 8 个文件');if(!file.size||file.size>20*1024*1024)throw Error('文件不能为空，单个文件不能超过 20 MB');const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(Error('无法读取文件'));reader.readAsDataURL(file);});const result=await api('/attachments','POST',{id:crypto.randomUUID(),filename:file.name,mimeType:file.type||'application/octet-stream',data});drafts.managerAttachments=[...attachments(),result.attachment];await persist();refreshContent();}}finally{uploading=false;refreshContent();}}
@@ -57,10 +57,21 @@
  let busy=false,historyLoading=false,historyChecked=false,hasMoreMessages=true,error='',drawerOpen=false,selected=null,source,reconnectTimer,recoveryTimer,reconnectAttempt=0,streamEpoch=0;
   
   
- let voiceCard=null;
- const voice={active:false,phase:'idle',recognitionId:null,playbackId:null,text:'',acceptedId:0,epoch:0,waitTimer:0,pollTimer:0,clockTimer:0,playbackTimer:0,callId:null,startedAt:0,muted:false,paused:false,previousFocus:null,consumedRecognitionIds:new Set(),errors:new Map()};
+ let voiceCard=null,voiceOrb=null,voiceComposerDeferred=false;
+ let voiceCardPosition=null,voiceCardDrag=null,voiceCardSuppressClickUntil=0,nativeVoiceCallSignature='';
+ const voice={active:false,phase:'idle',recognitionId:null,playbackId:null,text:'',acceptedId:0,epoch:0,waitTimer:0,pollTimer:0,clockTimer:0,playbackTimer:0,callId:null,startedAt:0,muted:false,paused:false,previousFocus:null,level:0,levelAt:0,consumedRecognitionIds:new Set(),errors:new Map(),replyQueue:[],replySeen:new Set(),replyProgress:new Map(),replySuppressed:new Set(),replyFloor:0,playbackMessageId:0,lastSpeechEnergyAt:0};
+ // A native voice call outlives window visibility. Hidden windows keep only
+ // the call's data/audio path alive; rendering and read receipts stay visual.
+ function monitorAllowed(){return monitorReady&&(!document.hidden||voice.active);}
  const voiceGlyph='<svg class="dots-voice-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M4 10v4M8 6v12M12 3v18M16 6v12M20 10v4"/></svg>';
  function voiceNative(action,detail={}){const bridge=window.webkit?.messageHandlers?.native;if(!bridge)return false;bridge.postMessage({action,...detail});return true;}
+ function syncNativeVoiceCall(force=false){
+  if(!voice.active||!voice.callId)return;
+  const identity=window.ShiYanDotsPanels?.voiceCallIdentity?.()||{name:window.ShiYanDotsPanels?.name()||'Dots',pet:null};
+  const detail={callId:voice.callId,startedAt:voice.startedAt,muted:voice.muted,name:identity.name,phase:voice.phase,pet:identity.pet};
+  const signature=JSON.stringify(detail);if(!force&&signature===nativeVoiceCallSignature)return;
+  if(voiceNative('updateDotsVoiceCall',detail))nativeVoiceCallSignature=signature;
+ }
  function traceVoice(stage,extra={}){
   voiceNative('dotsVoiceTrace',{stage,callId:voice.callId,phase:voice.phase,recognitionId:voice.recognitionId,playbackId:voice.playbackId,messageId:voice.acceptedId,...extra});
  }
@@ -69,34 +80,63 @@
   return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+paths[kind]+'"/></svg>';
  }
  function ensureVoiceCard(){
-  if(voiceCard)return voiceCard;if(!view)return null;
+  if(!view)return null;
+  if(!voiceOrb&&window.ShiYanDotsVoiceOrb)voiceOrb=new window.ShiYanDotsVoiceOrb({onFormChange:()=>{
+   if(voiceComposerDeferred&&!voiceOrb?.drag)queueMicrotask(()=>{if(voiceComposerDeferred&&!voiceOrb?.drag)refreshContent();});
+  }});
+  voiceOrb?.attach(view,$('dotsManagerForm')?.querySelector('.dots-composer-surface'));
+  if(voiceCard)return voiceCard;
   const card=document.createElement('section');card.id='dotsVoiceCard';card.className='dots-voice-card';card.hidden=true;card.tabIndex=0;
   card.setAttribute('role','group');card.setAttribute('aria-keyshortcuts','Space');card.setAttribute('aria-describedby','dotsVoiceStatus dotsVoiceHelp');
   card.title='按空格打断播报，或暂停、继续聆听';
-  card.innerHTML='<div class="dots-call-identity"><div id="dotsCallIdentity" class="dots-call-avatar" aria-hidden="true"></div><div class="dots-call-person"><h2 id="dotsCallName"></h2><time id="dotsCallTime" class="dots-call-time">00:00</time></div></div><p id="dotsVoiceStatus" class="dots-call-accessible" role="status"></p><p id="dotsVoiceHelp" class="dots-call-accessible">按空格打断播报，或暂停、继续聆听。静音与挂断按钮在下方。</p><div class="dots-call-controls"><button id="dotsVoiceMute" type="button" aria-label="静音麦克风" aria-pressed="false"></button><button id="dotsVoiceEnd" class="dots-call-end" type="button" aria-label="挂断语音通话">'+callGlyph('end')+'</button></div>';
+  card.innerHTML='<div class="dots-call-identity"><div id="dotsCallIdentity" class="dots-call-avatar" aria-hidden="true"><span class="dots-call-fallback">'+dotsPersonalIcon+'</span></div><div class="dots-call-person"><h2 id="dotsCallName"></h2><time id="dotsCallTime" class="dots-call-time">00:00</time></div></div><p id="dotsVoiceStatus" class="dots-call-accessible" role="status"></p><p id="dotsVoiceHelp" class="dots-call-accessible">按空格打断播报，或暂停、继续聆听。静音与挂断按钮在下方。</p><div class="dots-call-controls"><button id="dotsVoiceMute" type="button" aria-label="静音麦克风" aria-pressed="false"></button><button id="dotsVoiceEnd" class="dots-call-end" type="button" aria-label="挂断语音通话">'+callGlyph('end')+'</button></div>';
   card.addEventListener('keydown',e=>{if(e.code==='Space'&&e.target===card){e.preventDefault();interruptVoice();}});
-  voiceCard=card;view.appendChild(card);$('dotsVoiceEnd').onclick=()=>stopVoice();$('dotsVoiceMute').onclick=toggleVoiceMute;
+  voiceCard=card;document.body.appendChild(card);bindVoiceCardDrag(card);$('dotsVoiceEnd').onclick=()=>stopVoice();$('dotsVoiceMute').onclick=toggleVoiceMute;
   return card;
  }
+ function finishVoiceCardDrag(){
+  const drag=voiceCardDrag;if(!drag)return;voiceCardDrag=null;voiceCard?.classList.remove('is-dragging');
+  if(drag.moved)voiceCardSuppressClickUntil=Date.now()+300;
+  if(voiceCard?.hasPointerCapture(drag.id))voiceCard.releasePointerCapture(drag.id);
+ }
+ function bindVoiceCardDrag(card){
+  card.addEventListener('pointerdown',e=>{
+   if(!card.classList.contains('is-compact')||e.button!==0||e.target.closest('button,input,textarea,a'))return;
+   const rect=card.getBoundingClientRect();voiceCardDrag={id:e.pointerId,x:e.clientX,y:e.clientY,left:rect.left,top:rect.top,moved:false};
+   card.setPointerCapture(e.pointerId);e.preventDefault();
+  });
+  card.addEventListener('pointermove',e=>{
+   const drag=voiceCardDrag;if(!drag||drag.id!==e.pointerId)return;
+   const dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(!drag.moved&&Math.hypot(dx,dy)<4)return;
+   drag.moved=true;card.classList.add('is-dragging');voiceCardPosition={left:drag.left+dx,top:drag.top+dy};positionCompactVoiceCard();
+  });
+  for(const event of ['pointerup','pointercancel','lostpointercapture'])card.addEventListener(event,e=>{if(voiceCardDrag?.id===e.pointerId)finishVoiceCardDrag();});
+  card.addEventListener('click',e=>{if(e.detail&&Date.now()<voiceCardSuppressClickUntil){e.preventDefault();e.stopImmediatePropagation();voiceCardSuppressClickUntil=0;}},true);
+  window.addEventListener('blur',finishVoiceCardDrag);
+ }
  function positionCompactVoiceCard(){
-  if(!voiceCard||!voice.active||drawerOpen)return;
-  const button=$('dotsTasksButton'),rect=button?.getBoundingClientRect(),bounds=$('mainWorkspace')?.getBoundingClientRect()||view.getBoundingClientRect();
-  if(!rect)return;
-  const leftLimit=Math.max(0,bounds.left)+10,rightLimit=Math.max(leftLimit,Math.min(innerWidth,bounds.right)-10);
-  const width=Math.min(300,Math.max(0,rightLimit-leftLimit)),top=Math.max(10,Math.min(rect.bottom+10,Math.max(10,innerHeight-10)));
-  voiceCard.style.width=width+'px';voiceCard.style.left=Math.max(leftLimit,rightLimit-width)+'px';voiceCard.style.top=top+'px';voiceCard.style.maxHeight=Math.max(0,innerHeight-top-10)+'px';voiceCard.style.overflowY='auto';
+  if(!voiceCard||!voice.active||!voiceCard.classList.contains('is-compact'))return;
+  const bounds=$('mainWorkspace')?.getBoundingClientRect(),button=$('dotsTasksButton'),rect=active&&button?.getClientRects().length?button.getBoundingClientRect():$('desktopToolbar')?.getBoundingClientRect();
+  const width=Math.min(300,Math.max(0,innerWidth-20));
+  voiceCard.style.width=width+'px';voiceCard.style.maxHeight=Math.max(0,innerHeight-20)+'px';voiceCard.style.overflowY='auto';
+  const height=voiceCard.getBoundingClientRect().height;
+  const desired=voiceCardPosition||{left:(bounds?.right||innerWidth)-width-10,top:(rect?.bottom||60)+10};
+  const left=Math.max(10,Math.min(desired.left,innerWidth-width-10)),top=Math.max(10,Math.min(desired.top,innerHeight-height-10));
+  voiceCard.style.left=left+'px';voiceCard.style.top=top+'px';if(voiceCardPosition)voiceCardPosition={left,top};
  }
  function mountVoiceCard(card){
   const previousFocus=card.contains(document.activeElement)?document.activeElement:null;
-  const panel=$('dotsActivity'),expanded=voice.active&&drawerOpen&&!panel?.hidden;
+  const panel=$('dotsActivity'),expanded=voice.active&&active&&drawerOpen&&!panel?.hidden;
   panel?.classList.toggle('has-voice-call',!!expanded);card.classList.toggle('is-compact',!expanded);
   if(expanded){
-   if(card.parentElement!==panel||panel.firstElementChild!==card)panel.prepend(card);
+   finishVoiceCardDrag();if(card.parentElement!==panel||panel.firstElementChild!==card)panel.prepend(card);
    for(const property of ['left','top','width','max-height','overflow-y'])card.style.removeProperty(property);
-  }else if(voice.active){if(card.parentElement!==view)view.appendChild(card);positionCompactVoiceCard();}
+  }else if(voice.active){if(card.parentElement!==document.body)document.body.appendChild(card);positionCompactVoiceCard();}
+  else{finishVoiceCardDrag();if(card.parentElement!==document.body)document.body.appendChild(card);}
   if(previousFocus?.isConnected&&document.activeElement!==previousFocus)previousFocus.focus({preventScroll:true});
  }
  function updateVoiceClock(){
+  syncNativeVoiceCall();
   const time=$('dotsCallTime');if(!voice.active||!time)return;
   const elapsed=Math.max(0,Math.floor((Date.now()-voice.startedAt)/1000));
   time.textContent=String(Math.floor(elapsed/60)).padStart(2,'0')+':'+String(elapsed%60).padStart(2,'0');
@@ -105,54 +145,56 @@
   if(button.dataset.glyph===kind)return;button.dataset.glyph=kind;button.innerHTML=callGlyph(kind);
  }
  function renderVoice(){
-  const card=voice.active?ensureVoiceCard():voiceCard;if(!card){resizeComposer();return;}
+  syncNativeVoiceCall();
+  const card=voice.active?ensureVoiceCard():voiceCard;voiceOrb?.setState({active:voice.active,phase:voice.phase,level:voice.level,visible:active&&!document.hidden});if(!card){resizeComposer();return;}
   card.hidden=!voice.active;mountVoiceCard(card);
   if(voice.active){
    const statuses={listening:'正在聆听',sending:'正在发送',waiting:'等待回复',starting:'准备播报',speaking:'正在播报',muted:'麦克风已静音',paused:'聆听已暂停'};
    $('dotsVoiceStatus').textContent=statuses[voice.phase]||'语音通话';card.dataset.phase=voice.phase;
    const name=window.ShiYanDotsPanels?.name()||'Dots';$('dotsCallName').textContent=name;card.setAttribute('aria-label','与 '+name+' 的语音通话');
-   const icon=identityIcon();if($('dotsCallIdentity').__icon!==icon){$('dotsCallIdentity').innerHTML=icon;$('dotsCallIdentity').__icon=icon;}
    updateVoiceClock();
-   const mute=$('dotsVoiceMute');mute.setAttribute('aria-pressed',String(voice.muted));mute.setAttribute('aria-label',voice.muted?'取消麦克风静音':'静音麦克风');mute.title=mute.getAttribute('aria-label');setCallGlyph(mute,'muted');
+   const mute=$('dotsVoiceMute');mute.setAttribute('aria-pressed',String(voice.muted));mute.setAttribute('aria-label',voice.muted?'取消麦克风静音':'静音麦克风');mute.title=mute.getAttribute('aria-label');setCallGlyph(mute,voice.muted?'muted':'mic');
   }
+  window.ShiYanDotsPanels?.syncVoiceLayout?.();
   resizeComposer();
  }
  function toggleVoiceMute(){
   if(!voice.active)return;voice.muted=!voice.muted;
   if(voice.muted&&['listening','paused'].includes(voice.phase)){
    const id=voice.recognitionId;voice.recognitionId=null;voice.phase='muted';
-   if(id)voiceNative('cancelSpeech',{sessionId:id});
+   if(id)voiceNative('cancelSpeech',{callId:voice.callId,sessionId:id});
   }else if(!voice.muted&&voice.phase==='muted')listenVoice();
   renderVoice();
  }
  function stopVoice(message=''){
   traceVoice('call_stopped',{hasError:!!message});
-  const recognitionId=voice.recognitionId,playbackId=voice.playbackId;
-  voice.active=false;voice.phase='idle';voice.recognitionId=null;voice.playbackId=null;voice.acceptedId=0;voice.text='';voice.errors.clear();voice.muted=false;voice.paused=false;voice.epoch++;
+  const wasActive=voice.active,callId=voice.callId;
+  voice.active=false;voice.phase='idle';voice.recognitionId=null;voice.playbackId=null;voice.acceptedId=0;voice.text='';voice.errors.clear();voice.replyQueue=[];voice.replySeen.clear();voice.replyProgress.clear();voice.replySuppressed.clear();voice.playbackMessageId=0;voice.level=0;voice.muted=false;voice.paused=false;voice.epoch++;
   clearTimeout(voice.waitTimer);clearInterval(voice.pollTimer);clearInterval(voice.clockTimer);clearTimeout(voice.playbackTimer);voice.playbackTimer=0;voice.waitTimer=0;voice.pollTimer=0;voice.clockTimer=0;
-  if(recognitionId)voiceNative('cancelSpeech',{sessionId:recognitionId});
-  if(playbackId)voiceNative('cancelVoicePlayback',{sessionId:playbackId});
-  renderVoice();if(active&&!document.hidden&&voice.previousFocus?.isConnected)voice.previousFocus.focus({preventScroll:true});voice.previousFocus=null;if(message)showError(message);
+  if(wasActive)voiceNative('endVoiceCall',{callId});
+  voice.callId=null;nativeVoiceCallSignature='';
+  renderVoice();voiceOrb?.destroy();voiceOrb=null;if(document.hidden)disconnect();if(active&&!document.hidden&&voice.previousFocus?.isConnected)voice.previousFocus.focus({preventScroll:true});voice.previousFocus=null;if(message)showError(message);
  }
  function listenVoice(){
-  if(!voice.active||!active||document.hidden)return;
+  if(!voice.active)return;
   if(voice.muted||voice.paused){voice.phase=voice.muted?'muted':'paused';renderVoice();return;}
-  voice.phase='listening';voice.text='';voice.acceptedId=0;voice.recognitionId=crypto.randomUUID();renderVoice();traceVoice('recognition_requested');
-  if(!voiceNative('startSpeech',{sessionId:voice.recognitionId,autoStopAfterSilence:1.4}))stopVoice('请在拾燕桌面应用中开启语音聊天。');
+  voice.phase='listening';voice.level=0;voice.lastSpeechEnergyAt=0;voice.text='';voice.acceptedId=0;voice.recognitionId=crypto.randomUUID();renderVoice();traceVoice('recognition_requested');
+  if(!voiceNative('startSpeech',{callId:voice.callId,sessionId:voice.recognitionId,autoStopAfterSilence:1.4}))stopVoice('请在拾燕桌面应用中开启语音聊天。');
  }
  function toggleVoice(){
   if(voice.active){stopVoice();return;}
   if(busy||uploading||pending.managerMessage||attachments().length||$('dotsManagerInput')?.value.trim())return;
   if(manager?.status==='paused'||manager?.status==='cancelled'){showError('请先在更多菜单中继续总管，再开启语音聊天。');return;}
   if(!window.webkit?.messageHandlers?.native){showError('请在拾燕桌面应用中开启语音聊天。');return;}
-  showError('');voice.previousFocus=document.activeElement;voice.active=true;voice.consumedRecognitionIds.clear();voice.muted=false;voice.paused=false;voice.startedAt=Date.now();voice.callId=crypto.randomUUID();voice.epoch++;drawerOpen=true;renderDrawer();traceVoice('call_started');if(pending.voiceMessage)sendVoicePending().catch(e=>stopVoice(e?.message||'语音消息发送失败。'));else listenVoice();voiceCard?.focus({preventScroll:true});voice.clockTimer=setInterval(updateVoiceClock,1000);
-  voice.pollTimer=setInterval(()=>{if(voice.active&&voice.phase==='waiting'&&active&&!document.hidden)refresh().catch(showError);},2000);
+  showError('');voice.previousFocus=document.activeElement;voice.active=true;voice.replyQueue=[];voice.replySeen.clear();voice.replyProgress.clear();voice.replySuppressed.clear();voice.replyFloor=Math.max(0,...messages.map(m=>Number(m.id)||0));voice.playbackMessageId=0;voice.consumedRecognitionIds.clear();voice.muted=false;voice.paused=false;voice.startedAt=Date.now();voice.callId=crypto.randomUUID();voice.epoch++;voice.level=0;drawerOpen=true;renderDrawer();voiceNative('prepareVoicePlayback',{callId:voice.callId});syncNativeVoiceCall(true);traceVoice('call_started');if(pending.voiceMessage)sendVoicePending().catch(e=>stopVoice(e?.message||'语音消息发送失败。'));else listenVoice();voiceCard?.focus({preventScroll:true});voice.clockTimer=setInterval(updateVoiceClock,1000);
+  voice.pollTimer=setInterval(()=>{if(!voice.active)return;if(pending.voiceMessage&&!busy&&!uploading)sendVoicePending().catch(showError);else {checkVoiceReply();refresh().catch(showError);}},2000);
  }
  async function sendVoice(text){
   if(!voice.active||voice.phase!=='listening'||voice.muted||voice.paused)return;
   voice.recognitionId=null;
-  if(!text.trim()){listenVoice();return;}
+  if(!text.trim()){resumeVoice();return;}
   request('voiceMessage',{message:text.trim(),host:'shiyan_desktop',attachments:[]});
+  voice.phase='sending';voice.level=0;renderVoice();
   await sendVoicePending();
  }
  async function sendVoicePending(){
@@ -166,11 +208,14 @@
    const acceptedId=Number(response.message?.id);
    if(response.accepted!==true||!Number.isSafeInteger(acceptedId)||acceptedId<1)throw Error('语音消息接收尚未确认，点击语音按钮重试。');
    adopt(response);delete pending.voiceMessage;
+   // Acceptance already carries the real user message. Show it before local
+   // persistence; an assistant delta can arrive while that write is pending.
+   renderStreamMessages();
    try{await persist();}catch(e){pending.voiceMessage=payload;throw e;}
    if(!voice.active||voice.epoch!==epoch)return;
    voice.acceptedId=acceptedId;voice.phase='waiting';renderVoice();traceVoice('voice_message_accepted',{requestId:payload.requestId,messageId:acceptedId});
    if(voice.errors.has(acceptedId)){stopVoice(voice.errors.get(acceptedId));return;}
-   voice.waitTimer=setTimeout(()=>{if(voice.active&&voice.epoch===epoch&&voice.phase==='waiting')stopVoice('总管仍在处理，语音聊天已暂停；文字回复会继续同步。');},300000);
+   voice.waitTimer=setTimeout(()=>{if(voice.active&&voice.epoch===epoch&&voice.acceptedId===acceptedId)stopVoice('总管仍在处理，语音聊天已暂停；文字回复会继续同步。');},300000);
    checkVoiceReply();refresh().catch(showError);
   }catch(e){
    traceVoice('voice_submit_failed',{requestId:payload.requestId,accepted:response?.accepted===true});
@@ -182,34 +227,126 @@
   const box=document.createElement('div');box.innerHTML=markdown(content);box.querySelectorAll('button,script,style').forEach(node=>node.remove());
   return box.textContent.trim().slice(0,20000);
  }
+ // Keep a raw-text cursor per reply: rendered Markdown can change while a
+ // delimiter is still arriving. Only stable sentences enter the audio queue.
+ function deliveryState(message){return message.deliveryState||'completed';}
+ function voiceSentences(raw,offset,complete){
+  const chunks=[];let start=offset,i=offset,inline=false;
+  while(i<raw.length){
+   const fence=raw.slice(i).match(/^(\`{3,}|~{3,})/);
+   if(fence&&(i===0||raw[i-1]==='\n')){
+    const marker=fence[1][0],size=fence[1].length;
+    let close=i+size;
+    for(;close<raw.length;close++)if(raw[close]===marker&&(close===0||raw[close-1]==='\n')){
+     let end=close;while(raw[end]===marker)end++;
+     if(end-close>=size){i=end;break;}
+    }
+    if(close>=raw.length)break;
+    continue;
+   }
+   if(raw[i]==='\`'){inline=!inline;i++;continue;}
+   const char=raw[i],boundary=!inline&&(/[。！？!?；;\n]/.test(char)||(char==='.'&&/\s/.test(raw[i+1]||'')&&!/\d/.test(raw[i-1]||''))||((i-start)>=100&&/[，,：:]/.test(char)));
+   if(boundary){
+    let end=i+1;while(end<raw.length&&/[”’」』）)\]。！？!?；;]/.test(raw[end]))end++;
+    chunks.push({offset:end,raw:raw.slice(start,end)});start=end;i=end;
+   }else i++;
+  }
+  if(complete&&start<raw.length){chunks.push({offset:raw.length,raw:raw.slice(start)});start=raw.length;}
+  return {offset:start,chunks};
+ }
+ function hasVoiceReplyStream(){return [...voice.replyProgress].some(([id,progress])=>progress.streaming&&!voice.replySuppressed.has(id));}
  function checkVoiceReply(){
-  if(!voice.active||voice.phase!=='waiting'||!voice.acceptedId)return;
-  const acceptedId=voice.acceptedId;
-  const reply=messages.find(m=>m.role==='assistant'&&Number(m.id)>voice.acceptedId&&Array.isArray(m.respondsToMessageIds)&&m.respondsToMessageIds.includes(voice.acceptedId));
-  if(!reply)return;
-  clearTimeout(voice.waitTimer);voice.waitTimer=0;voice.acceptedId=0;
-  const text=spokenText(reply.content||'');if(!text){listenVoice();return;}
-  voice.phase='starting';voice.text='';voice.playbackId=crypto.randomUUID();renderVoice();traceVoice('voice_reply_matched',{messageId:acceptedId,replyId:Number(reply.id),characterCount:text.length});
-  const playbackId=voice.playbackId;voice.playbackTimer=setTimeout(()=>{if(voice.active&&voice.playbackId===playbackId&&voice.phase==='starting')stopVoice('语音播放未启动，请重新开启语音通话。');},15000);
-  if(!voiceNative('speakVoice',{sessionId:voice.playbackId,text}))stopVoice('语音播放不可用，请在拾燕桌面应用中重试。');
+  if(!voice.active)return;
+  for(const reply of messages){
+   if(reply.role!=='assistant')continue;
+   const id=Number(reply.id);if(!Number.isSafeInteger(id)||id<=voice.replyFloor)continue;
+   const state=deliveryState(reply),streaming=state==='streaming';
+   const related=Array.isArray(reply.respondsToMessageIds)&&reply.respondsToMessageIds.some(value=>Number(value)===voice.acceptedId&&voice.acceptedId>0);
+   if(related&&!streaming){clearTimeout(voice.waitTimer);voice.waitTimer=0;voice.acceptedId=0;}
+   if(voice.replySeen.has(id)||voice.replySuppressed.has(id))continue;
+   const stamp=Number(reply.createdAt),created=stamp>1e12?stamp:stamp*1000;
+   if(!related&&Number.isFinite(created)&&created>0&&created<voice.startedAt-1000)continue;
+   const raw=String(reply.content||''),progress=voice.replyProgress.get(id)||{offset:0,content:'',streaming:false,respondsTo:[]};
+   // A revised already-spoken prefix cannot be taken back. Keep the screen's
+   // correction, but never restart this reply and repeat its old sentences.
+   if(raw.slice(0,progress.offset)!==progress.content.slice(0,progress.offset)){
+    voice.replySuppressed.add(id);progress.streaming=false;continue;
+   }
+   progress.streaming=streaming;progress.respondsTo=reply.respondsToMessageIds||[];
+   const ready=voiceSentences(raw,progress.offset,state==='completed');
+   for(const part of ready.chunks){
+    const clean=part.raw.replace(/(\`{3,}|~{3,})[\s\S]*?\1/g,'（代码内容请查看屏幕。）').replace(/(\`{3,}|~{3,})[\s\S]*$/g,'');
+    const text=spokenText(clean);if(text)voice.replyQueue.push({id,text,offset:part.offset});
+   }
+   progress.offset=ready.offset;progress.content=raw;voice.replyProgress.set(id,progress);
+   if(!streaming)voice.replySeen.add(id);
+  }
+  voice.replyQueue.sort((a,b)=>a.id-b.id||a.offset-b.offset);
+  if(!flushVoiceReply()&&voice.phase==='waiting'&&!voice.acceptedId&&!hasVoiceReplyStream())resumeVoice();
+ }
+ function flushVoiceReply(){
+  if(!voice.active||voice.paused||!voice.replyQueue.length||['sending','starting','speaking'].includes(voice.phase))return false;
+  // Let a live utterance finish before reporting a worker's result.
+  if(voice.phase==='listening'&&(voice.text.trim()||(voice.lastSpeechEnergyAt>0&&performance.now()-voice.lastSpeechEnergyAt<700)))return false;
+  const reply=voice.replyQueue.shift(),progress=voice.replyProgress.get(reply.id);
+  // Start the first sentence at once. Once it is playing, combine the same
+  // reply's ready backlog so Qwen does not restart synthesis for every clause.
+  if(progress?.playbackStarted){
+   while(voice.replyQueue[0]?.id===reply.id&&reply.text.length+voice.replyQueue[0].text.length+1<=240){
+    const next=voice.replyQueue.shift();reply.text+='\n'+next.text;reply.offset=next.offset;
+   }
+  }
+  if(progress)progress.playbackStarted=true;
+  const recognitionId=voice.recognitionId;
+  voice.recognitionId=null;voice.phase='starting';voice.text='';voice.level=0;
+  voice.playbackId=crypto.randomUUID();voice.playbackMessageId=reply.id;
+  if(recognitionId)voiceNative('cancelSpeech',{callId:voice.callId,sessionId:recognitionId});
+  renderVoice();traceVoice('voice_reply_queued',{replyId:reply.id,characterCount:reply.text.length});
+  const playbackId=voice.playbackId;clearTimeout(voice.playbackTimer);
+  voice.playbackTimer=setTimeout(()=>{if(voice.active&&voice.playbackId===playbackId&&voice.phase==='starting')stopVoice('语音播放未启动，请重新开启语音通话。');},120000);
+  if(!voiceNative('speakVoice',{callId:voice.callId,sessionId:playbackId,text:reply.text}))stopVoice('语音播放不可用，请在拾燕桌面应用中重试。');
+  return true;
+ }
+ function resumeVoice(){
+  if(!voice.active)return;
+  voice.phase=(voice.acceptedId||hasVoiceReplyStream())?'waiting':voice.muted?'muted':voice.paused?'paused':'listening';voice.text='';
+  if(flushVoiceReply())return;
+  if(voice.acceptedId||hasVoiceReplyStream()){renderVoice();return;}
+  listenVoice();
  }
  function interruptVoice(){
   if(!voice.active)return;
-  if(['starting','speaking'].includes(voice.phase)){
-   const id=voice.playbackId;voice.playbackId=null;voice.paused=false;clearTimeout(voice.playbackTimer);voice.playbackTimer=0;
-   if(id)voiceNative('cancelVoicePlayback',{sessionId:id});listenVoice();
+  if(['starting','speaking'].includes(voice.phase)||(voice.phase==='waiting'&&hasVoiceReplyStream())){
+   const ids=new Set([voice.playbackMessageId,...voice.replyQueue.map(reply=>reply.id)]);
+   for(const [id,progress] of voice.replyProgress)if(progress.streaming)ids.add(id);
+   for(const id of ids){
+    if(!id)continue;voice.replySuppressed.add(id);
+    const progress=voice.replyProgress.get(id);if(progress){progress.streaming=false;if(progress.respondsTo.some(value=>Number(value)===voice.acceptedId)){clearTimeout(voice.waitTimer);voice.waitTimer=0;voice.acceptedId=0;}}
+   }
+   const id=voice.playbackId;voice.playbackId=null;voice.playbackMessageId=0;voice.replyQueue=[];voice.paused=false;clearTimeout(voice.playbackTimer);voice.playbackTimer=0;
+   if(id)voiceNative('cancelVoicePlayback',{callId:voice.callId,sessionId:id});resumeVoice();
   }else if(voice.phase==='listening'){
    const id=voice.recognitionId;voice.recognitionId=null;voice.paused=true;voice.phase='paused';
-   if(id)voiceNative('cancelSpeech',{sessionId:id});renderVoice();
-  }else if(voice.phase==='paused'){voice.paused=false;listenVoice();}
+   if(id)voiceNative('cancelSpeech',{callId:voice.callId,sessionId:id});renderVoice();
+  }else if(voice.phase==='paused'){voice.paused=false;resumeVoice();}
  }
  function receiveVoiceEvent(d){
-  if(d.type==='voiceSessionSuspended'){if(voice.active)stopVoice();return;}
+  if(d.type==='voiceSessionSuspended'){if(d.callId&&d.callId!==voice.callId)return;if(voice.active)stopVoice();return;}
+  if(d.type==='dotsCallPanelAction'){
+   if(!voice.active||d.callId!==voice.callId)return;
+   if(d.action==='mute')toggleVoiceMute();else if(d.action==='end')stopVoice();
+   return;
+  }
   if(!voice.active)return;
+  if((d.type==='speechLevel'&&d.sessionId===voice.recognitionId)||(d.type==='voicePlaybackLevel'&&d.sessionId===voice.playbackId)){
+   voice.level=Math.max(0,Math.min(1,Number(d.level)||0));voice.levelAt=performance.now();
+   if(d.type==='speechLevel'&&voice.level>.06)voice.lastSpeechEnergyAt=voice.levelAt;
+   voiceOrb?.setState({level:voice.level});return;
+  }
   if(d.type==='voicePlaybackState'&&d.sessionId===voice.playbackId){
    traceVoice('playback_event',{state:d.state});
-   if(d.state==='speaking'){clearTimeout(voice.playbackTimer);voice.playbackTimer=0;voice.phase='speaking';renderVoice();}
-   else if(d.state==='finished'){clearTimeout(voice.playbackTimer);voice.playbackTimer=0;voice.playbackId=null;listenVoice();}
+   if(d.state==='speaking'){clearTimeout(voice.playbackTimer);voice.playbackTimer=0;voice.phase='speaking';voice.level=0;renderVoice();}
+   else if(d.state==='finished'){clearTimeout(voice.playbackTimer);voice.playbackTimer=0;voice.playbackId=null;voice.playbackMessageId=0;resumeVoice();}
    else if(d.state==='failed')stopVoice(d.message||'语音播放失败，请重新开启语音通话。');
    else if(d.state==='cancelled')stopVoice('语音聊天已暂停。');
    return;
@@ -234,7 +371,7 @@
   while(voice.errors.size>100)voice.errors.delete(voice.errors.keys().next().value);
   if(voice.phase==='waiting'&&voice.errors.has(voice.acceptedId))stopVoice(message);
  }
- const labels={active:'等待执行',running:'处理中',waiting:'等待中',scheduled:'已排队',pending:'已排队',queued:'已排队',paused:'已暂停',blocked:'需处理',completed:'已完成',done:'已完成',cancelled:'已取消',canceled:'已取消',failed:'失败',awaiting_approval:'待审批',waiting_approval:'待审批',sleeping:'等待唤醒'};
+ const labels={active:'等待执行',running:'处理中',waiting:'等待中',scheduled:'已排队',pending:'已排队',queued:'已排队',paused:'已暂停',blocked:'需处理',completed:'已完成',done:'已完成',cancelled:'已取消',canceled:'已取消',failed:'失败',awaiting_approval:'需要你批准操作',waiting_approval:'需要你批准操作',sleeping:'等待唤醒'};
  const label=s=>labels[s]||s||'等待中';
  const date=n=>n?new Date(Number(n)*1000).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
  const markdown=s=>window.ShiYanOutput?.markdown(s,C.icon('copy'))||'<p>'+esc(s).replace(/\n/g,'<br>')+'</p>';
@@ -248,10 +385,40 @@
  function showError(e){error=e?.message||String(e);if(error==='连接中断，请检查网络后重试')error='';if($('dotsError')){$('dotsError').textContent=error;$('dotsError').hidden=!error;}if(error.includes('解锁')||error.includes('设备授权')){disconnect();setConnection('等待设备解锁或授权');}renderDrawer();}
  function setConnection(text){const notice=$('dotsConnection');if(notice){notice.textContent=text==='已连接'?'':text;notice.hidden=!notice.textContent;}renderDrawer();}
  function request(slot,payload){if(pending[slot])return pending[slot];pending[slot]={...payload,requestId:crypto.randomUUID()};return pending[slot];}
- function mergeMessages(incoming){messages=Array.from(new Map([...messages,...incoming].map(m=>[String(m.id),m])).values()).sort((a,b)=>Number(a.id)-Number(b.id));}
- function adopt(data){const version=Number(data.activityCursor??data.manager?.activityCursor)||0,current=Number(manager?.activityCursor)||0,fresh=version>=current;const incoming=data.messages||data.manager?.messages||[];const cachedOldest=messages.length?Number(messages[0].id):Infinity,remoteOldest=incoming.length?Math.min(...incoming.map(m=>Number(m.id))):Infinity;if(fresh){if(data.manager){const {messages:embeddedMessages,tasks:embeddedTasks,...metadata}=data.manager;manager=metadata;}if(!historyChecked||cachedOldest>=remoteOldest)hasMoreMessages=!!(data.hasMoreMessages??data.manager?.hasMoreMessages);tasks=data.tasks||data.manager?.tasks||tasks;}mergeMessages(incoming);observeReplies(incoming);if(voice.active&&['paused','cancelled'].includes(manager?.status))stopVoice('总管已暂停或停止，语音聊天已结束。');else checkVoiceReply();}
+ function messageRevision(message){const value=Number(message?.revision);return Number.isSafeInteger(value)&&value>=0?value:0;}
+ function mergeMessages(incoming){
+  const merged=new Map(messages.map(message=>[String(message.id),message]));
+  for(const message of incoming){
+   const key=String(message.id),old=merged.get(key);
+   if(old&&message.role==='assistant'){
+    if(deliveryState(old)!=='streaming'&&deliveryState(message)==='streaming')continue;
+    const previous=messageRevision(old),revision=messageRevision(message);
+    if(revision<previous)continue;
+    if(revision===previous&&(revision>0||old.deliveryState||message.deliveryState)){
+     if(deliveryState(old)!=='streaming'&&deliveryState(message)==='streaming')continue;
+     if(!String(message.content||'').startsWith(String(old.content||'')))continue;
+    }
+   }
+   merged.set(key,message);
+  }
+  messages=[...merged.values()].sort((a,b)=>Number(a.id)-Number(b.id));
+ }
+ function adopt(data){const version=Number(data.activityCursor??data.manager?.activityCursor)||0,current=Number(manager?.activityCursor)||0,fresh=version>=current;const incoming=[...(data.messages||data.manager?.messages||[])];if(messageId(data.message)&&typeof data.message.content==='string')incoming.push(data.message);const cachedOldest=messages.length?Number(messages[0].id):Infinity,remoteOldest=incoming.length?Math.min(...incoming.map(m=>Number(m.id))):Infinity;if(fresh){if(data.manager){const {messages:embeddedMessages,tasks:embeddedTasks,...metadata}=data.manager;manager=metadata;}if(!historyChecked||cachedOldest>=remoteOldest)hasMoreMessages=!!(data.hasMoreMessages??data.manager?.hasMoreMessages);tasks=data.tasks||data.manager?.tasks||tasks;}mergeMessages(incoming);observeReplies(incoming);if(voice.active&&['paused','cancelled'].includes(manager?.status))stopVoice('总管已暂停或停止，语音聊天已结束。');else checkVoiceReply();}
  async function earlier(){if(historyLoading||!messages.length)return;historyLoading=true;const records=$('dotsRecords'),height=records.scrollHeight,top=records.scrollTop;refreshContent();try{const batch=await api('/manager/messages?before='+messages[0].id+'&limit=100');mergeMessages(batch.messages||[]);hasMoreMessages=!!batch.hasMore;historyChecked=true;await persist();}finally{historyLoading=false;refreshContent();const updated=$('dotsRecords');if(updated)updated.scrollTop=top+updated.scrollHeight-height;}}
- function refresh(){const task=refreshChain.catch(()=>{}).then(async()=>{const observed=readState.observedThrough,data=await api('/manager');adopt(data);await reconcileUnreadGap(data,observed);if(active&&drawerOpen){const d=await api('/goals?limit=200');goals=d.goals||[];if(selected){const detail=await api('/goals/'+selected);details[String(selected)]=detail.goal;}}await persist();refreshContent();});refreshChain=task;return task;}
+ const needsApproval=task=>task.legacyImported!==true&&['waiting_approval','awaiting_approval'].includes(task.status);
+ const approvalSlot=(goalId,id)=>'approval:'+goalId+':'+id;
+ const approvalState=(goalId,id)=>({busy:approvalBusy.has(approvalSlot(goalId,id)),pending:pending[approvalSlot(goalId,id)]});
+ async function refreshApprovals(force=false){
+  const waiting=tasks.filter(needsApproval);renderApprovals();
+  await Promise.all(waiting.map(async task=>{
+   const id=String(task.id),version=JSON.stringify([task.status,task.updatedAt,task.controlRevision,manager?.activityCursor]),cached=approvalVersions.get(id);
+   if(!force&&cached?.version===version&&Date.now()-cached.at<10000)return;
+   try{const data=await api('/goals/'+encodeURIComponent(id));details[id]=data.goal;approvalVersions.set(id,{version,at:Date.now()});approvalErrors.delete(id);}
+   catch(cause){approvalErrors.set(id,cause.message||'暂时无法读取审批详情');}
+  }));
+  renderApprovals();
+ }
+ function refresh(forceApprovals=false){const task=refreshChain.catch(()=>{}).then(async()=>{const observed=readState.observedThrough,data=await api('/manager');adopt(data);await reconcileUnreadGap(data,observed);await refreshApprovals(forceApprovals);if(active&&drawerOpen){const d=await api('/goals?limit=200');goals=d.goals||[];if(selected){const detail=await api('/goals/'+selected);details[String(selected)]=detail.goal;}}await persist();refreshContent();});refreshChain=task;return task;}
  function managerTime(message){
   if(message.role!=='user')return '';
   const value=Number(message.createdAt);if(!Number.isFinite(value)||value<=0)return '';
@@ -263,7 +430,18 @@
   return '<div class="dots-message-time"><time datetime="'+esc(time.toISOString())+'">'+esc(label)+'</time></div>';
  }
  function renderMessages(){const records=$('dotsRecords');if(!records)return;records.innerHTML=(hasMoreMessages&&messages.length?'<button type="button" class="dots-history-more" data-dots-earlier'+(historyLoading?' disabled':'')+'>'+(historyLoading?'正在读取…':'查看更早消息')+'</button>':'')+(messages.length?messages.map(m=>managerTime(m)+'<article class="dots-manager-message '+(m.role==='user'?'is-user':'is-assistant')+'" data-dots-message="'+esc(m.id)+'">'+(m.role==='system'?'<header>状态</header>':'')+'<div class="message-body">'+markdown(m.content||'')+'</div>'+((m.attachments||[]).length?'<div class="dots-files">'+m.attachments.map(a=>fileChip(a)).join('')+'</div>':'')+'</article>').join(''):'');}
- function renderDrawer(){window.ShiYanDotsPanels?.render({manager,messages,tasks,goals,details,drawerOpen,selected,busy,uploading,loading:!monitorReady,notice:error,connection:$('dotsConnection')?.textContent||'',pendingMessage:!!pending.managerMessage});renderVoice();}
+ function renderApprovals(){
+  const box=$('dotsApprovals');if(!box)return;
+  const waiting=tasks.filter(needsApproval),cards=waiting.map(task=>{
+   const id=String(task.id),goal=details[id],checked=approvalVersions.has(id),notice=approvalErrors.get(id);
+   if(!checked||notice)return '<section class="dots-child-approval dots-approval-unavailable"><h3>'+esc(task.title||'待批准操作')+'</h3><p role="status">'+esc(notice||'正在读取需要你批准的操作…')+'</p>'+(notice?'<button type="button" data-dots-refresh-approvals>重新读取</button>':'')+'</section>';
+   return window.ShiYanDotsPanels?.approvalCards({...goal,title:task.title||goal?.title})||'';
+  }).join('');
+  const html=cards?'<header class="dots-approvals-heading">需要你批准的操作</header><small>请查看下方命令，并选择批准或拒绝。</small>'+cards:'';
+  box.hidden=!html;if(box.__html!==html){box.__html=html;box.innerHTML=html;}
+ }
+ function syncApprovalState(){renderApprovals();window.ShiYanDotsPanels?.syncApprovalState();}
+ function renderDrawer(){renderApprovals();window.ShiYanDotsPanels?.render({manager,messages,tasks,goals,details,drawerOpen,selected,busy,uploading,loading:!monitorReady,notice:error,connection:$('dotsConnection')?.textContent||'',pendingMessage:!!pending.managerMessage});renderVoice();}
  function controlIcon(action){const path=action==='pause'?'M9 5v14M15 5v14':action==='resume'?'M7 4l13 8-13 8Z':'M6 6h12v12H6Z';return '<svg class="wb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+path+'"/></svg>';}
  function renderToolbar(){
   const status=manager?.status==='paused'?'已暂停':manager?.status==='cancelled'?'已停止':Number(manager?.runningWorkers)>0?'正在处理 '+Number(manager.runningWorkers)+' 件事':'';
@@ -272,7 +450,7 @@
   if(menu.dataset.signature===signature)return;menu.dataset.signature=signature;
   menu.innerHTML='<button type="button" data-dots-rename>'+window.shiyan.sessionMenuIcon('rename')+'<span>重命名</span></button><button type="button" data-dots-manager-control="'+action+'"'+(busy?' disabled':'')+'>'+controlIcon(action)+'<span>'+(action==='pause'?'暂停':'继续')+'</span></button><button type="button" class="is-destructive" data-dots-manager-control="cancel"'+(busy?' disabled':'')+'>'+controlIcon('cancel')+'<span>停止全部任务</span></button><hr><button type="button" data-dots-refresh>'+C.icon('refresh')+'<span>刷新</span></button>';
  }
- function resizeComposer(){const input=$('dotsManagerInput'),button=$('dotsSendButton');if(!input||!button)return;input.style.height='auto';input.style.height=Math.min(160,Math.max(36,input.scrollHeight))+'px';const empty=!input.value.trim()&&!attachments().length&&!pending.managerMessage,isVoice=voice.active||(!busy&&empty);button.disabled=voice.active?false:busy||uploading;button.classList.toggle('is-empty',empty&&!isVoice);button.classList.toggle('is-voice',isVoice);button.classList.toggle('is-voice-active',voice.active);button.setAttribute('aria-label',voice.active?'结束语音聊天':isVoice?'语音实时聊天':busy?'发送中':pending.managerMessage?'重试发送':'发送');button.title=button.getAttribute('aria-label');button.innerHTML=isVoice?(voice.active?'<span class="dots-voice-stop" aria-hidden="true"></span>':voiceGlyph):pending.managerMessage&&!busy?C.icon('refresh'):'<span class="dots-send-icon" aria-hidden="true"></span>';}
+ function resizeComposer(){const input=$('dotsManagerInput'),button=$('dotsSendButton');if(!input||!button)return;input.style.height='auto';input.style.height=Math.min(160,Math.max(36,input.scrollHeight))+'px';const empty=!input.value.trim()&&!attachments().length&&!pending.managerMessage,isVoice=empty&&(voice.active||!busy);button.disabled=isVoice&&voice.active?false:busy||uploading;button.classList.toggle('is-empty',empty&&!isVoice);button.classList.toggle('is-voice',isVoice);button.classList.toggle('is-voice-active',isVoice&&voice.active);button.setAttribute('aria-label',isVoice&&voice.active?'结束语音聊天':isVoice?'语音实时聊天':busy?'发送中':pending.managerMessage?'重试发送':'发送');button.title=button.getAttribute('aria-label');button.innerHTML=isVoice?(voice.active?'<span class="dots-voice-stop" aria-hidden="true"></span>':voiceGlyph):pending.managerMessage&&!busy?C.icon('refresh'):'<span class="dots-send-icon" aria-hidden="true"></span>';positionCompactVoiceCard();}
    
    
   function managerIMEBlocksSend(){
@@ -307,37 +485,135 @@
       
      return;
     }
-    if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();if(!e.repeat)submit().catch(showError);}
+    window.ShiYanComposerKeys.handleEnter(e,()=>submit().catch(showError));
    };
    form.onsubmit=e=>{
     e.preventDefault();if(managerIMEBlocksSend())return;
-    if(voice.active||(!input.value.trim()&&!attachments().length&&!pending.managerMessage))toggleVoice();
+    if(!input.value.trim()&&!attachments().length&&!pending.managerMessage)toggleVoice();
     else submit().catch(showError);
    };
   }
  function render(){if(!view)return;const frozen=!!pending.managerMessage;
   renderToolbar();
-  $('dotsDetail').innerHTML='<div id="dotsRecords" class="dots-records"></div><form id="dotsManagerForm" class="dots-composer"><div class="dots-files">'+(frozen?pending.managerMessage.attachments||[]:attachments()).map(a=>fileChip(a,!frozen)).join('')+'</div><input id="dotsFileInput" type="file" multiple hidden><div class="dots-composer-surface"><button id="dotsAddFile" class="dots-add-file" type="button" aria-label="添加文件" title="添加文件"'+(frozen||busy||uploading?' disabled':'')+'><span aria-hidden="true">'+(uploading?'…':'+')+'</span></button><textarea id="dotsManagerInput" rows="1" maxlength="20000" aria-label="发送消息" placeholder="交给我…"'+(frozen?' readonly':'')+'>'+esc(frozen?pending.managerMessage.message:drafts.manager||'')+'</textarea><button id="dotsSendButton" class="send-button dots-send'+(busy?' is-busy':'')+'" type="submit"'+(busy?' disabled':'')+' aria-label="'+(frozen?'重试发送':'发送')+'"><span class="dots-send-icon" aria-hidden="true"></span></button></div>'+'</form>';
-  renderMessages();renderDrawer();renderVoice();$('dotsAddFile').onclick=()=>$('dotsFileInput').click();$('dotsFileInput').onchange=e=>uploadFiles(Array.from(e.target.files||[])).catch(showError);view.querySelectorAll('[data-dots-remove-file]').forEach(button=>button.onclick=()=>{drafts.managerAttachments=attachments().filter(a=>a.id!==button.dataset.dotsRemoveFile);persist().catch(showError);view.__signature=null;refreshContent();});$('dotsManagerInput').oninput=e=>{if(voice.active)stopVoice();drafts.manager=e.target.value;resizeComposer();persist().catch(showError);};bindManagerComposer($('dotsManagerInput'),$('dotsManagerForm'));
+  $('dotsDetail').innerHTML='<div id="dotsRecords" class="dots-records"></div><section id="dotsApprovals" class="dots-manager-approvals" aria-label="需要你批准的操作" hidden></section><form id="dotsManagerForm" class="dots-composer"><div class="dots-files">'+(frozen?pending.managerMessage.attachments||[]:attachments()).map(a=>fileChip(a,!frozen)).join('')+'</div><input id="dotsFileInput" type="file" multiple hidden><div class="dots-composer-surface"><button id="dotsAddFile" class="dots-add-file" type="button" aria-label="添加文件" title="添加文件"'+(frozen||busy||uploading?' disabled':'')+'>'+(uploading?'<span aria-hidden="true">…</span>':'<svg width="20" height="20" viewBox="0 0 24 24" style="display:block" aria-hidden="true" focusable="false"><path d="M12 4v16M4 12h16" fill="none" stroke="currentColor" stroke-width="2.4"/></svg>')+'</button><textarea id="dotsManagerInput" rows="1" maxlength="20000" aria-label="发送消息" placeholder="交给我…"'+(frozen?' readonly':'')+'>'+esc(frozen?pending.managerMessage.message:drafts.manager||'')+'</textarea><button id="dotsSendButton" class="send-button dots-send'+(busy?' is-busy':'')+'" type="submit"'+(busy?' disabled':'')+' aria-label="'+(frozen?'重试发送':'发送')+'"><span class="dots-send-icon" aria-hidden="true"></span></button></div>'+'</form>';
+  renderMessages();renderDrawer();renderVoice();$('dotsAddFile').onclick=()=>$('dotsFileInput').click();$('dotsFileInput').onchange=e=>uploadFiles(Array.from(e.target.files||[])).catch(showError);view.querySelectorAll('[data-dots-remove-file]').forEach(button=>button.onclick=()=>{drafts.managerAttachments=attachments().filter(a=>a.id!==button.dataset.dotsRemoveFile);persist().catch(showError);view.__signature=null;refreshContent();});$('dotsManagerInput').oninput=e=>{drafts.manager=e.target.value;resizeComposer();persist().catch(showError);};bindManagerComposer($('dotsManagerInput'),$('dotsManagerForm'));
  }
- function refreshContent(){renderUnread();if(!active)return;const records=$('dotsRecords'),scroll=records?.scrollTop||0,atBottom=!records||records.scrollHeight-scroll-records.clientHeight<60;const focused=document.activeElement?.id,start=document.activeElement?.selectionStart,end=document.activeElement?.selectionEnd;const sig=JSON.stringify([manager,messages,tasks,goals,details,drawerOpen,selected,busy,pending,hasMoreMessages,historyLoading,uploading,attachments()]);if(view.__signature===sig){markVisibleRepliesRead();return;}
+ function refreshContent(){renderUnread();if(!active||document.hidden)return;const records=$('dotsRecords'),scroll=records?.scrollTop||0,atBottom=!records||records.scrollHeight-scroll-records.clientHeight<60;const focused=document.activeElement?.id,start=document.activeElement?.selectionStart,end=document.activeElement?.selectionEnd;const sig=JSON.stringify([manager,messages,tasks,goals,details,drawerOpen,selected,busy,pending,hasMoreMessages,historyLoading,uploading,attachments()]);if(view.__signature===sig){if(!voiceOrb?.drag)voiceComposerDeferred=false;markVisibleRepliesRead();return;}
     
     
+   // Keep the captured input lip mounted for the entire pointer gesture. A
+   // task update may repaint messages/panels, but must not cancel an upward drag
+   // by replacing its composer; finish/release flushes the deferred full render.
+   if(voiceOrb?.drag){
+    voiceComposerDeferred=true;renderToolbar();renderMessages();renderDrawer();
+    const updated=$('dotsRecords');if(updated)updated.scrollTop=atBottom?updated.scrollHeight:scroll;markVisibleRepliesRead();return;
+   }
    if(managerIME?.input===$('dotsManagerInput')&&(managerIME.composing||managerIME.ending||managerIME.confirmingEnter)){
     managerIME.deferred=true;renderToolbar();renderMessages();renderDrawer();
     const updated=$('dotsRecords');if(updated)updated.scrollTop=atBottom?updated.scrollHeight:scroll;markVisibleRepliesRead();return;
    }
-   view.__signature=sig;render();const updated=$('dotsRecords');if(updated)updated.scrollTop=atBottom?updated.scrollHeight:scroll;if(focused&&$(focused)){$(focused).focus({preventScroll:true});if(typeof start==='number')$(focused).setSelectionRange(start,end);}markVisibleRepliesRead();}
- async function submit(){if(busy||uploading||managerIMEBlocksSend())return;const text=$('dotsManagerInput')?.value?.trim();if(!text&&!attachments().length&&!pending.managerMessage)return;const payload=request('managerMessage',{message:text||'请处理这些附件。',host:'shiyan_desktop',attachments:attachments().map(a=>({...a}))});let acceptedResponse=null;busy=true;showError('');refreshContent();try{await persist();const response=await api('/manager/messages','POST',{...payload,attachments:(payload.attachments||[]).map(a=>a.id)});if(response.accepted!==true)throw Error('总管未确认接收此消息');acceptedResponse=response;adopt(response);delete pending.managerMessage;if(drafts.manager?.trim()===payload.message||(!drafts.manager?.trim()&&payload.attachments?.length))delete drafts.manager;drafts.managerAttachments=attachments().filter(a=>!(payload.attachments||[]).some(sent=>sent.id===a.id));await persist();await refresh();return response;}catch(e){showError(e);return acceptedResponse;}finally{busy=false;refreshContent();}}
+   voiceComposerDeferred=false;view.__signature=sig;render();const updated=$('dotsRecords');if(updated)updated.scrollTop=atBottom?updated.scrollHeight:scroll;if(focused&&$(focused)){$(focused).focus({preventScroll:true});if(typeof start==='number')$(focused).setSelectionRange(start,end);}markVisibleRepliesRead();}
+ async function submit(){if(busy||uploading||managerIMEBlocksSend())return;const text=$('dotsManagerInput')?.value?.trim();if(!text&&!attachments().length&&!pending.managerMessage)return;const payload=request('managerMessage',{message:text||'请处理这些附件。',host:'shiyan_desktop',attachments:attachments().map(a=>({...a}))});let acceptedResponse=null;busy=true;showError('');refreshContent();try{await persist();const response=await api('/manager/messages','POST',{...payload,attachments:(payload.attachments||[]).map(a=>a.id)});if(response.accepted!==true)throw Error('总管未确认接收此消息');acceptedResponse=response;adopt(response);delete pending.managerMessage;if(drafts.manager?.trim()===payload.message||(!drafts.manager?.trim()&&payload.attachments?.length))delete drafts.manager;drafts.managerAttachments=attachments().filter(a=>!(payload.attachments||[]).some(sent=>sent.id===a.id));await persist();await refresh();return response;}catch(e){showError(e);return acceptedResponse;}finally{busy=false;refreshContent();if(voice.active&&pending.voiceMessage)sendVoicePending().catch(showError);}}
  async function managerControl(action){if(busy)return;if(voice.active)stopVoice();const slot='managerControl',payload=request(slot,{action});busy=true;try{await persist();adopt(await api('/manager/control','POST',payload));delete pending[slot];await persist();}finally{busy=false;refreshContent();}}
  async function taskControl(action){if(busy||!selected)return;const slot='taskControl:'+selected,payload=request(slot,{action});busy=true;try{await persist();await api('/goals/'+selected+'/control','POST',payload);delete pending[slot];await persist();await refresh();}finally{busy=false;refreshContent();}}
- async function decide(id,decision){if(busy||!selected)return;const a=details[String(selected)]?.approvals?.find(a=>String(a.id)===String(id));if(!a)return;const slot='approval:'+id,payload=request(slot,{decision,confirmedCommand:a.command});busy=true;try{await persist();await api('/goals/'+selected+'/approvals/'+id+'/decision','POST',payload);delete pending[slot];await persist();await refresh();}finally{busy=false;refreshContent();}}
+ async function decide(goalId,id,decision,shownCommand){
+  goalId=Number(goalId);id=Number(id);
+  if(!Number.isSafeInteger(goalId)||goalId<1||!Number.isSafeInteger(id)||id<1||!['approve','reject'].includes(decision))throw Error('审批标识无效，请重新读取事项');
+  const slot=approvalSlot(goalId,id);if(approvalBusy.has(slot))return;
+  const prior=pending[slot];
+  if(prior&&(prior.decision!==decision||prior.confirmedCommand!==shownCommand))throw Error('上次决定的结果尚待确认，请重试原决定');
+  if(decision==='approve'&&!window.ShiYanDotsPanels.canApprove(shownCommand))throw Error('命令尚未完整，无法批准；请让 Dots 补全具体命令');
+  approvalBusy.add(slot);syncApprovalState();
+  try{
+   if(!prior){
+    const data=await api('/goals/'+goalId);details[String(goalId)]=data.goal;
+    const current=data.goal?.approvals?.find(a=>Number(a.id)===id);
+    if(!current||!window.ShiYanDotsPanels.isPendingApproval(current)||String(current.command??'')!==shownCommand){
+     approvalErrors.delete(String(goalId));renderApprovals();throw Error('该审批的状态或命令已更新，请查看最新内容后再决定');
+    }
+   }
+   const payload=request(slot,{decision,confirmedCommand:shownCommand});await persist();
+   const result=await api('/goals/'+goalId+'/approvals/'+id+'/decision','POST',payload);
+   if(result.goal)details[String(goalId)]=result.goal;
+   delete pending[slot];await persist();await refresh(true);
+  }catch(cause){
+   if([400,403,404,422].includes(cause.status)||(cause.status===409&&cause.code==='approval_changed')){delete pending[slot];await persist();approvalVersions.delete(String(goalId));refresh(true).catch(showError);}
+   throw cause;
+  }finally{approvalBusy.delete(slot);syncApprovalState();}
+ }
  async function showOutput(id){const box=view.querySelector('[data-dots-output-body="'+CSS.escape(String(id))+'"]');if(!box)return;if(!box.hidden){box.hidden=true;return;}const data=await api('/outputs/'+id);let raw=data.output?.raw_result||data.output?.summary||'';if(typeof raw!=='string')raw=JSON.stringify(raw,null,2);let readable=raw;try{const parsed=JSON.parse(raw);readable=parsed.result||parsed.message||parsed.summary||JSON.stringify(parsed,null,2);}catch{}rawOutputs.set(String(id),raw);while(rawOutputs.size>20)rawOutputs.delete(rawOutputs.keys().next().value);const preview=raw.length>12000?raw.slice(0,8000)+'\n… 可复制完整结果 …\n'+raw.slice(-4000):raw;box.innerHTML='<div class="dots-result-readable">'+markdown(typeof readable==='string'?readable:JSON.stringify(readable,null,2))+'</div><details class="dots-raw-result"><summary>原始结果</summary><pre><code>'+esc(preview)+'</code></pre><button data-dots-copy-output="'+esc(id)+'">复制完整结果</button></details>';box.hidden=false;}
- function disconnect(){streamEpoch++;source?.close();source=null;clearTimeout(reconnectTimer);clearInterval(recoveryTimer);}
- function reconnect(){source?.close();source=null;setConnection('连接中断，正在重连');clearTimeout(reconnectTimer);const epoch=streamEpoch;reconnectTimer=setTimeout(()=>{if(monitorReady&&!document.hidden&&epoch===streamEpoch)connect();},Math.min(15000,1000*2**Math.min(4,reconnectAttempt++)));}
- function connect(){if(!monitorReady||document.hidden)return;const epoch=++streamEpoch;source?.close();source=new EventSource('/api/dots/events?after='+cursor);source.addEventListener('connected',()=>{if(epoch!==streamEpoch)return;reconnectAttempt=0;setConnection('已连接');});source.addEventListener('update',e=>{let event;try{event=JSON.parse(e.data);receiveVoiceActivity(event);}catch{reconnect();return;}const seq=Number(event.seq)||0;if(seq<=cursor)return;events=events.catch(()=>{}).then(async()=>{if(epoch!==streamEpoch||document.hidden||seq<=cursor)return;await refresh();if(epoch!==streamEpoch||document.hidden)return;const before=cursor;cursor=seq;try{await persist();}catch(e){cursor=before;throw e;}await api('/notifications/ack','POST',{cursor});}).catch(e=>{showError(e);if(epoch===streamEpoch)reconnect();});});source.addEventListener('connection-error',()=>{if(epoch===streamEpoch)reconnect();});source.onerror=()=>{if(epoch===streamEpoch)reconnect();};clearInterval(recoveryTimer);recoveryTimer=setInterval(()=>{if(monitorReady&&!document.hidden)refresh().catch(showError);},10000);}
- function activate(){active=window.shiyan.getView()==='dots';document.body.classList.toggle('dots-is-current-view',active);view.hidden=!active;$('dotsToolbar').hidden=!active;if(!active)$('dotsToolbar').querySelector('.dots-menu').open=false;$('openDotsButton').classList.toggle('is-selected',active);if(active){$('workspaceTitle').replaceChildren();$('railHome').classList.add('is-active');hydration.then(()=>{if(!active)return;refreshContent();if(!source)connect();refresh().catch(showError);}).catch(showError);}else {stopVoice();}renderUnread();C.scheduleNative();}
- function install(context){C=context;hydration=hydrate();hydration.catch(showError);const button=document.createElement('button');button.id='openDotsButton';button.type='button';button.className='sidebar-new-chat sidebar-dots';button.innerHTML=identityIcon()+'<span>'+esc(window.ShiYanDotsPanels?.name()||'Dots')+'</span>';button.title='Dots · 你的专属助手';button.setAttribute('aria-label','Dots 个人助手');button.onclick=()=>window.shiyan.navigate('dots');$('newConversationButton').after(button);$('agentSidebar')?.classList.add('has-dots-navigation');view=document.createElement('section');view.id='dotsView';view.className='dots-view dots-manager-view';view.hidden=true;view.setAttribute('aria-label','Dots 私人助手');view.innerHTML='<header id="dotsToolbar" class="dots-toolbar" hidden><span id="dotsStatus" class="dots-status" role="status" hidden></span><small id="dotsConnection" role="status" hidden></small><div class="dots-menu"><button type="button" data-dots-more class="wb-icon-button dots-icon-button" aria-label="更多" aria-expanded="false" title="更多">'+C.toolbarIcon('more')+'</button><div id="dotsMenuContent" class="dots-menu-content"></div></div><button id="dotsTasksButton" type="button" class="wb-icon-button dots-icon-button dots-tasks-button" data-dots-drawer aria-label="任务与活动" aria-expanded="false" title="任务与活动">'+C.toolbarIcon('tasks')+'</button><span class="dots-toolbar-divider" aria-hidden="true"></span></header><p id="dotsError" class="dots-error" role="alert" hidden></p><div class="dots-layout"><div id="dotsDetail" class="dots-detail"></div><aside id="dotsActivity" class="dots-activity" hidden></aside></div>';$('centerContent').appendChild(view);if($('toggleRightWorkspace'))$('toggleRightWorkspace').before($('dotsToolbar'));else if($('desktopToolbar'))$('desktopToolbar').appendChild($('dotsToolbar'));window.ShiYanDotsPanels.install({icon:C.icon,api,markdown,refresh,showError,snapshot:()=>({manager,messages,tasks,goals,details,drawerOpen,selected,busy}),request,persist,pending:()=>pending,releaseRequest:async slot=>{delete pending[slot];await persist();},closePanel:()=>{drawerOpen=false;renderDrawer();},nameChanged:()=>{const name=window.ShiYanDotsPanels.name();renderUnread();if(active)$('workspaceTitle').replaceChildren();},scheduleNative:C.scheduleNative,voiceUpdated:focus=>{renderVoice();if(focus?.isConnected)focus.focus({preventScroll:true});}});const dotsMenu=$('dotsToolbar').querySelector('.dots-menu');Object.defineProperty(dotsMenu,'open',{get(){return this.hasAttribute('open');},set(value){this.toggleAttribute('open',!!value);this.querySelector('[data-dots-more]').setAttribute('aria-expanded',String(!!value));}});const moreSummary=$('dotsToolbar').querySelector('[data-dots-more]');moreSummary.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();const menu=moreSummary.parentElement;menu.open=!menu.open;moreSummary.setAttribute('aria-expanded',String(menu.open));C.scheduleNative?.();});const handleAction=async e=>{try{if(e.target.closest('.dots-menu-content button'))$('dotsToolbar').querySelector('.dots-menu').removeAttribute('open');const task=e.target.closest('[data-dots-task]'),mc=e.target.closest('[data-dots-manager-control]'),tc=e.target.closest('[data-dots-task-control]'),decision=e.target.closest('[data-dots-decision]');if(e.target.closest('[data-dots-earlier]'))await earlier();else if(e.target.closest('[data-dots-rename]')){window.ShiYanDotsPanels.openProfile();}else if(e.target.closest('[data-dots-drawer]')){drawerOpen=!drawerOpen;renderDrawer();C.scheduleNative?.();if(drawerOpen)refresh().catch(showError);}else if(e.target.closest('[data-dots-refresh]')){showError('');await refresh();if(!source)connect();}else if(task){selected=Number(task.dataset.dotsTask);const d=await api('/goals/'+selected);details[String(selected)]=d.goal;await persist();refreshContent();}else if(mc)await managerControl(mc.dataset.dotsManagerControl);else if(tc)await taskControl(tc.dataset.dotsTaskControl);else if(decision)await decide(decision.closest('[data-dots-approval]').dataset.dotsApproval,decision.dataset.dotsDecision);else if(e.target.closest('[data-dots-output]'))await showOutput(e.target.closest('[data-dots-output]').dataset.dotsOutput);else if(e.target.closest('[data-dots-copy-output]'))await window.shiyan.copyText(rawOutputs.get(e.target.closest('[data-dots-copy-output]').dataset.dotsCopyOutput)||'');}catch(e){showError(e);}};view.addEventListener('click',handleAction);$('dotsToolbar').addEventListener('click',handleAction);document.addEventListener('click',e=>{if(!e.target.closest('.dots-menu'))$('dotsToolbar').querySelector('.dots-menu')?.removeAttribute('open');});document.addEventListener('keydown',e=>{if(active&&e.key==='Escape'){const menu=$('dotsToolbar').querySelector('.dots-menu');if(menu?.open){menu.open=false;menu.querySelector('[data-dots-more]').focus();e.preventDefault();}}});window.addEventListener('shiyan-view',activate);window.addEventListener('shiyan-state',()=>{if(active)queueMicrotask(()=>{$('workspaceTitle').replaceChildren();$('railHome').classList.add('is-active');});});document.addEventListener('visibilitychange',()=>{if(document.hidden){stopVoice();disconnect();}else if(monitorReady){connect();refresh().catch(showError);}});window.addEventListener('pagehide',()=>{stopVoice();disconnect();persist().catch(()=>{});});window.addEventListener('online',()=>{if(monitorReady){connect();refresh().catch(showError);}});view.addEventListener('scroll',e=>{if(e.target.id==='dotsRecords')markVisibleRepliesRead();},true);hydration.then(()=>{monitorReady=true;renderUnread();connect();refresh().catch(showError);}).catch(showError);}
+ let eventFlushTimer=0,eventPendingCursor=0,eventRefreshNeeded=false,messageRenderTimer=0;
+ function renderStreamMessages(){
+  clearTimeout(messageRenderTimer);messageRenderTimer=0;if(!active||document.hidden)return;
+  const records=$('dotsRecords');if(!records)return;
+  const scroll=records.scrollTop,atBottom=records.scrollHeight-scroll-records.clientHeight<60;
+  // Updating only the transcript keeps input, selection, IME and orb pointer
+  // capture mounted while the very same assistant message grows.
+  renderMessages();renderUnread();records.scrollTop=atBottom?records.scrollHeight:scroll;
+ }
+ function adoptMessageEvent(event){
+  const activity=event?.payload?.activity,snapshot=event?.type==='manager_snapshot',message=snapshot?event?.payload?.message:activity?.data?.message;
+  const user=snapshot||activity?.kind==='user_message';
+  if((user?message?.role!=='user':!['assistant_delta','assistant_message'].includes(activity?.kind)||message?.role!=='assistant')||!messageId(message)||typeof message.content!=='string')return false;
+  mergeMessages([message]);
+  if(user){
+   // User activities precede their assistant deltas, so commit their visible
+   // transcript synchronously rather than waiting behind GET/save/ack work.
+   renderStreamMessages();
+   return !snapshot;
+  }
+  observeReplies([message]);checkVoiceReply();
+  if(!messageRenderTimer)messageRenderTimer=setTimeout(renderStreamMessages,60);
+  return true;
+ }
+ function scheduleEventFlush(epoch){
+  if(eventFlushTimer)return;
+  eventFlushTimer=setTimeout(()=>{
+   eventFlushTimer=0;
+   events=events.catch(()=>{}).then(async()=>{
+    if(epoch!==streamEpoch||!monitorAllowed())return;
+    const target=eventPendingCursor,needsRefresh=eventRefreshNeeded;eventRefreshNeeded=false;
+    if(target<=cursor)return;
+    if(needsRefresh)await refresh();
+    if(epoch!==streamEpoch||!monitorAllowed())return;
+    const before=cursor;cursor=target;
+    try{await persist();}catch(error){cursor=before;throw error;}
+    if(epoch!==streamEpoch||!monitorAllowed())return;
+    await api('/notifications/ack','POST',{cursor:target});markVisibleRepliesRead();
+   }).catch(error=>{
+    showError(error);if(epoch===streamEpoch){eventPendingCursor=cursor;eventRefreshNeeded=false;reconnect();}
+   }).finally(()=>{if(epoch===streamEpoch&&monitorAllowed()&&eventPendingCursor>cursor)scheduleEventFlush(epoch);});
+  },120);
+ }
+ function disconnect(){streamEpoch++;source?.close();source=null;clearTimeout(reconnectTimer);clearInterval(recoveryTimer);clearTimeout(eventFlushTimer);clearTimeout(messageRenderTimer);eventFlushTimer=0;messageRenderTimer=0;eventPendingCursor=cursor;eventRefreshNeeded=false;}
+ function reconnect(){source?.close();source=null;setConnection('连接中断，正在重连');clearTimeout(reconnectTimer);const epoch=streamEpoch;reconnectTimer=setTimeout(()=>{if(monitorAllowed()&&epoch===streamEpoch)connect();},Math.min(15000,1000*2**Math.min(4,reconnectAttempt++)));}
+ function connect(){
+  if(!monitorAllowed())return;
+  const epoch=++streamEpoch;source?.close();clearTimeout(eventFlushTimer);eventFlushTimer=0;eventPendingCursor=cursor;eventRefreshNeeded=false;
+  source=new EventSource('/api/dots/events?after='+cursor);
+  source.addEventListener('connected',()=>{if(epoch!==streamEpoch)return;reconnectAttempt=0;setConnection('已连接');});
+  source.addEventListener('update',e=>{
+   if(epoch!==streamEpoch||!monitorAllowed())return;
+   let event;try{event=JSON.parse(e.data);}catch{reconnect();return;}
+   const seq=Number(event.seq);if(!Number.isSafeInteger(seq)||seq<=cursor)return;
+   receiveVoiceActivity(event);
+   const incremental=adoptMessageEvent(event);
+   eventPendingCursor=Math.max(eventPendingCursor,seq);eventRefreshNeeded=eventRefreshNeeded||!incremental;
+   scheduleEventFlush(epoch);
+  });
+  source.addEventListener('connection-error',()=>{if(epoch===streamEpoch)reconnect();});source.onerror=()=>{if(epoch===streamEpoch)reconnect();};
+  clearInterval(recoveryTimer);recoveryTimer=setInterval(()=>{if(monitorAllowed())refresh().catch(showError);},10000);
+ }
+ function handleVisibilityChange(){
+  // Visibility can toggle briefly during fullscreen transitions as well as
+  // minimization. Neither is a hangup or a request to restart recognition.
+  renderVoice();
+  if(!monitorAllowed()){disconnect();return;}
+  if(!source)connect();
+  if(!document.hidden){refreshContent();refresh().catch(showError);}
+ }
+ function activate(){active=window.shiyan.getView()==='dots';document.body.classList.toggle('dots-is-current-view',active);view.hidden=!active;$('dotsToolbar').hidden=!active;if(!active)$('dotsToolbar').querySelector('.dots-menu').open=false;$('openDotsButton').classList.toggle('is-selected',active);if(active){$('workspaceTitle').replaceChildren();$('railHome').classList.add('is-active');hydration.then(()=>{if(!active)return;refreshContent();if(!source)connect();refresh().catch(showError);}).catch(showError);}renderVoice();renderUnread();C.scheduleNative();}
+ function install(context){C=context;hydration=hydrate();hydration.catch(showError);const button=document.createElement('button');button.id='openDotsButton';button.type='button';button.className='sidebar-new-chat sidebar-dots';button.innerHTML=identityIcon()+'<span>'+esc(window.ShiYanDotsPanels?.name()||'Dots')+'</span>';button.title='Dots · 你的专属助手';button.setAttribute('aria-label','Dots 个人助手');button.onclick=()=>window.shiyan.navigate('dots');$('newConversationButton').after(button);$('agentSidebar')?.classList.add('has-dots-navigation');view=document.createElement('section');view.id='dotsView';view.className='dots-view dots-manager-view';view.hidden=true;view.setAttribute('aria-label','Dots 私人助手');view.innerHTML='<header id="dotsToolbar" class="dots-toolbar" hidden><span id="dotsStatus" class="dots-status" role="status" hidden></span><small id="dotsConnection" role="status" hidden></small><div class="dots-menu"><button type="button" data-dots-more class="wb-icon-button dots-icon-button" aria-label="更多" aria-expanded="false" title="更多">'+C.toolbarIcon('more')+'</button><div id="dotsMenuContent" class="dots-menu-content"></div></div><button id="dotsTasksButton" type="button" class="wb-icon-button dots-icon-button dots-tasks-button" data-dots-drawer aria-label="任务与活动" aria-expanded="false" title="任务与活动">'+C.toolbarIcon('tasks')+'</button><span class="dots-toolbar-divider" aria-hidden="true"></span></header><p id="dotsError" class="dots-error" role="alert" hidden></p><div class="dots-layout"><div id="dotsDetail" class="dots-detail"></div><aside id="dotsActivity" class="dots-activity" hidden></aside></div>';$('centerContent').appendChild(view);if($('toggleRightWorkspace'))$('toggleRightWorkspace').before($('dotsToolbar'));else if($('desktopToolbar'))$('desktopToolbar').appendChild($('dotsToolbar'));window.ShiYanDotsPanels.install({icon:C.icon,api,markdown,refresh,showError,snapshot:()=>({manager,messages,tasks,goals,details,drawerOpen,selected,busy}),decideApproval:decide,approvalState,request,persist,pending:()=>pending,releaseRequest:async slot=>{delete pending[slot];await persist();},closePanel:()=>{drawerOpen=false;renderDrawer();},nameChanged:()=>{const name=window.ShiYanDotsPanels.name();renderUnread();if(active)$('workspaceTitle').replaceChildren();},scheduleNative:C.scheduleNative,voiceUpdated:focus=>{renderVoice();if(focus?.isConnected)focus.focus({preventScroll:true});}});const dotsMenu=$('dotsToolbar').querySelector('.dots-menu');Object.defineProperty(dotsMenu,'open',{get(){return this.hasAttribute('open');},set(value){this.toggleAttribute('open',!!value);this.querySelector('[data-dots-more]').setAttribute('aria-expanded',String(!!value));}});const moreSummary=$('dotsToolbar').querySelector('[data-dots-more]');moreSummary.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();const menu=moreSummary.parentElement;menu.open=!menu.open;moreSummary.setAttribute('aria-expanded',String(menu.open));C.scheduleNative?.();});const handleAction=async e=>{try{if(e.target.closest('.dots-menu-content button'))$('dotsToolbar').querySelector('.dots-menu').removeAttribute('open');const task=e.target.closest('[data-dots-task]'),mc=e.target.closest('[data-dots-manager-control]'),tc=e.target.closest('[data-dots-task-control]'),decision=e.target.closest('[data-dots-decision]');if(e.target.closest('[data-dots-earlier]'))await earlier();else if(e.target.closest('[data-dots-rename]')){window.ShiYanDotsPanels.openProfile();}else if(e.target.closest('[data-dots-drawer]')){drawerOpen=!drawerOpen;renderDrawer();C.scheduleNative?.();if(drawerOpen)refresh().catch(showError);}else if(e.target.closest('[data-dots-refresh]')){showError('');await refresh();if(!source)connect();}else if(task){selected=Number(task.dataset.dotsTask);const d=await api('/goals/'+selected);details[String(selected)]=d.goal;await persist();refreshContent();}else if(mc)await managerControl(mc.dataset.dotsManagerControl);else if(tc)await taskControl(tc.dataset.dotsTaskControl);else if(e.target.closest('[data-dots-refresh-approvals]'))await refresh(true);else if(decision){const card=decision.closest('[data-dots-approval]');await decide(card.dataset.dotsApprovalGoal,card.dataset.dotsApproval,decision.dataset.dotsDecision,decodeURIComponent(card.dataset.dotsApprovalCommand));}else if(e.target.closest('[data-dots-output]'))await showOutput(e.target.closest('[data-dots-output]').dataset.dotsOutput);else if(e.target.closest('[data-dots-copy-output]'))await window.shiyan.copyText(rawOutputs.get(e.target.closest('[data-dots-copy-output]').dataset.dotsCopyOutput)||'');}catch(e){showError(e);}};view.addEventListener('click',handleAction);$('dotsToolbar').addEventListener('click',handleAction);document.addEventListener('click',e=>{if(!e.target.closest('.dots-menu'))$('dotsToolbar').querySelector('.dots-menu')?.removeAttribute('open');});document.addEventListener('keydown',e=>{if(active&&e.key==='Escape'){const menu=$('dotsToolbar').querySelector('.dots-menu');if(menu?.open){menu.open=false;menu.querySelector('[data-dots-more]').focus();e.preventDefault();}}});window.addEventListener('shiyan-view',activate);window.addEventListener('shiyan-state',()=>{if(active)queueMicrotask(()=>{$('workspaceTitle').replaceChildren();$('railHome').classList.add('is-active');});});document.addEventListener('visibilitychange',handleVisibilityChange);window.addEventListener('pagehide',()=>{stopVoice();disconnect();persist().catch(()=>{});});window.addEventListener('online',()=>{if(monitorAllowed()){connect();refresh().catch(showError);}});view.addEventListener('scroll',e=>{if(e.target.id==='dotsRecords')markVisibleRepliesRead();},true);hydration.then(()=>{monitorReady=true;renderUnread();connect();refresh().catch(showError);}).catch(showError);}
  window.addEventListener('focus',markVisibleRepliesRead);
  window.addEventListener('resize',positionCompactVoiceCard);
  window.addEventListener('shiyan-native',event=>receiveVoiceEvent(event.detail||{}));

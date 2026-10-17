@@ -2,6 +2,7 @@
   'use strict';
   let root, elements, opened = false, loaded = false, loading = false, busy = false;
   let enabled = true, page = 'settings', restoreFocus, inertElements = [];
+  let quotaLoading = false;
   const api = (path, method, body) => window.shiyan.api(path, method, body);
   const message = error => error?.message || '暂时无法连接，请重试。';
   function status(text = '', error = false) {
@@ -96,6 +97,7 @@
     elements.dialog.classList.remove('is-memory-page');
     elements.home.hidden = false;
     elements.memoryPage.hidden = true;
+    elements.codexPage.hidden = true;
     elements.dialog.setAttribute('aria-labelledby', 'settingsGeneralTitle');
     elements.dialog.removeAttribute('aria-describedby');
     elements.memoryEntry.focus();
@@ -106,9 +108,119 @@
     elements.dialog.classList.add('is-memory-page');
     elements.home.hidden = true;
     elements.memoryPage.hidden = false;
+    elements.codexPage.hidden = true;
     elements.dialog.setAttribute('aria-labelledby', 'memoryTitle');
     elements.title.focus();
     load();
+  }
+  function codexText(tag, text, className) {
+    const element = document.createElement(tag);
+    element.textContent = text;
+    if (className) element.className = className;
+    return element;
+  }
+  function quotaDate(value, seconds = true) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+    const date = new Date(value * (seconds ? 1000 : 1));
+    if (Number.isNaN(date.getTime())) return null;
+    return date.toLocaleString('zh-CN', {year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'});
+  }
+  function resetCardStatus(credit) {
+    const status = typeof credit.status === 'string' ? credit.status.toLowerCase() : '';
+    if (['used', 'consumed', 'redeemed'].includes(status)) return '已使用';
+    if (['revoked', 'cancelled', 'canceled'].includes(status)) return '已撤销';
+    if (status === 'expired' || (typeof credit.expiresAt === 'number' && Number.isFinite(credit.expiresAt) && credit.expiresAt * 1000 <= Date.now())) return '已过期';
+    return new Map([['available','可用'], ['active','可用'], ['pending','待生效']]).get(status) || (status ? '状态：'+credit.status : '状态未提供');
+  }
+  function resetCardType(value) {
+    const type = typeof value === 'string' ? value.toLowerCase() : '';
+    return new Map([['codexratelimits','Codex 额度'], ['weekly','周额度重置卡'], ['week','周额度重置卡'], ['daily','日额度重置卡'], ['five_hour','5 小时额度重置卡'], ['primary','短期额度重置卡'], ['secondary','周额度重置卡']]).get(type) || (typeof value === 'string' && value ? value : '额度重置卡');
+  }
+  function renderCodexQuota(quota) {
+    elements.codexContent.replaceChildren();
+    const windows = Array.isArray(quota.windows) ? quota.windows.filter(window => window && typeof window.remainingPercent === 'number' && Number.isFinite(window.remainingPercent)) : [];
+    if (windows.length) {
+      elements.codexContent.append(codexText('h3', '额度剩余', 'settings-section-title'));
+      const list = codexText('div', '', 'settings-quota-windows');
+      for (const window of windows) {
+        const item = codexText('section', '', 'settings-quota-window');
+        const remaining = Math.max(0, Math.min(100, window.remainingPercent));
+        const label = [window.bucket || 'Codex', window.period || '当前周期'].join(' · ');
+        const heading = codexText('div', '', 'settings-quota-window-heading');
+        heading.append(codexText('span', label), codexText('strong', Math.round(remaining)+'%'));
+        const progress = document.createElement('progress');
+        progress.max = 100;
+        progress.value = remaining;
+        progress.setAttribute('aria-label', label+'剩余');
+        const resetsAt = quotaDate(window.resetsAt);
+        item.append(heading, progress, codexText('p', resetsAt ? '重置时间：'+resetsAt : '重置时间暂未提供', 'settings-quota-muted'));
+        list.append(item);
+      }
+      elements.codexContent.append(list);
+    }
+    elements.codexContent.append(codexText('h3', '重置卡', 'settings-section-title'));
+    const cards = codexText('section', '', 'settings-reset-cards');
+    const reset = quota.resetCredits;
+    if (!reset || !Number.isSafeInteger(reset.availableCount) || reset.availableCount < 0) {
+      cards.append(codexText('p', '暂未获取到重置卡信息'), codexText('p', '账户暂未提供重置卡数据。', 'settings-quota-muted'));
+    } else {
+      const count = codexText('p', '', 'settings-reset-count');
+      count.append(codexText('span', '当前可用'), codexText('strong', reset.availableCount+' 张'));
+      cards.append(count);
+      const credits = Array.isArray(reset.credits) ? reset.credits.filter(credit => credit && typeof credit === 'object' && !Array.isArray(credit)) : [];
+      if (!credits.length) cards.append(codexText('p', reset.availableCount === 0 ? '当前没有可用的重置卡。' : '账户暂未提供逐张卡片明细。', 'settings-quota-muted'));
+      else {
+        const list = codexText('ul', '', 'settings-reset-list');
+        for (const credit of credits) {
+          const item = codexText('li', '', 'settings-reset-card');
+          const heading = codexText('div', '', 'settings-reset-card-heading');
+          heading.append(codexText('strong', credit.title || resetCardType(credit.resetType)), codexText('span', resetCardStatus(credit), 'settings-reset-status'));
+          item.append(heading);
+          if (credit.description) item.append(codexText('p', credit.description, 'settings-quota-muted'));
+          if (credit.title && credit.resetType) item.append(codexText('p', '类型：'+resetCardType(credit.resetType), 'settings-quota-muted'));
+          const granted = quotaDate(credit.grantedAt), expires = quotaDate(credit.expiresAt);
+          if (granted) item.append(codexText('p', '获得时间：'+granted, 'settings-quota-muted'));
+          item.append(codexText('p', expires ? '到期时间：'+expires : '到期时间暂未提供', 'settings-quota-muted'));
+          list.append(item);
+        }
+        cards.append(list);
+      }
+    }
+    elements.codexContent.append(cards);
+    const fetchedAt = quotaDate(quota.fetchedAt, false);
+    if (fetchedAt) elements.codexContent.append(codexText('p', '更新于 '+fetchedAt, 'settings-quota-updated settings-quota-muted'));
+  }
+  async function loadCodexQuota() {
+    if (quotaLoading) return;
+    quotaLoading = true;
+    elements.codexPage.setAttribute('aria-busy', 'true');
+    elements.codexContent.replaceChildren();
+    elements.codexNotice.textContent = '正在读取 Codex 额度与重置卡…';
+    elements.codexNotice.classList.remove('is-error');
+    try {
+      const result = await api('/api/account/quota');
+      if (result?.ok === false || !result?.quota || result.quota.available === false) throw new Error('账户信息暂时不可用。');
+      renderCodexQuota(result.quota);
+      elements.codexNotice.textContent = '';
+    } catch (error) {
+      elements.codexNotice.textContent = '读取失败：'+message(error);
+      elements.codexNotice.classList.add('is-error');
+    } finally {
+      quotaLoading = false;
+      elements.codexPage.setAttribute('aria-busy', 'false');
+    }
+  }
+  function showCodex() {
+    page = 'codex';
+    selectCategory('codex');
+    elements.dialog.classList.remove('is-memory-page');
+    elements.home.hidden = true;
+    elements.memoryPage.hidden = true;
+    elements.codexPage.hidden = false;
+    elements.dialog.setAttribute('aria-labelledby', 'settingsCodexTitle');
+    elements.dialog.removeAttribute('aria-describedby');
+    elements.codexTitle.focus();
+    loadCodexQuota();
   }
   function build() {
     if (root) return;
@@ -122,11 +234,31 @@
     elements = {
       body:find('.memory-body'),dialog:find('.memory-dialog'),navigation:find('.settings-sidebar nav'),settingsSearch:find('.settings-category-search input'),navigationEmpty:find('.settings-category-empty'),home:find('.settings-home'),memoryPage:find('.settings-memory-page'),memoryEntry:find('[data-settings-memory]'),back:find('[data-memory-back]'),title:find('#memoryTitle'),setting:find('.memory-setting'),enabled:find('#memoryEnabled'),notice:find('.memory-notice'),feedback:find('.memory-feedback'),retry:find('[data-memory-retry]')
     };
+    const codexNavigation = document.createElement('button');
+    codexNavigation.type = 'button';
+    codexNavigation.dataset.settingsPage = 'codex';
+    codexNavigation.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M3 10h18m-14 5h4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span>Codex 额度与重置卡</span>';
+    elements.navigation.insertBefore(codexNavigation, elements.navigationEmpty);
+    const codexEntry = document.createElement('button');
+    codexEntry.type = 'button';
+    codexEntry.className = 'settings-memory-entry';
+    codexEntry.dataset.settingsCodex = '';
+    codexEntry.innerHTML = '<span class="settings-entry-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24"><rect x="3" y="5" width="18" height="14" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M3 10h18m-14 5h4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span><span class="settings-entry-copy"><strong>Codex 额度与重置卡</strong><span>查看额度剩余、重置时间与可用重置卡</span></span><svg class="settings-entry-chevron" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="m9 5 7 7-7 7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    elements.home.append(codexText('h3', '账户', 'settings-section-title'), codexEntry);
+    const codexPage = document.createElement('section');
+    codexPage.className = 'settings-codex-page';
+    codexPage.hidden = true;
+    codexPage.innerHTML = '<header class="memory-header"><h2 id="settingsCodexTitle" tabindex="-1">Codex 额度与重置卡</h2><button type="button" class="icon-button memory-close" data-codex-close aria-label="关闭设置"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button></header><div class="settings-quota-toolbar"><p>查看当前账户的额度与重置卡信息</p></div><p class="memory-notice" data-codex-notice role="status" aria-live="polite"></p><div data-codex-content></div>';
+    find('.settings-content').append(codexPage);
+    Object.assign(elements, {codexPage, codexTitle:find('#settingsCodexTitle'), codexNotice:find('[data-codex-notice]'), codexContent:find('[data-codex-content]')});
+    codexEntry.addEventListener('click', showCodex);
+    find('[data-codex-close]').addEventListener('click', close);
     elements.settingsSearch.addEventListener('input', filterCategories);
     elements.navigation.addEventListener('click', event => {
       const button = event.target.closest('[data-settings-page]');
       if (!button) return;
       if (button.dataset.settingsPage === 'memory') showMemory();
+      else if (button.dataset.settingsPage === 'codex') showCodex();
       else showSettings();
     });
     elements.enabled.addEventListener('change', toggle);

@@ -12,8 +12,9 @@ body.workbench-v2 #desktopToolbar #dotsToolbar { position:relative;height:32px;f
   box-sizing:border-box;width:368px;padding:18px 18px 14px;
   overflow-y:auto;overflow-x:hidden;border:1px solid var(--line);border-radius:22px;
   background:var(--v22-panel);color:var(--text);box-shadow:0 16px 48px #0003;
-  scrollbar-width:thin;scrollbar-color:var(--line) transparent;
+  scrollbar-width:none;
 }
+#dotsActivity::-webkit-scrollbar { display:none;width:0;height:0; }
 #dotsActivity[hidden] { display:none; }
 .dots-profile-identity { position:relative;display:flex;align-items:center;gap:12px;margin:0 0 14px;min-height:76px; }
 .dots-pet { display:block;object-fit:contain;width:96px;height:104px;flex-shrink:0; }
@@ -274,3 +275,24 @@ body.workbench-v22.workbench-v2.dots-is-current-view #agentSidebar .session-row.
 #dotsActivity .dots-profile-identity strong { font-size:17px;line-height:22px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
 #dotsActivity .dots-profile-identity>div>span { font-size:12px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
 #dotsActivity .dots-panel-status { flex-shrink:0;max-width:100%;padding:4px 10px;max-height:30px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+
+/* A call borrows the one interactive sprite instead of rendering another pet. */
+#dotsFloatingPet.is-in-call{position:absolute;inset:0;left:0;top:0;width:100%;height:100%;transform:none!important;transition:none;z-index:auto}
+#dotsFloatingPet.is-in-call .dots-floating-art,#dotsFloatingPet.is-in-call .dots-profile-pet{width:100%;height:100%}
+#dotsFloatingPet.is-in-call .dots-floating-status{display:none}
+
+/* Pending decisions stay visible in the main conversation, including voice mode. */
+.dots-manager-approvals { position:relative;z-index:9;flex:none;max-height:min(36vh,290px);overflow:auto;overscroll-behavior:contain;padding:0 max(24px,calc((100% - 760px)/2));scrollbar-width:thin; }
+.dots-manager-approvals[hidden] { display:none; }
+.dots-approvals-heading { padding:8px 0 2px;font-size:13px;font-weight:600;color:var(--accent); }
+.dots-manager-approvals .dots-child-approval { margin:8px 0 10px;background:var(--v22-panel); }
+.dots-child-approval h3,.dots-child-approval p { overflow-wrap:anywhere; }
+.dots-child-approval p { margin:8px 0;font-size:13px;line-height:1.5; }
+.dots-child-approval pre { font-size:12px;max-height:140px;overflow:auto; }
+.dots-child-approval>div { flex-wrap:wrap; }
+.dots-child-approval button { cursor:pointer;color:var(--text);background:var(--soft-fill); }
+.dots-child-approval button[data-dots-decision="approve"] { border-color:var(--accent); }
+.dots-child-approval button:disabled { opacity:.5;cursor:default; }
+.dots-approval-note { color:var(--secondary); }
+.dots-view.has-activity-panel .dots-manager-approvals { padding-left:24px;padding-right:24px; }
+@media(max-width:700px) { .dots-manager-approvals { padding-left:16px;padding-right:16px; } }

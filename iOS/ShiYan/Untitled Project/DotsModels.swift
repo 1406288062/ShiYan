@@ -49,7 +49,7 @@ struct DotsGoal: Codable, Identifiable {
         case "blocked": return "需要补充信息"
         case "cancelled": return "已取消"
         case "failed": return "处理失败"
-        case "awaiting_approval", "waiting_approval", "needs_approval": return "等待确认"
+        case "awaiting_approval", "waiting_approval", "needs_approval": return "需要你批准操作"
         default: return status ?? "等待更新"
         }
     }
@@ -97,7 +97,11 @@ struct DotsApproval: Codable, Identifiable {
     var reason: String?
     var status: String?
     var created_at: Double?
-    var isPending: Bool { ["pending", "awaiting_approval"].contains(status ?? "") }
+    var isPending: Bool { ["pending", "requested", "awaiting_approval", "waiting_approval", "needs_approval"].contains(status ?? "") }
+    var canApproveCommand: Bool {
+        guard let command, !command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        return command.range(of: #"\bssh\b[^\n]*<[^>]+>"#, options: [.regularExpression, .caseInsensitive]) == nil
+    }
 }
 
 struct DotsEvent: Codable, Identifiable {
@@ -108,6 +112,29 @@ struct DotsEvent: Codable, Identifiable {
     var createdAt: Double?
     var payload: AgentJSON?
     var id: Int { seq }
+
+    // Delta events carry a cumulative, versioned snapshot of the same reply.
+    var managerMessage: DotsManagerMessage? {
+        guard type == "update", case .object(let payload)? = payload,
+              case .object(let activity)? = payload["activity"],
+              case .string(let kind)? = activity["kind"],
+              ["assistant_delta", "assistant_message", "user_message"].contains(kind),
+              case .object(let data)? = activity["data"], let raw = data["message"],
+              let bytes = try? JSONEncoder().encode(raw),
+              let message = try? JSONDecoder().decode(DotsManagerMessage.self, from: bytes),
+              message.id > 0, message.role == (kind == "user_message" ? "user" : "assistant") else { return nil }
+        return message
+    }
+    var assistantMessage: DotsManagerMessage? {
+        guard let message = managerMessage, message.role == "assistant" else { return nil }
+        return message
+    }
+    var isAssistantDelta: Bool {
+        guard case .object(let payload)? = payload,
+              case .object(let activity)? = payload["activity"],
+              case .string(let kind)? = activity["kind"] else { return false }
+        return kind == "assistant_delta"
+    }
 }
 
 struct DotsCapabilities: Decodable {
@@ -218,9 +245,25 @@ struct DotsSavedState: Codable {
 
     mutating func accept(_ event: DotsEvent) {
         guard event.seq > cursor else { return }
-        events.append(event)
-        if events.count > 200 { events.removeFirst(events.count - 200) }
+        // The current message already contains cumulative delta text. Keeping
+        // 200 copies of a growing long reply would multiply cache writes.
+        if !event.isAssistantDelta {
+            events.append(event)
+            if events.count > 200 { events.removeFirst(events.count - 200) }
+        }
         cursor = event.seq
+        if let message = event.managerMessage {
+            mergeManagerMessages([message])
+            readState?.observe([message], advanceObservation: false)
+        }
+    }
+    mutating func mergeManagerMessages(_ incoming: [DotsManagerMessage]) {
+        var merged = Dictionary((managerMessages ?? []).map { ($0.id, $0) }, uniquingKeysWith: { _, new in new })
+        for message in incoming {
+            if let current = merged[message.id], !message.canReplace(current) { continue }
+            merged[message.id] = message
+        }
+        managerMessages = merged.values.sorted { $0.id < $1.id }
     }
     mutating func acknowledged(_ operation: DotsPendingOperation) {
         guard pending?.requestId == operation.requestId else { return }
@@ -270,6 +313,23 @@ struct DotsManagerMessage: Codable, Identifiable {
     var taskId: Int?
     var requestId: String?
     var createdAt: Double?
+    var respondsToMessageIds: [Int]?
+    var deliveryState: String?
+    var revision: Int?
+    var isStreaming: Bool { deliveryState == "streaming" }
+
+    func canReplace(_ current: DotsManagerMessage) -> Bool {
+        // A legacy GET or a replay must never rewind a reply already advanced
+        // by SSE. Nil fields retain compatibility with old completed history.
+        if role == "assistant", current.role == "assistant" {
+            if current.deliveryState != nil && deliveryState == nil { return false }
+            if !current.isStreaming && isStreaming { return false }
+            let incomingRevision = revision ?? 0, currentRevision = current.revision ?? 0
+            if incomingRevision != currentRevision { return incomingRevision > currentRevision }
+            if content.utf8.count < current.content.utf8.count { return false }
+        }
+        return true
+    }
 }
 struct DotsManagerTask: Codable, Identifiable {
     let id: Int
@@ -281,6 +341,9 @@ struct DotsManagerTask: Codable, Identifiable {
     var dependencies: [Int]?
     var lastSummary: String?
     var updatedAt: Double?
+    var requiresApproval: Bool {
+        legacyImported != true && ["waiting_approval", "awaiting_approval", "needs_approval"].contains(status ?? "")
+    }
     var displayTitle: String { title?.isEmpty == false ? title! : "未命名任务" }
     var statusText: String {
         if legacyImported != true && status == "done" && acceptanceStatus == "pending" { return "待总管验收" }
@@ -290,7 +353,7 @@ struct DotsManagerTask: Codable, Identifiable {
         case "paused": return "已暂停"
         case "done", "completed": return "已完成"
         case "cancelled": return "已取消"
-        case "waiting_approval": return "等待确认"
+        case "waiting_approval", "awaiting_approval", "needs_approval": return "需要你批准操作"
         case "blocked": return "需要补充信息"
         default: return status ?? "等待更新"
         }

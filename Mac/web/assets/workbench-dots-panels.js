@@ -26,6 +26,7 @@
   let currentConversation, conversationFull = false, conversationVersion = 0, scheduleValue, scheduleBusy = false;
   let conversationTimer, conversationPolling = false;
   let readSession=null, readingIndex=-1, readUtterance=null;
+  let floatingPet=null;
   let currentModal, savedSignature = '', activitySignature = '', lastOpen = false, outputRaw = '';
   const api = (route, method = 'GET', data) => C.api(route, method, data);
   const rejected = error => [400,403,404,422].includes(error.status) && error.code !== 'action_uncertain';
@@ -37,6 +38,14 @@
     return pet ? '<img class="dots-pet '+cls+'" data-dots-pet="'+esc(pet.id)+'" src="'+esc(imageURL(pet))+'" alt="'+esc(pet.name)+'"'+size+'>' : '<span class="dots-pet dots-pet-empty" aria-hidden="true">'+icon('chat')+'</span>';
   };
   const avatar = () => petById(profile.petId) ? petImage(profile.petId,'dots-nav-pet') : '';
+  // Native minimised-window presentation reads the same identity and sprite;
+  // it never clones or moves the live canvas used inside the web workspace.
+  function voiceCallIdentity() {
+    const pet=petById(profile.petId);
+    if(!pet || !pet.sprite_url || !Number.isInteger(pet.cell_width) || pet.cell_width<1 || !Number.isInteger(pet.cell_height) || pet.cell_height<1)return {name:name(),pet:null};
+    const states=(Array.isArray(pet.states)?pet.states:[]).filter(s=>typeof s.name==='string'&&Number.isInteger(s.row)&&s.row>=0&&Number.isInteger(s.frames)&&s.frames>0&&Number.isFinite(s.fps)&&s.fps>0).map(s=>({name:s.name,row:s.row,frames:s.frames,fps:s.fps}));
+    return {name:name(),pet:{id:pet.id,spriteURL:pet.sprite_url.replace('/static/dots-pets/','/assets/dots-pets/'),cellWidth:pet.cell_width,cellHeight:pet.cell_height,spriteVersion:pet.sprite_version||1,states}};
+  }
   const time = value => value ? new Date(value < 1e12 ? value * 1000 : value).toLocaleString('zh-CN', {month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
   const ago = value => {
     if (!value) return '尚无活动';
@@ -58,37 +67,56 @@
     if (value.connection && !['已连接','定时同步'].includes(value.connection)) return value.connection;
     if (value.uploading) return '正在上传…';
     if (value.busy) return '正在发送…';
-    if (value.pendingMessage) return '发送结果待确认';
+    if (value.pendingMessage) return '发送结果未知，请重试';
     if (value.manager?.status === 'paused') return '已暂停';
     if (value.manager?.status === 'cancelled') return '已停止';
-    if (Number(value.manager?.runningWorkers) > 0 || tasks.some(t => t.status === 'running')) return 'Thinking';
-    if (tasks.some(t => t.status === 'waiting_approval')) return '等待确认';
+    const approvalTasks=tasks.filter(t=>['waiting_approval','awaiting_approval'].includes(t.status));
+    const approvals=approvalTasks.flatMap(task=>(value.details?.[String(task.id)]?.approvals||[]).map(approval=>({approval,state:C.approvalState?.(task.id,approval.id)||{}})));
+    const pending=approvals.filter(item=>isPendingApproval(item.approval));
+    if (pending.some(item=>!item.state.busy&&!item.state.pending)) return '需要你批准操作';
+    if (approvals.some(item=>item.approval.status==='executing')) return '正在执行已批准的操作…';
+    if (pending.some(item=>item.state.busy)) return '正在提交你的决定…';
+    if (pending.some(item=>item.state.pending)) return '操作决定结果未知，请重试';
+    if (approvalTasks.length) return approvals.length?'正在更新操作状态…':'需要你批准操作';
+    if (value.messages?.at(-1)?.role==='assistant'&&value.messages.at(-1).deliveryState==='streaming') return '正在回复…';
+    if (Number(value.manager?.runningWorkers) > 0 || tasks.some(t => t.status === 'running')) return '正在处理事项…';
     if (tasks.some(t => t.status === 'done' && t.acceptanceStatus === 'pending')) return '正在验收…';
     if (tasks.some(t => ['active','pending','queued'].includes(t.status))) return '等待执行';
     if (tasks[0]?.status === 'failed') return '处理失败';
     if (value.loading && !value.messages?.length) return '正在加载…';
-    if (value.messages?.at(-1)?.role === 'user') return 'Thinking';
+    if (value.messages?.at(-1)?.role === 'user') return '正在回复…';
     return '';
   }
   // A persistent pet keeps its animation frame while travelling between anchors.
   function positionPet() {
-    const floating = $('dotsFloatingPet'), area = $('mainWorkspace') || $('dotsView');
+    const floating = floatingPet, area = $('mainWorkspace') || $('dotsView');
     if (!floating || !area) return;
-    const visible = window.shiyan.getView() === 'dots' && !conversationVisible();
+    const panel = $('dotsActivity'), call = $('dotsVoiceCard'), avatar = call?.querySelector('.dots-call-avatar');
+    const pet = petById(profile.petId), inCall = !!pet && !!call && !call.hidden && !!avatar;
+    const visible = !!pet && (inCall || (window.shiyan.getView() === 'dots' && !conversationVisible()));
+    const revealing = floating.hidden && visible;
+    if (revealing) floating.classList.remove('is-placed');
     floating.hidden = !visible;
+    avatar?.classList.toggle('has-live-pet',inCall);
+    // Move the same canvas into the call identity, never clone a static avatar.
+    // Keeping it inside the card also makes viewport dragging exact and avoids
+    // lagging fixed-position pet overlays during panel changes.
+    if(inCall){if(floating.parentElement!==avatar)avatar.appendChild(floating);}
+    else if(floating.parentElement!==document.body)document.body.appendChild(floating);
+    floating.classList.toggle('is-in-call',inCall);
     if (!visible) return;
-    const pet = petById(profile.petId);
-    if (pet && floating.dataset.petId !== pet.id) {
+    if (floating.dataset.petId !== pet.id) {
       floating.dataset.petId = pet.id;
       floating.innerHTML = '<div class="dots-floating-art">'+petImage(pet.id, 'dots-profile-pet')+'</div><div class="dots-floating-status" role="status" aria-live="polite" aria-atomic="true"></div>';
     }
-    floating.classList.toggle('is-docked',!!snapshot.drawerOpen);
-    const panelBadge = $('dotsActivity')?.querySelector('.dots-panel-status');
+    floating.classList.toggle('is-docked',!inCall && !!snapshot.drawerOpen);
+    const panelBadge = panel?.querySelector('.dots-panel-status');
     if (panelBadge) { const status = identityStatus(); panelBadge.textContent = status; panelBadge.title = status; panelBadge.hidden = !status; }
     const badge = floating.querySelector('.dots-floating-status');
     if (badge) { const status = identityStatus(); badge.textContent = status || name(); badge.classList.toggle('is-working',!!status); }
+    if(inCall){floating.style.removeProperty('transform');return;}
     const bounds = area.getBoundingClientRect(), header = $('desktopToolbar').getBoundingClientRect();
-    const panel = $('dotsActivity'), slot = panel?.querySelector('.dots-pet-anchor');
+    const slot = panel?.querySelector('.dots-pet-anchor');
     const docked = snapshot.drawerOpen && !panel?.hidden;
     const panelBounds = docked ? panel.getBoundingClientRect() : null;
     const target = docked ? (slot?.getClientRects().length ? slot.getBoundingClientRect() :
@@ -96,6 +124,7 @@
     const left = target ? target.left : bounds.left + (bounds.width - 66) / 2;
     const top = target ? target.top : Math.max(0, header.top + 2);
     floating.style.transform = `translate3d(${left}px,${top}px,0)`;
+    if (revealing) floating.getBoundingClientRect();
     if (!floating.classList.contains('is-placed')) requestAnimationFrame(() => floating.classList.add('is-placed'));
   }
   function positionPanel() {
@@ -110,7 +139,13 @@
     panel.style.left = left+'px';
     panel.style.top = Math.min(rect.bottom + panelGap, innerHeight - 180)+'px';
     panel.style.maxHeight = Math.max(160, innerHeight - rect.bottom - 26)+'px';
-    if(previewOpen()){const voice=$('dotsVoiceCard'),reserve=voice&&!voice.hidden?voice.offsetHeight+14:0;conversationDialog.style.height=Math.max(160,parseFloat(panel.style.maxHeight)-34-reserve)+'px';}
+    if(previewOpen()){
+      const voice=$('dotsVoiceCard'),style=getComputedStyle(panel);
+      const inset=['paddingTop','paddingBottom','borderTopWidth','borderBottomWidth'].reduce((sum,key)=>sum+(parseFloat(style[key])||0),0);
+      const voiceStyle=voice&&!voice.hidden?getComputedStyle(voice):null;
+      const reserve=voiceStyle?voice.offsetHeight+(parseFloat(voiceStyle.marginTop)||0)+(parseFloat(voiceStyle.marginBottom)||0):0;
+      conversationDialog.style.height=Math.max(160,parseFloat(panel.style.maxHeight)-inset-reserve)+'px';
+    }
     if(conversation){const area=conversation.getBoundingClientRect();conversation.style.setProperty('--dots-activity-reserved',area.width>=760?Math.max(0,area.right-left+16)+'px':'0px');}
     positionPet();
   }
@@ -127,7 +162,7 @@
   function renderPanel() {
     const panel = $('dotsActivity'); if (!panel || panel.hidden) { positionPet(); return; }
     if(previewOpen()){positionPanel();C.voiceUpdated?.();return;}
-    const recent = expanded ? activities : activities.slice(0, 5), files = outputExpanded ? outputs : outputs.slice(0, 5);
+    const recent = expanded ? activities : activities.slice(0, 5), files = outputExpanded ? outputs : outputs.slice(0, 3);
     const newest = Math.max(0, ...activities.map(a => a.updatedAt || a.createdAt || 0));
     const signature = JSON.stringify([name(),profile.petId,profile.accent,recent,files,loading,activityError,expanded,outputExpanded,profile.seenActivities]);
     if (savedSignature === signature) { positionPanel(); C.voiceUpdated?.(); return; }
@@ -140,7 +175,7 @@
         return '<button type="button" class="dots-activity-row" '+(isSchedule?'data-dots-schedule':'data-dots-task')+'="'+esc(id)+'" title="'+esc(a.title)+'">'+icon(isSchedule?'clock':'chat')+'<span><strong>'+esc(a.title || '未命名任务')+'</strong>'+(isSchedule?'<small>'+esc(a.schedule?.enabled === false ? '已暂停' : scheduleDescription(a.schedule || a))+'</small>':'')+'</span>'+(unread?'<i class="dots-unread-dot" aria-label="有更新"></i>':'')+'</button>';
       }).join('')+(recent.length?'':'<p class="dots-panel-empty">'+(loading?'正在读取…':'还没有活动')+'</p>')+'</div>'+
       (activities.length>5?'<button class="dots-show-more" type="button" data-dots-show-more>'+icon('more')+(expanded?'收起':'显示更多')+'</button>':'')+'</section>'+
-      '<section class="dots-panel-section dots-output-section"><header><h3>输出内容</h3></header>'+files.map(o=>'<button type="button" class="dots-activity-row dots-output-row" data-dots-panel-output="'+esc(o.id)+'" title="'+esc(o.filename || o.title || o.summary || '')+'">'+icon(String(o.mimeType || '').startsWith('image/')?'image':'file')+'<span><strong>'+esc(o.filename || o.title || '任务结果')+'</strong></span></button>').join('')+(files.length?'':'<p class="dots-panel-empty">任务产出会显示在这里</p>')+(outputs.length>5?'<button class="dots-show-more" type="button" data-dots-show-outputs>'+icon('more')+(outputExpanded?'收起':'显示更多')+'</button>':'')+'</section>'+
+      '<section class="dots-panel-section dots-output-section"><header><h3>输出内容</h3></header>'+files.map(o=>'<button type="button" class="dots-activity-row dots-output-row" data-dots-panel-output="'+esc(o.id)+'" title="'+esc(o.filename || o.title || o.summary || '')+'">'+icon(String(o.mimeType || '').startsWith('image/')?'image':'file')+'<span><strong>'+esc(o.filename || o.title || '任务结果')+'</strong></span></button>').join('')+(files.length?'':'<p class="dots-panel-empty">任务产出会显示在这里</p>')+(outputs.length>3?'<button class="dots-show-more" type="button" data-dots-show-outputs>'+icon('more')+(outputExpanded?'收起':'显示更多')+'</button>':'')+'</section>'+
       (activityError?'<p class="dots-dialog-error" role="alert">'+esc(activityError)+'</p>':'');
     panel.scrollTop = top; positionPanel(); C.voiceUpdated?.(voiceFocus);
   }
@@ -331,7 +366,7 @@
       return '<article class="dots-child-message '+(m.role==='user'?'is-user':'is-assistant')+'" data-dots-message-index="'+index+'">'+
         (m.role==='assistant'&&m.source==='worker_summary'?'<small class="dots-message-source">任务结果</small>':'')+
         '<div class="message-body">'+(m.role==='user'?'<p>'+esc(m.content || m.text || '').replace(/\n/g,'<br>')+'</p>':C.markdown(m.content || m.text || ''))+'</div>'+messageTools(m,index)+'</article>';
-    }).join('')+(messages.length?'':'<p class="dots-panel-empty">任务还没有回复</p>')+(conversationFull?renderTaskActions(goal):'');
+    }).join('')+(messages.length?'':'<p class="dots-panel-empty">任务还没有回复</p>')+(conversationFull?renderTaskActions(goal):'')+approvalCards(goal);
   }
   async function refreshConversation() {
     if(conversationPolling||!conversationVisible()||document.hidden||!currentConversation)return;
@@ -363,11 +398,29 @@
     syncReadButtons();positionPanel();
     requestAnimationFrame(()=>{const scroller=conversationDialog.querySelector('.dots-conversation-messages');if(scroller)scroller.scrollTop=scroller.scrollHeight;});
   }
+  const isPendingApproval=approval=>['pending','awaiting_approval','requested'].includes(approval?.status);
+  const canApprove=command=>typeof command==='string'&&!!command.trim()&&!/\bssh\b[^\n]*<[^>]+>/i.test(command);
+  function approvalCards(goal) {
+    return (goal.approvals||[]).filter(isPendingApproval).map(approval=>{
+      const id=Number(approval.id),goalId=Number(goal.id);if(!Number.isSafeInteger(id)||id<1||!Number.isSafeInteger(goalId)||goalId<1)return '';
+      const state=C.approvalState?.(goalId,id)||{},prior=state.pending,valid=canApprove(approval.command);
+      const button=(decision,label)=>'<button type="button" data-dots-decision="'+decision+'"'+(state.busy||(decision==='approve'&&!valid)||(prior&&prior.decision!==decision)?' disabled':'')+'>'+esc(state.busy?'正在提交…':prior?.decision===decision?'重试'+label:label)+'</button>';
+      return '<section class="dots-child-approval" data-dots-approval="'+id+'" data-dots-approval-goal="'+goalId+'" data-dots-approval-command="'+esc(encodeURIComponent(String(approval.command??'')))+'"><h3>'+esc(goal.title||'待批准操作')+'</h3><p>'+esc(approval.reason||'请核对以下实际命令后决定是否执行')+'</p><pre><code>'+esc(approval.command||'')+'</code></pre>'+(!valid?'<p class="dots-approval-note">命令尚未完整，无法批准；可以拒绝并让 Dots 重新评估。</p>':'')+'<div>'+button('approve','批准此命令')+button('reject','拒绝')+'</div></section>';
+    }).join('');
+  }
+  function syncApprovalState(){
+    positionPet();
+    if(!currentConversation||!conversationVisible())return;
+    const box=conversationDialog.querySelector('.dots-conversation-messages');if(!box)return;
+    box.querySelectorAll('[data-dots-approval]').forEach(card=>{
+      const goal=C.snapshot().details[String(currentConversation.id)]||currentConversation.goal,approval=goal?.approvals?.find(a=>String(a.id)===card.dataset.dotsApproval);
+      const replacement=document.createElement('div');replacement.innerHTML=approval?approvalCards({...goal,approvals:[approval]}):'';
+      if(replacement.firstElementChild)card.replaceWith(replacement.firstElementChild);else card.remove();
+    });
+  }
   function renderTaskActions(goal) {
-    const pending=(goal.approvals||[]).filter(a=>['pending','awaiting_approval','requested'].includes(a.status));
     const ended=['done','completed','cancelled','failed'].includes(goal.status);
-    return (ended?'':'<div class="dots-child-actions"><button type="button" data-dots-child-control="'+(['paused','blocked'].includes(goal.status)?'resume':'pause')+'">'+(['paused','blocked'].includes(goal.status)?'继续任务':'暂停任务')+'</button><button type="button" data-dots-child-control="cancel">停止任务</button></div>')+
-      pending.map(a=>'<section class="dots-child-approval"><h3>需要你确认</h3><p>'+esc(a.reason || '核对以下命令')+'</p><pre><code>'+esc(a.command || '')+'</code></pre><div><button type="button" data-dots-child-approval="'+a.id+'" data-decision="approve">批准此命令</button><button type="button" data-dots-child-approval="'+a.id+'" data-decision="reject">拒绝</button></div></section>').join('');
+    return ended?'':'<div class="dots-child-actions"><button type="button" data-dots-child-control="'+(['paused','blocked'].includes(goal.status)?'resume':'pause')+'">'+(['paused','blocked'].includes(goal.status)?'继续任务':'暂停任务')+'</button><button type="button" data-dots-child-control="cancel">停止任务</button></div>';
   }
   async function submitChildMessage(e) {
     e.preventDefault();const form=e.target,input=form.querySelector('textarea'),button=form.querySelector('button'),error=form.querySelector('.dots-dialog-error');const message=input.value.trim();if(!message)return;
@@ -455,14 +508,14 @@
       else if(target.hasAttribute('data-dots-preview-chat'))await openConversation(currentConversation.id,false);
       else if(target.hasAttribute('data-dots-schedule-pause'))await controlSchedule();
       else if(target.hasAttribute('data-dots-child-control')){await api('/goals/'+currentConversation.id+'/control','POST',{requestId:crypto.randomUUID(),action:target.dataset.dotsChildControl});await openConversation(currentConversation.id,true);await C.refresh();}
-      else if(target.hasAttribute('data-dots-child-approval')){const approval=(currentConversation.goal.approvals||[]).find(a=>String(a.id)===target.dataset.dotsChildApproval);await api('/goals/'+currentConversation.id+'/approvals/'+approval.id+'/decision','POST',{requestId:crypto.randomUUID(),decision:target.dataset.decision,confirmedCommand:approval.command});await openConversation(currentConversation.id,true);await C.refresh();}
-    } catch(error){C.showError(error);}
+      else if(target.hasAttribute('data-dots-decision')){e.stopPropagation();const card=target.closest('[data-dots-approval]'),id=Number(card.dataset.dotsApprovalGoal),full=conversationFull;await C.decideApproval(id,card.dataset.dotsApproval,target.dataset.dotsDecision,decodeURIComponent(card.dataset.dotsApprovalCommand));if(currentConversation?.id==id)await openConversation(id,full);}
+    } catch(error){if(target.hasAttribute('data-dots-decision')){const label=conversationDialog?.querySelector('.dots-read-error');if(label){label.textContent=error.message||String(error);label.hidden=false;}}C.showError(error);}
   }
   const spriteImages=new Map();let pointer=null,petFrame=0;
   function animatePanelPet(now) {
     petFrame=0;
-    if(window.shiyan.getView()==='dots'&&!document.hidden&&!conversationVisible()) {
-      const panel=$('dotsFloatingPet'),pet=petById(profile.petId);
+    if(!document.hidden&&floatingPet&&!floatingPet.hidden&&floatingPet.isConnected) {
+      const panel=floatingPet,pet=petById(profile.petId);
       if(pet&&panel&&!reduced.matches) {
         let image=spriteImages.get(pet.id);
         if(!image){image=new Image();image.src=pet.sprite_url.replace('/static/dots-pets/','/assets/dots-pets/');spriteImages.set(pet.id,image);}
@@ -483,7 +536,7 @@
   }
   function install(context) {
     C=context;
-    const floating = document.createElement('div');
+    const floating = floatingPet = document.createElement('div');
     floating.id = 'dotsFloatingPet'; floating.hidden = true;
     document.body.appendChild(floating);
     $('dotsActivity').addEventListener('scroll',positionPet,{passive:true});
@@ -544,5 +597,5 @@
     window.addEventListener('pagehide',stopReading);
     getCatalogue().catch(C.showError);
   }
-  window.ShiYanDotsPanels={install,render,name,avatar,openProfile};
+  window.ShiYanDotsPanels={install,render,name,avatar,voiceCallIdentity,openProfile,approvalCards,isPendingApproval,canApprove,syncApprovalState,syncVoiceLayout:positionPet};
 })();

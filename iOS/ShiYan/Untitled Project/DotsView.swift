@@ -17,6 +17,12 @@ private struct DotsBottomPreference: PreferenceKey {
     static let defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
+private struct DotsApprovalContext: Identifiable {
+    let goalId: Int
+    let title: String
+    let approval: DotsApproval
+    var id: String { "\(goalId):\(approval.id)" }
+}
 
 struct DotsView: View {
     let topInset: CGFloat
@@ -24,13 +30,16 @@ struct DotsView: View {
     let hasUnread: Bool
     let isConversationVisible: Bool
     let onSidebar: () -> Void
+    var onTaskSheetPresented: (Bool) -> Void = { _ in }
     @StateObject private var store = DotsStore.shared
+    @ObservedObject private var voice = DotsVoiceSession.shared
+    @ObservedObject private var voicePresentation = DotsVoicePresentation.shared
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var scheme
     @State private var showTasks = false
     @State private var showFiles = false
     @State private var attachmentPreview: URL?
-    @State private var approval: DotsApproval?
+    @State private var approval: DotsApprovalContext?
     @State private var outputPreview: DotsOutput?
     @State private var processExpanded = false
     @State private var historyExpanded = false
@@ -41,6 +50,7 @@ struct DotsView: View {
     @State private var initialPosition = true
     @State private var composerHeight: CGFloat = 80
     @State private var headerHeight: CGFloat = 0
+    @State private var needsApprovalReveal = false
     @FocusState private var inputFocused: Bool
 
     var body: some View {
@@ -76,6 +86,25 @@ struct DotsView: View {
                                     managerMessage(item)
                                 }.id(item.id)
                             }
+                            ForEach(pendingApprovals) { context in
+                                approvalCard(context.approval, goalId: context.goalId, title: context.title)
+                                    .id("dots-approval-\(context.id)")
+                            }
+                            if let operation = unresolvedApprovalOperation {
+                                pendingApprovalCard(operation).id("dots-approval-pending-\(operation.requestId)")
+                            }
+                            if pendingApprovals.isEmpty && hasApprovalTasks && store.approvalStatus == "需要你批准操作" {
+                                VStack(alignment: .leading, spacing: 12) {
+                                    Label("有操作需要你批准", systemImage: "hand.raised")
+                                        .font(.subheadline.weight(.semibold))
+                                    Text(store.approvalNotice ?? "正在读取具体命令和原因…")
+                                        .font(.subheadline).foregroundStyle(.secondary)
+                                    Button("重新读取") { Task { await store.refreshApprovals() } }
+                                        .disabled(store.loading || store.sending)
+                                }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
+                                    .background(Color.primary.opacity(0.025), in: RoundedRectangle(cornerRadius: 18))
+                                    .accessibilityIdentifier("dots-approval-loading")
+                            }
                             Color.clear.frame(height: 1).id("dots-bottom")
                                 .background(GeometryReader { geo in
                                     Color.clear.preference(key: DotsBottomPreference.self,
@@ -84,6 +113,9 @@ struct DotsView: View {
                         }.padding(.horizontal, 24)
                             .padding(.top, (headerHeight > 0 ? headerHeight : topInset + 111) + 16)
                             .padding(.bottom, 20)
+                            .opacity(voicePresentation.immersive ? 0 : 1)
+                            .allowsHitTesting(!voicePresentation.immersive)
+                            .accessibilityHidden(voicePresentation.immersive)
                     }
                     .coordinateSpace(name: "dots-chat-scroll")
                     .defaultScrollAnchor(.bottom, for: .initialOffset)
@@ -91,6 +123,7 @@ struct DotsView: View {
                         atBottom = y <= viewport.size.height + 70
                         updateReadingVisibility()
                     }
+                    .scrollDisabled(voicePresentation.immersive)
                     .scrollIndicators(.hidden).scrollDismissesKeyboard(.interactively)
                     .scrollEdgeEffectStyle(.soft, for: .top)
                     // Keep the same native blur, limited to the system row and controls.
@@ -117,6 +150,20 @@ struct DotsView: View {
                             proxy.scrollTo("dots-bottom", anchor: .bottom); initialPosition = false
                         }
                     }
+                    .onChange(of: store.messages.map(\.content)) { _, _ in
+                        if atBottom && !voicePresentation.immersive {
+                            proxy.scrollTo("dots-bottom", anchor: .bottom)
+                        }
+                    }
+                    .onChange(of: pendingApprovals.map(\.id)) { before, after in
+                        if !Set(after).subtracting(before).isEmpty { scheduleApprovalReveal() }
+                        if atBottom && !voicePresentation.immersive {
+                            proxy.scrollTo("dots-bottom", anchor: .bottom)
+                        }
+                    }
+                    .onChange(of: unresolvedApprovalOperation?.requestId) { _, requestId in
+                        if requestId != nil { scheduleApprovalReveal() }
+                    }
                     .overlay(alignment: .bottomTrailing) {
                         if !atBottom {
                             Button { proxy.scrollTo("dots-bottom", anchor: .bottom) } label: {
@@ -126,6 +173,11 @@ struct DotsView: View {
                                 .accessibilityLabel("回到底部")
                         }
                     }
+                }
+                .overlay {
+                    DotsVoiceScene(presentation: voicePresentation,
+                                   composerTop: viewport.size.height - composerHeight + 8,
+                                   topInset: max(headerHeight + 12, topInset + 90))
                 }
         }
         .overlay(alignment: .top) {
@@ -137,9 +189,10 @@ struct DotsView: View {
         .background(scheme == .dark ? Color(white: 0.065) : Color.white)
         .task {
             if scenePhase == .active { store.activate() }
+            scheduleApprovalReveal()
             updateReadingVisibility()
         }
-        .onDisappear { store.deactivate() }
+        .onDisappear { store.deactivate(); onTaskSheetPresented(false) }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { store.activate() } else { store.deactivate() }
             updateReadingVisibility()
@@ -153,17 +206,59 @@ struct DotsView: View {
         .quickLookPreview($attachmentPreview)
         .sheet(isPresented: $showTasks) { taskSheet }
         .onChange(of: showTasks) { _, visible in
+            onTaskSheetPresented(visible)
             if !visible { store.select(nil) }
+            voicePresentation.setVisible(isConversationVisible && !visible && !showFiles && attachmentPreview == nil)
+            revealApprovalsIfNeeded()
             updateReadingVisibility()
         }
-        .onChange(of: isConversationVisible) { _, _ in updateReadingVisibility() }
-        .onChange(of: showFiles) { _, _ in updateReadingVisibility() }
-        .onChange(of: attachmentPreview) { _, _ in updateReadingVisibility() }
+        .onChange(of: isConversationVisible) { _, visible in
+            updateReadingVisibility()
+            voicePresentation.setVisible(visible && !showTasks && !showFiles && attachmentPreview == nil)
+            if visible { scheduleApprovalReveal() }
+        }
+        .onChange(of: voicePresentation.immersive) { _, _ in updateReadingVisibility() }
+        .onChange(of: voicePresentation.form) { _, form in
+            if form == .dragging { inputFocused = false }
+            if form == .orb { revealApprovalsIfNeeded() }
+        }
+        .onChange(of: hasApprovalTasks) { _, waiting in
+            if waiting { scheduleApprovalReveal() }
+        }
+        .onChange(of: voicePresentation.active) { _, active in
+            if active { scheduleApprovalReveal() }
+        }
+        .onChange(of: voice.active) { _, active in
+            if active { inputFocused = false }
+            updateReadingVisibility()
+        }
+        .onChange(of: showFiles) { _, visible in
+            updateReadingVisibility()
+            voicePresentation.setVisible(isConversationVisible && !showTasks && !visible && attachmentPreview == nil)
+            revealApprovalsIfNeeded()
+        }
+        .onChange(of: attachmentPreview) { _, preview in
+            updateReadingVisibility()
+            voicePresentation.setVisible(isConversationVisible && !showTasks && !showFiles && preview == nil)
+            revealApprovalsIfNeeded()
+        }
         .accessibilityIdentifier("dots-manager-page")
     }
     private func updateReadingVisibility() {
         store.setReadingLatest(scenePhase == .active && isConversationVisible && atBottom &&
-            !showTasks && !showFiles && attachmentPreview == nil)
+            !voicePresentation.immersive && !showTasks && !showFiles && attachmentPreview == nil)
+    }
+    private func scheduleApprovalReveal() {
+        needsApprovalReveal = !pendingApprovals.isEmpty || hasApprovalTasks || pendingApprovalOperation != nil
+        revealApprovalsIfNeeded()
+    }
+    private func revealApprovalsIfNeeded() {
+        guard !pendingApprovals.isEmpty || hasApprovalTasks || pendingApprovalOperation != nil else { needsApprovalReveal = false; return }
+        guard needsApprovalReveal, isConversationVisible, !showTasks, !showFiles, attachmentPreview == nil,
+              voicePresentation.active, voicePresentation.visible, voicePresentation.form == .orb else { return }
+        needsApprovalReveal = false
+        // Reveal the decision in the conversation without ending or pausing the call.
+        voicePresentation.collapse()
     }
     private var assistantMenu: some View {
         ShiyanMoreMenu {
@@ -186,8 +281,9 @@ struct DotsView: View {
         ZStack(alignment: .top) {
             ShiyanFeatureHeader(page: .dots, topInset: 0, hasUnread: hasUnread,
                                 onSidebar: onSidebar) { assistantMenu }
-            assistantIdentity
-                .padding(.top, 3).padding(.bottom, 8)
+            if !voice.active {
+                assistantIdentity.padding(.top, 3).padding(.bottom, 8)
+            }
         }
         .padding(.top, topInset)
     }
@@ -204,7 +300,10 @@ struct DotsView: View {
                     .multilineTextAlignment(.center).lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
                 if store.hasPending {
-                    Button { Task { await store.retryPending() } } label: {
+                    Button { Task {
+                        if store.hasPendingVoice { await voice.start() }
+                        else { await store.retryPending() }
+                    } } label: {
                         Group {
                             if store.sending { ProgressView() }
                             else { Image(systemName: "arrow.clockwise") }
@@ -222,24 +321,27 @@ struct DotsView: View {
     }
     private var managerStatus: String? {
         if let notice = store.notice, !notice.isEmpty { return notice }
-        if !store.connection.isEmpty && store.connection != "定时同步" { return store.connection }
+        if !store.connection.isEmpty && !["定时同步", "已连接"].contains(store.connection) { return store.connection }
         if store.uploading { return "正在上传…" }
+        if let status = store.approvalStatus { return status }
         if store.sending { return "正在发送…" }
-        if store.hasPending { return "发送结果待确认" }
+        if store.hasPending { return "发送结果未知，请重试" }
         if store.manager?.status == "paused" { return "已暂停" }
         if store.manager?.status == "cancelled" { return "已停止" }
+        if store.messages.last?.role == "assistant" && store.messages.last?.isStreaming == true { return "正在回复…" }
         if (store.manager?.runningWorkers ?? 0) > 0 || store.currentTasks.contains(where: { $0.status == "running" }) {
-            return "Thinking"
+            return "正在处理事项…"
         }
-        if store.currentTasks.contains(where: { $0.status == "waiting_approval" }) { return "等待确认" }
+        if store.currentTasks.contains(where: { ["waiting_approval", "awaiting_approval", "needs_approval"].contains($0.status ?? "") }) {
+            return "需要你批准操作"
+        }
         if store.currentTasks.contains(where: { $0.status == "done" && $0.acceptanceStatus == "pending" && $0.legacyImported != true }) {
             return "正在验收…"
         }
-        if store.currentTasks.contains(where: { $0.status == "blocked" }) { return "任务受阻" }
         if store.currentTasks.contains(where: { ["active", "pending", "queued"].contains($0.status ?? "") }) { return "等待执行" }
         if store.currentTasks.first?.status == "failed" { return "处理失败" }
         if store.loading && store.messages.isEmpty { return "正在加载…" }
-        if store.messages.last?.role == "user" { return "Thinking" }
+        if store.messages.last?.role == "user" { return "正在回复…" }
         return nil
     }
     private func managerTimestamp(_ value: Double?) -> String? {
@@ -295,7 +397,23 @@ struct DotsView: View {
         }
     }
     private func composer(bottomGap: CGFloat) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        // Use the arriving glass's progress for the native editor and controls.
+        let amount = voicePresentation.active && voicePresentation.visible
+            ? voicePresentation.material.materialAmount : 0
+        let controlInk = Color.primary.mix(with: scheme == .dark
+            ? Color(red: 189/255, green: 199/255, blue: 245/255)
+            : Color(red: 93/255, green: 98/255, blue: 169/255), by: amount, in: .device)
+        let promptInk = Color(uiColor: .placeholderText).mix(with: scheme == .dark
+            ? Color(red: 197/255, green: 201/255, blue: 232/255)
+            : Color(red: 85/255, green: 93/255, blue: 137/255), by: amount, in: .device)
+        let inputInk = Color.primary.mix(with: scheme == .dark ? .white : .black,
+                                         by: amount, in: .device)
+        let sendBase = voiceButtonMode && voice.active ? Color.red : Color.accentColor
+        let sendFill = LinearGradient(colors: [
+            sendBase.mix(with: Color(red: 98/255, green: 91/255, blue: 209/255), by: amount, in: .device),
+            sendBase.mix(with: Color(red: 129/255, green: 98/255, blue: 185/255), by: amount, in: .device)
+        ], startPoint: .topLeading, endPoint: .bottomTrailing)
+        return VStack(alignment: .leading, spacing: 8) {
             if !store.attachments.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
@@ -318,64 +436,82 @@ struct DotsView: View {
                     if store.uploading { ProgressView() }
                     else { Image(systemName: "plus").font(.system(size: 22)) }
                 }.frame(width: 34, height: 36).contentShape(Rectangle())
-            }.buttonStyle(.plain).foregroundStyle(.primary)
+            }.buttonStyle(.plain).foregroundStyle(controlInk).tint(controlInk)
                 .disabled(store.hasPending || store.sending || store.uploading)
                 .accessibilityLabel("添加文件").accessibilityIdentifier("dots-add-attachment")
-            TextField("交给我…", text: Binding(get: { store.draft }, set: store.setDraft), axis: .vertical)
+            TextField("交给我…", text: Binding(get: { store.draft }, set: store.setDraft),
+                      prompt: Text("交给我…").foregroundColor(promptInk), axis: .vertical)
                 .lineLimit(1...(inputFocused ? 6 : 1)).font(.body).focused($inputFocused)
+                .foregroundStyle(inputInk)
                 .frame(minHeight: 36)
                 .disabled(store.hasPending).accessibilityIdentifier("dots-composer")
             Button {
                 inputFocused = false
-                Task { await store.submit() }
+                if voiceButtonMode { Task { await voice.toggle() } }
+                else { Task { await store.submit() } }
             } label: {
                 Group {
-                    if store.sending { ProgressView().tint(.white) }
-                    else { Image(systemName: "arrow.up").font(.system(size: 19, weight: .bold)) }
+                    if store.sending && !voiceButtonMode { ProgressView() }
+                    else {
+                        Image(systemName: voiceButtonMode ? (voice.active ? "stop.fill" : "waveform") : "arrow.up")
+                            .font(.system(size: 19, weight: .bold))
+                    }
                 }.foregroundStyle(.white)
                     .frame(width: 36, height: 36)
-                    .background(Color.accentColor, in: Circle())
-            }.buttonStyle(.plain).disabled(!store.canSend).accessibilityLabel("发送")
-                .overlay {
-                    if store.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && store.attachments.isEmpty && !store.sending {
-                        ZStack {
-                            Circle().fill(Color(.sRGB, red: 158.0 / 255, green: 200.0 / 255, blue: 238.0 / 255, opacity: 1))
-                            Image(systemName: "arrow.up").font(.system(size: 19, weight: .bold))
-                                .foregroundStyle(Color(.sRGB, red: 244.0 / 255, green: 248.0 / 255, blue: 253.0 / 255, opacity: 1))
-                        }.frame(width: 36, height: 36).allowsHitTesting(false).accessibilityHidden(true)
-                    }
-                }
-                .accessibilityIdentifier("dots-send")
+                    .background(sendFill, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .disabled(voiceButtonMode ? (!voice.active && !store.canStartVoice) : !store.canSend)
+            .accessibilityLabel(voiceButtonMode ? (voice.active ? "结束语音聊天" : "语音实时聊天") : "发送")
+            .accessibilityIdentifier("dots-send")
         }
         }.padding(10)
+            .background { DotsVoiceComposerMaterial(presentation: voicePresentation, cornerRadius: 25) }
             .agentComposerSurface(cornerRadius: 25)
+            .overlay(alignment: .top) {
+                DotsVoiceFlowHandle(presentation: voicePresentation,
+                                    travel: max(175, UIScreen.main.bounds.height * 0.38))
+                    .offset(y: -12)
+            }
             .frame(maxWidth: inputFocused || !store.draft.isEmpty || !store.attachments.isEmpty ? .infinity : 325)
             .frame(maxWidth: .infinity)
             .padding(.horizontal, 16).padding(.bottom, bottomGap).padding(.top, 8)
     }
+    private var voiceButtonMode: Bool {
+        store.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && store.attachments.isEmpty
+    }
     private var taskSheet: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    if let goal = store.selected { taskDetail(goal) }
-                    else {
-                        activityPanel
+        GeometryReader { geometry in
+            NavigationStack {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 24) {
+                        if let goal = store.selected { taskDetail(goal) }
+                        else {
+                            activityPanel
 
+                        }
+                    }.padding(24).frame(maxWidth: .infinity, alignment: .leading)
+                }.scrollIndicators(.hidden).refreshable { await store.loadActivity() }
+                    .navigationTitle(voice.active ? "" : "任务")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        if voice.active {
+                            ToolbarItem(placement: .principal) {
+                                DotsVoiceCallCard()
+                                    .frame(width: DotsVoiceCallLayout.width(in: geometry.size.width))
+                            }
+                            .sharedBackgroundVisibility(.hidden)
+                        }
+                        ToolbarItem(placement: .topBarLeading) {
+                            if store.selected != nil { ShiyanCloseButton(action: { showTasks = false }, inToolbar: true) }
+                        }
+                        ToolbarItem(placement: .topBarTrailing) {
+                            if let goal = store.selected { taskMoreMenu(goal) }
+                            else { ShiyanCloseButton(action: { showTasks = false }, inToolbar: true) }
+                        }
+                        .sharedBackgroundVisibility(store.selected == nil ? .automatic : .hidden)
                     }
-                }.padding(24).frame(maxWidth: .infinity, alignment: .leading)
-            }.scrollIndicators(.hidden).refreshable { await store.loadActivity() }
-                .navigationTitle("任务")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        if store.selected != nil { ShiyanCloseButton(action: { showTasks = false }, inToolbar: true) }
-                    }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        if let goal = store.selected { taskMoreMenu(goal) }
-                        else { ShiyanCloseButton(action: { showTasks = false }, inToolbar: true) }
-                    }
-                    .sharedBackgroundVisibility(store.selected == nil ? .automatic : .hidden)
-                }
+            }
         }
         .task { store.select(nil); processExpanded = false; await store.loadActivity() }
         .onChange(of: store.state.selectedGoalId) { _, _ in processExpanded = false }
@@ -387,7 +523,7 @@ struct DotsView: View {
     private var activityPanel: some View {
         VStack(alignment: .leading, spacing: 22) {
             HStack(spacing: 14) {
-                DotsIdentityIcon().frame(width: 66, height: 72)
+                if !voice.active { DotsIdentityIcon().frame(width: 66, height: 72) }
                 VStack(alignment: .leading, spacing: 8) {
                     Text(store.displayName).font(.title2.weight(.semibold))
                     Text(lastActiveText).font(.subheadline).foregroundStyle(.secondary)
@@ -424,7 +560,7 @@ struct DotsView: View {
             }
             Text("输出内容").foregroundStyle(.secondary).padding(.top, 8)
             VStack(spacing: 2) {
-                ForEach(outputsExpanded ? store.panelOutputs : Array(store.panelOutputs.prefix(5))) { item in
+                ForEach(outputsExpanded ? store.panelOutputs : Array(store.panelOutputs.prefix(3))) { item in
                     Button {
                         Task {
                             do { attachmentPreview = try await CodexClient.shared.dotsPanelFile(item) }
@@ -439,7 +575,7 @@ struct DotsView: View {
                     }.buttonStyle(DotsActivityRowStyle())
                 }
                 if store.panelOutputs.isEmpty { Text("任务产出会显示在这里").font(.subheadline).foregroundStyle(.secondary) }
-                if store.panelOutputs.count > 5 { moreButton(expanded: $outputsExpanded) }
+                if store.panelOutputs.count > 3 { moreButton(expanded: $outputsExpanded) }
             }
         }
     }
@@ -538,9 +674,9 @@ struct DotsView: View {
                 AgentMarkdown(text: summary, identifier: "dots-task-summary-\(goal.id)")
             }
             ForEach((goal.approvals ?? []).filter(\.isPending)) { item in
-                Button { approval = item } label: {
-                    Label("需要确认", systemImage: "hand.raised")
-                }.buttonStyle(.plain).disabled(store.sending || store.hasPending)
+                Button { approval = DotsApprovalContext(goalId: goal.id, title: goal.displayTitle, approval: item) } label: {
+                    Label("需要你批准操作", systemImage: "hand.raised")
+                }.buttonStyle(.plain)
             }
             ForEach(store.taskConversation.isEmpty ? (goal.outputs ?? []) : []) { output in
                 VStack(alignment: .leading, spacing: 10) {
@@ -578,22 +714,132 @@ struct DotsView: View {
                 .toolbar { ToolbarItem(placement: .topBarTrailing) { ShiyanCloseButton(action: { outputPreview = nil }, inToolbar: true) } }
         }
     }
-    private func approvalPreview(_ item: DotsApproval) -> some View {
-        NavigationStack {
+    private var pendingApprovals: [DotsApprovalContext] {
+        store.approvalGoals.flatMap { goal in
+            (goal.approvals ?? []).filter(\.isPending).map {
+                DotsApprovalContext(goalId: goal.id, title: goal.displayTitle, approval: $0)
+            }
+        }
+    }
+    private var hasApprovalTasks: Bool {
+        store.currentTasks.contains { ["waiting_approval", "awaiting_approval", "needs_approval"].contains($0.status ?? "") }
+    }
+    private var pendingApprovalOperation: DotsPendingOperation? {
+        guard let operation = store.state.pending, operation.route.contains("/approvals/"),
+              operation.route.hasSuffix("/decision"), operation.goalId != nil,
+              ["approve", "reject"].contains(operation.decision ?? "") else { return nil }
+        return operation
+    }
+    private var unresolvedApprovalOperation: DotsPendingOperation? {
+        guard let operation = pendingApprovalOperation else { return nil }
+        let hasOriginalCard = pendingApprovals.contains { context in
+            operation.route == "goals/\(context.goalId)/approvals/\(context.approval.id)/decision" &&
+                operation.confirmedCommand == context.approval.command
+        }
+        return hasOriginalCard ? nil : operation
+    }
+    private func pendingApprovalCard(_ operation: DotsPendingOperation) -> some View {
+        let goalId = operation.goalId ?? 0
+        let goal = store.state.details[String(goalId)] ?? store.goals.first { $0.id == goalId }
+        return VStack(alignment: .leading, spacing: 14) {
+            Label(store.sending ? "正在提交你的决定…" : "操作决定结果未知", systemImage: "hand.raised")
+                .font(.subheadline.weight(.semibold))
+            Text(goal?.displayTitle ?? "待核实的操作").font(.body.weight(.semibold))
+                .fixedSize(horizontal: false, vertical: true)
+            Text(operation.decision == "approve" ? "你已提交批准，以下是当时确认的命令。" : "你已提交拒绝，以下是当时显示的命令。")
+                .font(.subheadline).foregroundStyle(.secondary)
+            Text(operation.confirmedCommand ?? "命令尚未提供")
+                .font(.system(.footnote, design: .monospaced)).textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading).padding(12)
+                .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 12))
+            if store.sending {
+                ProgressView().accessibilityLabel("正在提交你的决定")
+            } else {
+                Text("请重试原决定以核实结果。")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+            Button(operation.decision == "approve" ? "重试批准" : "重试拒绝") {
+                Task { await store.retryPending() }
+            }.buttonStyle(.borderedProminent).disabled(store.sending)
+                .accessibilityIdentifier("dots-approval-retry-pending")
+        }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.primary.opacity(0.025), in: RoundedRectangle(cornerRadius: 18))
+            .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.primary.opacity(0.09)))
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("dots-approval-pending-result")
+    }
+    private func approvalCard(_ item: DotsApproval, goalId: Int, title: String) -> some View {
+        let originalCommandShown = pendingApprovalOperation?.confirmedCommand == item.command
+        let priorDecision = originalCommandShown ? store.pendingApprovalDecision(goalId: goalId, approvalId: item.id) : nil
+        let submitting = originalCommandShown && store.isSubmittingApproval(goalId: goalId, approvalId: item.id)
+        let available = item.isPending && !store.sending && (!store.hasPending || priorDecision != nil)
+        return VStack(alignment: .leading, spacing: 14) {
+            Label(item.isPending ? "需要你批准操作" : item.status == "executing" ? "正在执行已批准的操作…" : "操作已处理",
+                  systemImage: item.isPending ? "hand.raised" : "checkmark.circle")
+                .font(.subheadline.weight(.semibold))
+            Text(title).font(.body.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
+            Text(item.reason?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+                 ? item.reason! : "请核对以下实际命令后决定是否执行。")
+                .font(.subheadline).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(item.command?.isEmpty == false ? item.command! : "命令尚未提供")
+                .font(.system(.footnote, design: .monospaced))
+                .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading).padding(12)
+                .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 12))
+                .accessibilityIdentifier("dots-approval-command-\(goalId)-\(item.id)")
+            if !item.canApproveCommand {
+                Text("命令尚未完整，无法批准；可以拒绝并让 Dots 重新评估。")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+            if submitting {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("正在提交你的决定…").font(.footnote).foregroundStyle(.secondary)
+                }
+            } else if priorDecision != nil {
+                Text("操作决定结果未知，请重试原决定以核实结果。")
+                    .font(.footnote).foregroundStyle(.secondary)
+            } else if store.hasPending {
+                Text("请先处理尚未确认的请求。")
+                    .font(.footnote).foregroundStyle(.secondary)
+            } else if !item.isPending {
+                Text(item.status == "executing" ? "正在执行已批准的操作…" : "这项操作已处理")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+            if item.isPending { HStack(spacing: 16) {
+                Button(priorDecision == "approve" ? "重试批准" : "批准此命令") {
+                    Task { await store.decide(item, goalId: goalId, approve: true) }
+                }.buttonStyle(.borderedProminent)
+                    .disabled(!available || !item.canApproveCommand || (priorDecision != nil && priorDecision != "approve"))
+                    .accessibilityIdentifier("dots-approval-approve-\(goalId)-\(item.id)")
+                Button(priorDecision == "reject" ? "重试拒绝" : "拒绝", role: .destructive) {
+                    Task { await store.decide(item, goalId: goalId, approve: false) }
+                }.buttonStyle(.bordered)
+                    .disabled(!available || (priorDecision != nil && priorDecision != "reject"))
+                    .accessibilityIdentifier("dots-approval-reject-\(goalId)-\(item.id)")
+            } }
+        }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.primary.opacity(0.025), in: RoundedRectangle(cornerRadius: 18))
+            .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.primary.opacity(0.09)))
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("dots-approval-card-\(goalId)-\(item.id)")
+    }
+    private func approvalPreview(_ context: DotsApprovalContext) -> some View {
+        let currentGoal = store.state.details[String(context.goalId)] ?? store.goals.first { $0.id == context.goalId }
+        let item: DotsApproval? = currentGoal == nil ? context.approval
+            : currentGoal?.approvals?.first { $0.id == context.approval.id }
+        return NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    Text(item.reason ?? "此步骤需要你的许可。")
-                    Text("将执行以下命令").font(.subheadline).foregroundStyle(.secondary)
-                    Text(item.command ?? "").font(.system(.body, design: .monospaced)).textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading).padding(16)
-                        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 14))
-                    Button("确认执行") { approval = nil; Task { await store.decide(item, approve: true) } }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(store.sending || store.hasPending || (item.command ?? "").isEmpty)
-                    Button("拒绝执行", role: .destructive) { approval = nil; Task { await store.decide(item, approve: false) } }
-                        .disabled(store.sending || store.hasPending)
-                }.padding(24)
-            }.navigationTitle("确认命令").navigationBarTitleDisplayMode(.inline)
+                if let item {
+                    approvalCard(item, goalId: context.goalId, title: currentGoal?.displayTitle ?? context.title)
+                        .padding(24)
+                } else {
+                    Label("这项操作已处理", systemImage: "checkmark.circle")
+                        .foregroundStyle(.secondary).padding(24)
+                }
+            }.navigationTitle("批准操作").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .topBarTrailing) { ShiyanCloseButton(action: { approval = nil }, inToolbar: true) } }
         }
     }
@@ -606,7 +852,7 @@ private struct DotsActivityRowStyle: ButtonStyle {
     }
 }
 
-private struct DotsLivePet: View {
+struct DotsLivePet: View {
     @ObservedObject private var store = DotsStore.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var phase
@@ -614,7 +860,7 @@ private struct DotsLivePet: View {
         if store.manager?.status == "paused" || store.manager?.status == "cancelled" { return (6,6,8) }
         if store.sending || store.uploading || (store.manager?.runningWorkers ?? 0) > 0 ||
             store.currentTasks.contains(where: { $0.status == "running" }) { return (7,6,8) }
-        if store.currentTasks.contains(where: { $0.status == "waiting_approval" || $0.status == "blocked" ||
+        if store.currentTasks.contains(where: { ["waiting_approval", "awaiting_approval", "needs_approval", "blocked"].contains($0.status ?? "") ||
             $0.acceptanceStatus == "pending" && $0.status == "done" }) { return (8,6,8) }
         if store.currentTasks.first?.status == "failed" { return (5,8,8) }
         return (0,6,6)

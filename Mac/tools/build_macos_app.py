@@ -209,9 +209,9 @@ def compile_native() -> None:
     run(["/usr/bin/xcrun", "swiftc", "-swift-version", "5", "-O",
          "-target", "arm64-apple-macosx14.0",
          "-framework", "AppKit", "-framework", "WebKit", "-framework", "Foundation",
-         "-framework", "AVFoundation", "-framework", "Speech", "-framework", "Quartz",
+         "-framework", "AVFoundation", "-framework", "Speech", "-framework", "Quartz", "-framework", "ImageIO",
          "-parse-as-library", NATIVE / "SpeechTranscriptAccumulator.swift",
-         NATIVE / "SpeechSession.swift", NATIVE / "Speech.swift", NATIVE / "BrowserWorkspace.swift", NATIVE / "WorkspaceChrome.swift", NATIVE / "App.swift",
+         NATIVE / "SpeechSession.swift", NATIVE / "Speech.swift", NATIVE / "QwenVoicePlayback.swift", NATIVE / "BrowserWorkspace.swift", NATIVE / "WorkspaceChrome.swift", NATIVE / "VoiceCallPanel.swift", NATIVE / "App.swift",
          "-o", BUILD / "ShiYan"])
     helper = BUILD / "ShiYanIdentity"
     source = NATIVE / "Identity.swift"
