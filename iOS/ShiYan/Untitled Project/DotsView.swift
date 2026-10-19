@@ -78,7 +78,8 @@ struct DotsView: View {
                             }
                             ForEach(store.messages) { item in
                                 VStack(alignment: .leading, spacing: 16) {
-                                    if item.role == "user", let timestamp = managerTimestamp(item.createdAt) {
+                                    if item.role == "user" || item.origin == "proactive",
+                                       let timestamp = managerTimestamp(item.createdAt) {
                                         Text(timestamp).font(.system(size: 11)).foregroundStyle(.secondary)
                                             .frame(maxWidth: .infinity, alignment: .center)
                                             .accessibilityIdentifier("dots-message-time-\(item.id)")

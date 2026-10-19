@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="/styles.css">
   <link rel="stylesheet" href="/assets/vendor/xterm.css">
   <link rel="stylesheet" href="/assets/workbench.css?v=20261014-contrast-f574d522">
-  <link rel="stylesheet" href="/assets/workbench-v2.css">
+  <link rel="stylesheet" href="/assets/workbench-v2.css?v=20261020-sidebar-92eaec4f">
   <link rel="stylesheet" href="/assets/workbench-v21.css">
   <link rel="stylesheet" href="/assets/workbench-v22.css?v=20261016-document-b33563">
   <link rel="stylesheet" href="/assets/workbench-dots.css?v=20261016-center-5956ddb8">
@@ -32,17 +32,17 @@
   <script type="text/plain" data-account-src="/assets/user-input.js?v=20261016-compact-0aac7b99" defer></script>
   <link rel="stylesheet" href="/assets/memory.css?v=20261016-quota-auto-7e85e0ab">
   <script type="text/plain" data-account-src="/assets/memory.js?v=20261016-quota-auto-7e85e0ab" defer></script>
-  <script type="text/plain" data-account-src="/assets/workbench-v2.js?v=20261015-native-layout-bc1da332" defer></script>
+  <script type="text/plain" data-account-src="/assets/workbench-v2.js?v=20261020-sidebar-92eaec4f" defer></script>
   <script type="text/plain" data-account-src="/assets/workbench-v22.js" defer></script>
-  <script type="text/plain" data-account-src="/assets/workbench-schedules.js?v=20261019-desktop-51223" defer></script>
+  <script type="text/plain" data-account-src="/assets/workbench-schedules.js?v=20261020-sidebar-92eaec4f" defer></script>
   <script type="text/plain" data-account-src="/assets/workbench.js?v=20261018-accounts" defer></script>
-  <link rel="stylesheet" href="/assets/workbench-schedules.css?v=20261019-desktop-51223">
+  <link rel="stylesheet" href="/assets/workbench-schedules.css?v=20261020-sidebar-92eaec4f">
 <link rel="stylesheet" href="/assets/workbench-space-files.css?v=20261014-export-hover-0ff12a12">
 <script type="text/plain" data-account-src="/assets/workbench-space-files.js?v=20261018-accounts" defer></script>
   <link rel="stylesheet" href="/assets/knowledge.css?v=20261019-no-flash-4a54">
   <script type="text/plain" data-account-src="/assets/knowledge.js?v=20261019-no-flash-4a54" defer></script>
-  <link rel="stylesheet" href="/assets/account.css?v=20261019-register-email">
-  <script src="/assets/account.js?v=20261019-register-email" defer></script>
+  <link rel="stylesheet" href="/assets/account.css?v=20261019-auth-d9c7163b">
+  <script src="/assets/account.js?v=20261019-auth-d9c7163b" defer></script>
 </head>
 <body>
 <main id="accountGate" class="auth-shell" hidden>
@@ -55,7 +55,6 @@
       <section id="accountRemembered" class="auth-remembered" hidden>
         <button id="accountRememberedLogin" type="button" aria-label="请手机确认登录"><span id="accountRememberedAvatar"></span><strong id="accountRememberedName"></strong><span>点击头像，请手机确认登录</span></button>
         <p id="accountRememberedStatus" role="status"></p><p id="accountRememberedCode"></p>
-        <button id="accountOtherLogin" type="button">扫码登录</button>
       </section>
       <section id="accountQRPanel" class="auth-qr" aria-label="扫码登录" hidden>
         <button id="accountQRRefresh" class="auth-qr-image" type="button" aria-label="刷新登录二维码"><img id="accountQRImage" alt="使用拾燕 iOS 扫描此登录二维码" hidden></button>
@@ -70,7 +69,7 @@
           <p id="accountCodeStatus" role="status"></p>
         </div>
         <p id="accountError" class="form-error" role="alert" hidden></p>
-        <button id="accountSubmit" class="auth-submit" type="submit"><span id="accountSubmitLabel">登录</span><span class="auth-submit-arrow" aria-hidden="true">→</span></button>
+        <button id="accountSubmit" class="auth-submit" type="submit"><span id="accountSubmitLabel">登录</span></button>
       </form>
       <p id="accountRetry" class="auth-retry" hidden><span>连接暂时中断</span><button id="accountReconnect" type="button">重新连接</button></p>
       </div>

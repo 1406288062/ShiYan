@@ -3,7 +3,7 @@
     <section class="modal-content compact-modal" role="dialog" aria-modal="true" aria-labelledby="knowledge-base-modal-title">
       <button class="modal-icon-close" type="button" aria-label="关闭" @click="$emit('close')">×</button>
       <h2 id="knowledge-base-modal-title">{{ title }}</h2>
-      <p>{{ description }}</p>
+      <p v-if="description">{{ description }}</p>
       <form @submit.prevent="submit">
         <label class="sr-only" for="knowledge-base-name">知识库名称</label>
         <input
@@ -30,7 +30,7 @@ const props = defineProps({
   visible: Boolean,
   loading: Boolean,
   title: { type: String, default: '创建知识库' },
-  description: { type: String, default: '给这组资料起一个清楚的名字。' },
+  description: { type: String, default: '' },
   submitLabel: { type: String, default: '创建并进入' },
   loadingLabel: { type: String, default: '创建中…' },
   placeholder: { type: String, default: '例如：Java 面试' },

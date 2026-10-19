@@ -337,12 +337,36 @@ class Gateway:
         value = result.get("title")
         return value.strip()[:100] if isinstance(value, str) else None
 
+    async def terminal_snapshot_event(self, job_id, after=0):
+        """Recover authoritative results even when the event history was compacted."""
+        snapshot = await self.json("GET", f"jobs/{job_id}")
+        if not isinstance(snapshot, dict):
+            raise GatewayError("服务返回了无法识别的任务结果")
+        status = snapshot.get("status")
+        if status not in {"completed", "failed", "cancelled", "interrupted"}:
+            return None
+        fields = ("text", "assets", "threadId", "error", "reasoning", "displayItems", "fileChanges", "usage")
+        return {**{key: snapshot[key] for key in fields if key in snapshot},
+                "seq": after + 1, "type": status}
+
     async def events(self, job_id, after=0):
         await self.ensure_enrolled()
+        if after:
+            try:
+                final = await self.terminal_snapshot_event(job_id, after)
+            except GatewayError as error:
+                if error.status in {401, 403}:
+                    raise
+            else:
+                if final is not None:
+                    yield final
+                    return
         path, body, headers = await self.request_parts("GET", f"jobs/{job_id}/events?after={after}&transport=metadata")
         headers["Accept"] = "text/event-stream"
         conn = self.make_connection(40)
         self.open_connections.add(conn)
+        failure = None
+        last_seq = after
         try:
             def open_stream():
                 conn.request("GET", path, headers=headers)
@@ -352,32 +376,62 @@ class Gateway:
                 error = GatewayError(f"实时连接失败（{response.status}）", response.status)
                 self.remember_authorization_error(error)
                 raise error
-            fields, length = [], 0
+            fields, length, pending_line = [], 0, bytearray()
             while True:
-                line = await asyncio.to_thread(response.readline, 1024 * 1024)
-                if not line:
-                    return
-                length += len(line)
+                fragment = await asyncio.to_thread(response.readline, 1024 * 1024)
+                if not fragment:
+                    if pending_line or fields:
+                        raise GatewayError("实时事件不完整")
+                    break
+                length += len(fragment)
                 if length > 40 * 1024 * 1024:
                     raise GatewayError("单次事件过大")
-                line = line.rstrip(b"\r\n")
+                pending_line.extend(fragment)
+                # readline(size) may stop at size before a newline, including
+                # inside UTF-8 or JSON tokens. Only parse complete physical lines.
+                if not fragment.endswith(b"\n"):
+                    continue
+                line = bytes(pending_line).rstrip(b"\r\n")
+                pending_line.clear()
                 if not line:
                     if fields:
                         try:
                             event = json.loads(b"\n".join(fields))
-                        except ValueError as exc:
+                        except (ValueError, UnicodeError) as exc:
                             raise GatewayError("实时事件解析失败") from exc
+                        if not isinstance(event, dict):
+                            raise GatewayError("实时事件格式无效")
+                        last_seq = max(last_seq, event.get("seq", 0))
                         yield event
-                        if event.get("type") in {"completed","failed","cancelled","interrupted"}:
+                        if event.get("type") in {"completed", "failed", "cancelled", "interrupted"}:
                             return
                     fields, length = [], 0
                 elif line.startswith(b"data:"):
                     fields.append(line[5:].lstrip(b" "))
         except (OSError, http.client.HTTPException) as exc:
-            raise GatewayError("实时连接中断") from exc
+            failure = GatewayError("实时连接中断")
+            failure.__cause__ = exc
+        except GatewayError as exc:
+            if exc.status in {401, 403}:
+                raise
+            failure = exc
         finally:
             conn.close()
             self.open_connections.discard(conn)
+        # EOF is not a completion signal. Ask the server before declaring a
+        # receive failure, and retain the original diagnostic if still running.
+        try:
+            final = await self.terminal_snapshot_event(job_id, last_seq)
+        except GatewayError as error:
+            if error.status in {401, 403}:
+                raise
+            if failure is not None:
+                raise failure from error
+            raise
+        if final is not None:
+            yield final
+        elif failure is not None:
+            raise failure
 
     async def download(self, asset, storage, progress=None, inline=None):
         if inline:

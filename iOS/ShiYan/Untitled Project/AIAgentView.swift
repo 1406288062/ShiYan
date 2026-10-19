@@ -188,6 +188,7 @@ struct AIAgentView: View {
     @State private var temporaryStore: AgentStore?
     @State private var showingTemporaryChat = false
     @State private var showingExecutionHistory = false
+    @State private var showingScanner = false
 
     init(history: HistoryManager, store: AgentStore? = nil) {
         self.history = history
@@ -434,6 +435,7 @@ struct AIAgentView: View {
         }) {
             if let temporaryStore { AIAgentView(history: history, store: temporaryStore) }
         }
+        .fullScreenCover(isPresented: $showingScanner) { ShiyanQRScanner() }
         .sheet(isPresented: $showingExecutionHistory) {
             AgentExecutionHistoryView(messages: current?.messages ?? [])
         }
@@ -743,6 +745,11 @@ struct AIAgentView: View {
                         .shiyanGlass(in: Capsule(), tint: .white.opacity(0.04), interactive: true)
                         }
                         ShiyanMoreMenu {
+                            Button("扫一扫", systemImage: "qrcode.viewfinder") {
+                                speech.cancel(); inputFocused = false
+                                showingScanner = true
+                            }
+                            .accessibilityIdentifier("agent-chat-qr-scanner")
                             if !store.isTemporarySession {
                                 Button("临时聊天", systemImage: "plus.bubble") {
                                     speech.cancel(); inputFocused = false
@@ -753,6 +760,7 @@ struct AIAgentView: View {
                             Button("执行过程", systemImage: "list.bullet.rectangle") { showingExecutionHistory = true }
                                 .disabled(!(current?.messages.contains { $0.role == .assistant } ?? false))
                         }
+                        .menuOrder(.fixed)
                         .accessibilityIdentifier("agent-chat-more")
                     }
                 }.padding(.horizontal, 16).padding(.top, top + 3)

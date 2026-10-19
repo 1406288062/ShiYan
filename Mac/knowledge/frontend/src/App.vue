@@ -101,7 +101,7 @@ const hasIndexedDocuments = computed(() => indexedDocumentCount.value > 0)
 const uploadBusy = computed(() => uploading.value || ['queued', 'processing'].includes(taskStatusText.value))
 const knowledgeBaseModalLoading = computed(() => knowledgeBaseModalMode.value === 'create' ? creatingKnowledgeBase.value : renamingKnowledgeBase.value)
 const knowledgeBaseModalTitle = computed(() => knowledgeBaseModalMode.value === 'create' ? '创建知识库' : '重命名知识库')
-const knowledgeBaseModalDescription = computed(() => knowledgeBaseModalMode.value === 'create' ? '给这组资料起一个清楚的名字。' : '换一个更容易识别的名称。')
+const knowledgeBaseModalDescription = computed(() => knowledgeBaseModalMode.value === 'create' ? '' : '换一个更容易识别的名称。')
 const knowledgeBaseModalSubmitLabel = computed(() => knowledgeBaseModalMode.value === 'create' ? '创建并进入' : '保存名称')
 const knowledgeBaseModalLoadingLabel = computed(() => knowledgeBaseModalMode.value === 'create' ? '创建中…' : '保存中…')
 const knowledgeBaseModalInitialName = computed(() => editingKnowledgeBase.value?.name || '')
@@ -154,16 +154,25 @@ function syncEmbeddedAppearance() {
   const sidebar = host.document.getElementById('agentSidebar')
   const search = host.document.getElementById('sidebarSearch')
   const toggle = host.document.getElementById('toggleLeftSidebar')
+  const chrome = host.getComputedStyle(host.document.getElementById('desktopLayout') || body)
+  const titleStyle = host.getComputedStyle(sidebar?.querySelector('.sidebar-header h2') || body)
   const theme = body.dataset.theme || (host.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
   isDark.value = theme === 'dark'
   document.body.classList.toggle('light-theme', !isDark.value)
   embeddedChrome.value = {
     '--shiyan-sidebar-background': sidebar ? host.getComputedStyle(sidebar).backgroundColor : style.getPropertyValue('--v22-side'),
-    '--shiyan-sidebar-text': style.getPropertyValue('--text'),
+    '--shiyan-sidebar-text': titleStyle.color,
+    '--shiyan-sidebar-title-size': titleStyle.fontSize,
+    '--shiyan-sidebar-width': chrome.getPropertyValue('--shiyan-sidebar-width').trim() || '262px',
     '--shiyan-sidebar-control': search ? host.getComputedStyle(search).color : style.getPropertyValue('--secondary'),
     '--shiyan-sidebar-toggle': toggle ? host.getComputedStyle(toggle).color : style.getPropertyValue('--secondary'),
-    '--shiyan-sidebar-hover': style.getPropertyValue('--v22-hover'),
+    '--shiyan-sidebar-hover': isDark.value ? style.getPropertyValue('--v22-hover') : 'rgba(100,110,130,.055)',
+    '--shiyan-sidebar-hover-text': isDark.value ? '#fff' : '#252525',
     '--shiyan-sidebar-font': style.fontFamily,
+    '--shiyan-search-top': search?.getClientRects().length ? search.getBoundingClientRect().top + 'px' : '9.5px',
+    '--shiyan-search-right': '49px',
+    '--shiyan-toggle-top': toggle?.getClientRects().length ? toggle.getBoundingClientRect().top + 'px' : '9px',
+    '--shiyan-toggle-right': '13px',
   }
 }
 
@@ -370,7 +379,7 @@ onMounted(async () => {
   if (embedded && window.parent !== window) {
     syncEmbeddedAppearance()
     embeddedThemeObserver = new MutationObserver(syncEmbeddedAppearance)
-    for (const element of [window.parent.document.body, window.parent.document.documentElement]) {
+    for (const element of [window.parent.document.body, window.parent.document.documentElement, window.parent.document.getElementById('desktopLayout')].filter(Boolean)) {
       embeddedThemeObserver.observe(element, { attributes: true, attributeFilter: ['data-theme', 'class', 'style'] })
     }
   }
@@ -558,8 +567,11 @@ onUnmounted(() => {
 <style>
 /* Match ShiYan's existing desktop sidebar chrome only in its embedded RAG view. */
 .workspace-shell.shiyan-embedded .workspace-sidebar {
+  width: var(--shiyan-sidebar-width,262px);
   background: var(--shiyan-sidebar-background, #f8f8f9);
 }
+.workspace-shell.shiyan-embedded .workspace-main { margin-left:var(--shiyan-sidebar-width,262px); }
+.workspace-shell.shiyan-embedded.sidebar-collapsed .workspace-main { margin-left:0; }
 .workspace-shell.shiyan-embedded .sidebar-brand {
   position: relative;
   height: 48px;
@@ -571,7 +583,7 @@ onUnmounted(() => {
 }
 .workspace-shell.shiyan-embedded .sidebar-brand strong {
   font-family: var(--shiyan-sidebar-font, -apple-system, BlinkMacSystemFont, sans-serif);
-  font-size: 19px;
+  font-size: var(--shiyan-sidebar-title-size,19px);
   line-height: 1.15;
   font-weight: 600;
   letter-spacing: -.4px;
@@ -591,9 +603,9 @@ onUnmounted(() => {
   background: transparent;
   box-shadow: none;
 }
-.workspace-shell.shiyan-embedded .sidebar-header-search { margin-left: auto; border-radius: 8px; }
+.workspace-shell.shiyan-embedded .sidebar-header-search { position:absolute; top:var(--shiyan-search-top,9.5px); right:var(--shiyan-search-right,49px); margin-left:0; border-radius:8px; }
 .workspace-shell.shiyan-embedded :is(.sidebar-collapse-toggle, .sidebar-reopen) { color: var(--shiyan-sidebar-toggle, #737780); }
-.workspace-shell.shiyan-embedded .sidebar-collapse-toggle { position: absolute; top: 9px; right: 13px; }
+.workspace-shell.shiyan-embedded .sidebar-collapse-toggle { position: absolute; top:var(--shiyan-toggle-top,9px); right:var(--shiyan-toggle-right,13px); }
 .workspace-shell.shiyan-embedded :is(.sidebar-header-search, .sidebar-collapse-toggle, .sidebar-reopen) svg {
   display: block;
   width: 18px;
@@ -607,15 +619,22 @@ onUnmounted(() => {
   transform: none;
 }
 .workspace-shell.shiyan-embedded .sidebar-header-search svg { stroke-width: 1.5; }
+.workspace-shell.shiyan-embedded.sidebar-collapsed .sidebar-reopen { position: fixed; z-index: 30; top: 9px; left: 11px; border: 0; background: transparent; box-shadow: none; }
 .workspace-shell.shiyan-embedded :is(.sidebar-header-search, .sidebar-collapse-toggle, .sidebar-reopen):hover {
-  color: var(--shiyan-sidebar-text, var(--workspace-text));
+  color: var(--shiyan-sidebar-hover-text, #252525);
   background: var(--shiyan-sidebar-hover, var(--workspace-hover));
 }
-.workspace-shell.shiyan-embedded.sidebar-collapsed .sidebar-reopen { top: 9px; left: 11px; }
 body:not(.light-theme) .workspace-shell.shiyan-embedded :is(.sidebar-header-search, .sidebar-collapse-toggle, .sidebar-reopen):hover { color: #fff; }
-body:not(.light-theme) .workspace-shell.shiyan-embedded .sidebar-header-search:hover svg { stroke-width: 1.8; }
+body.light-theme .workspace-shell.shiyan-embedded :is(.sidebar-collapse-toggle, .sidebar-reopen):hover { color: var(--shiyan-sidebar-toggle, #737780); }
+body:not(.light-theme) .workspace-shell.shiyan-embedded .sidebar-header-search:hover svg { stroke-width: 1.9; }
 body:not(.light-theme) .workspace-shell.shiyan-embedded :is(.sidebar-collapse-toggle, .sidebar-reopen):hover svg { stroke-width: 1.9; }
 @media (max-width: 860px) {
-  .workspace-shell.shiyan-embedded :is(.sidebar-collapse-toggle, .sidebar-reopen) { display: none; }
+  .workspace-shell.shiyan-embedded .workspace-sidebar { transform: translateX(0); box-shadow: none; }
+  .workspace-shell.shiyan-embedded.sidebar-collapsed .workspace-sidebar { transform: translateX(-102%); }
+  .workspace-shell.shiyan-embedded .workspace-main { margin-left:var(--shiyan-sidebar-width,262px); }
+  .workspace-shell.shiyan-embedded.sidebar-collapsed .workspace-main { margin-left: 0; }
+  .workspace-shell.shiyan-embedded .workspace-header { padding: 0 20px; }
+  .workspace-shell.shiyan-embedded.sidebar-collapsed .workspace-header { padding-left: 56px; }
+  .workspace-shell.shiyan-embedded :is(.mobile-menu-button, .sidebar-mobile-close, .sidebar-scrim) { display: none; }
 }
 </style>

@@ -23,6 +23,7 @@ struct AgentSidebar: View {
     @State private var menuTarget: UUID?
     @State private var menuHeight: CGFloat = 170
     @State private var rowFrames: [UUID: CGRect] = [:]
+    @State private var footerTop: CGFloat = 100000
     @State private var deleteHeight: CGFloat = 172
     @Environment(\.colorScheme) private var scheme
     private var contentOpacity: Double {
@@ -58,12 +59,14 @@ struct AgentSidebar: View {
                             ForEach(pinned) { session in row(session) }
                         }
                         HStack {
-                            sectionTitle("项目")
+                            sectionTitle("项目", faded: false)
                             Spacer()
                             Button { projectTarget = nil; projectName = ""; projectDialog = true } label: { Image(systemName: "plus").frame(width: 36, height: 36) }
                                 .buttonStyle(.plain).foregroundStyle(.secondary).padding(.trailing, 22)
                                 .accessibilityLabel("新建项目").accessibilityIdentifier("create-sync-project")
                         }.padding(.top, pinned.isEmpty ? 0 : 20)
+                            .agentEdgeFade(space: "sidebarViewport", topGone: topInset * 0.45, topClear: topInset + 78,
+                                           bottomClear: footerTop - 24, bottomGone: footerTop + 28, blurWholeRow: true)
                         ForEach(store.projects) { project in projectRow(project) }
                         sectionTitle("最近").padding(.top, 24)
                         ForEach(recent) { session in row(session) }
@@ -198,8 +201,8 @@ struct AgentSidebar: View {
                     .font(.system(size: 18, weight: .semibold))
                     .padding(.horizontal, 22)
                     .frame(height: ShiyanPreviewLayout.controlDiameter)
-                    .foregroundStyle(.white)
-                    .background(Color.accentColor, in: Capsule())
+                    .foregroundStyle(.primary)
+                    .shiyanGlass(in: Capsule(), tint: .white.opacity(0.04), interactive: true)
                     .contentShape(Capsule())
             }
             .buttonStyle(.plain)
@@ -213,11 +216,8 @@ struct AgentSidebar: View {
         }
         .padding(.leading, 28).padding(.trailing, 22)
         .padding(.top, 20).padding(.bottom, bottomInset + 12)
-        .background {
-            let background = scheme == .dark ? Color(white: 0.065) : Color(white: 0.985)
-            LinearGradient(colors: [background.opacity(0), background, background],
-                           startPoint: .top, endPoint: .bottom)
-                .allowsHitTesting(false)
+        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named("sidebarViewport")).minY } action: { value in
+            if abs(value - footerTop) > 0.25 { footerTop = value }
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("sidebar-footer")
@@ -242,7 +242,8 @@ struct AgentSidebar: View {
         .buttonStyle(.plain)
         .foregroundStyle(.primary)
         .accessibilityIdentifier("sidebar-feature-\(page.rawValue)")
-        .agentEdgeFade(space: "sidebarViewport", topGone: topInset * 0.45, topClear: topInset + 78, blurWholeRow: true)
+        .agentEdgeFade(space: "sidebarViewport", topGone: topInset * 0.45, topClear: topInset + 78,
+                       bottomClear: footerTop - 24, bottomGone: footerTop + 28, blurWholeRow: true)
     }
 
     private func projectRow(_ project: AgentProject) -> some View {
@@ -265,7 +266,8 @@ struct AgentSidebar: View {
                 } label: { ShiyanMoreButtonLabel(hasGlass: false) }
                 .buttonStyle(.plain)
             }.padding(.horizontal, 28).foregroundStyle(.primary)
-                .agentEdgeFade(space: "sidebarViewport", topGone: topInset * 0.45, topClear: topInset + 78, blurWholeRow: true)
+                .agentEdgeFade(space: "sidebarViewport", topGone: topInset * 0.45, topClear: topInset + 78,
+                       bottomClear: footerTop - 24, bottomGone: footerTop + 28, blurWholeRow: true)
             if expandedProjects.contains(project.id) {
                 ForEach(store.conversations.filter { $0.hasSentMessage && $0.projectID == project.id }.sorted { $0.updatedAt > $1.updatedAt }) { conversation in row(conversation) }
             }
@@ -388,11 +390,17 @@ struct AgentSidebar: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("delete-conversation-popover")
     }
-    private func sectionTitle(_ text: String) -> some View {
-        Text(text).font(.system(size: 17, weight: .semibold))
+    @ViewBuilder
+    private func sectionTitle(_ text: String, faded: Bool = true) -> some View {
+        let title = Text(text).font(.system(size: 17, weight: .semibold))
             .scaleEffect(contentScale, anchor: .leading)
             .padding(.leading, 28).padding(.bottom, 12)
-            .agentEdgeFade(space: "sidebarViewport", topGone: topInset * 0.45, topClear: topInset + 78)
+        if faded {
+            title.agentEdgeFade(space: "sidebarViewport", topGone: topInset * 0.45, topClear: topInset + 78,
+                                bottomClear: footerTop - 24, bottomGone: footerTop + 28)
+        } else {
+            title
+        }
     }
     private func row(_ conversation: AgentConversation) -> some View {
         let selected = store.selectedID == conversation.id
@@ -434,7 +442,8 @@ struct AgentSidebar: View {
                 }
         )
          
-        .agentEdgeFade(space: "sidebarViewport", topGone: topInset * 0.45, topClear: topInset + 78, blurWholeRow: true)
+        .agentEdgeFade(space: "sidebarViewport", topGone: topInset * 0.45, topClear: topInset + 78,
+                       bottomClear: footerTop - 24, bottomGone: footerTop + 28, blurWholeRow: true)
         .id("\(conversation.id.uuidString)-\(conversation.isPinned)")
     }
 }

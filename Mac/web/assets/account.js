@@ -84,9 +84,9 @@
     $('accountForm').hidden = qrMode || rememberedMode;
     $('accountQRPanel').hidden = !qrMode || trustedMode;
     $('accountPasswordMode').hidden = register;
-    $('accountPasswordMode').textContent = qrMode || rememberedMode ? '密码登录' : hasRemembered ? '头像登录' : '扫码登录';
+    $('accountPasswordMode').textContent = qrMode && !rememberedMode ? '密码登录' : '扫码登录';
     $('accountPasswordMode').disabled = busy;
-    $('accountTitle').textContent = register ? '创建账户' : '登录';
+    $('accountTitle').textContent = register ? '创建账号' : '登录';
     $('accountNameField').hidden = !register;
     $('accountVerificationField').hidden = !register;
     $('accountVerificationCode').required = register;
@@ -94,14 +94,14 @@
     $('accountSendCode').disabled = busy || codeSending || Date.now() < codeResendAt;
     $('accountSendCode').textContent = codeSending ? '正在发送…' : Date.now() < codeResendAt ? Math.ceil((codeResendAt-Date.now())/1000) + ' 秒后重发' : '获取验证码';
     $('accountPassword').autocomplete = register ? 'new-password' : 'current-password';
-    $('accountSubmitLabel').textContent = busy ? (applicationStarted ? '正在打开会话…' : register ? '正在创建账户…' : '正在登录…') : register ? '创建账户' : '登录';
+    $('accountSubmitLabel').textContent = busy ? (applicationStarted ? '正在打开会话…' : register ? '正在创建账号…' : '正在登录…') : register ? '创建账号' : '登录';
     $('accountSwitchButton').textContent = register ? '返回登录' : '注册账号';
     $('accountSubmit').disabled = busy || codeSending;
     $('accountSwitchButton').disabled = busy || codeSending;
     $('accountReconnect').disabled = busy;
     const bootstrap = register && status?.bootstrapRequired;
-    $('accountSetup').hidden = !register;
-    $('accountSetup').textContent = bootstrap ? (status?.canBootstrap ? '此设备将创建你的所有者账户并保留现有资料。其他新账户默认为普通用户。' : '请先由所有者在原有授权设备上完成账户设置。') : '新账户默认为普通用户，权限由管理员管理。';
+    $('accountSetup').hidden = !bootstrap;
+    $('accountSetup').textContent = bootstrap ? (status?.canBootstrap ? '此设备将创建你的所有者账号并保留现有资料。' : '请先由所有者在原有授权设备上完成账户设置。') : '';
     if (bootstrap && !status?.canBootstrap) $('accountSubmit').disabled = true;
     $('accountGate').hidden = false;
   }
@@ -286,9 +286,12 @@
       $('accountRememberedStatus').textContent = error.message; $('accountRememberedLogin').disabled = false;
     }
   };
-  $('accountOtherLogin').onclick = startQR;
   $('accountQRRefresh').onclick = startQR;
-  $('accountPasswordMode').onclick = () => { if (busy) return; if (!qrMode && !rememberedMode) { if (hasRemembered) showAvatarLogin(); else startQR(); return; } stopQR(); rememberedMode = false; $('accountRememberedLogin').disabled = false; showError(''); render(); };
+  $('accountPasswordMode').onclick = () => {
+    if (busy) return;
+    if (rememberedMode || !qrMode) { startQR(); return; }
+    stopQR(); rememberedMode = false; $('accountRememberedLogin').disabled = false; showError(''); render();
+  };
   window.addEventListener('pagehide', stopQR);
 
   async function logout(button) {

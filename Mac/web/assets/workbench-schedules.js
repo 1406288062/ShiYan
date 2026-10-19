@@ -33,6 +33,7 @@
   const report = error => window.shiyan?.toast?.(error?.message || String(error));
   const notifyNative = () => C?.scheduleNative?.();
   function icon(name) {
+    if (name === 'search') return C.toolbarIcon('search');
     if (name === 'rename') return window.shiyan?.sessionMenuIcon?.('rename') || C.icon('newChat');
     if (!paths[name]) return C.icon(name);
     return '<svg class="wb-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="'+paths[name]+'"></path></svg>';
@@ -304,12 +305,16 @@
     finally{sending=false;if(String(selected)===String(id))renderConversation();}
   }
   function applyLayout() {
-    if(!active || window.ShiYanKnowledge?.isOpen?.())return;
-    $('leftContainer').inert=false;$('leftContainer').setAttribute('aria-hidden','false');$('mainWorkspace').inert=false;
-    $('railSchedules').classList.add('is-active');['railHome','railEnhance','railHistory'].forEach(id=>$(id)?.classList.remove('is-active'));
-    const sidebar=innerWidth>1060?250:innerWidth>780?230:200;
-    $('desktopLayout').style.setProperty('--schedule-tools-width',Math.max(220,Math.min(C.prefs.rightWidth || 460,innerWidth-50-sidebar-300))+'px');
+    if(!active || window.shiyan.getView()!=='schedules' || window.ShiYanKnowledge?.isOpen?.())return;
     const tools=document.body.classList.contains('schedules-tools-open');
+    const showSidebar=!!C.prefs.leftOpen && !(innerWidth<=780 && tools);
+    document.body.classList.toggle('schedules-sidebar-collapsed',!showSidebar);
+    $('leftContainer').inert=!showSidebar;$('leftContainer').setAttribute('aria-hidden',String(!showSidebar));$('mainWorkspace').inert=false;
+    $('railSchedules').classList.add('is-active');['railHome','railEnhance','railHistory'].forEach(id=>$(id)?.classList.remove('is-active'));
+    const sidebar=showSidebar?(parseFloat(getComputedStyle($('desktopLayout')).getPropertyValue('--shiyan-sidebar-width'))||262):0;
+    const toggle=$('toggleLeftSidebar');toggle.hidden=false;toggle.style.left=(showSidebar?50+sidebar-43:61)+'px';toggle.setAttribute('aria-expanded',String(showSidebar));
+    const glyph=showSidebar?'left':'leftCollapsed';toggle.innerHTML=C.toolbarIcon(glyph);toggle.dataset.sidebarGlyph=glyph;toggle.title=toggle.ariaLabel=showSidebar?'隐藏左侧栏':'显示左侧栏';
+    $('desktopLayout').style.setProperty('--schedule-tools-width',Math.max(220,Math.min(C.prefs.rightWidth || 460,innerWidth-50-sidebar-300))+'px');
     $('rightWorkspace').inert=!tools;$('rightWorkspace').setAttribute('aria-hidden',String(!tools));
     if(tools){$('toggleRightWorkspace').hidden=false;$('toggleRightWorkspace').setAttribute('aria-expanded','true');$('rightResizeHandle').style.left=(innerWidth-parseFloat($('desktopLayout').style.getPropertyValue('--schedule-tools-width'))-5)+'px';}
   }
@@ -323,7 +328,7 @@
     $('scheduleSidebar').hidden=!active;$('scheduleView').hidden=!active;$('railSchedules').classList.toggle('is-active',active);
     clearInterval(timer);closePopup();document.body.classList.remove('schedules-tools-open');
     if(active){applyLayout();if(selected)renderConversation();else renderLanding();renderSidebar();loadCatalog().then(()=>{if(active)renderConversation();});refresh();timer=setInterval(refresh,4000);requestAnimationFrame(applyLayout);}
-    else{$('scheduleEditor').hidden=true;notifyNative();}
+    else{document.body.classList.remove('schedules-sidebar-collapsed');$('scheduleEditor').hidden=true;notifyNative();}
   }
   function build() {
     const rail=document.createElement('button');rail.id='railSchedules';rail.type='button';rail.className='wb-icon-button schedule-rail-button';rail.title=rail.ariaLabel='定时任务';rail.innerHTML='<svg class="wb-icon" viewBox="0 0 24 24" aria-hidden="true"><defs><mask id="scheduleRailFillMask"><rect width="24" height="24" fill="white"/><path d="M12 6v6l-3 2" fill="none" stroke="black" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></mask></defs><path class="rail-glyph-outline" d="'+paths.clock+'"/><circle class="rail-glyph-filled" cx="12" cy="12" r="9" mask="url(#scheduleRailFillMask)"/></svg>';
@@ -342,6 +347,7 @@
       if(e.target.closest('[data-open-execution],[data-show-message-changes],[data-message-changes]'))showTools();
       if(e.target.closest('#toggleRightWorkspace'))queueMicrotask(()=>{if(active){document.body.classList.toggle('schedules-tools-open',!!C.prefs.rightOpen);applyLayout();}});
     },true);
+    document.addEventListener('click',e=>{if(active && e.target.closest('#toggleLeftSidebar')){if(C.prefs.leftOpen && innerWidth<=780){document.body.classList.remove('schedules-tools-open');C.prefs.rightOpen=false;}applyLayout();notifyNative();}});
     document.addEventListener('keydown',e=>{if(!active)return;if(e.key==='Escape'){if(!dialog.hidden){closeEditor();e.preventDefault();}else if(!popup.hidden){closePopup();e.preventDefault();}}});
     dialog.addEventListener('click',e=>{if(e.target===dialog)closeEditor();});
     window.addEventListener('shiyan-view',activate);
@@ -365,7 +371,7 @@
       if(target.hasAttribute('data-schedule-copy-message')){const m=record?.messages?.find(m=>String(m.id)===target.dataset.scheduleCopyMessage);await window.shiyan.copyText(m?.text || m?.content || '');return;}
       const action=target.dataset.scheduleAction,id=target.dataset.scheduleId || selected,task=tasks.find(t=>String(t.id)===String(id));
       if(action==='new')openEditor();
-      else if(action==='search'){const box=$('scheduleSearch');box.hidden=!box.hidden;if(!box.hidden)$('scheduleSearchInput').focus();else{query='';$('scheduleSearchInput').value='';renderSidebar();}}
+      else if(action==='search'){const box=$('scheduleSearch');box.hidden=!box.hidden;if(!box.hidden)$('scheduleSearchInput').focus();else{query='';$('scheduleSearchInput').value='';renderSidebar();}target.setAttribute('aria-expanded',String(!box.hidden));}
       else if(action==='filter')filterMenu(target);
       else if(action==='expand'){expanded=!expanded;renderSidebar();}
       else if(action==='edit' || action==='edit-task')openEditor(task);
@@ -380,7 +386,7 @@
     }catch(error){report(error);}
   }
   function install(context) {if(installed||!window.ShiYanAccount.user.serverAccess)return;installed=true;C=context;ensurePending().catch(report);build();activate();}
-  window.ShiYanSchedules={install,open:()=>window.shiyan.navigate('schedules'),refresh,openEditor,
+  window.ShiYanSchedules={install,layout:applyLayout,open:()=>window.shiyan.navigate('schedules'),refresh,openEditor,
     message:id=>active?record?.messages?.find(message=>String(message.id)===String(id)):undefined,
     conversation:()=>active?record?.conversation:undefined,
     currentConversation:()=>active && selected?(record?.conversation || {id:activeTask()?.conversationId,messages:record?.messages || []}):undefined,

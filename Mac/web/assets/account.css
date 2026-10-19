@@ -100,7 +100,7 @@ body.account-light .auth-shell::after {
 }
 .auth-frame { position: relative; z-index: 2; width: min(100%, 428px); display: grid; gap: 20px; }
 .auth-brand { display: flex; width: 100%; align-items: center; justify-content: center; gap: 11px; color: #f4f5f8; line-height: 1; text-shadow: 0 1px 18px rgba(255, 255, 255, 0.12); }
-.auth-mark { width: 44px; height: 44px; object-fit: contain; transform: translateY(-0.92px); filter: drop-shadow(0 9px 20px rgba(94, 96, 237, 0.32)); }
+.auth-mark { width: 44px; height: 44px; object-fit: contain; transform: translateY(-0.92px); filter: none; background: transparent; }
 .auth-mark-bg { fill: #7468ed; }
 .auth-mark-line { fill: none; stroke: rgba(255, 255, 255, 0.88); stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.35; }
 .auth-mark-node { fill: #fff; }
@@ -212,12 +212,11 @@ body.account-light .auth-field input {
     0 5px 16px rgba(35, 42, 56, 0.045);
 }
 .auth-field input::placeholder { color: var(--workspace-muted); }
+#accountPassword::-webkit-caps-lock-indicator { display: none; visibility: hidden; }
 .auth-field input:focus { border-color: var(--workspace-accent); outline: 0; box-shadow: 0 0 0 3px color-mix(in srgb, var(--workspace-accent) 14%, transparent), 0 5px 16px color-mix(in srgb, var(--workspace-accent) 10%, transparent); }
-.auth-submit { height: 50px; display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 5px; color: #fff; border: 0; border-radius: 12px; background: linear-gradient(135deg, #4eafea 0%, #5e60ed 58%, #ab63df 100%); box-shadow: 0 11px 25px color-mix(in srgb, var(--workspace-accent) 28%, transparent), 0 1px 0 rgba(255, 255, 255, 0.24) inset; cursor: pointer; transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease, filter 0.18s ease; }
-.auth-submit:hover:not(:disabled) { transform: translateY(-1px); filter: saturate(1.06); box-shadow: 0 15px 30px color-mix(in srgb, var(--workspace-accent) 36%, transparent), 0 1px 0 rgba(255, 255, 255, 0.3) inset; }
+.auth-submit { height: 50px; display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 5px; color: #fff; appearance: none; -webkit-appearance: none; border: 0; border-radius: 12px; overflow: hidden; background: linear-gradient(135deg, #4eafea 0%, #5e60ed 58%, #ab63df 100%); background-clip: padding-box; box-shadow: 0 1px 0 rgba(255, 255, 255, 0.24) inset; cursor: pointer; transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease, filter 0.18s ease; }
+.auth-submit:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.04); box-shadow: 0 1px 0 rgba(255, 255, 255, 0.3) inset; }
 .auth-submit:disabled { cursor: wait; opacity: 0.55; }
-.auth-submit-arrow { font-size: 17px; transition: transform 0.18s ease; }
-.auth-submit:hover:not(:disabled) .auth-submit-arrow { transform: translateX(2px); }
 .auth-switch { display: flex; justify-content: center; gap: 5px; margin: 24px 0 0; padding-top: 21px; color: var(--workspace-muted); border-top: 1px solid var(--workspace-border); font-size: 12px; }
 .auth-switch button { padding: 0; color: var(--workspace-text); border: 0; background: transparent; cursor: pointer; font-weight: 650; }
 .auth-switch button:hover { color: var(--workspace-accent); }
@@ -285,11 +284,10 @@ html:not([data-account-owner="true"]) .memory-topics {display:none!important;}
 .auth-remembered {text-align:center;color:var(--workspace-muted);font-size:13px}
 #accountGate .auth-remembered button {border:0;background:none;color:inherit;cursor:pointer}
 #accountRememberedLogin {display:flex;flex-direction:column;align-items:center;gap:12px;width:100%;padding:12px}
-#accountRememberedAvatar {display:grid;place-items:center;width:76px;height:76px;border-radius:50%;background:var(--workspace-border);color:var(--workspace-text);font-size:28px;overflow:hidden}
+#accountRememberedAvatar {display:grid;place-items:center;width:96px;height:96px;border-radius:50%;background:var(--workspace-border);color:var(--workspace-text);font-size:28px;overflow:hidden}
 #accountRememberedAvatar img {width:100%;height:100%;object-fit:cover}
 #accountRememberedName {color:var(--workspace-text);font-size:18px}
 #accountRememberedCode {letter-spacing:3px;font-size:16px;color:var(--workspace-text)}
-#accountOtherLogin {margin-top:20px;padding:8px}
 
 
 #accountGate .auth-switch {display:flex;align-items:center;justify-content:center;gap:24px}
@@ -347,7 +345,6 @@ html:not([data-account-owner="true"]) .memory-topics {display:none!important;}
 #accountGate .auth-switch { padding-top: 14px; }
 #accountRememberedLogin { gap: 8px; padding: 8px; }
 .auth-remembered p { margin: 6px 0; }
-#accountOtherLogin { margin-top: 8px; padding: 6px; }
 
 /* Keep every login field on the card centre line, including overlay-scrollbar WebKit. */
 #accountGate .auth-stage { width: 100%; scrollbar-gutter: auto; scrollbar-width: none; }
@@ -362,3 +359,5 @@ html:not([data-account-owner="true"]) .memory-topics {display:none!important;}
 #accountGate #accountSendCode:disabled { opacity: .5; cursor: default; }
 #accountGate #accountCodeStatus { margin: 6px 0 0; color: var(--workspace-muted); font-size: 11px; line-height: 1.5; }
 #accountGate #accountCodeStatus:empty { display: none; }
+
+#accountGate[data-auth-mode="register"] .auth-switch { justify-content: center; }
