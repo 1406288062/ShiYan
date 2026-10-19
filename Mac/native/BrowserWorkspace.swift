@@ -9,6 +9,8 @@ final class BrowserWorkspace: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
     private weak var window: NSWindow?
     private let send: ([String: Any]) -> Void
     private let isInternal: (URL) -> Bool
+    private let authorize: (@escaping (Bool) -> Void) -> Void
+    private var accountGeneration = UUID()
     private let stateURL: URL
     private let dataStore: WKWebsiteDataStore
     private var views: [String: WKWebView] = [:]
@@ -29,11 +31,13 @@ final class BrowserWorkspace: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
     private var testDownloadSource: URL?
 
     init(host: NSView, window: NSWindow, directory: URL,
-         isInternal: @escaping (URL) -> Bool, emit: @escaping ([String: Any]) -> Void) {
+         isInternal: @escaping (URL) -> Bool, emit: @escaping ([String: Any]) -> Void,
+         authorize: @escaping (@escaping (Bool) -> Void) -> Void = { $0(false) }) {
         self.host = host
         self.window = window
         self.send = emit
         self.isInternal = isInternal
+        self.authorize = authorize
         self.stateURL = directory.appendingPathComponent("browser-workspace-v1.json")
         self.dataStore = CommandLine.arguments.contains("--self-test-workbench") ? .nonPersistent() : .default()
         super.init()
@@ -194,9 +198,14 @@ final class BrowserWorkspace: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
             panel.title = op == "chooseDirectory" ? "选择项目目录" : "打开文件"
             if let raw = body["path"] as? String { panel.directoryURL = URL(fileURLWithPath: raw) }
             let requestID = body["id"] as? String ?? ""
+            let generation = accountGeneration
             panel.beginSheetModal(for: window) { [weak self] response in
-                self?.send(["type": "workspacePicked", "id": requestID, "cancelled": response != .OK,
-                            "path": response == .OK ? (panel.url?.path ?? "") : ""])
+                guard let self = self else { return }
+                self.authorize { allowed in
+                    guard allowed, generation == self.accountGeneration else { return }
+                    self.send(["type": "workspacePicked", "id": requestID, "cancelled": response != .OK,
+                               "path": response == .OK ? (panel.url?.path ?? "") : ""])
+                }
             }
         default: break
         }
@@ -282,10 +291,18 @@ final class BrowserWorkspace: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
         guard let window = window, let url = frame.request.url, validURL(url.absoluteString) != nil else {
             completionHandler(nil); return
         }
-        let panel = NSOpenPanel(); panel.title = "向 \(url.host ?? "网站") 选择上传文件"
-        panel.canChooseDirectories = parameters.allowsDirectories; panel.canChooseFiles = true
-        panel.allowsMultipleSelection = parameters.allowsMultipleSelection
-        panel.beginSheetModal(for: window) { completionHandler($0 == .OK ? panel.urls : nil) }
+        let generation = accountGeneration
+        authorize { [weak self] allowed in
+            guard let self = self, allowed, generation == self.accountGeneration else { completionHandler(nil); return }
+            let panel = NSOpenPanel(); panel.title = "向 \(url.host ?? "网站") 选择上传文件"
+            panel.canChooseDirectories = parameters.allowsDirectories; panel.canChooseFiles = true
+            panel.allowsMultipleSelection = parameters.allowsMultipleSelection
+            panel.beginSheetModal(for: window) { response in
+                self.authorize { allowed in
+                    completionHandler(allowed && generation == self.accountGeneration && response == .OK ? panel.urls : nil)
+                }
+            }
+        }
     }
 
     func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) { track(download) }
@@ -294,18 +311,20 @@ final class BrowserWorkspace: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
     func download(_ download: WKDownload, decideDestinationUsing response: URLResponse,
                   suggestedFilename: String, completionHandler: @escaping (URL?) -> Void) {
         guard let window = window, let url = response.url, validURL(url.absoluteString) != nil else { completionHandler(nil); return }
-        if CommandLine.arguments.contains("--self-test-workbench"),
-           let target = testDownloadTarget, testDownloadSource == url {
-            prepareDownload(download, source: url, target: target, completion: completionHandler)
-            return
-        }
-        let panel = NSSavePanel(); panel.title = "保存浏览器下载"
-        let name = (suggestedFilename as NSString).lastPathComponent.replacingOccurrences(of: ":", with: "-")
-        panel.nameFieldStringValue = name.isEmpty ? "下载文件" : name
-        panel.canCreateDirectories = true
-        panel.beginSheetModal(for: window) { [weak self] reply in
-            guard let self = self, reply == .OK, let target = panel.url else { completionHandler(nil); return }
-            self.prepareDownload(download, source: url, target: target, completion: completionHandler)
+        let generation = accountGeneration
+        authorize { [weak self] allowed in
+            guard let self = self, allowed, generation == self.accountGeneration else { completionHandler(nil); return }
+            let panel = NSSavePanel(); panel.title = "保存浏览器下载"
+            let name = (suggestedFilename as NSString).lastPathComponent.replacingOccurrences(of: ":", with: "-")
+            panel.nameFieldStringValue = name.isEmpty ? "下载文件" : name
+            panel.canCreateDirectories = true
+            panel.beginSheetModal(for: window) { [weak self] reply in
+                guard let self = self, reply == .OK, let target = panel.url else { completionHandler(nil); return }
+                self.authorize { allowed in
+                    guard allowed, generation == self.accountGeneration else { completionHandler(nil); return }
+                    self.prepareDownload(download, source: url, target: target, completion: completionHandler)
+                }
+            }
         }
     }
     private func prepareDownload(_ download: WKDownload, source: URL, target: URL, completion: (URL?) -> Void) {
@@ -318,6 +337,13 @@ final class BrowserWorkspace: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
     }
 
     func downloadDidFinish(_ download: WKDownload) {
+        let generation = accountGeneration
+        authorize { [weak self] allowed in
+            guard let self = self, allowed, generation == self.accountGeneration else { return }
+            self.finishAuthorizedDownload(download)
+        }
+    }
+    private func finishAuthorizedDownload(_ download: WKDownload) {
         let key = ObjectIdentifier(download)
         if let (id, staging, destination) = destinations.removeValue(forKey: key) {
             do {
@@ -345,11 +371,16 @@ final class BrowserWorkspace: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
     func rejectsURL(_ url: URL) -> Bool { validURL(url.absoluteString) == nil }
 
     func closeAll() {
+        accountGeneration = UUID()
         chrome?.close()
         testTimer?.invalidate()
         for view in views.values { view.stopLoading(); view.removeFromSuperview() }
         observations.removeAll(); views.removeAll()
         for download in downloads.values { download.cancel { _ in } }
+        downloads.removeAll()
+        for (_, staging, _) in destinations.values { try? FileManager.default.removeItem(at: staging) }
+        destinations.removeAll()
+        active = nil; desiredVisible = false
     }
 
      

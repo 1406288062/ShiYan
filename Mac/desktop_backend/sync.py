@@ -1,9 +1,10 @@
- 
+
 from __future__ import annotations
 import asyncio
 import base64
 import hashlib
 import json
+import time
 import os
 from pathlib import Path
 import uuid
@@ -18,7 +19,7 @@ SCHEDULE_CONFIG = SCHEDULE_KEYS - {"id", "executorDeviceId", "status", "nextRunA
 ASSET_KEYS = {"filename", "mimeType", "bytes", "sha256", "width", "height", "createdAt"}
 
 def message_order(message):
-     
+
     try:
         instant = datetime.fromisoformat(str(message.get("createdAt", "")).replace("Z", "+00:00"))
         if instant.tzinfo is None:
@@ -73,38 +74,47 @@ class SyncEngine:
             CREATE TABLE IF NOT EXISTS sync_outbox(kind TEXT NOT NULL,id TEXT NOT NULL,mutation_id TEXT NOT NULL,base_revision INTEGER NOT NULL,data TEXT,deleted INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(kind,id));
             CREATE TABLE IF NOT EXISTS sync_conflicts(id INTEGER PRIMARY KEY AUTOINCREMENT,kind TEXT,entity_id TEXT,local_data TEXT,remote_data TEXT,created_at TEXT);
             CREATE TABLE IF NOT EXISTS sync_assets(id TEXT PRIMARY KEY,sha256 TEXT,local_id TEXT);
+            CREATE INDEX IF NOT EXISTS sync_message_parent ON sync_entities(kind,json_extract(snapshot,'$.conversationId')) WHERE deleted=0;
             """)
             self.storage.sync_observer = self.local_changed
-            self._repair_cached_output()
-             
-             
-            for item in self.storage.list("scheduledTasks"):
-                self.local_changed("scheduledTasks", item, None)
-            for item in self.storage.list("projects"):
-                self.local_changed("projects", item, None)
-            for item in self.storage.list("conversations"):
-                ordered = ordered_messages(item.get("messages", []))
-                if ordered != item.get("messages", []):
-                    item["messages"] = ordered
-                    self.storage.put("conversations", item)
-                self.local_changed("conversations", item, None)
+            # Local writes already update the durable outbox through the observer.
+            # Rebuild historical sync metadata only once for this migration.
+            if self.storage.setting("sync.startupRepairVersion", 0) < 2:
+                self._repair_cached_output()
+
+
+                for item in self.storage.list("scheduledTasks"):
+                    self.local_changed("scheduledTasks", item, None)
+                for item in self.storage.list("projects"):
+                    self.local_changed("projects", item, None)
+                for item in self.storage.list("conversations"):
+                    ordered = ordered_messages(item.get("messages", []))
+                    if ordered != item.get("messages", []):
+                        item["messages"] = ordered
+                        self.storage.put("conversations", item)
+                    self.local_changed("conversations", item, None)
+                self.storage.set_setting("sync.startupRepairVersion", 2)
 
     def _repair_cached_output(self):
-         
-         
+
+
         assets = {}
         for asset in self.storage.list("assets"):
             for key in (asset.get("id"), asset.get("remoteId"), asset.get("syncAssetId")):
                 if key:
                     assets[key] = asset
+        conversations = {}
         self.importing = True
         try:
-            rows = list(self.storage.db.execute("SELECT id,revision,base FROM sync_entities WHERE kind='messages' AND deleted=0 AND base IS NOT NULL"))
+            rows = self.storage.db.execute("SELECT id,revision,base FROM sync_entities WHERE kind='messages' AND deleted=0 AND base IS NOT NULL")
             for identifier, revision, raw in rows:
                 data = json.loads(raw)
                 if data.get("role") != "assistant" or not data.get("remoteJobId"):
                     continue
-                parent = self.storage.get("conversations", data.get("conversationId"))
+                parent_id = data.get("conversationId")
+                if parent_id not in conversations:
+                    conversations[parent_id] = self.storage.get("conversations", parent_id)
+                parent = conversations[parent_id]
                 original = next((m for m in (parent or {}).get("messages", []) if m["id"] == identifier), None)
                 if not original or (data.get("state") not in {"completed", "failed", "cancelled", "interrupted"} and original.get("state") != "reconnecting"):
                     continue
@@ -113,9 +123,12 @@ class SyncEngine:
                     continue
                 local_assets = [assets.get(a.get("syncAssetId") or a.get("id")) for a in data.get("assets", [])]
                 local = {**data, "assets": local_assets if all(local_assets) else original.get("assets", [])}
-                self._import_document({"kind": "messages", "id": identifier, "revision": revision, "deleted": False, "data": data, "localData": local})
+                self._import_document({"kind": "messages", "id": identifier, "revision": revision, "deleted": False, "data": data, "localData": local}, conversations=conversations)
                 self.storage.db.execute("UPDATE sync_entities SET snapshot=base WHERE kind='messages' AND id=?", (identifier,))
                 self.storage.db.execute("DELETE FROM sync_outbox WHERE kind='messages' AND id=?", (identifier,))
+            for conversation in conversations.values():
+                if conversation:
+                    self.storage.put("conversations", conversation)
         finally:
             self.importing = False
 
@@ -125,7 +138,7 @@ class SyncEngine:
 
     def _record(self, kind, identifier, data, deleted=False):
         previous = self._entity(kind, identifier)
-         
+
         if previous and previous["deleted"] and not deleted:
             return
         content = encoded(data) if data is not None else None
@@ -156,10 +169,9 @@ class SyncEngine:
             for message in value.get("messages", []):
                 current_ids.add(message["id"])
                 self._record("messages", message["id"], message_wire(message, item["id"]))
-        rows = list(self.storage.db.execute("SELECT id,snapshot FROM sync_entities WHERE kind='messages' AND deleted=0"))
-        for identifier, content in rows:
-            old = json.loads(content) if content else {}
-            if old.get("conversationId") == item["id"] and identifier not in current_ids:
+        rows = self.storage.db.execute("SELECT id FROM sync_entities WHERE kind='messages' AND deleted=0 AND json_extract(snapshot,'$.conversationId')=?", (item["id"],)).fetchall()
+        for (identifier,) in rows:
+            if identifier not in current_ids:
                 self._record("messages", identifier, None, True)
 
     def pending(self, limit=100):
@@ -183,8 +195,8 @@ class SyncEngine:
             if not asset:
                 continue   
             if asset.get("remoteId") == identifier:
-                 
-                 
+
+
                 with self.storage.lock, self.storage.db:
                     self.storage.db.execute("INSERT OR IGNORE INTO sync_assets VALUES(?,?,?)", (identifier, asset.get("sha256"), asset["id"]))
                 continue
@@ -248,7 +260,7 @@ class SyncEngine:
             prepared.append(result)
         return prepared
 
-    def _import_document(self, change):
+    def _import_document(self, change, conversations=None):
         kind, identifier, deleted = change["kind"], change["id"], bool(change.get("deleted"))
         data = change.get("localData", change.get("data")) or {}
         if kind == "scheduledTasks":
@@ -260,8 +272,8 @@ class SyncEngine:
             host = data.get("executorDeviceId") or identity
             config = {k: data[k] for k in SCHEDULE_CONFIG if k in data}
             value = {**data, **original, **config, "id": identifier, "executorDeviceId": host}
-             
-             
+
+
             if host == identity:
                 from .schedules import next_run
                 timing = {"enabled", "repeat", "time", "timezone", "startDate", "endDate"}
@@ -305,7 +317,12 @@ class SyncEngine:
         parent = self._entity("conversations", conversation_id)
         if parent and parent["deleted"]:
             return False
-        conversation = self.storage.get("conversations", conversation_id)
+        if conversations is not None:
+            if conversation_id not in conversations:
+                conversations[conversation_id] = self.storage.get("conversations", conversation_id)
+            conversation = conversations[conversation_id]
+        else:
+            conversation = self.storage.get("conversations", conversation_id)
         if not conversation:
             return False
         messages = conversation.setdefault("messages", [])
@@ -317,9 +334,9 @@ class SyncEngine:
         else:
             original = messages[index] if index is not None else {}
             message = {"id": identifier, "role": "assistant", "text": "", "assets": [], "createdAt": now(), "state": "completed", "phase": "", "error": None, **original, **data}
-             
-             
-             
+
+
+
             owns_stream = conversation.get("pendingMessageId") == identifier
             if owns_stream and original.get("state") == "running" and data.get("state") == "running":
                 local_text, remote_text = original.get("text", ""), data.get("text", "")
@@ -330,8 +347,8 @@ class SyncEngine:
                 task = self.runtime.tasks.get("conversation:" + conversation_id)
                 if task:
                     task.cancel()
-             
-             
+
+
             visible_keys = ("text", "state", "error", "fileChanges")
             visible_changed = any(message.get(k) != original.get(k) for k in visible_keys)
             opened = conversation.get("lastOpenedAt")
@@ -347,7 +364,8 @@ class SyncEngine:
                     self.runtime.record_agent_image(asset, message.get("remoteJobId"), message.get("completedAt") or message.get("createdAt"))
         if unread_update and self.storage.setting("selectedConversationId") != conversation_id:
             conversation["hasUnread"] = True
-        self.storage.put("conversations", conversation)
+        if conversations is None:
+            self.storage.put("conversations", conversation)
         return True
 
     async def apply_changes(self, changes, cursor=None):
@@ -355,6 +373,12 @@ class SyncEngine:
         changed = False
         touched = set()
         schedule_ids = set()
+        conversations = {}
+        def flush_conversations():
+            for conversation in conversations.values():
+                if conversation:
+                    self.storage.put("conversations", conversation)
+            conversations.clear()
         with self.storage.lock, self.storage.db:
             self.importing = True
             try:
@@ -367,7 +391,11 @@ class SyncEngine:
                     pending = self.storage.db.execute("SELECT 1 FROM sync_outbox WHERE kind=? AND id=?", (kind, identifier)).fetchone()
                     if pending and not change.get("deleted") and not authoritative_output:
                         continue   
-                    changed = self._import_document(change) or changed
+                    # Preserve ordering around metadata/deletions, while writing
+                    # each changed conversation only once for a message batch.
+                    if kind != "messages":
+                        flush_conversations()
+                    changed = self._import_document(change, conversations=conversations if kind == "messages" else None) or changed
                     data = change.get("data")
                     if kind == "scheduledTasks" and not change.get("deleted"):
                         schedule_ids.add(identifier)
@@ -376,6 +404,7 @@ class SyncEngine:
                         self.storage.db.execute("DELETE FROM sync_outbox WHERE kind=? AND id=?", (kind, identifier))
                     if kind == "messages" and (data or {}).get("conversationId"):
                         touched.add(data["conversationId"])
+                flush_conversations()
                 if cursor is not None:
                     self.storage.set_setting("sync.cursor", int(cursor))
             finally:
@@ -396,8 +425,8 @@ class SyncEngine:
             return
         kind, identifier = mutation["kind"], mutation["id"]
         if kind == "scheduledTasks" and (current.get("data") or {}).get("executorDeviceId") not in {None, (self.gateway.public_identity or {}).get("deviceID")}:
-             
-             
+
+
             with self.storage.lock, self.storage.db:
                 self.storage.db.execute("DELETE FROM sync_outbox WHERE kind=? AND id=?", (kind, identifier))
             await self.apply_changes([current])
@@ -431,7 +460,13 @@ class SyncEngine:
                     local = await self.runtime.mac_codex.models()
                 except (ValueError, OSError, asyncio.TimeoutError):
                     local = []
-                await self.gateway.json("POST", "sync/schedules/host", {"local": local, "cloud": self.runtime.capabilities.get("models") or [], "defaultModel": self.runtime.capabilities.get("model")})
+                timestamp, nonce = int(time.time() * 1000), new_id()
+                proof = "\n".join(["shiyan-schedule-host-v1", self.runtime.account["owner"], identity, str(timestamp), nonce]).encode()
+                signature = (await self.gateway.helper_json("sign", proof))["signature"]
+                await self.gateway.json("POST", "sync/schedules/host", {"deviceId": identity,
+                    "devicePublicKey": self.gateway.public_identity["publicKey"], "deviceTime": timestamp,
+                    "deviceNonce": nonce, "deviceSignature": signature, "local": local,
+                    "cloud": self.runtime.capabilities.get("models") or [], "defaultModel": self.runtime.capabilities.get("model")})
                 self.schedule_host_registered = asyncio.get_running_loop().time()
             after = int(self.storage.setting("sync.cursor", 0))
             reply = await self.gateway.sync_get(after)
@@ -449,8 +484,8 @@ class SyncEngine:
                         kind, identifier, revision = mutation["kind"], mutation["id"], int(accepted["revision"])
                         self.storage.db.execute("UPDATE sync_entities SET revision=?,base=? WHERE kind=? AND id=?", (revision, encoded(mutation["data"]) if mutation["data"] else None, kind, identifier))
                         self.storage.db.execute("DELETE FROM sync_outbox WHERE kind=? AND id=? AND mutation_id=?", (kind, identifier, mutation["mutationId"]))
-                         
-                         
+
+
                         self.storage.db.execute("UPDATE sync_outbox SET base_revision=? WHERE kind=? AND id=?", (revision, kind, identifier))
                 for conflict in reply.get("conflicts", []):
                     mutation = sent.get(conflict["mutationId"])

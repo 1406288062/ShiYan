@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" class="account-locked">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -14,33 +14,71 @@
   <link rel="stylesheet" href="/assets/workbench-v21.css">
   <link rel="stylesheet" href="/assets/workbench-v22.css?v=20261016-document-b33563">
   <link rel="stylesheet" href="/assets/workbench-dots.css?v=20261016-center-5956ddb8">
-  <script src="/assets/composer-keys.js?v=20261016-session-56cf6e49" defer></script>
-  <script src="/assets/vendor/xterm.js" defer></script>
-  <script src="/assets/vendor/addon-fit.js" defer></script>
-  <script src="/assets/workbench-message-details.js?v=20261015-c276" defer></script>
-  <script src="/assets/workbench-changes.js?v=20261015-align-2f1" defer></script>
-  <script src="/assets/vendor/markdown-it.min.js" defer></script>
-  <script src="/assets/message-renderer.js?v=20261013-schedules-cards" defer></script>
-  <script src="/assets/workbench-execution.js?v=20261015-details-c276" defer></script>
+  <script type="text/plain" data-account-src="/assets/composer-keys.js?v=20261016-session-56cf6e49" defer></script>
+  <script type="text/plain" data-account-src="/assets/vendor/xterm.js" defer></script>
+  <script type="text/plain" data-account-src="/assets/vendor/addon-fit.js" defer></script>
+  <script type="text/plain" data-account-src="/assets/workbench-message-details.js?v=20261015-c276" defer></script>
+  <script type="text/plain" data-account-src="/assets/workbench-changes.js?v=20261015-align-2f1" defer></script>
+  <script type="text/plain" data-account-src="/assets/vendor/markdown-it.min.js" defer></script>
+  <script type="text/plain" data-account-src="/assets/message-renderer.js?v=20261013-schedules-cards" defer></script>
+  <script type="text/plain" data-account-src="/assets/workbench-execution.js?v=20261015-details-c276" defer></script>
   <link rel="stylesheet" href="/assets/workbench-dots-panels.css?v=20261016-session-56cf6e49">
-  <script src="/assets/workbench-dots-panels.js?v=20261016-outputs-d44bc78e" defer></script>
+  <script type="text/plain" data-account-src="/assets/workbench-dots-panels.js?v=20261016-outputs-d44bc78e" defer></script>
   <link rel="stylesheet" href="/assets/dots-voice-orb.css?v=20261016-session-56cf6e49">
-  <script src="/assets/dots-voice-orb.js?v=20261016-session-56cf6e49" defer></script>
-  <script src="/assets/workbench-dots.js?v=20261016-plus-0ae1fa4c" defer></script>
-  <script src="/app.js?v=20261016-session-56cf6e49" defer></script>
+  <script type="text/plain" data-account-src="/assets/dots-voice-orb.js?v=20261016-session-56cf6e49" defer></script>
+  <script type="text/plain" data-account-src="/assets/workbench-dots.js?v=20261018-accounts" defer></script>
+  <script type="text/plain" data-account-src="/app.js?v=20261016-session-56cf6e49" defer></script>
   <link rel="stylesheet" href="/assets/user-input.css?v=20261016-compact-0aac7b99">
-  <script src="/assets/user-input.js?v=20261016-compact-0aac7b99" defer></script>
+  <script type="text/plain" data-account-src="/assets/user-input.js?v=20261016-compact-0aac7b99" defer></script>
   <link rel="stylesheet" href="/assets/memory.css?v=20261016-quota-auto-7e85e0ab">
-  <script src="/assets/memory.js?v=20261016-quota-auto-7e85e0ab" defer></script>
-  <script src="/assets/workbench-v2.js?v=20261015-native-layout-bc1da332" defer></script>
-  <script src="/assets/workbench-v22.js" defer></script>
-  <script src="/assets/workbench-schedules.js?v=20261013-schedules-cards" defer></script>
-  <script src="/assets/workbench.js" defer></script>
-  <link rel="stylesheet" href="/assets/workbench-schedules.css?v=20261013-schedules-cards">
+  <script type="text/plain" data-account-src="/assets/memory.js?v=20261016-quota-auto-7e85e0ab" defer></script>
+  <script type="text/plain" data-account-src="/assets/workbench-v2.js?v=20261015-native-layout-bc1da332" defer></script>
+  <script type="text/plain" data-account-src="/assets/workbench-v22.js" defer></script>
+  <script type="text/plain" data-account-src="/assets/workbench-schedules.js?v=20261019-desktop-51223" defer></script>
+  <script type="text/plain" data-account-src="/assets/workbench.js?v=20261018-accounts" defer></script>
+  <link rel="stylesheet" href="/assets/workbench-schedules.css?v=20261019-desktop-51223">
 <link rel="stylesheet" href="/assets/workbench-space-files.css?v=20261014-export-hover-0ff12a12">
-<script src="/assets/workbench-space-files.js" defer></script>
+<script type="text/plain" data-account-src="/assets/workbench-space-files.js?v=20261018-accounts" defer></script>
+  <link rel="stylesheet" href="/assets/knowledge.css?v=20261019-no-flash-4a54">
+  <script type="text/plain" data-account-src="/assets/knowledge.js?v=20261019-no-flash-4a54" defer></script>
+  <link rel="stylesheet" href="/assets/account.css?v=20261019-register-email">
+  <script src="/assets/account.js?v=20261019-register-email" defer></script>
 </head>
 <body>
+<main id="accountGate" class="auth-shell" hidden>
+  <div class="auth-frame">
+    <div class="auth-brand" aria-label="拾燕"><img class="auth-mark" src="/assets/logo.png" width="36" height="36" alt=""><span>拾燕</span></div>
+    <section class="auth-card" aria-labelledby="accountTitle">
+      <div class="auth-heading"><h1 id="accountTitle">登录</h1></div>
+      <div class="auth-stage">
+      <p id="accountSetup" hidden></p>
+      <section id="accountRemembered" class="auth-remembered" hidden>
+        <button id="accountRememberedLogin" type="button" aria-label="请手机确认登录"><span id="accountRememberedAvatar"></span><strong id="accountRememberedName"></strong><span>点击头像，请手机确认登录</span></button>
+        <p id="accountRememberedStatus" role="status"></p><p id="accountRememberedCode"></p>
+        <button id="accountOtherLogin" type="button">扫码登录</button>
+      </section>
+      <section id="accountQRPanel" class="auth-qr" aria-label="扫码登录" hidden>
+        <button id="accountQRRefresh" class="auth-qr-image" type="button" aria-label="刷新登录二维码"><img id="accountQRImage" alt="使用拾燕 iOS 扫描此登录二维码" hidden></button>
+        <p id="accountQRStatus" role="status">使用拾燕 iOS 的“扫一扫”</p><p id="accountQRCode"></p>
+      </section>
+      <form id="accountForm" class="auth-form">
+        <label id="accountNameField" class="auth-field" hidden><span class="sr-only">显示名称</span><input id="accountName" type="text" maxlength="80" placeholder="显示名称（可选）" autocomplete="name"></label>
+        <label class="auth-field"><span class="sr-only">邮箱</span><input id="accountEmail" type="email" maxlength="254" autocomplete="email" placeholder="邮箱地址" required></label>
+        <label class="auth-field"><span class="sr-only">密码</span><input id="accountPassword" type="password" minlength="8" maxlength="128" autocomplete="current-password" placeholder="密码（至少 8 位）" required></label>
+        <div id="accountVerificationField" class="auth-verification" hidden>
+          <div class="auth-code-row"><label class="auth-field"><span class="sr-only">邮箱验证码</span><input id="accountVerificationCode" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="六位邮箱验证码"></label><button id="accountSendCode" type="button">获取验证码</button></div>
+          <p id="accountCodeStatus" role="status"></p>
+        </div>
+        <p id="accountError" class="form-error" role="alert" hidden></p>
+        <button id="accountSubmit" class="auth-submit" type="submit"><span id="accountSubmitLabel">登录</span><span class="auth-submit-arrow" aria-hidden="true">→</span></button>
+      </form>
+      <p id="accountRetry" class="auth-retry" hidden><span>连接暂时中断</span><button id="accountReconnect" type="button">重新连接</button></p>
+      </div>
+      <p class="auth-switch"><button id="accountPasswordMode" type="button">密码登录</button><button id="accountSwitchButton" type="button">注册账号</button></p>
+    </section>
+  </div>
+</main>
+
 <div id="app" class="app-shell">
   <div id="connectionBanner" class="connection-banner" role="status" hidden><span class="symbol" data-symbol="wifi.exclamationmark" aria-hidden="true"></span><span id="connectionText"></span></div>
   <main id="homeView" class="screen home-view" aria-label="变清晰图片工具" hidden>

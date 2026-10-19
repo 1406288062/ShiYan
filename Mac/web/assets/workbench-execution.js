@@ -18,9 +18,16 @@
   const signature=JSON.stringify([c?.title,rounds.map(m=>[m.id,m.completedAt]),m]);
   if(pane.__executionSignature===signature)return;pane.__executionSignature=signature;
   pane.classList.add('execution-pane');
-  const selected=rounds.map((r,i)=>'<option value="'+esc(r.id)+'"'+(r.id===m?.id?' selected':'')+'>第 '+(i+1)+' 轮</option>').join('');
-  pane.innerHTML='<header class="execution-toolbar"><strong>执行过程</strong><select data-execution-round aria-label="选择执行轮次">'+selected+'</select></header><div class="execution-scroll"><p class="execution-conversation">'+esc(c?.title||'当前会话')+'</p>'+(m?window.ShiYanOutput.details(m,true):'<p class="wb-empty">这条会话暂无已完成的执行记录。</p>')+'</div>';
-  pane.querySelector('[data-execution-round]')?.addEventListener('change',e=>{tab.messageId=e.target.value;C.persist();renderPane(tab,pane);});
+  const index=rounds.findIndex(r=>r.id===m?.id);
+  pane.innerHTML='<header class="execution-toolbar"><strong>执行过程</strong><div class="execution-round-picker"><button type="button" data-execution-round aria-label="选择执行轮次" aria-haspopup="listbox" aria-expanded="false"'+(rounds.length?'':' disabled')+'>'+(rounds.length?'第 '+(index+1)+' 轮':'暂无轮次')+'<span aria-hidden="true">⌄</span></button><div class="execution-round-menu" role="listbox" aria-label="执行轮次" hidden>'+rounds.map((r,i)=>'<button type="button" role="option" aria-selected="'+(r.id===m?.id)+'" data-round-id="'+esc(r.id)+'"><span class="execution-round-check" aria-hidden="true">'+(r.id===m?.id?'✓':'')+'</span>第 '+(i+1)+' 轮</button>').join('')+'</div></div></header><div class="execution-scroll"><p class="execution-conversation">'+esc(c?.title||'当前会话')+'</p>'+(m?window.ShiYanOutput.details(m,true):'<p class="wb-empty">这条会话暂无已完成的执行记录。</p>')+'</div>';
+  const trigger=pane.querySelector('[data-execution-round]'),menu=pane.querySelector('.execution-round-menu');
+  const close=focus=>{menu.hidden=true;trigger.setAttribute('aria-expanded','false');if(focus)trigger.focus();};
+  const open=()=>{menu.hidden=false;trigger.setAttribute('aria-expanded','true');menu.style.maxHeight=Math.max(60,Math.min(310,innerHeight-trigger.getBoundingClientRect().bottom-14))+'px';const chosen=menu.querySelector('[aria-selected="true"]')||menu.firstElementChild;chosen?.focus({preventScroll:true});chosen?.scrollIntoView({block:'nearest'});};
+  trigger.onclick=()=>menu.hidden?open():close(false);
+  trigger.onkeydown=e=>{if(['ArrowDown','ArrowUp'].includes(e.key)){e.preventDefault();open();}};
+  menu.onclick=e=>{const option=e.target.closest('[data-round-id]');if(!option)return;tab.messageId=option.dataset.roundId;C.persist();renderPane(tab,pane);pane.querySelector('[data-execution-round]')?.focus();};
+  menu.onkeydown=e=>{const options=[...menu.children],at=options.indexOf(document.activeElement);let next;if(e.key==='Escape'){e.preventDefault();close(true);return;}if(e.key==='Tab'){close(false);return;}if(e.key==='ArrowDown')next=Math.min(options.length-1,at+1);if(e.key==='ArrowUp')next=Math.max(0,at-1);if(e.key==='Home')next=0;if(e.key==='End')next=options.length-1;if(e.key==='PageDown')next=Math.min(options.length-1,at+10);if(e.key==='PageUp')next=Math.max(0,at-10);if(next!==undefined){e.preventDefault();options[next]?.focus();}};
+
  }
  function openMessage(id) {
   if(!C)return;
@@ -43,7 +50,7 @@
   lastConversation=c?.id||'';previous=new Map((c?.messages||[]).map(m=>[m.id,m.state]));
  }
  function install(context) {
-  C=context;document.addEventListener('click',e=>{const b=e.target.closest('[data-open-execution]');if(b)openMessage(b.dataset.openExecution);});
+  C=context;document.addEventListener('pointerdown',e=>{for(const menu of document.querySelectorAll('.execution-round-menu:not([hidden])'))if(!menu.parentElement.contains(e.target)){menu.hidden=true;menu.parentElement.querySelector('[data-execution-round]').setAttribute('aria-expanded','false');}},true);document.addEventListener('click',e=>{const b=e.target.closest('[data-open-execution]');if(b)openMessage(b.dataset.openExecution);});
   window.addEventListener('shiyan-state',update);update();
  }
  window.ShiYanExecution={install,renderPane,openMessage,openLatest};

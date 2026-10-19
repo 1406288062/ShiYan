@@ -7,7 +7,7 @@ struct ShiYanApp: App {
     var body: some Scene {
         WindowGroup {
             ZStack {
-                ContentView()
+                ShiyanAccountRoot()
                     .opacity(showSplash ? 0 : 1)
 
                 if showSplash {

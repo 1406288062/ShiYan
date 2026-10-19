@@ -5,6 +5,7 @@ import UIKit
 struct AgentExecutionDetails: View {
     let message: AgentMessage
     var onSelectionChanged: ((Bool) -> Void)?
+    var initiallyExpanded = false
     @State private var expanded = false
     @State private var rawExpanded = false
     @State private var loadedDetails: AgentExecutionPayload?
@@ -59,6 +60,7 @@ struct AgentExecutionDetails: View {
                     }
                 }.font(.footnote).foregroundStyle(.secondary)
             }
+            .onAppear { if initiallyExpanded { expanded = true } }
             .onChange(of: expanded) { _, open in
                 if !open { rawExpanded = false; loadedDetails = nil; detailsError = nil }
             }
@@ -233,5 +235,81 @@ private struct AgentLazyExecutionDisclosure<Content: View, Label: View>: View {
         DisclosureGroup(isExpanded: $expanded) {
             if expanded { content() }
         } label: { label() }
+    }
+}
+
+
+struct AgentExecutionHistoryView: View {
+    let messages: [AgentMessage]
+    @Environment(\.dismiss) private var dismiss
+    @ScaledMetric(relativeTo: .body) private var rowHeight: CGFloat = 44
+    @State private var selectedID: UUID?
+    @State private var choosingRound = false
+    private var rounds: [AgentMessage] { messages.filter { $0.role == .assistant } }
+    private var selection: AgentMessage? { rounds.first { $0.id == selectedID } ?? rounds.last }
+    private var selectedIndex: Int { rounds.firstIndex { $0.id == selection?.id } ?? 0 }
+
+    var body: some View {
+        NavigationStack {
+            GeometryReader { geometry in
+                VStack(alignment: .leading, spacing: 12) {
+                    Button { choosingRound.toggle() } label: {
+                        HStack {
+                            Text(rounds.isEmpty ? "暂无执行轮次" : "第 \(selectedIndex + 1) 轮")
+                            Spacer()
+                            Image(systemName: choosingRound ? "chevron.up" : "chevron.down")
+                        }
+                        .font(.subheadline).padding(.horizontal, 12).frame(minHeight: rowHeight)
+                        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 12))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain).disabled(rounds.isEmpty)
+                    .accessibilityIdentifier("execution-round-picker")
+                    if choosingRound {
+                        ScrollViewReader { proxy in
+                            ScrollView {
+                                LazyVStack(spacing: 0) {
+                                    ForEach(Array(rounds.enumerated()), id: \.element.id) { index, message in
+                                        Button {
+                                            selectedID = message.id; choosingRound = false
+                                        } label: {
+                                            HStack {
+                                                Text("第 \(index + 1) 轮")
+                                                Spacer()
+                                                if message.id == selection?.id { Image(systemName: "checkmark") }
+                                            }
+                                            .font(.body).padding(.horizontal, 12).frame(height: rowHeight)
+                                            .contentShape(Rectangle())
+                                        }
+                                        .buttonStyle(.plain).id(message.id)
+                                    }
+                                }
+                            }
+                            .frame(height: min(CGFloat(min(rounds.count, 10)) * rowHeight, max(rowHeight, geometry.size.height * 0.45)))
+                            .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 12))
+                            .onAppear { if let id = selection?.id { proxy.scrollTo(id, anchor: .center) } }
+                        }
+                        .accessibilityIdentifier("execution-round-list")
+                    }
+                    ScrollView {
+                        if let message = selection {
+                            if AgentExecutionDetails.hasDetails(message) {
+                                AgentExecutionDetails(message: message, initiallyExpanded: true).id(message.id)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            } else {
+                                Text(message.isWorking ? "等待执行记录…" : "本轮暂无执行记录")
+                                    .font(.subheadline).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
+                    }
+                }
+                .padding(20)
+            }
+            .navigationTitle("执行过程").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) { ShiyanCloseButton(action: { dismiss() }, inToolbar: true) }
+            }
+        }
+        .presentationDetents([.large])
     }
 }

@@ -23,13 +23,14 @@ struct HistoryEntry: Identifiable, Codable, Equatable {
     let createdAt: Date
     let imageWidth: Int
     let imageHeight: Int
+    var accountOwner: String? = nil
 
     var downloadFilename: String {
         ShiyanEnhancedFilename.jpegName(filename, modelName: modelName)
     }
 
     var fileURL: URL {
-        HistoryManager.documentsDir.appendingPathComponent("\(id.uuidString).jpg")
+        ShiyanAccountStorage.directory("Enhanced", owner: accountOwner).appendingPathComponent("\(id.uuidString).jpg")
     }
 
     var image: CGImage? {
@@ -46,12 +47,9 @@ struct HistoryEntry: Identifiable, Codable, Equatable {
  
 @MainActor
 final class HistoryManager: ObservableObject {
-    nonisolated(unsafe) static let documentsDir: URL = {
-        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Enhanced")
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir
-    }()
+    nonisolated static var documentsDir: URL { ShiyanAccountStorage.directory("Enhanced") }
+    private let accountGeneration = ShiyanAccountStorage.generation
+    private let accountOwner = ShiyanAccountStorage.owner
 
     @Published var entries: [HistoryEntry] = []
 
@@ -110,7 +108,8 @@ final class HistoryManager: ObservableObject {
             modelName: modelName,
             createdAt: Date(),
             imageWidth: image.width,
-            imageHeight: image.height
+            imageHeight: image.height,
+            accountOwner: accountOwner
         )
          
         if let data = UIImage(cgImage: image).jpegData(compressionQuality: 0.95) {
@@ -122,14 +121,14 @@ final class HistoryManager: ObservableObject {
     }
 
     func collectGeneratedImage(_ asset: AgentAsset) async {
-        guard asset.isImage else { return }
+        guard accountGeneration == ShiyanAccountStorage.generation, asset.isImage else { return }
         let key = asset.syncAssetID ?? asset.remoteID ?? asset.id.uuidString.lowercased()
-        let preference = "spaceGeneratedImagesCollected"
+        let preference = ShiyanAccountStorage.preference("spaceGeneratedImagesCollected")
         if Set(UserDefaults.standard.stringArray(forKey: preference) ?? []).contains(key) { return }
         let image = await Task.detached(priority: .utility) {
             Self.makeThumbnail(url: asset.url, maxPixel: 3000)
         }.value
-        guard let image else { return }
+        guard accountGeneration == ShiyanAccountStorage.generation, let image else { return }
         var seen = Set(UserDefaults.standard.stringArray(forKey: preference) ?? [])
         guard !seen.contains(key) else { return }
         if !entries.contains(where: { $0.modelName == "AI Agent" && $0.filename == asset.filename }) {
@@ -228,6 +227,7 @@ final class HistoryManager: ObservableObject {
     }
 
     private func save() {
+        guard accountGeneration == ShiyanAccountStorage.generation else { return }
         if let data = try? JSONEncoder().encode(entries) {
             try? data.write(to: storageURL)
         }

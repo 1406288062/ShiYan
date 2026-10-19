@@ -26,7 +26,7 @@
   let dialogTask = null, dialogPendingKey = '', saving = false, sending = false, drafts = {}, replyOptions = {};
   let catalog = {local:{available:false,models:[]},cloud:{available:false,models:[]},defaults:{}}, catalogLoading = null;
   let pendingHydration, pendingReady=false, pendingChain=Promise.resolve();
-  const pendingKey = 'shiyan.desktop.schedules.pending.v1';
+  const pendingKey = window.ShiYanAccount.storageKey('shiyan.desktop.schedules.pending.v1');
   let pending = {};
   try { pending = JSON.parse(localStorage.getItem(pendingKey) || '{}'); } catch (_) {}
   const api = (path, method = 'GET', body) => window.shiyan.api('/api/schedules' + path, method, body);
@@ -304,7 +304,7 @@
     finally{sending=false;if(String(selected)===String(id))renderConversation();}
   }
   function applyLayout() {
-    if(!active)return;
+    if(!active || window.ShiYanKnowledge?.isOpen?.())return;
     $('leftContainer').inert=false;$('leftContainer').setAttribute('aria-hidden','false');$('mainWorkspace').inert=false;
     $('railSchedules').classList.add('is-active');['railHome','railEnhance','railHistory'].forEach(id=>$(id)?.classList.remove('is-active'));
     const sidebar=innerWidth>1060?250:innerWidth>780?230:200;
@@ -326,7 +326,7 @@
     else{$('scheduleEditor').hidden=true;notifyNative();}
   }
   function build() {
-    const rail=document.createElement('button');rail.id='railSchedules';rail.type='button';rail.className='wb-icon-button schedule-rail-button';rail.title=rail.ariaLabel='定时任务';rail.innerHTML=icon('clock');
+    const rail=document.createElement('button');rail.id='railSchedules';rail.type='button';rail.className='wb-icon-button schedule-rail-button';rail.title=rail.ariaLabel='定时任务';rail.innerHTML='<svg class="wb-icon" viewBox="0 0 24 24" aria-hidden="true"><defs><mask id="scheduleRailFillMask"><rect width="24" height="24" fill="white"/><path d="M12 6v6l-3 2" fill="none" stroke="black" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></mask></defs><path class="rail-glyph-outline" d="'+paths.clock+'"/><circle class="rail-glyph-filled" cx="12" cy="12" r="9" mask="url(#scheduleRailFillMask)"/></svg>';
     $('railEnhance').after(rail);rail.onclick=()=>window.shiyan.navigate('schedules');
     const sidebar=document.createElement('aside');sidebar.id='scheduleSidebar';sidebar.className='schedule-sidebar';sidebar.hidden=true;sidebar.setAttribute('aria-label','定时任务');
     sidebar.innerHTML='<header class="schedule-sidebar-header"><h2>定时任务</h2>'+button('search','search','搜索任务')+'</header><div id="scheduleSearch" class="schedule-search" hidden><input id="scheduleSearchInput" type="search" aria-label="搜索任务" placeholder="搜索定时任务"></div><button type="button" class="schedule-new" data-schedule-action="new">'+icon('plus')+'<span>新建任务</span></button><div class="schedule-section-heading"><h3>即将执行</h3>'+button('filter','filter','筛选任务')+'</div><p id="scheduleLoadError" class="schedule-inline-error" role="alert" hidden></p><div id="scheduledTaskList" class="schedule-task-list"></div>';
@@ -379,7 +379,7 @@
       else if(action==='editor-pause' && dialogTask){await controlTask(dialogTask.id,dialogTask.enabled?'pause':'resume');const next=tasks.find(t=>String(t.id)===String(dialogTask.id));openEditor(next);}
     }catch(error){report(error);}
   }
-  function install(context) {if(installed)return;installed=true;C=context;ensurePending().catch(report);build();activate();}
+  function install(context) {if(installed||!window.ShiYanAccount.user.serverAccess)return;installed=true;C=context;ensurePending().catch(report);build();activate();}
   window.ShiYanSchedules={install,open:()=>window.shiyan.navigate('schedules'),refresh,openEditor,
     message:id=>active?record?.messages?.find(message=>String(message.id)===String(id)):undefined,
     conversation:()=>active?record?.conversation:undefined,

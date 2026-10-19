@@ -146,7 +146,7 @@
    }
    function positionQuotaCard(){
     const rect=avatar.getBoundingClientRect();
-    const width=Math.min(262,Math.max(0,innerWidth-16));card.style.width=width+'px';
+    const width=Math.min(246,Math.max(0,innerWidth-16));card.style.width=width+'px';
     card.style.left=Math.max(8,Math.min(rect.right+10,innerWidth-width-8))+'px';card.style.bottom=Math.max(8,innerHeight-rect.bottom)+'px';
    }
    avatar.onclick=()=>{if(!card.hidden){closeCard();return;}positionQuotaCard();card.hidden=false;avatar.setAttribute('aria-expanded','true');card.focus();loadQuota();};

@@ -3,6 +3,8 @@
   let root, elements, opened = false, loaded = false, loading = false, busy = false;
   let enabled = true, page = 'settings', restoreFocus, inertElements = [];
   let quotaLoading = false;
+  let topics = [], topicsLoading = false, topicsBusy = false;
+  const additionalPages = new Map();
   const api = (path, method, body) => window.shiyan.api(path, method, body);
   const message = error => error?.message || '暂时无法连接，请重试。';
   function status(text = '', error = false) {
@@ -61,15 +63,15 @@
     }
   }
   function focusable() {
-    return [...elements.body.querySelectorAll('button,input,[tabindex="0"]')].filter(el => !el.disabled && !el.closest('[hidden]') && el.getClientRects().length);
+    return [...elements.body.querySelectorAll('button,input,select,textarea,summary,a[href],[tabindex="0"]')].filter(el => !el.disabled && !el.closest('[hidden]') && el.getClientRects().length);
   }
-  function close() {
+  function close(restore = true) {
     if (!opened) return;
     opened = false;
     root.hidden = true;
     for (const [element, inert] of inertElements) element.inert = inert;
     inertElements = [];
-    if (restoreFocus?.isConnected && restoreFocus.getClientRects().length) restoreFocus.focus();
+    if (restore && restoreFocus?.isConnected && restoreFocus.getClientRects().length) restoreFocus.focus();
   }
   function selectCategory(selected) {
     for (const button of elements.navigation.querySelectorAll('[data-settings-page]')) {
@@ -89,29 +91,139 @@
   function fitSettings() {
     const rail = document.getElementById('activityRail');
     const edge = rail?.getClientRects().length ? rail.getBoundingClientRect().right : 0;
-    root.style.setProperty('--settings-rail-width', window.innerWidth > 680 && edge < 130 ? Math.max(0, edge)+'px' : '0px');
+    root.style.setProperty('--settings-rail-width', edge > 0 && edge < 130 ? Math.max(0, edge)+'px' : '0px');
+  }
+  function activatePage(selected, titleId) {
+    page = selected;
+    selectCategory(selected);
+    elements.dialog.classList.toggle('is-memory-page', selected === 'memory');
+    elements.home.hidden = selected !== 'settings';
+    elements.memoryPage.hidden = selected !== 'memory';
+    elements.codexPage.hidden = selected !== 'codex';
+    for (const [id, entry] of additionalPages) entry.element.hidden = id !== selected;
+    elements.dialog.setAttribute('aria-labelledby', titleId);
+    elements.dialog.removeAttribute('aria-describedby');
+  }
+  function showPage(selected) {
+    if (selected === 'memory') showMemory();
+    else if (selected === 'codex') showCodex();
+    else if (additionalPages.has(selected)) {
+      const entry = additionalPages.get(selected);
+      activatePage(selected, entry.titleId);
+      document.getElementById(entry.titleId)?.focus();
+      entry.onShow?.();
+    } else showSettings();
+  }
+  function registerPage(id, entry) {
+    if (additionalPages.has(id)) return;
+    additionalPages.set(id, entry);
+    elements.content.append(entry.element);
   }
   function showSettings() {
-    page = 'settings';
-    selectCategory('settings');
-    elements.dialog.classList.remove('is-memory-page');
-    elements.home.hidden = false;
-    elements.memoryPage.hidden = true;
-    elements.codexPage.hidden = true;
-    elements.dialog.setAttribute('aria-labelledby', 'settingsGeneralTitle');
-    elements.dialog.removeAttribute('aria-describedby');
+    activatePage('settings', 'settingsGeneralTitle');
     elements.memoryEntry.focus();
   }
   function showMemory() {
-    page = 'memory';
-    selectCategory('memory');
-    elements.dialog.classList.add('is-memory-page');
-    elements.home.hidden = true;
-    elements.memoryPage.hidden = false;
-    elements.codexPage.hidden = true;
-    elements.dialog.setAttribute('aria-labelledby', 'memoryTitle');
+    activatePage('memory', 'memoryTitle');
     elements.title.focus();
     load();
+  }
+  function topicsStatus(text = '', error = false) {
+    elements.topicsNotice.textContent = text;
+    elements.topicsNotice.classList.toggle('is-error', error);
+    elements.topicsRetry.hidden = !error;
+  }
+  function topicsControls() {
+    const pending = topicsLoading || topicsBusy;
+    elements.topicsSection.setAttribute('aria-busy', String(pending));
+    elements.topicsSection.querySelectorAll('button,input,textarea').forEach(node => { node.disabled = pending; });
+  }
+  function readTopics(result) {
+    if (result?.ok === false || !Array.isArray(result?.relationship?.topics)) throw new Error('共同话题暂时不可用。');
+    topics = result.relationship.topics;
+  }
+  async function loadTopics() {
+    if (topicsLoading || topicsBusy) return;
+    topicsLoading = true;
+    topicsStatus('正在读取共同话题…');
+    topicsControls();
+    try {
+      readTopics(await api('/api/dots/relationship'));
+      renderTopics();
+      topicsStatus();
+    } catch (error) { topicsStatus('读取失败：'+message(error), true); }
+    finally { topicsLoading = false; topicsControls(); }
+  }
+  function renderTopics(openId) {
+    elements.topicsList.replaceChildren();
+    for (const topic of topics) {
+      const item = document.createElement('details');
+      item.className = 'memory-topic';
+      item.dataset.memoryTopic = topic.id;
+      item.open = topic.id === openId;
+      item.append(codexText('summary', topic.title || '共同话题'));
+      if (topic.needsReview) item.append(codexText('p', '请确认这段记忆', 'memory-notice'));
+      const form = document.createElement('form');
+      for (const [name, label, maximum, rows] of [['title','话题',200,0],['summary','记住的内容',4000,3],['openQuestion','尚未聊完',2000,2]]) {
+        const field = codexText('label', label);
+        const input = document.createElement(rows ? 'textarea' : 'input');
+        input.name = name;
+        input.value = topic[name] || '';
+        input.maxLength = maximum;
+        input.required = name !== 'openQuestion';
+        if (rows) input.rows = rows;
+        field.append(input);
+        form.append(field);
+      }
+      const actions = codexText('div', '', 'memory-topic-actions');
+      const remove = codexText('button', '删除话题');
+      remove.type = 'button';
+      remove.addEventListener('click', () => saveTopic(topic.id, 'DELETE'));
+      const save = codexText('button', '保存修改');
+      save.type = 'submit';
+      actions.append(remove, save);
+      form.append(actions);
+      form.addEventListener('submit', event => {
+        event.preventDefault();
+        const fields = new FormData(form);
+        saveTopic(topic.id, 'PATCH', {title:String(fields.get('title')).trim(),summary:String(fields.get('summary')).trim(),openQuestion:String(fields.get('openQuestion')).trim(),revision:topic.revision});
+      });
+      item.append(form);
+      elements.topicsList.append(item);
+    }
+    if (!topics.length) elements.topicsList.append(codexText('p', '暂时没有保存的共同话题。', 'memory-notice'));
+  }
+  async function saveTopic(id, method, data) {
+    if (topicsLoading || topicsBusy) return;
+    topicsBusy = true;
+    topicsStatus();
+    topicsControls();
+    try {
+      readTopics(await api('/api/dots/relationship/topics/'+encodeURIComponent(id), method, data));
+      renderTopics(method === 'PATCH' ? id : undefined);
+      topicsStatus(method === 'DELETE' ? '已删除话题。' : '已保存修改。');
+      if (opened && page === 'memory') elements.topicsList.querySelector('[data-memory-topic="'+CSS.escape(id)+'"] summary')?.focus();
+    } catch (error) { topicsStatus('未保存：'+message(error), true); }
+    finally { topicsBusy = false; topicsControls(); }
+  }
+  function buildTopics() {
+    const section = codexText('section', '', 'memory-topics');
+    section.setAttribute('aria-labelledby', 'memoryTopicsTitle');
+    const title = codexText('h3', '共同话题', 'settings-section-title');
+    title.id = 'memoryTopicsTitle';
+    const list = codexText('div', '', 'memory-topic-list');
+    const feedback = codexText('div', '', 'memory-feedback');
+    const notice = codexText('p', '', 'memory-notice');
+    notice.setAttribute('role', 'status');
+    notice.setAttribute('aria-live', 'polite');
+    const retry = codexText('button', '重新读取');
+    retry.type = 'button';
+    retry.hidden = true;
+    retry.addEventListener('click', loadTopics);
+    feedback.append(notice, retry);
+    section.append(title, list, feedback);
+    elements.memoryPage.append(section);
+    Object.assign(elements, {topicsSection:section, topicsList:list, topicsNotice:notice, topicsRetry:retry});
   }
   function codexText(tag, text, className) {
     const element = document.createElement(tag);
@@ -211,14 +323,7 @@
     }
   }
   function showCodex() {
-    page = 'codex';
-    selectCategory('codex');
-    elements.dialog.classList.remove('is-memory-page');
-    elements.home.hidden = true;
-    elements.memoryPage.hidden = true;
-    elements.codexPage.hidden = false;
-    elements.dialog.setAttribute('aria-labelledby', 'settingsCodexTitle');
-    elements.dialog.removeAttribute('aria-describedby');
+    activatePage('codex', 'settingsCodexTitle');
     elements.codexTitle.focus();
     loadCodexQuota();
   }
@@ -228,11 +333,11 @@
     root.id = 'memoryModal';
     root.className = 'memory-overlay';
     root.hidden = true;
-    root.innerHTML = '<section class="memory-dialog" role="dialog" aria-modal="true" aria-labelledby="memoryTitle"><div class="memory-body settings-layout"><aside class="settings-sidebar"><h2 id="settingsTitle">设置</h2><label class="settings-category-search"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="m16 16 5 5" stroke="currentColor" stroke-width="1.7"/></svg><input type="search" placeholder="搜索设置" aria-label="搜索设置"></label><nav aria-label="设置分类"><h3>个人</h3><button type="button" data-settings-page="settings"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="m9 3-.6 2.4-2 .9-2.2-.7-2 3.4 1.7 1.7-.1 2.2-1.6 1.8 2 3.4 2.3-.7 1.9 1 .6 2.4h4l.6-2.4 2-1 2.2.7 2-3.4-1.6-1.8-.1-2.2 1.7-1.7-2-3.4-2.3.7-1.9-.9L15 3z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.4"/></svg><span>常规</span></button><button type="button" data-settings-page="memory"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M3 4h5a5 5 0 0 1 4 2 5 5 0 0 1 4-2h5v15h-5a5 5 0 0 0-4 2 5 5 0 0 0-4-2H3zM12 6v15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg><span>记忆</span></button><p class="settings-category-empty" hidden>没有匹配的设置</p></nav></aside><main class="settings-content"><section class="settings-home"><header class="memory-header"><h2 id="settingsGeneralTitle">常规</h2><button type="button" class="icon-button memory-close" data-settings-close aria-label="关闭设置"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button></header><h3 class="settings-section-title">个性化</h3><button type="button" class="settings-memory-entry" data-settings-memory><span class="settings-entry-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24"><rect x="5" y="5" width="14" height="14" rx="4" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M9 1v4m6-4v4M9 19v4m6-4v4M1 9h4m-4 6h4m14-6h4m-4 6h4M9 9h6v6H9z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="settings-entry-copy"><strong>记忆</strong><span>自动记住重要信息，个性化回复</span></span><svg class="settings-entry-chevron" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="m9 5 7 7-7 7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button></section><section class="settings-memory-page" hidden><header class="memory-header"><button type="button" class="memory-back" data-memory-back aria-label="返回设置"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="m15 5-7 7 7 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>设置</span></button><h2 id="memoryTitle" tabindex="-1">记忆</h2><button type="button" class="icon-button memory-close" data-memory-close aria-label="关闭记忆"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button></header><div class="memory-setting"><div><label for="memoryEnabled">使用记忆</label><p>关闭后，不再自动保存或使用记忆。已有记忆会保留。</p></div><input id="memoryEnabled" type="checkbox" role="switch"></div><div class="memory-feedback" hidden><p class="memory-notice" role="status" aria-live="polite"></p><button type="button" data-memory-retry hidden>重试</button></div></section></main></div></section>';
+    root.innerHTML = '<section class="memory-dialog" role="region" aria-labelledby="memoryTitle"><div class="memory-body settings-layout"><aside class="settings-sidebar"><div class="settings-sidebar-heading"><h2 id="settingsTitle">设置</h2></div><label class="settings-category-search"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="m16 16 5 5" stroke="currentColor" stroke-width="1.7"/></svg><input type="search" placeholder="搜索设置" aria-label="搜索设置"></label><nav aria-label="设置分类"><h3>个人</h3><button type="button" data-settings-page="settings"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="m9 3-.6 2.4-2 .9-2.2-.7-2 3.4 1.7 1.7-.1 2.2-1.6 1.8 2 3.4 2.3-.7 1.9 1 .6 2.4h4l.6-2.4 2-1 2.2.7 2-3.4-1.6-1.8-.1-2.2 1.7-1.7-2-3.4-2.3.7-1.9-.9L15 3z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.4"/></svg><span>常规</span></button><button type="button" data-settings-page="memory"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M3 4h5a5 5 0 0 1 4 2 5 5 0 0 1 4-2h5v15h-5a5 5 0 0 0-4 2 5 5 0 0 0-4-2H3zM12 6v15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg><span>记忆</span></button><p class="settings-category-empty" hidden>没有匹配的设置</p></nav></aside><main class="settings-content"><section class="settings-home"><header class="memory-header"><h2 id="settingsGeneralTitle">常规</h2></header><h3 class="settings-section-title">个性化</h3><button type="button" class="settings-memory-entry" data-settings-memory><span class="settings-entry-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24"><rect x="5" y="5" width="14" height="14" rx="4" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M9 1v4m6-4v4M9 19v4m6-4v4M1 9h4m-4 6h4m14-6h4m-4 6h4M9 9h6v6H9z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="settings-entry-copy"><strong>记忆</strong><span>自动记住重要信息，个性化回复</span></span><svg class="settings-entry-chevron" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="m9 5 7 7-7 7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button></section><section class="settings-memory-page" hidden><header class="memory-header"><button type="button" class="memory-back" data-memory-back aria-label="返回设置"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="m15 5-7 7 7 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>设置</span></button><h2 id="memoryTitle" tabindex="-1">记忆</h2></header><div class="memory-setting"><div><label for="memoryEnabled">使用记忆</label><p>关闭后，不再自动保存或使用记忆。已有记忆会保留。</p></div><input id="memoryEnabled" type="checkbox" role="switch"></div><div class="memory-feedback" hidden><p class="memory-notice" role="status" aria-live="polite"></p><button type="button" data-memory-retry hidden>重试</button></div></section></main></div></section>';
     document.body.append(root);
     const find = selector => root.querySelector(selector);
     elements = {
-      body:find('.memory-body'),dialog:find('.memory-dialog'),navigation:find('.settings-sidebar nav'),settingsSearch:find('.settings-category-search input'),navigationEmpty:find('.settings-category-empty'),home:find('.settings-home'),memoryPage:find('.settings-memory-page'),memoryEntry:find('[data-settings-memory]'),back:find('[data-memory-back]'),title:find('#memoryTitle'),setting:find('.memory-setting'),enabled:find('#memoryEnabled'),notice:find('.memory-notice'),feedback:find('.memory-feedback'),retry:find('[data-memory-retry]')
+      body:find('.memory-body'),content:find('.settings-content'),dialog:find('.memory-dialog'),navigation:find('.settings-sidebar nav'),settingsSearch:find('.settings-category-search input'),navigationEmpty:find('.settings-category-empty'),home:find('.settings-home'),memoryPage:find('.settings-memory-page'),memoryEntry:find('[data-settings-memory]'),back:find('[data-memory-back]'),title:find('#memoryTitle'),setting:find('.memory-setting'),enabled:find('#memoryEnabled'),notice:find('.memory-notice'),feedback:find('.memory-feedback'),retry:find('[data-memory-retry]')
     };
     const codexNavigation = document.createElement('button');
     codexNavigation.type = 'button';
@@ -248,42 +353,33 @@
     const codexPage = document.createElement('section');
     codexPage.className = 'settings-codex-page';
     codexPage.hidden = true;
-    codexPage.innerHTML = '<header class="memory-header"><h2 id="settingsCodexTitle" tabindex="-1">Codex 额度与重置卡</h2><button type="button" class="icon-button memory-close" data-codex-close aria-label="关闭设置"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button></header><div class="settings-quota-toolbar"><p>查看当前账户的额度与重置卡信息</p></div><p class="memory-notice" data-codex-notice role="status" aria-live="polite"></p><div data-codex-content></div>';
+    codexPage.innerHTML = '<header class="memory-header"><h2 id="settingsCodexTitle" tabindex="-1">Codex 额度与重置卡</h2></header><div class="settings-quota-toolbar"><p>查看当前账户的额度与重置卡信息</p></div><p class="memory-notice" data-codex-notice role="status" aria-live="polite"></p><div data-codex-content></div>';
     find('.settings-content').append(codexPage);
     Object.assign(elements, {codexPage, codexTitle:find('#settingsCodexTitle'), codexNotice:find('[data-codex-notice]'), codexContent:find('[data-codex-content]')});
     codexEntry.addEventListener('click', showCodex);
-    find('[data-codex-close]').addEventListener('click', close);
     elements.settingsSearch.addEventListener('input', filterCategories);
     elements.navigation.addEventListener('click', event => {
       const button = event.target.closest('[data-settings-page]');
       if (!button) return;
-      if (button.dataset.settingsPage === 'memory') showMemory();
-      else if (button.dataset.settingsPage === 'codex') showCodex();
-      else showSettings();
+      showPage(button.dataset.settingsPage);
     });
     elements.enabled.addEventListener('change', toggle);
     elements.retry.addEventListener('click', load);
-    find('[data-memory-close]').addEventListener('click', close);
-    find('[data-settings-close]').addEventListener('click', close);
     elements.memoryEntry.addEventListener('click', showMemory);
     elements.back.addEventListener('click', showSettings);
     root.addEventListener('click', event => { if (event.target === root) close(); });
     root.addEventListener('keydown', event => {
       event.stopPropagation();
       if (event.key === 'Escape') { event.preventDefault(); close(); }
-      if (event.key === 'Tab') {
-        const all = focusable(), first = all[0], last = all.at(-1);
-        if (!first) { event.preventDefault(); return; }
-        if (event.shiftKey && (document.activeElement === first || !all.includes(document.activeElement))) { event.preventDefault(); last.focus(); }
-        if (!event.shiftKey && (document.activeElement === last || !all.includes(document.activeElement))) { event.preventDefault(); first.focus(); }
-      }
+
     });
     refreshControls();
+    window.dispatchEvent(new CustomEvent('shiyan-settings-ready'));
   }
   function open(initialPage = 'memory') {
     build();
     if (opened) {
-      if (initialPage !== page) initialPage === 'settings' ? showSettings() : showMemory();
+      if (initialPage !== page) showPage(initialPage);
       return;
     }
     restoreFocus = document.getElementById('railAvatar') || document.activeElement;
@@ -293,10 +389,15 @@
     opened = true;
     root.hidden = false;
     fitSettings();
-    inertElements = [...document.body.children].filter(element => element !== root && !['SCRIPT','STYLE','LINK'].includes(element.tagName)).map(element => [element, element.inert]);
+    const rail = document.getElementById('activityRail');
+    const collect = element => {
+      if (element === root || element === rail || ['SCRIPT','STYLE','LINK'].includes(element.tagName)) return [];
+      if (rail && element.contains(rail)) return [...element.children].flatMap(collect);
+      return [[element, element.inert]];
+    };
+    inertElements = [...document.body.children].flatMap(collect);
     for (const [element] of inertElements) element.inert = true;
-    if (initialPage === 'settings') showSettings();
-    else showMemory();
+    showPage(initialPage);
   }
   function install() {
     const attach = () => {
@@ -317,22 +418,35 @@
         button.addEventListener('click', () => open('settings'));
         footer.append(button);
       }
+      if (!footer.querySelector('[data-account-logout]')) {
+        const button = document.createElement('button');
+        button.id = 'avatarLogout';
+        button.type = 'button';
+        button.dataset.accountLogout = '';
+        button.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M10 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h5M9 12h11m-4-4 4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>退出登录</span>';
+        button.addEventListener('click', () => window.ShiYanAccount.logout(button));
+        footer.append(button);
+      }
       return true;
     };
     if (!attach()) {
       const observer = new MutationObserver(() => { if (attach()) observer.disconnect(); });
       observer.observe(document.body, {childList:true, subtree:true});
     }
+    // Keep the main navigation usable while settings occupies the content area.
+    document.addEventListener('click', event => {
+      if (opened && event.target.closest('#activityRail button')) close(false);
+    }, true);
     window.addEventListener('resize', () => { if (opened) fitSettings(); });
     document.addEventListener('keydown', event => {
       if (event.metaKey && event.key === ',' && !event.altKey && !event.shiftKey && !event.isComposing) {
         event.preventDefault();
-        open('settings');
+        if (opened) close(); else open('settings');
       }
     });
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', install, {once:true});
   else install();
   window.ShiYanMemory = {open:() => open('memory'), close};
-  window.ShiYanSettings = {open:() => open('settings'), close};
+  window.ShiYanSettings = {open:(selected = 'settings') => open(selected), close, registerPage};
 })();

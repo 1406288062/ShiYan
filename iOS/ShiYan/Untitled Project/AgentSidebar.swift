@@ -2,6 +2,7 @@ import SwiftUI
 
 struct AgentSidebar: View {
     @ObservedObject var store: AgentStore
+    @ObservedObject private var account = ShiyanAccount.shared
     private let dotsStore = DotsStore.shared
     @Environment(\.scenePhase) private var scenePhase
     let topInset: CGFloat
@@ -44,10 +45,13 @@ struct AgentSidebar: View {
                         let pinned = store.list(query: "", pinned: true)
                         let recent = store.list(query: "", pinned: false)
                             .filter { $0.projectID == nil }
-                        featureRow(.dots)
-                        featureRow(.scheduled)
+                        if account.canAccessServer {
+                            featureRow(.dots)
+                            featureRow(.scheduled)
+                        }
                         featureRow(.enhance)
                         featureRow(.space)
+                        featureRow(.knowledge)
                         Color.clear.frame(height: 16).accessibilityHidden(true)
                         if !pinned.isEmpty {
                             sectionTitle("置顶")
@@ -170,18 +174,18 @@ struct AgentSidebar: View {
         }
         .task {
             if scenePhase == .active { dotsStore.startMonitoring() }
-            await dotsStore.refreshIdentity()
+            if account.canAccessServer { await dotsStore.refreshIdentity() }
         }
         .onDisappear { dotsStore.stopMonitoring() }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 dotsStore.startMonitoring()
-                Task { await dotsStore.refreshIdentity() }
+                Task { if account.canAccessServer { await dotsStore.refreshIdentity() } }
             } else { dotsStore.stopMonitoring() }
         }
         .onChange(of: isOpen) { _, open in
             if !open { deleteTarget = nil; menuTarget = nil }
-            else { Task { await dotsStore.refreshIdentity() } }
+            else { Task { if account.canAccessServer { await dotsStore.refreshIdentity() } } }
         }
         .animation(.easeInOut(duration: 0.2), value: deleteTarget)
         .animation(.easeInOut(duration: 0.18), value: menuTarget)

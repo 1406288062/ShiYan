@@ -98,36 +98,79 @@ struct AgentEvent: Decodable {
 
 @MainActor
 final class CodexClient {
-    static let shared = CodexClient()
+    private static var instance: CodexClient?
+    static var shared: CodexClient {
+        if let instance { return instance }
+        let value = CodexClient(); instance = value; return value
+    }
+    static func resetAccount() { instance = nil }
+    private let accountGeneration = ShiyanAccountStorage.generation
     private var enrolled = false
     private let host = "129.226.81.110"
 
-    private func request(method: String, route: String, object: [String: Any]? = nil) throws -> URLRequest {
-        let data = try object.map { try JSONSerialization.data(withJSONObject: $0, options: [.sortedKeys, .withoutEscapingSlashes]) } ?? Data()
+    private func request(method: String, route: String, object: [String: Any]? = nil, rawBody: Data? = nil, contentType: String? = nil) throws -> URLRequest {
+        try Task.checkCancellation()
+        if !route.hasPrefix("auth/") {
+            guard ShiyanAccount.shared.token != nil, accountGeneration == ShiyanAccountStorage.generation else {
+                throw AgentClientError.message("请重新登录")
+            }
+        }
+        let data: Data
+        if let rawBody { data = rawBody }
+        else { data = try object.map { try JSONSerialization.data(withJSONObject: $0, options: [.sortedKeys, .withoutEscapingSlashes]) } ?? Data() }
         let fullPath = "/shiyan/v1/" + route
         guard let url = URL(string: "https://\(host)\(fullPath)") else { throw AgentClientError.message("服务地址无效") }
         var req = URLRequest(url: url)
         req.httpMethod = method
         req.httpBody = data.isEmpty ? nil : data
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(contentType ?? "application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("mobile", forHTTPHeaderField: "X-Shiyan-Sync-Profile")
+        req.setValue("ios", forHTTPHeaderField: "X-Shiyan-Platform")
         for (key, value) in try AgentIdentity.shared.headers(method: method, path: fullPath, body: data) { req.setValue(value, forHTTPHeaderField: key) }
+        if let token = ShiyanAccount.shared.token { req.setValue("Bearer " + token, forHTTPHeaderField: "Authorization") }
         return req
     }
-    private func response(_ request: URLRequest, timeout: TimeInterval = 35, rejectDotsErrors: Bool = false, rejectScheduleErrors: Bool = false) async throws -> PinnedHTTPSResponse {
+    func authRequest(route: String, method: String, object: [String: Any]? = nil, bearer: String? = nil) async throws -> Data {
+        var req = try request(method: method, route: route, object: object)
+        if let bearer { req.setValue("Bearer " + bearer, forHTTPHeaderField: "Authorization") }
+        let timeout: TimeInterval = ["auth/me", "auth/status", "auth/logout"].contains(route) ? 8 : 35
+        return try await response(req, timeout: timeout).body
+    }
+    private func response(_ request: URLRequest, timeout: TimeInterval = 35, idleTimeout: TimeInterval? = nil, rejectDotsErrors: Bool = false, rejectScheduleErrors: Bool = false) async throws -> PinnedHTTPSResponse {
         guard let url = request.url else { throw AgentClientError.message("服务地址无效") }
         let route = url.path + (url.query.map { "?" + $0 } ?? "")
         let result = try await PinnedHTTPSClient.shared.request(host: host, method: request.httpMethod ?? "GET", path: route,
             headers: request.allHTTPHeaderFields ?? [:], body: request.httpBody, maxResponseBytes: 40 * 1024 * 1024,
-            timeout: route.hasSuffix("/cancel") ? 10 : timeout)
+            timeout: route.hasSuffix("/cancel") ? 10 : timeout, idleTimeout: idleTimeout)
+        try Task.checkCancellation()
+        if url.path.hasSuffix("/auth/me") {
+            guard request.value(forHTTPHeaderField: "Authorization") == ShiyanAccount.shared.token.map({ "Bearer " + $0 }) else { throw CancellationError() }
+        }
+        if !url.path.contains("/auth/") {
+            guard accountGeneration == ShiyanAccountStorage.generation,
+                  request.value(forHTTPHeaderField: "Authorization") == ShiyanAccount.shared.token.map({ "Bearer " + $0 }) else { throw CancellationError() }
+        }
         guard (200...299).contains(result.statusCode) else {
 #if DEBUG
             NSLog("[ShiyanHTTPFailure] path=%@ status=%d contentType=%@ response=%@", route, result.statusCode,
                   result.headers["content-type"] ?? "", String(data: result.body.prefix(160), encoding: .utf8) ?? "binary")
 #endif
-            if result.statusCode == 401 { enrolled = false }
+            if result.statusCode == 401 {
+                enrolled = false
+                if request.value(forHTTPHeaderField: "Authorization") == ShiyanAccount.shared.token.map({ "Bearer " + $0 }),
+                   !url.path.hasSuffix("/login"), !url.path.hasSuffix("/register"), !url.path.hasSuffix("/bootstrap") {
+                    ShiyanAccount.shared.invalidate()
+                }
+            }
             let message = (try? JSONSerialization.jsonObject(with: result.body) as? [String: Any])?["error"] as? String
             let rejectionCode = (try? JSONSerialization.jsonObject(with: result.body) as? [String: Any])?["code"] as? String
+            if url.path.hasSuffix("/auth/me") {
+                if result.statusCode == 403,
+                   request.value(forHTTPHeaderField: "Authorization") == ShiyanAccount.shared.token.map({ "Bearer " + $0 }) {
+                    ShiyanAccount.shared.invalidate()
+                }
+                throw ShiyanAuthHTTPFailure(status: result.statusCode, message: message ?? "登录验证暂不可用（\(result.statusCode)）")
+            }
             if rejectScheduleErrors && [400, 403, 404, 409, 422].contains(result.statusCode) {
                 throw ScheduledTaskRejected(status: result.statusCode, message: message ?? "服务器未接受此修改（\(result.statusCode)）")
             }
@@ -205,18 +248,16 @@ final class CodexClient {
         return result.body
     }
     func prepareConnection() async throws {
-        guard !enrolled else { return }
-        let values = try AgentIdentity.shared.enrollment()
-        let data = try await send(request(method: "POST", route: "enroll", object: values))
-        let result = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        enrolled = result?["approved"] as? Bool == true
-        if !enrolled { throw AgentClientError.message("此设备尚未获得服务器授权，请批准设备后重试") }
+        try Task.checkCancellation()
+        guard ShiyanAccount.shared.token != nil, accountGeneration == ShiyanAccountStorage.generation else {
+            throw AgentClientError.message("请先登录")
+        }
     }
      
      
     var capabilitiesCacheScope: String? {
         guard let identity = try? AgentIdentity.shared.enrollment()["deviceID"] else { return nil }
-        return "https://\(host)/shiyan/v1|\(identity)"
+        return "https://\(host)/shiyan/v1|\(identity)|\(ShiyanAccountStorage.owner)"
     }
     func capabilities() async throws -> AgentCapabilities {
         try await prepareConnection()
@@ -258,7 +299,7 @@ final class CodexClient {
             throw AgentClientError.message("无法创建编辑分支")
         }
         let threadID = result["threadId"] as? String
-        if !retainedPrompts.isEmpty && (threadID ?? "").isEmpty {
+        if !retainedPrompts.isEmpty && (threadID ?? "").isEmpty && result["historyRetained"] as? Bool != true {
             throw AgentClientError.message("云端未能保留编辑位置之前的上下文")
         }
         return threadID
@@ -282,6 +323,7 @@ final class CodexClient {
                     }
                     for try await data in raw {
                         try Task.checkCancellation()
+                        guard accountGeneration == ShiyanAccountStorage.generation else { throw CancellationError() }
                         let event = try JSONDecoder().decode(AgentEvent.self, from: data)
                         continuation.yield(event)
                         if event.isTerminal { continuation.finish(); return }
@@ -316,6 +358,8 @@ final class CodexClient {
         }
         try Task.checkCancellation()
         guard !mime.hasPrefix("image/") || UIImage(data: data) != nil else { throw AgentClientError.message("图片暂未加载完整") }
+        try Task.checkCancellation()
+        guard accountGeneration == ShiyanAccountStorage.generation else { throw CancellationError() }
         return try AgentMedia.save(data, filename: filename, mimeType: mime, remoteID: asset.id)
     }
      
@@ -331,8 +375,7 @@ final class CodexClient {
               let expected = first.headers["x-content-sha256"], expected.count == 64,
               first.body.count == min(total, partSize) else { throw AgentClientError.message("图片分段信息无效") }
         let key = SHA256.hash(data: Data((route + expected).utf8)).map { String(format: "%02x", $0) }.joined()
-        let folder = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("ShiyanTransfers", isDirectory: true).appendingPathComponent(key, isDirectory: true)
+        let folder = ShiyanAccountStorage.directory("ShiyanTransfers", domain: .cachesDirectory).appendingPathComponent(key, isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         var assembled = Data(count: total), received = first.body.count
         assembled.replaceSubrange(0..<first.body.count, with: first.body)
@@ -460,7 +503,7 @@ extension CodexClient: DotsTransport {
               SHA256.hash(data: bytes).map({ String(format: "%02x", $0) }).joined() == attachment.sha256 else {
             throw AgentClientError.message("附件校验失败，请重试")
         }
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ShiyanDotsFiles").appendingPathComponent(attachment.id)
+        let directory = ShiyanAccountStorage.directory("ShiyanDotsFiles", domain: .cachesDirectory).appendingPathComponent(attachment.id)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let destination = directory.appendingPathComponent((attachment.filename as NSString).lastPathComponent)
         try bytes.write(to: destination, options: .atomic)
@@ -472,7 +515,7 @@ extension CodexClient: DotsTransport {
         try await prepareConnection()
         let bytes = try await send(request(method: "GET", route: "dots/" + String(path.dropFirst(9))))
         guard bytes.count <= 32 * 1024 * 1024 else { throw AgentClientError.message("文件过大") }
-        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("DotsOutputs").appendingPathComponent(UUID().uuidString)
+        let folder = ShiyanAccountStorage.directory("DotsOutputs", domain: .cachesDirectory).appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let file = folder.appendingPathComponent(((item.filename ?? "任务结果.txt") as NSString).lastPathComponent)
         try bytes.write(to: file, options: .atomic)
@@ -483,6 +526,12 @@ extension CodexClient: DotsTransport {
         try await prepareConnection()
         let data = try await send(request(method: "GET", route: "dots/" + route))
         return try JSONDecoder().decode(type, from: data)
+    }
+    func dotsRelationship(_ change: DotsRelationshipChange) async throws -> DotsRelationshipResponse {
+        try await prepareConnection()
+        let data = try await response(request(method: change.method, route: "dots/" + change.route,
+                                             object: change.body), rejectDotsErrors: true).body
+        return try JSONDecoder().decode(DotsRelationshipResponse.self, from: data)
     }
     func dotsMutate(_ operation: DotsPendingOperation) async throws -> Int? {
         try await prepareConnection()
@@ -520,6 +569,7 @@ extension CodexClient: DotsTransport {
                     }
                     for try await bytes in raw {
                         try Task.checkCancellation()
+                        guard accountGeneration == ShiyanAccountStorage.generation else { throw CancellationError() }
                         let event = try JSONDecoder().decode(DotsEvent.self, from: bytes)
                         continuation.yield(event)
                     }
@@ -537,4 +587,79 @@ struct AgentExecutionPayload: Decodable, Sendable {
     var fileChanges: [AgentSyncValue]?
     var displayItems: [AgentSyncValue]?
     var fullJSON: String?
+}
+
+// Knowledge uses the same account, signed requests and pinned transport as chat.
+extension CodexClient {
+    private func knowledgeKey(_ value: String) -> String {
+        value.addingPercentEncoding(withAllowedCharacters: CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))) ?? value
+    }
+    private func knowledgeBytes(method: String = "GET", route: String, object: [String: Any]? = nil,
+                                body: Data? = nil, contentType: String? = nil) async throws -> Data {
+        try await prepareConnection()
+        let req = try request(method: method, route: "knowledge/" + route, object: object, rawBody: body, contentType: contentType)
+        // Graphs and answers may wait for upstream work before their first byte.
+        // Other requests retain the transport's normal 20-second idle limit.
+        let waitsForContent = route == "query" || route.hasSuffix("/knowledge")
+        return try await response(req, timeout: 250, idleTimeout: waitsForContent ? 250 : nil).body
+    }
+    private func knowledgeDecode<T: Decodable>(_ type: T.Type, method: String = "GET", route: String, object: [String: Any]? = nil) async throws -> T {
+        try JSONDecoder().decode(type, from: await knowledgeBytes(method: method, route: route, object: object))
+    }
+    func knowledgeSpaces() async throws -> [KnowledgeSpace] {
+        try await knowledgeDecode([KnowledgeSpace].self, route: "spaces")
+    }
+    func knowledgeCreateSpace(name: String) async throws -> KnowledgeSpace {
+        try await knowledgeDecode(KnowledgeSpace.self, method: "POST", route: "spaces", object: ["name": name])
+    }
+    func knowledgeBases(spaceID: String) async throws -> [KnowledgeBase] {
+        try await knowledgeDecode([KnowledgeBase].self, route: "spaces/\(knowledgeKey(spaceID))/knowledge-bases")
+    }
+    func knowledgeCreateBase(spaceID: String, name: String, description: String) async throws -> KnowledgeBase {
+        try await knowledgeDecode(KnowledgeBase.self, method: "POST", route: "spaces/\(knowledgeKey(spaceID))/knowledge-bases", object: ["name": name, "description": description])
+    }
+    func knowledgeUpdateBase(id: String, name: String) async throws -> KnowledgeBase {
+        try await knowledgeDecode(KnowledgeBase.self, method: "PATCH", route: "knowledge-bases/\(knowledgeKey(id))", object: ["name": name])
+    }
+    func knowledgeDeleteBase(id: String) async throws {
+        _ = try await knowledgeBytes(method: "DELETE", route: "knowledge-bases/\(knowledgeKey(id))")
+    }
+    func knowledgeDocuments(baseID: String) async throws -> [KnowledgeDocument] {
+        try await knowledgeDecode([KnowledgeDocument].self, route: "knowledge-bases/\(knowledgeKey(baseID))/documents")
+    }
+    func knowledgeDocument(id: String) async throws -> KnowledgeDocument {
+        try await knowledgeDecode(KnowledgeDocument.self, route: "documents/\(knowledgeKey(id))")
+    }
+    func knowledgeDeleteDocument(id: String) async throws {
+        _ = try await knowledgeBytes(method: "DELETE", route: "documents/\(knowledgeKey(id))")
+    }
+    func knowledgeGraph(baseID: String) async throws -> KnowledgeGraph {
+        try await knowledgeDecode(KnowledgeGraph.self, route: "knowledge-bases/\(knowledgeKey(baseID))/knowledge")
+    }
+    func knowledgeActiveTask(baseID: String) async throws -> KnowledgeTask? {
+        try await knowledgeDecode(KnowledgeTask?.self, route: "knowledge-bases/\(knowledgeKey(baseID))/tasks/active")
+    }
+    func knowledgeTask(id: String) async throws -> KnowledgeTask {
+        try await knowledgeDecode(KnowledgeTask.self, route: "tasks/\(knowledgeKey(id))")
+    }
+    func knowledgeHistory(baseID: String) async throws -> KnowledgeHistory {
+        try await knowledgeDecode(KnowledgeHistory.self, route: "chat/history?knowledge_base_id=\(knowledgeKey(baseID))")
+    }
+    func knowledgeClearHistory(baseID: String) async throws {
+        _ = try await knowledgeBytes(method: "DELETE", route: "chat/history?knowledge_base_id=\(knowledgeKey(baseID))")
+    }
+    func knowledgeAsk(baseID: String, question: String, conversationID: String?, history: [[String: String]]) async throws -> KnowledgeAnswer {
+        var object: [String: Any] = ["knowledge_base_id": baseID, "question": question, "history": history, "allow_web": false]
+        if let conversationID { object["conversation_id"] = conversationID }
+        return try await knowledgeDecode(KnowledgeAnswer.self, method: "POST", route: "query", object: object)
+    }
+    func knowledgeUpload(baseID: String, filename: String, data: Data) async throws -> KnowledgeUpload {
+        guard data.count <= 50 * 1024 * 1024 else { throw AgentClientError.message("PDF 不能超过 50 MB") }
+        let boundary = "ShiyanKnowledge-" + UUID().uuidString
+        let safeFilename = filename.replacingOccurrences(of: "\r", with: "_").replacingOccurrences(of: "\n", with: "_").replacingOccurrences(of: "\"", with: "_")
+        var body = Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"\(safeFilename)\"\r\nContent-Type: application/pdf\r\n\r\n".utf8)
+        body.append(data); body.append(Data("\r\n--\(boundary)--\r\n".utf8))
+        let bytes = try await knowledgeBytes(method: "POST", route: "knowledge-bases/\(knowledgeKey(baseID))/documents", body: body, contentType: "multipart/form-data; boundary=\(boundary)")
+        return try JSONDecoder().decode(KnowledgeUpload.self, from: bytes)
+    }
 }

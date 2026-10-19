@@ -156,6 +156,9 @@ private final class AgentSyncLedgerWriter: @unchecked Sendable {
 
 @MainActor
 final class AgentSyncCoordinator {
+    private let client = CodexClient.shared
+    private var stopped = false
+    func stop() { stopped = true; loop?.cancel(); loop = nil; transfers?.cancel(); transfers = nil }
     weak var store: AgentStore?
     private let file: URL
     private(set) var ledger = AgentSyncLedger()
@@ -224,7 +227,7 @@ final class AgentSyncCoordinator {
         dirty = true
     }
     func start() {
-        guard loop == nil, saveAllowed else { return }
+        guard !stopped, loop == nil, saveAllowed else { return }
         loop = Task { [weak self] in
             await self?.loadLedger()
             while !Task.isCancelled {
@@ -297,15 +300,15 @@ final class AgentSyncCoordinator {
         return true
     }
     func cycle() async {
-        guard !working, saveAllowed, ledgerLoaded, store != nil else { return }
+        guard !stopped, !Task.isCancelled, !working, saveAllowed, ledgerLoaded, store != nil else { return }
         working = true; defer { working = false }
         do {
             dirty = false; try await collect()
-            var response = try await CodexClient.shared.sync(after: ledger.cursor)
+            var response = try await client.sync(after: ledger.cursor)
             for _ in 0..<12 {
                 guard try await apply(response) else { return }
                 guard response.hasMore else { break }
-                response = try await CodexClient.shared.sync(after: ledger.cursor)
+                response = try await client.sync(after: ledger.cursor)
             }
              
             await publishReadyMutations()
@@ -342,7 +345,7 @@ final class AgentSyncCoordinator {
                     guard needed.contains(id), !ledger.uploadedAssets.contains(id), attempted.count < 8,
                           FileManager.default.fileExists(atPath: asset.url.path), attempted.insert(id).inserted else { continue }
                     do {
-                        try await CodexClient.shared.uploadSyncAsset(id: id, asset: asset)
+                        try await client.uploadSyncAsset(id: id, asset: asset)
                         ledger.uploadedAssets.insert(id); save()
                     } catch { continue }  
                 }
@@ -357,7 +360,7 @@ final class AgentSyncCoordinator {
         }.prefix(100))
         guard !batch.isEmpty else { return }
         do {
-            let posted = try await CodexClient.shared.sync(after: ledger.cursor, mutations: batch)
+            let posted = try await client.sync(after: ledger.cursor, mutations: batch)
             for receipt in posted.accepted ?? [] { ledger.accept(receipt) }
             for conflict in posted.conflicts ?? [] {
                 if let current = conflict.current, let merged = ledger.absorb(current) { try await importChange(merged) }
@@ -413,7 +416,8 @@ final class AgentSyncCoordinator {
             guard let id = asset.syncAssetID, !FileManager.default.fileExists(atPath: asset.url.path) else { continue }
             attempts += 1
             do {
-                let bytes = try await CodexClient.shared.syncAsset(id: id)
+                let bytes = try await client.syncAsset(id: id)
+                guard !stopped, !Task.isCancelled else { return }
                 try FileManager.default.createDirectory(at: AgentMedia.directory, withIntermediateDirectories: true)
                 try bytes.write(to: asset.url, options: .atomic)
                 ledger.uploadedAssets.insert(id)

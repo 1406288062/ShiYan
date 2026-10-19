@@ -64,6 +64,6 @@
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>识别语音输入；开启 Dots 实时对话后，将识别结果发送给 Dots。</string>
 	<key>NSCameraUsageDescription</key>
-	<string>拍摄照片并添加到聊天中，由您确认后发送。</string>
+	<string>拍摄照片或扫描拾燕登录二维码，仅在您主动使用时访问相机。</string>
 </dict>
 </plist>

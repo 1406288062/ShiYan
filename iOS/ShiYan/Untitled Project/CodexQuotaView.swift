@@ -93,9 +93,7 @@ struct CodexQuotaView: View {
             .scrollIndicators(.hidden)
             ShiyanFeatureHeader(page: .settings, topInset: topInset, hasUnread: hasUnread,
                                 onSidebar: onSidebar, onBack: onBack, backLabel: "返回设置") {
-                ShiyanCloseButton(action: onClose, diameter: ShiyanPreviewLayout.controlDiameter)
-                    .accessibilityLabel("关闭设置")
-                    .accessibilityIdentifier("codex-quota-close")
+                EmptyView()
             }
             .overlay(alignment: .top) {
                 Text("Codex").font(.system(size: 18, weight: .semibold))

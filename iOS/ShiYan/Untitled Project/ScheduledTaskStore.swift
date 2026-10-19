@@ -3,7 +3,13 @@ import Combine
 
 @MainActor
 final class ScheduledTaskStore: ObservableObject {
-    static let shared = ScheduledTaskStore()
+    private static var instance: ScheduledTaskStore?
+    static var shared: ScheduledTaskStore {
+        if let instance { return instance }
+        let value = ScheduledTaskStore(); instance = value; return value
+    }
+    static func resetAccount() { instance = nil }
+    private let client = CodexClient.shared
     @Published private(set) var tasks: [ScheduledTask] = []
     @Published private(set) var isLoading = false
     @Published var lastError: String?
@@ -12,8 +18,8 @@ final class ScheduledTaskStore: ObservableObject {
     private var refreshing = false
     private var mutating = false
     private var defaults: UserDefaults { .standard }
-    private let cacheKey = "shiyan.desktop-schedules.cache.v1"
-    private let pendingKey = "shiyan.desktop-schedules.pending.v1"
+    private let cacheKey = ShiyanAccountStorage.preference("shiyan.desktop-schedules.cache.v1")
+    private let pendingKey = ShiyanAccountStorage.preference("shiyan.desktop-schedules.pending.v1")
 
     private init() {
         if let data = defaults.data(forKey: cacheKey) { tasks = (try? JSONDecoder().decode([ScheduledTask].self, from: data)) ?? [] }
@@ -30,7 +36,7 @@ final class ScheduledTaskStore: ObservableObject {
         defer { refreshing = false; isLoading = false }
         do {
             if pending != nil && !mutating { try await retryPending() }
-            let response = try await CodexClient.shared.scheduledTaskListing()
+            let response = try await client.scheduledTaskListing()
             tasks = response.tasks.sorted {
                 if $0.nextRun != $1.nextRun { return ($0.nextRun ?? .distantFuture) < ($1.nextRun ?? .distantFuture) }
                 return $0.title.localizedStandardCompare($1.title) == .orderedAscending
@@ -66,7 +72,7 @@ final class ScheduledTaskStore: ObservableObject {
         guard let operation = pending, !mutating else { return }
         mutating = true; defer { mutating = false }
         do {
-            let result = try await CodexClient.shared.scheduledTaskMutate(operation)
+            let result = try await client.scheduledTaskMutate(operation)
             if let task = result.task {
                 if let index = tasks.firstIndex(where: { $0.id == task.id }) { tasks[index] = task } else { tasks.append(task) }
             } else if result.deleted == true { tasks.removeAll { $0.id == operation.id } }

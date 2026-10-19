@@ -183,7 +183,16 @@ private struct AgentReasoningPresentationLayer: View {
 
 struct AIAgentView: View {
     @ObservedObject var history: HistoryManager
-    @StateObject private var store = AgentStore.shared
+    @StateObject private var store: AgentStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var temporaryStore: AgentStore?
+    @State private var showingTemporaryChat = false
+    @State private var showingExecutionHistory = false
+
+    init(history: HistoryManager, store: AgentStore? = nil) {
+        self.history = history
+        _store = StateObject(wrappedValue: store ?? AgentStore.shared)
+    }
     @StateObject private var speech = AgentSpeechInput()
     @ObservedObject private var dotsVoice = DotsVoiceSession.shared
     @State private var dotsTaskSheetPresented = false
@@ -246,7 +255,7 @@ struct AIAgentView: View {
 
     private var current: AgentConversation? { store.current }
     private var canPullNewChat: Bool {
-        featurePage == nil && !store.hasEarlierMessages && !store.historyLoading && !store.loadingEarlier && !(current?.messages.isEmpty ?? true) && drawer == 0 && dragOrigin == nil &&
+        !store.isTemporarySession && featurePage == nil && !store.hasEarlierMessages && !store.historyLoading && !store.loadingEarlier && !(current?.messages.isEmpty ?? true) && drawer == 0 && dragOrigin == nil &&
         !attachmentOpen && !keyboardVisible && !inputFocused &&
         !speech.isRecording && !speech.isStarting && !showPhotos && !showCamera &&
         !showFiles && preview == nil && !inlineSelectionActive && !editInFlight &&
@@ -419,6 +428,15 @@ struct AIAgentView: View {
         .ignoresSafeArea(.container)
         .photosPicker(isPresented: $showPhotos, selection: $photos,
                       maxSelectionCount: max(1, store.capabilities.maxUploadImages - (current?.draftAssets.count ?? 0)), matching: .images)
+        .fullScreenCover(isPresented: $showingTemporaryChat, onDismiss: {
+            temporaryStore?.closeTemporarySession()
+            temporaryStore = nil
+        }) {
+            if let temporaryStore { AIAgentView(history: history, store: temporaryStore) }
+        }
+        .sheet(isPresented: $showingExecutionHistory) {
+            AgentExecutionHistoryView(messages: current?.messages ?? [])
+        }
         .sheet(isPresented: $showCamera) {
             AgentCameraPicker { image in
                 showCamera = false
@@ -565,6 +583,8 @@ struct AIAgentView: View {
             EnhanceView(history: history, topInset: top, hasUnread: hasUnread) { setDrawer(true) }
         case .space:
             HistoryView(history: history, topInset: top, bottomInset: bottom, hasUnread: hasUnread) { setDrawer(true) }
+        case .knowledge:
+            KnowledgeView(topInset: top, bottomInset: bottom, hasUnread: hasUnread) { setDrawer(true) }
         case .dots:
             DotsView(topInset: top, bottomInset: bottom, hasUnread: hasUnread,
                      isConversationVisible: drawer == 0 && dragOrigin == nil,
@@ -610,9 +630,15 @@ struct AIAgentView: View {
                                 ProgressView().frame(maxWidth: .infinity).padding(.horizontal, 18).padding(.top, 100)
                             } else if conversation.messages.isEmpty {
                                 VStack(spacing: 15) {
-                                    Image(systemName: "sparkles").font(.system(size: 30, weight: .light)).foregroundStyle(.secondary)
-                                    Text("开始对话").font(.title3.weight(.medium))
-                                }.frame(maxWidth: .infinity).padding(.horizontal, 18).padding(.top, 130)
+                                    Image(systemName: store.isTemporarySession ? "plus.bubble" : "sparkles")
+                                        .font(.system(size: 30, weight: .light)).foregroundStyle(.secondary)
+                                    Text(store.isTemporarySession ? "临时聊天" : "开始对话").font(.title3.weight(.medium))
+                                    if store.isTemporarySession {
+                                        Text("关闭此聊天或退出应用后会消失。")
+                                            .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                                    }
+                                }.frame(maxWidth: .infinity).padding(.horizontal, 18)
+                                    .padding(.top, store.isTemporarySession ? max(80, (height - top - composerHeight) / 2 - 80) : 130)
                             }
                             if store.hasEarlierMessages {
                                 Button {
@@ -682,8 +708,16 @@ struct AIAgentView: View {
                  
                 .safeAreaBar(edge: .top, spacing: -(top + 3 + 46 + topBlurEarlyLead)) {
                 HStack {
-                    AgentSidebarButton(hasUnread: store.conversations.contains { $0.hasUnread }, diameter: 46) { setDrawer(true) }
+                    if store.isTemporarySession {
+                        ShiyanCloseButton(action: { dismiss() }, diameter: ShiyanPreviewLayout.controlDiameter)
+                    } else {
+                        AgentSidebarButton(hasUnread: store.conversations.contains { $0.hasUnread }, diameter: 46) { setDrawer(true) }
+                    }
                     Spacer()
+                    if store.isTemporarySession {
+                        Text("临时聊天").font(.system(size: 17, weight: .semibold))
+                        Spacer()
+                    }
     #if DEBUG
                     if ProcessInfo.processInfo.environment["SHIYAN_UI_TEST_EDIT_BRANCH"] == "1" {
                         Button("编辑回归测试") {
@@ -694,7 +728,9 @@ struct AIAgentView: View {
                         .accessibilityIdentifier("test-edit-branch-action")
                     }
     #endif
-                    HStack(spacing: 2) {
+                    HStack(spacing: 8) {
+                        if !store.isTemporarySession {
+                        HStack(spacing: 2) {
                         Button {
                             speech.cancel(); speechConversationID = nil; editedMessageID = nil
                             resetConversationPresentation()
@@ -705,6 +741,20 @@ struct AIAgentView: View {
                         }.buttonStyle(.plain).accessibilityLabel("新建聊天")
                     }.padding(.horizontal, 3).foregroundStyle(.primary)
                         .shiyanGlass(in: Capsule(), tint: .white.opacity(0.04), interactive: true)
+                        }
+                        ShiyanMoreMenu {
+                            if !store.isTemporarySession {
+                                Button("临时聊天", systemImage: "plus.bubble") {
+                                    speech.cancel(); inputFocused = false
+                                    temporaryStore = AgentStore(temporary: true)
+                                    showingTemporaryChat = true
+                                }
+                            }
+                            Button("执行过程", systemImage: "list.bullet.rectangle") { showingExecutionHistory = true }
+                                .disabled(!(current?.messages.contains { $0.role == .assistant } ?? false))
+                        }
+                        .accessibilityIdentifier("agent-chat-more")
+                    }
                 }.padding(.horizontal, 16).padding(.top, top + 3)
                 .padding(.bottom, topBlurEarlyLead)
                  
@@ -1450,6 +1500,7 @@ struct AIAgentView: View {
     }
 
     private func setDrawer(_ open: Bool) {
+        guard !store.isTemporarySession || !open else { return }
         dragOrigin = nil
         inputFocused = false; reasoningPresentation.close(); attachmentOpen = false
         withAnimation(reduceMotion ? nil : .interactiveSpring(response: 0.36, dampingFraction: 0.88)) { drawer = open ? 1 : 0 }
@@ -1480,6 +1531,7 @@ struct AIAgentView: View {
         reasoningPresentation.close()
     }
     private func updateDrawerDrag(_ translation: CGFloat, width: CGFloat) {
+        guard !store.isTemporarySession else { return }
         if dragOrigin == nil {
             dragOrigin = drawer
             inputFocused = false

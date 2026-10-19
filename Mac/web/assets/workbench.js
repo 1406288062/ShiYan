@@ -15,6 +15,7 @@
     left:'M7 3.5h10a3.5 3.5 0 0 1 3.5 3.5v10a3.5 3.5 0 0 1-3.5 3.5H7A3.5 3.5 0 0 1 3.5 17V7A3.5 3.5 0 0 1 7 3.5ZM8 3.5v17', leftCollapsed:'M7 3.5h10a3.5 3.5 0 0 1 3.5 3.5v10a3.5 3.5 0 0 1-3.5 3.5H7A3.5 3.5 0 0 1 3.5 17V7A3.5 3.5 0 0 1 7 3.5ZM7 8v8', right:'M4 4h16v16H4Zm11 0v16',
     plus:'M12 5v14M5 12h14', close:'m6 6 12 12M18 6 6 18',
     back:'m14 5-7 7 7 7', forward:'m10 5 7 7-7 7', refresh:'M20 9a8 8 0 1 0 0 6m0-12v6h-6',
+    sideChat:'M20.5 16.5 21 21l-4.5-1a9 9 0 1 1 4-3.5ZM12 7v10M7 12h10',
     newChat:'M10 4H4v16h16v-6M9 15l1-5 9-9 4 4-9 9Z',
     down:'m6 9 6 6 6-6', star:'m12 3 2.8 5.7L21 9.6l-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9Z',
     download:'M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5',
@@ -54,7 +55,7 @@
   const panes = new Map(), sessions = new Map(), openedBrowsers = new Set(), pickerRequests = new Map();
   const nativeAvailable = () => !!window.webkit?.messageHandlers?.native;
   function native(op, data={}) {
-    if(!nativeAvailable()) return false;
+    if(!nativeAvailable() || !window.ShiYanAccount?.user?.serverAccess) return false;
     window.webkit.messageHandlers.native.postMessage({action:'workbench',op,...data});
     return true;
   }
@@ -244,7 +245,7 @@
     renderTabs();persist();layout();
   }
   function renderTabs() {
-    $('workspaceTabs').innerHTML=tabs.map(t=>`<div class="workspace-tab ${t.id===activeTab?'selected':''}" role="tab" tabindex="0" aria-selected="${t.id===activeTab}" data-tab="${esc(t.id)}" title="${esc(t.title)}">${icon(t.type==='browser'?'globe':t.type==='terminal'?'terminal':t.type==='files'?'folder':t.type==='file'||t.type==='changes'?'file':t.type==='history'?'history':t.type==='bookmarks'?'star':t.type==='downloads'?'download':'settings')}<span>${esc(t.title||'新标签页')}</span><button type="button" data-close-tab="${esc(t.id)}" aria-label="关闭 ${esc(t.title||'标签')}" title="关闭标签">${icon('close')}</button></div>`).join('');
+    $('workspaceTabs').innerHTML=tabs.map(t=>`<div class="workspace-tab ${t.id===activeTab?'selected':''}" role="tab" tabindex="0" aria-selected="${t.id===activeTab}" data-tab="${esc(t.id)}" title="${esc(t.title)}">${icon(t.type==='temporary'?'sideChat':t.type==='browser'?'globe':t.type==='terminal'?'terminal':t.type==='files'?'folder':t.type==='file'||t.type==='changes'?'file':t.type==='history'?'history':t.type==='bookmarks'?'star':t.type==='downloads'?'download':'settings')}<span>${esc(t.title||'新标签页')}</span><button type="button" data-close-tab="${esc(t.id)}" aria-label="关闭 ${esc(t.title||'标签')}" title="关闭标签">${icon('close')}</button></div>`).join('');
     const tab=tabs.find(t=>t.id===activeTab);
     for(const [id,pane]of panes)pane.hidden=id!==activeTab;
     if(!tab){$('browserAddressBar').hidden=true;v2?.decorateTabs();scheduleNative();return;}
@@ -261,12 +262,14 @@
       $('browserReload').classList.toggle('loading',!!state.loading);
       if(tab.url&&!openedBrowsers.has(tab.id)&&nativeAvailable()){openedBrowsers.add(tab.id);native('navigate',{tabId:tab.id,url:tab.url});}
       renderBrowserPane(tab,pane);
-    } else if(tab.type==='execution')window.ShiYanExecution?.renderPane(tab,pane);
+    } else if(tab.type==='temporary')window.ShiYanV22?.renderTemporaryPane(tab,pane);
+    else if(tab.type==='execution')window.ShiYanExecution?.renderPane(tab,pane);
     else if(['history','bookmarks','downloads','settings'].includes(tab.type))renderManager(tab,pane);
     v2?.decorateTabs();
     requestAnimationFrame(()=>{$('workspaceTabs').querySelector('[aria-selected="true"]')?.scrollIntoView({block:'nearest',inline:'nearest'});fitTerminals();scheduleNative();});
   }
   function initPane(tab,pane) {
+    if(tab.type==='temporary'){window.ShiYanV22?.renderTemporaryPane(tab,pane);return;}
     if(tab.type==='execution'){window.ShiYanExecution?.renderPane(tab,pane);return;}
     if(tab.type==='changes'){window.ShiYanChanges?.renderPane(tab,pane);return;}
     if(v2 && ['files','file'].includes(tab.type)){v2.initFile(tab,pane);return;}
@@ -564,7 +567,7 @@
       prefs={...prefs,...data.preferences,groups:{...prefs.groups,...data.preferences?.groups}};
        
       if(Number(data.preferences?.rightWidth)===590){prefs.rightWidth=460;persist();}
-      tabs=(data.preferences?.tabs||[]).filter(t=>t.id&&t.type).map(t=>({...t}));
+      tabs=(data.preferences?.tabs||[]).filter(t=>t.id&&t.type&&t.type!=='temporary').map(t=>({...t}));
       activeTab=data.preferences?.activeTab||tabs[0]?.id||'';
       ready=true;loading=false;lastSelected='';
       for(const[name,id]of Object.entries({pinned:'pinnedGroup',projects:'projectsGroup',recent:'recentGroup'}))$(id).open=prefs.groups[name]!==false;

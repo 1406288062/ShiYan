@@ -8,14 +8,161 @@ import Darwin
 
 private let appBundleID = "com.shiyan.image-enhancer.desktop"
 
+// Native messages are untrusted, including messages from the application's own page.
+// Only the server-validated owner account may access this Mac's OS resources.
+private final class NativeAccountGate: NSObject, WKHTTPCookieStoreObserver, URLSessionTaskDelegate {
+    struct Permit: Equatable { let cookie: String; let generation: UUID }
+    private let store: WKHTTPCookieStore
+    private let baseURL: () -> URL?
+    private let onRevoke: () -> Void
+    private var observedCookie: String?
+    private var generation = UUID()
+    private var permit: Permit?
+    private var timer: Timer?
+    private var verifiedAt: TimeInterval = 0
+    private struct Validation {
+        let id = UUID()
+        let permit: Permit
+        var callbacks: [(Permit?) -> Void]
+    }
+    private var validation: Validation?
+    private var validationTask: URLSessionDataTask?
+    private var cookieCallbacks: [(String?) -> Void] = []
+    private lazy var session: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.httpCookieStorage = nil
+        configuration.httpShouldSetCookies = false
+        configuration.urlCache = nil
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        configuration.timeoutIntervalForRequest = 15
+        return URLSession(configuration: configuration, delegate: self, delegateQueue: .main)
+    }()
+    init(store: WKHTTPCookieStore, baseURL: @escaping () -> URL?, onRevoke: @escaping () -> Void) {
+        self.store = store; self.baseURL = baseURL; self.onRevoke = onRevoke
+        super.init()
+        store.add(self)
+        timer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
+            guard let self = self, self.permit != nil else { return }
+            self.authorize { _ in }
+        }
+    }
+    func urlSession(_ session: URLSession, task: URLSessionTask,
+                    willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest,
+                    completionHandler: @escaping (URLRequest?) -> Void) { completionHandler(nil) }
+    private func cookie(_ completion: @escaping (String?) -> Void) {
+        cookieCallbacks.append(completion)
+        guard cookieCallbacks.count == 1 else { return }
+        store.getAllCookies { [weak self] cookies in
+            guard let self = self else { return }
+            let value = cookies.first { $0.name == "shiyan_account_session" && $0.domain == "127.0.0.1" && $0.path == "/" }?.value
+            if self.observedCookie != value {
+                self.observedCookie = value
+                self.revoke()
+            }
+            let callbacks = self.cookieCallbacks
+            self.cookieCallbacks.removeAll()
+            callbacks.forEach { $0(value) }
+        }
+    }
+    func cookiesDidChange(in cookieStore: WKHTTPCookieStore) { cookie { _ in } }
+    private func revoke() {
+        generation = UUID(); permit = nil; verifiedAt = 0
+        let callbacks = validation?.callbacks ?? []
+        validation = nil; validationTask?.cancel(); validationTask = nil
+        onRevoke()
+        callbacks.forEach { $0(nil) }
+    }
+    func authorize(_ completion: @escaping (Permit?) -> Void) {
+        cookie { [weak self] cookie in
+            guard let self = self, let cookie = cookie, let base = self.baseURL() else { completion(nil); return }
+            let attempt = Permit(cookie: cookie, generation: self.generation)
+            if self.permit == attempt && ProcessInfo.processInfo.systemUptime - self.verifiedAt < 1 {
+                completion(attempt); return
+            }
+            if self.validation?.permit == attempt {
+                self.validation?.callbacks.append(completion); return
+            }
+            let pending = Validation(permit: attempt, callbacks: [completion])
+            self.validation = pending
+            var request = URLRequest(url: base.appendingPathComponent("api/auth/me"))
+            request.setValue("shiyan_account_session=" + cookie, forHTTPHeaderField: "Cookie")
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            self.validationTask = self.session.dataTask(with: request) { [weak self] data, response, error in
+                guard let self = self else { return }
+                self.cookie { current in
+                    guard self.validation?.id == pending.id else { return }
+                    let callbacks = self.validation?.callbacks ?? []
+                    self.validation = nil; self.validationTask = nil
+                    guard current == attempt.cookie, self.generation == attempt.generation,
+                          error == nil, let response = response as? HTTPURLResponse, response.statusCode == 200,
+                          response.url == request.url, let data = data, data.count <= 64 * 1024,
+                          let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+                          let user = object["user"] as? [String: Any], user["status"] as? String == "active",
+                          user["role"] as? String == "admin", user["serverAccess"] as? Bool == true,
+                          user["owner"] as? String == "shiyan-private-owner" else {
+                        self.revoke(); callbacks.forEach { $0(nil) }; return
+                    }
+                    self.permit = attempt; self.verifiedAt = ProcessInfo.processInfo.systemUptime
+                    callbacks.forEach { $0(attempt) }
+                }
+            }
+            self.validationTask?.resume()
+        }
+    }
+    func authorizePresentation(_ completion: @escaping (Permit?) -> Void) {
+        cookie { [weak self] current in
+            guard let self = self else { completion(nil); return }
+            if let expected = self.permit, current == expected.cookie,
+               self.generation == expected.generation,
+               ProcessInfo.processInfo.systemUptime - self.verifiedAt < 15 {
+                completion(expected)
+            } else {
+                self.authorize(completion)
+            }
+        }
+    }
+    func revalidate(_ expected: Permit, _ completion: @escaping (Bool) -> Void) {
+        authorize { completion($0 == expected) }
+    }
+    func deliver(_ action: @escaping () -> Void) {
+        guard let expected = permit else { return }
+        cookie { [weak self] value in
+            guard let self = self, value == expected.cookie, self.permit == expected,
+                  self.generation == expected.generation else { return }
+            action()
+        }
+    }
+    func request(_ url: URL, permit: Permit) -> URLRequest {
+        var request = URLRequest(url: url)
+        request.setValue("shiyan_account_session=" + permit.cookie, forHTTPHeaderField: "Cookie")
+        return request
+    }
+    func fetch(_ request: URLRequest, completion: @escaping (Data?, URLResponse?, Error?) -> Void) -> URLSessionDataTask {
+        let task = session.dataTask(with: request, completionHandler: completion); task.resume(); return task
+    }
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
                          WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler,
                          WKDownloadDelegate, QLPreviewPanelDataSource, QLPreviewPanelDelegate {
     private var window: NSWindow!
     private var startupPanel: NSPanel?
     private var startupFinished = false
+    private let startupStartedAt = ProcessInfo.processInfo.systemUptime
     private var webView: WKWebView!
     private var browserWorkspace: BrowserWorkspace?
+    private var nativeTransfers: [UUID: URLSessionDataTask] = [:]
+    private lazy var accountGate = NativeAccountGate(store: webView.configuration.websiteDataStore.httpCookieStore,
+        baseURL: { [weak self] in self?.baseURL }, onRevoke: { [weak self] in self?.revokeNativeAccount() })
+    private func revokeNativeAccount() {
+        suspendVoiceSession(); messagePlayback.cancel()
+        browserWorkspace?.closeAll()
+        for task in nativeTransfers.values { task.cancel() }; nativeTransfers.removeAll()
+        for download in activeDownloads.values { download.cancel { _ in } }; activeDownloads.removeAll()
+        savedFiles.removeAll(); previewURL = nil; sharingPicker = nil
+        if QLPreviewPanel.sharedPreviewPanelExists() { QLPreviewPanel.shared()?.orderOut(nil) }
+        for sheet in window?.sheets ?? [] { window?.endSheet(sheet, returnCode: .cancel) }
+    }
     private var workbenchTestStarted = false
     private var backend: Process?
     private var backendPID: pid_t = 0
@@ -190,7 +337,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
             isInternal: { [weak self] url in
                 guard let self = self else { return true }
                 return self.port > 0 && url.port == self.port && ["127.0.0.1", "localhost", "::1"].contains(url.host?.lowercased() ?? "")
-            }, emit: { [weak self] detail in self?.emit(detail) })
+            }, emit: { [weak self] detail in self?.emit(detail) },
+            authorize: { [weak self] completion in
+                guard let self = self else { completion(false); return }
+                self.accountGate.authorize { completion($0 != nil) }
+            })
+        _ = accountGate
         webView.isHidden = true
         showStartupPanel()
     }
@@ -248,9 +400,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
 
     private func waitForWorkbench(attempt: Int = 0) {
         guard !startupFinished else { return }
-        webView.evaluateJavaScript("window.workbench?.ready === true") { [weak self] value, _ in
+        // Present either a usable conversation or the sign-in form. The
+        // fullscreen authentication spinner is not a separate app window.
+        let readinessScript = """
+        (() => {
+          const gate = document.getElementById('accountGate');
+          const login = !!gate && !gate.hidden;
+          const conversation = document.documentElement.classList.contains('account-ready') &&
+            !!window.shiyan?.getState?.() && typeof window.workbench?.getLayout === 'function';
+          return {ready: login || conversation, screen: conversation ? 'conversation' : login ? 'login' : 'waiting',
+            pageMs: performance.now(), authMs: window.__ShiYanAccountTimings?.authReady || 0,
+            scriptsMs: window.__ShiYanAccountTimings?.scriptsReady || 0};
+        })()
+        """
+        webView.evaluateJavaScript(readinessScript) { [weak self] value, _ in
             guard let self = self else { return }
-            if value as? Bool == true { self.finishStartup() }
+            if var report = value as? [String: Any], report["ready"] as? Bool == true {
+                report["nativeSeconds"] = ProcessInfo.processInfo.systemUptime - self.startupStartedAt
+                report["nativePID"] = Int(getpid())
+                report["backendPID"] = Int(self.backendPID)
+                report["at"] = Date().timeIntervalSince1970
+                if let data = try? JSONSerialization.data(withJSONObject: report, options: [.sortedKeys]),
+                   let line = String(data: data, encoding: .utf8) {
+                    self.startupLog?.write(Data(("SHIYAN_STARTUP " + line + "\n").utf8))
+                    try? data.write(to: self.dataDirectory.appendingPathComponent("runtime/startup-latest.json"), options: .atomic)
+                }
+                self.finishStartup()
+            }
             else if attempt >= 150 {
                 self.finishStartup()
                 self.showError("工作台加载超时", message: "请退出后重试。")
@@ -429,6 +605,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
         return url
     }
 
+    private func trustedContentFrameURL(_ raw: String, mainFrame: Bool) -> URL? {
+        guard let url = localURL(raw) else { return nil }
+        if !mainFrame {
+            let path = url.path
+            guard (path == "/assets/knowledge-ui" || path.hasPrefix("/assets/knowledge-ui/")),
+                  !path.split(separator: "/").contains("..") else { return nil }
+        }
+        return url
+    }
+
     private func assetURL(_ raw: String) -> URL? {
         guard let url = localURL(raw),
               url.path.range(of: "^/api/assets/[A-Za-z0-9_-]+/file$", options: .regularExpression) != nil else { return nil }
@@ -504,6 +690,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
             DispatchQueue.main.async { [weak self] in self?.emit(detail) }
             return
         }
+        accountGate.deliver { [weak self] in self?.emitAuthorized(detail) }
+    }
+
+    private func emitAuthorized(_ detail: [String: Any]) {
         if let type = detail["type"] as? String {
             if ["voicePlaybackState", "voiceSessionSuspended", "speechState", "speechError"].contains(type) {
                 recordVoiceTrace(type, detail)
@@ -525,6 +715,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
               localURL(source.absoluteString) != nil,
               let body = message.body as? [String: Any],
               let action = body["action"] as? String else { return }
+        let complete: (NativeAccountGate.Permit?) -> Void = { [weak self] permit in
+            guard let self = self, let permit = permit else { return }
+            self.handleAuthorized(body, action: action, permit: permit)
+        }
+        let presentationOnly = action == "workbench" && ["menu", "dividers", "show"].contains(body["op"] as? String ?? "")
+        if presentationOnly { accountGate.authorizePresentation(complete) }
+        else { accountGate.authorize(complete) }
+    }
+
+    private func handleAuthorized(_ body: [String: Any], action: String, permit: NativeAccountGate.Permit) {
         let id = body["id"] as? String ?? UUID().uuidString
         switch action {
         case "dotsVoiceTrace":
@@ -591,15 +791,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
         case "workbench": browserWorkspace?.handle(body)
         case "newSession": newConversation()
         case "share":
-            shareAssets(body["assets"] as? [[String: Any]] ?? [], id: id)
+            shareAssets(body["assets"] as? [[String: Any]] ?? [], id: id, permit: permit)
         case "save", "preview":
             guard let raw = body["url"] as? String, let url = assetURL(raw) else {
                 emit(["type": "nativeError", "id": id, "message": "文件地址无效。"])
                 return
             }
             let name = (body["suggestedName"] as? String) ?? (body["filename"] as? String) ?? "拾燕附件"
-            if action == "save" { saveAsset(url, filename: name, id: id) }
-            else { previewAsset(url, filename: name, id: id) }
+            if action == "save" { saveAsset(url, filename: name, id: id, permit: permit) }
+            else { previewAsset(url, filename: name, id: id, permit: permit) }
         case "reveal":
             if let url = savedFiles[id] {
                 NSWorkspace.shared.activateFileViewerSelecting([url])
@@ -625,7 +825,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
         return name.isEmpty || name == "." || name == ".." ? "拾燕附件" : String(name.prefix(180))
     }
 
-    private func saveAsset(_ url: URL, filename: String, id: String) {
+    private func saveAsset(_ url: URL, filename: String, id: String, permit: NativeAccountGate.Permit) {
         let panel = NSSavePanel()
         panel.title = "保存附件"
         panel.nameFieldStringValue = safeName(filename)
@@ -635,17 +835,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
             guard response == .OK, let destination = panel.url else {
                 self.emit(["type": "saveCancelled", "id": id]); return
             }
-            self.fetchAsset(url, destination: destination, id: id) { saved in
+            self.fetchAsset(url, destination: destination, id: id, permit: permit) { saved in
+                guard let saved = saved else { return }
                 self.savedFiles[id] = saved
                 self.emit(["type": "saved", "id": id, "path": saved.path])
             }
         }
     }
 
-    private func previewAsset(_ url: URL, filename: String, id: String) {
+    private func previewAsset(_ url: URL, filename: String, id: String, permit: NativeAccountGate.Permit) {
         let destination = previewDirectory.appendingPathComponent(UUID().uuidString + "-" + safeName(filename))
-        fetchAsset(url, destination: destination, id: id) { [weak self] saved in
-            guard let self = self else { return }
+        fetchAsset(url, destination: destination, id: id, permit: permit) { [weak self] saved in
+            guard let self = self, let saved = saved else { return }
             self.previewURL = saved
             if let panel = QLPreviewPanel.shared() {
                 panel.dataSource = self
@@ -657,35 +858,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
         }
     }
 
-    private func fetchAsset(_ url: URL, destination: URL, id: String, completion: @escaping (URL) -> Void) {
-        URLSession.shared.downloadTask(with: url) { [weak self] temp, response, error in
-            guard let self = self else { return }
-            do {
-                guard error == nil, let temp = temp,
-                      let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-                    throw error ?? NSError(domain: "ShiYan", code: 4,
-                        userInfo: [NSLocalizedDescriptionKey: "文件下载失败，请重试。"])
-                }
-                guard let finalURL = http.url, self.assetURL(finalURL.absoluteString) != nil else {
-                    throw NSError(domain: "ShiYan", code: 5, userInfo: [NSLocalizedDescriptionKey: "文件下载目标发生变化。"])
-                }
-                let staging = destination.deletingLastPathComponent().appendingPathComponent("." + UUID().uuidString + ".download")
-                try FileManager.default.copyItem(at: temp, to: staging)
-                if FileManager.default.fileExists(atPath: destination.path) {
-                    _ = try FileManager.default.replaceItemAt(destination, withItemAt: staging)
-                } else {
-                    try FileManager.default.moveItem(at: staging, to: destination)
-                }
-                DispatchQueue.main.async { completion(destination) }
-            } catch {
-                DispatchQueue.main.async {
-                    self.emit(["type": "nativeError", "id": id, "message": error.localizedDescription])
+    private func fetchAsset(_ url: URL, destination: URL, id: String, permit: NativeAccountGate.Permit, completion: @escaping (URL?) -> Void) {
+        accountGate.revalidate(permit) { [weak self] allowed in
+            guard let self = self, allowed else { completion(nil); return }
+            let key = UUID()
+            self.nativeTransfers[key] = self.accountGate.fetch(self.accountGate.request(url, permit: permit)) { [weak self] data, response, error in
+                guard let self = self else { completion(nil); return }
+                self.nativeTransfers.removeValue(forKey: key)
+                self.accountGate.revalidate(permit) { allowed in
+                    guard allowed else { completion(nil); return }
+                    do {
+                        guard error == nil, let data = data, data.count <= 40 * 1024 * 1024,
+                              let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+                              let finalURL = http.url, self.assetURL(finalURL.absoluteString) != nil else {
+                            throw NSError(domain: "ShiYan", code: 4, userInfo: [NSLocalizedDescriptionKey: "文件下载失败，请重试。"])
+                        }
+                        try data.write(to: destination, options: .atomic)
+                        completion(destination)
+                    } catch {
+                        self.emit(["type": "nativeError", "id": id, "message": error.localizedDescription]); completion(nil)
+                    }
                 }
             }
-        }.resume()
+        }
     }
 
-    private func shareAssets(_ items: [[String: Any]], id: String) {
+    private func shareAssets(_ items: [[String: Any]], id: String, permit: NativeAccountGate.Permit) {
         let selected = Array(items.prefix(20))
         guard !selected.isEmpty else { return }
         let group = DispatchGroup()
@@ -695,31 +893,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
             let name = safeName(item["filename"] as? String ?? "拾燕附件")
             let destination = previewDirectory.appendingPathComponent(UUID().uuidString + "-" + name)
             group.enter()
-            URLSession.shared.downloadTask(with: url) { [weak self] temp, response, error in
-                guard let self = self else { group.leave(); return }
-                var saved: URL?
-                if error == nil, let temp = temp, let http = response as? HTTPURLResponse,
-                   (200...299).contains(http.statusCode), let final = http.url,
-                   self.assetURL(final.absoluteString) != nil {
-                    do { try FileManager.default.copyItem(at: temp, to: destination); saved = destination }
-                    catch { }
-                }
-                DispatchQueue.main.async {
-                    if let saved = saved { files.append(saved) }
-                    group.leave()
-                }
-            }.resume()
+            fetchAsset(url, destination: destination, id: id, permit: permit) { saved in
+                if let saved = saved { files.append(saved) }; group.leave()
+            }
         }
         group.notify(queue: .main) { [weak self] in
             guard let self = self else { return }
-            guard !files.isEmpty && files.count == selected.count else {
-                self.emit(["type": "nativeError", "id": id, "message": "部分分享文件未能读取，请重试。"])
-                return
+            self.accountGate.revalidate(permit) { allowed in
+                guard allowed, !files.isEmpty, files.count == selected.count else { return }
+                self.sharingPicker = NSSharingServicePicker(items: files)
+                self.sharingPicker?.show(relativeTo: NSRect(x: self.webView.bounds.midX, y: self.webView.bounds.midY, width: 1, height: 1),
+                                         of: self.webView, preferredEdge: .minY)
+                self.emit(["type": "shareReady", "id": id, "count": files.count])
             }
-            self.sharingPicker = NSSharingServicePicker(items: files)
-            self.sharingPicker?.show(relativeTo: NSRect(x: self.webView.bounds.midX, y: self.webView.bounds.midY, width: 1, height: 1),
-                                     of: self.webView, preferredEdge: .minY)
-            self.emit(["type": "shareReady", "id": id, "count": files.count])
         }
     }
 
@@ -728,17 +914,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
         previewURL as NSURL?
     }
 
+    func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,
+                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) {
+        guard let url = frame.request.url,
+              trustedContentFrameURL(url.absoluteString, mainFrame: frame.isMainFrame) != nil else {
+            completionHandler(false); return
+        }
+        accountGate.authorize { [weak self] permit in
+            guard let self = self, let permit = permit, let window = self.window else {
+                completionHandler(false); return
+            }
+            let alert = NSAlert()
+            alert.messageText = message
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "确定")
+            alert.addButton(withTitle: "取消")
+            alert.beginSheetModal(for: window) { response in
+                self.accountGate.revalidate(permit) { allowed in
+                    completionHandler(allowed && response == .alertFirstButtonReturn)
+                }
+            }
+        }
+    }
+
     func webView(_ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters,
                  initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping ([URL]?) -> Void) {
-        guard frame.isMainFrame, let url = frame.request.url, localURL(url.absoluteString) != nil else {
+        guard let url = frame.request.url,
+              trustedContentFrameURL(url.absoluteString, mainFrame: frame.isMainFrame) != nil else {
             completionHandler(nil); return
         }
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = parameters.allowsDirectories
-        panel.canChooseFiles = true
-        panel.allowsMultipleSelection = parameters.allowsMultipleSelection
-        panel.beginSheetModal(for: window) { response in
-            completionHandler(response == .OK ? panel.urls : nil)
+        accountGate.authorize { [weak self] permit in
+            guard let self = self, let permit = permit else { completionHandler(nil); return }
+            let panel = NSOpenPanel()
+            panel.canChooseDirectories = parameters.allowsDirectories
+            panel.canChooseFiles = true
+            panel.allowsMultipleSelection = parameters.allowsMultipleSelection
+            panel.beginSheetModal(for: self.window) { response in
+                self.accountGate.revalidate(permit) { allowed in
+                    completionHandler(allowed && response == .OK ? panel.urls : nil)
+                }
+            }
         }
     }
 
@@ -753,7 +968,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
         }
         if navigationAction.targetFrame?.isMainFrame != false {
             if ["https", "http"].contains(url.scheme ?? "") { emit(["type":"browserNewTab","url":url.absoluteString]) }
-            else if url.scheme == "mailto" { NSWorkspace.shared.open(url) }
+            else if url.scheme == "mailto" { accountGate.authorize { permit in if permit != nil { NSWorkspace.shared.open(url) } } }
         }
         decisionHandler(.cancel)
     }
@@ -772,7 +987,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
         if let url = navigationAction.request.url {
             if localURL(url.absoluteString) != nil { webView.load(URLRequest(url: url)) }
             else if ["https", "http"].contains(url.scheme ?? "") { emit(["type":"browserNewTab","url":url.absoluteString]) }
-            else if url.scheme == "mailto" { NSWorkspace.shared.open(url) }
+            else if url.scheme == "mailto" { accountGate.authorize { permit in if permit != nil { NSWorkspace.shared.open(url) } } }
         }
         return nil
     }
@@ -793,11 +1008,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
         guard let url = response.url, assetURL(url.absoluteString) != nil else {
             completionHandler(nil); return
         }
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = safeName(suggestedFilename)
-        panel.canCreateDirectories = true
-        panel.beginSheetModal(for: window) { response in
-            completionHandler(response == .OK ? panel.url : nil)
+        accountGate.authorize { [weak self] permit in
+            guard let self = self, let permit = permit else { completionHandler(nil); return }
+            let panel = NSSavePanel()
+            panel.nameFieldStringValue = self.safeName(suggestedFilename)
+            panel.canCreateDirectories = true
+            panel.beginSheetModal(for: self.window) { response in
+                self.accountGate.revalidate(permit) { allowed in
+                    completionHandler(allowed && response == .OK ? panel.url : nil)
+                }
+            }
         }
     }
     func downloadDidFinish(_ download: WKDownload) {

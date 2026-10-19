@@ -352,6 +352,7 @@
       if(input.style.height!==height)input.style.height=height;
     });
   }
+  function attachmentItemHTML(a) {const image=(a.mimeType||'').startsWith('image/');return '<div class="attachment-item'+(image?'':' attachment-document')+'"><button type="button" data-asset-id="'+esc(a.id)+'" aria-label="'+esc('预览 '+(a.filename||'附件'))+'" title="'+esc(a.filename||'附件')+'">'+(image?'<img class="attachment-image" src="'+esc(assetUrl(a))+'" alt="'+esc(a.filename || '附件')+'">':assetTypeIcon(a)+'<span class="attachment-filename">'+esc(a.filename||'文件')+'</span>')+'</button><button type="button" class="attachment-remove" data-remove-attachment="'+esc(a.id)+'" aria-label="移除附件">'+icon('xmark')+'</button></div>';}
   function renderComposer(force=false, textOnly=false) {
     if(force){composerComposing=false;composerCompositionEnding=false;composerRefreshDeferred=false;cancelAnimationFrame(composerCompositionFrame);}
     if(composerComposing || composerCompositionEnding){composerRefreshDeferred=true;return;}
@@ -362,7 +363,7 @@
     const input=$('messageInput');
     if(force || (document.activeElement!==input && input.value!==d.text))input.value=d.text;
     const inputDisabled=!c || ui.submitting;if(input.disabled!==inputDisabled)input.disabled=inputDisabled;
-    const attachmentHTML=d.assets.map(a=>{const image=(a.mimeType||'').startsWith('image/');return '<div class="attachment-item'+(image?'':' attachment-document')+'"><button type="button" data-asset-id="'+esc(a.id)+'" aria-label="'+esc('预览 '+(a.filename||'附件'))+'" title="'+esc(a.filename||'附件')+'">'+(image?'<img class="attachment-image" src="'+esc(assetUrl(a))+'" alt="'+esc(a.filename || '附件')+'">':assetTypeIcon(a)+'<span class="attachment-filename">'+esc(a.filename||'文件')+'</span>')+'</button><button type="button" class="attachment-remove" data-remove-attachment="'+esc(a.id)+'" aria-label="移除附件">'+icon('xmark')+'</button></div>';}).join('');
+    const attachmentHTML=d.assets.map(attachmentItemHTML).join('');
     const attachmentList=$('attachmentList');if(attachmentList.__attachmentHTML!==attachmentHTML){attachmentList.innerHTML=attachmentHTML;attachmentList.__attachmentHTML=attachmentHTML;}
     show('attachmentList',!!d.assets.length);
     show('editBanner',!!ui.editing);setText('editBannerText','编辑后重新发送');
@@ -442,7 +443,7 @@
     if(modelSelect){
       const html=choices.map(m=>'<option value="'+esc(m.id)+'">'+esc(m.displayName || m.id)+'</option>').join('') || '<option value="">云端能力暂不可用</option>';
       if(modelSelect.innerHTML!==html)modelSelect.innerHTML=html;
-      modelSelect.value=selected?.id || '';modelSelect.disabled=!choices.length;
+      modelSelect.value=selected?.id || '';modelSelect.disabled=!choices.length;const measure=document.createElement('canvas').getContext('2d');if(measure){measure.font=getComputedStyle(modelSelect).font;modelSelect.style.width=Math.ceil(measure.measureText(modelSelect.selectedOptions[0]?.textContent||'').width+24)+'px';}
       $('reasoningReset').disabled=!available;
     }
     const ratio=values.length>1?Number(range.value)/(values.length-1):0;
@@ -479,15 +480,16 @@
     $('agentSidebar').setAttribute('aria-hidden',String(compact && !open));show('closeSidebarButton',compact && open);$('closeSidebarButton').tabIndex=compact && open?0:-1;
     closePopovers();ui.reasoning=false;renderComposer();
   }
+  function validateAttachmentFiles(files, existing=[]) {
+    if(files.length>maxImages()-existing.length)throw new Error('每次最多添加 '+maxImages()+' 个附件');
+    const image=f=>(f.type||'').startsWith('image/') || /\.(heic|heif)$/i.test(f.name||'');
+    if(files.some(f=>!image(f) && f.size>10*1024*1024))throw new Error('单个文档不能超过 10 MB');
+    if((files.some(f=>!image(f)) || existing.some(a=>!(a.mimeType||'').startsWith('image/'))) && files.reduce((n,f)=>n+f.size,existing.reduce((n,a)=>n+(a.bytes||0),0))>24*1024*1024)throw new Error('图片与文档合计不能超过 24 MB');
+  }
   async function addAttachments(files) {
     const c=current();if(!c)await newConversation();
-    const remaining=maxImages()-draftFor().assets.length;
-    if(files.length>remaining){toast('每次最多添加 '+maxImages()+' 个附件');return;}
     if(!files.length)return;
-    const image=f=>(f.type||'').startsWith('image/') || /\.(heic|heif)$/i.test(f.name||'');
-    if(files.some(f=>!image(f) && f.size>10*1024*1024)){notice('单个文档不能超过 10 MB');return;}
-    const existing=draftFor().assets;
-    if((files.some(f=>!image(f)) || existing.some(a=>!(a.mimeType||'').startsWith('image/'))) && files.reduce((n,f)=>n+f.size,existing.reduce((n,a)=>n+(a.bytes||0),0))>24*1024*1024){notice('图片与文档合计不能超过 24 MB');return;}
+    try {validateAttachmentFiles(files,draftFor().assets);} catch(error){notice(error.message);return;}
     $('addImageButton').disabled=true;
     try {
       const result=await upload(files,'attachment');
@@ -1181,7 +1183,8 @@
     newConversation,selectConversation,openImagePicker:()=>(ui.view==='agent'?$('attachmentInput'):$('homeFileInput')).click(),
     showHistory:openHistory,stopSpeech,
     getState:()=>state,editMessage,flushDraft,getDraft:()=>draftFor(),
-    getView:()=>ui.view,renderMessage:messageHTML,
+    getView:()=>ui.view,renderMessage:messageHTML,renderAttachment:attachmentItemHTML,
+    uploadAttachments:(files,existing=[])=>{validateAttachmentFiles(files,existing);return upload(files,'attachment');},
     navigate:setView,toast,copyText,confirmAction,api,sessionHTML,sessionMenuIcon,openPreview,openGeneratedDocument,saveAsset,shareAssets,
     getPhotoState:()=>({input:ui.input,result:ui.result,model:ui.model,busy:photoBusy(),
       progress:photoJob()?.progress || 0,label:photoJob()?.label || (ui.photoSubmitting?'正在准备':''),error:photoJob()?.error || ui.photoError}),

@@ -4,7 +4,12 @@ import UniformTypeIdentifiers
 
 @MainActor
 final class DotsStore: ObservableObject {
-    static let shared = DotsStore()
+    private static var instance: DotsStore?
+    static var shared: DotsStore {
+        if let instance { return instance }
+        let value = DotsStore(); instance = value; return value
+    }
+    static func resetAccount() { instance?.stopMonitoring(); instance = nil }
     @Published private(set) var state = DotsSavedState(identity: "")
     @Published private(set) var loading = false
     @Published private(set) var sending = false
@@ -17,6 +22,11 @@ final class DotsStore: ObservableObject {
     private var historyChecked = false
     @Published private(set) var connection = ""
     @Published var notice: String?
+    @Published private(set) var relationship: DotsRelationship?
+    @Published private(set) var relationshipLoading = false
+    @Published private(set) var relationshipSaving = false
+    @Published private(set) var relationshipNotice: String?
+    private let accountGeneration = ShiyanAccountStorage.generation
     private let client: any DotsTransport
     private var stateURL: URL?
     private var liveTask: Task<Void, Never>?
@@ -97,11 +107,11 @@ final class DotsStore: ObservableObject {
         if let stateURL, let identity { load(url: stateURL, identity: identity) }
     }
     private func configure() throws {
+        guard accountGeneration == ShiyanAccountStorage.generation else { throw CancellationError() }
         guard stateURL == nil else { return }
         let identity = try AgentIdentity.shared.enrollment()["deviceID"] ?? ""
         guard !identity.isEmpty else { throw AgentClientError.message("设备身份暂不可用") }
-        let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("ShiyanDots", isDirectory: true)
+        let folder = ShiyanAccountStorage.directory("ShiyanDots", domain: .applicationSupportDirectory)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         load(url: folder.appendingPathComponent("state-\(identity).json"), identity: identity)
     }
@@ -170,7 +180,7 @@ final class DotsStore: ObservableObject {
     }
      
     func startMonitoring() {
-        guard !active else { return }
+        guard ShiyanAccount.shared.canAccessServer, !active else { return }
         do { try configure() } catch { return }
         active = true
         liveTask = Task { [weak self] in await self?.connect() }
@@ -482,6 +492,38 @@ final class DotsStore: ObservableObject {
     func managerControl(_ action: String) async {
         guard ["pause", "resume", "cancel", "wake"].contains(action) else { return }
         await perform(DotsPendingOperation(requestId: UUID().uuidString, route: "manager/control", action: action))
+    }
+    func loadRelationship() async {
+        guard !relationshipLoading, !relationshipSaving else { return }
+        relationshipLoading = true
+        defer { relationshipLoading = false }
+        do {
+            let response = try await client.dotsRead("relationship", as: DotsRelationshipResponse.self)
+            try Task.checkCancellation()
+            guard response.ok else { throw AgentClientError.message("共同话题暂不可用") }
+            relationship = response.relationship
+            relationshipNotice = nil
+        } catch is CancellationError { }
+        catch { relationshipNotice = "无法读取共同话题，请重试。" }
+    }
+    @discardableResult
+    func updateRelationship(_ change: DotsRelationshipChange) async -> Bool {
+        guard !relationshipSaving, !relationshipLoading else { return false }
+        relationshipSaving = true
+        relationshipNotice = nil
+        defer { relationshipSaving = false }
+        do {
+            let response = try await client.dotsRelationship(change)
+            guard response.ok else { throw AgentClientError.message("话题修改未保存") }
+            relationship = response.relationship
+            return true
+        } catch let rejection as DotsRejectedRequest {
+            relationshipNotice = rejection.message
+            return false
+        } catch {
+            relationshipNotice = "暂时无法确认更改结果，请重新读取后重试。"
+            return false
+        }
     }
     func loadActivity() async {
         do {

@@ -28,38 +28,68 @@
    
   const noticePosition=()=>{const r=$('mainWorkspace').getBoundingClientRect();document.body.style.setProperty('--v23-notice-center',(r.width?r.x+r.width/2:innerWidth/2)+'px');};new ResizeObserver(noticePosition).observe($('mainWorkspace'));window.addEventListener('resize',noticePosition);window.addEventListener('shiyan-state',noticePosition);noticePosition();
    
-  const updateTimes=()=>{for(const el of document.querySelectorAll('.v22-elapsed')){const start=Date.parse(el.dataset.start),end=el.dataset.end?Date.parse(el.dataset.end):Date.now();if(!Number.isFinite(start)||!Number.isFinite(end))continue;const seconds=Math.max(0,(end-start)/1000);el.querySelector('span').textContent=(el.dataset.end?'已处理 ':'已等待 ')+(seconds<60?seconds.toFixed(1)+' 秒':Math.floor(seconds/60)+' 分 '+Math.floor(seconds%60)+' 秒');}};
+  const updateTimes=()=>{for(const el of document.querySelectorAll('.v22-elapsed')){const start=Date.parse(el.dataset.start),end=el.dataset.end?Date.parse(el.dataset.end):Date.now();if(!Number.isFinite(start)||!Number.isFinite(end))continue;const seconds=Math.max(0,(end-start)/1000);const label=(el.dataset.end?'已处理 ':'已等待 ')+(seconds<60?seconds.toFixed(1)+' 秒':Math.floor(seconds/60)+' 分 '+Math.floor(seconds%60)+' 秒'),span=el.querySelector('span');if(span.textContent!==label)span.textContent=label;}};
   setInterval(updateTimes,250);window.addEventListener('shiyan-state',updateTimes);
   function updateTheme(){document.body.dataset.theme=dark.matches?'dark':'light';for(const session of C.sessions.values())session.term.options.theme=terminalTheme();}
   dark.addEventListener('change',updateTheme);window.addEventListener('shiyan-terminal',updateTheme);updateTheme();
   window.addEventListener('resize',()=>adaptTabs(C,C.prefs.bottomTerminalIds));
    
-  let temporaryId=null,temporaryDrafts=new Map();
+  let temporaryId=null,temporaryDrafts=new Map(),temporaryAssets=new Map(),temporaryUploading=new Set(),temporarySubmitting=new Set();
   const temp=document.createElement('section');temp.id='v22TemporaryPane';temp.className='v22-temporary-pane';temp.hidden=true;
-  temp.innerHTML='<header><strong>临时聊天</strong><span>最后发送后 1 小时过期</span><button type="button" data-hide-temporary aria-label="收起临时聊天">'+C.icon('down')+'</button></header><div class="v22-temporary-list"></div><div class="v22-temporary-messages"></div><form><textarea aria-label="临时聊天消息" placeholder="发送临时消息…" rows="2"></textarea><p role="status" hidden></p><button type="submit">发送</button></form>';
-  $('rightWorkspace').appendChild(temp);
+  temp.innerHTML='<div class="v22-temporary-scroller"><div class="v22-temporary-empty"><div aria-hidden="true">'+C.icon('sideChat')+'</div><h2>侧边聊天</h2><p>侧边聊天是临时聊天，关闭应用后会消失。</p></div><div class="v22-temporary-messages messages" role="log" aria-label="侧边聊天消息"></div></div><form class="composer-form" autocomplete="off"><div class="v22-temporary-composer composer-surface glass-surface"><div class="attachment-list" aria-label="待发送附件" hidden></div><textarea class="message-input" aria-label="侧边聊天消息" placeholder="发送消息" rows="2"></textarea><div class="composer-actions"><input type="file" data-temporary-file-input multiple hidden><button type="button" class="icon-button add-image-button" data-temporary-add aria-label="添加文件"><span class="symbol" data-symbol="plus" aria-hidden="true"></span></button><span class="composer-spacer"></span><button type="submit" class="send-button" aria-label="发送"></button></div></div><p role="status" hidden></p></form>';
+  temp.querySelector('[data-temporary-add]').innerHTML=$('addImageButton').innerHTML;
+  window.ShiYanV22.renderTemporaryPane=(tab,pane)=>{const changed=temporaryId!==tab.conversationId;temporaryId=tab.conversationId;if(changed){temp.querySelector('textarea').value=temporaryDrafts.get(temporaryId)||'';temp.querySelector('form p').hidden=true;}pane.classList.add('v22-temporary-host');pane.appendChild(temp);temp.hidden=false;renderTemporary();};
+  const sendMarkup=(()=>{const element=$('sendButton').cloneNode(true);element.querySelectorAll('[id]').forEach(e=>e.removeAttribute('id'));return element.innerHTML;})();
+  const stopMarkup=sendMarkup;
+  const messageCache=new Map();
+  function temporaryMessageHTML(m){
+   const signature=JSON.stringify(m),cached=messageCache.get(m.id);if(cached?.signature===signature)return cached.html;
+   const template=document.createElement('template');template.innerHTML=window.shiyan.renderMessage(m);
+   template.content.querySelectorAll('[data-edit-message],[data-retry-message]').forEach(b=>b.remove());
+   const html=template.innerHTML;messageCache.set(m.id,{signature,html});return html;
+  }
   const temporaryChats=()=>window.shiyan.getState()?.temporaryConversations||[];
+  function renderTemporaryComposer(c){
+   if(!c)return;
+   const input=temp.querySelector('textarea');if(document.activeElement!==input)input.value=temporaryDrafts.get(c.id)||'';
+   const selected=temporaryAssets.get(c.id)||[],uploading=temporaryUploading.has(c.id)||temporarySubmitting.has(c.id),empty=!input.value.trim()&&!selected.length;
+   const attachmentList=temp.querySelector('.attachment-list'),attachmentHTML=selected.map(window.shiyan.renderAttachment).join('');
+   if(attachmentList.innerHTML!==attachmentHTML)attachmentList.innerHTML=attachmentHTML;attachmentList.hidden=!selected.length;
+   temp.querySelector('[data-temporary-add]').disabled=uploading;
+   temp.querySelector('[data-temporary-add]').setAttribute('aria-label',uploading?'正在上传附件':'添加文件');
+   const send=temp.querySelector('[type=submit]');const markup=c.isBusy?stopMarkup:sendMarkup;if(send.__markup!==markup){send.innerHTML=markup;send.__markup=markup;}send.setAttribute('aria-label',c.isBusy?'停止':'发送');send.classList.toggle('is-busy',!!c.isBusy);send.classList.toggle('is-empty',!c.isBusy&&(empty||uploading));send.disabled=!c.isBusy&&(empty||uploading);input.disabled=temporarySubmitting.has(c.id);
+  }
   const renderTemporary=()=>{
    const chats=temporaryChats();if(temporaryId&&!chats.some(c=>c.id===temporaryId)){temporaryId=null;temp.hidden=true;C.scheduleNative();}
    const c=chats.find(c=>c.id===temporaryId);if(!c)return;
-   temp.querySelector('.v22-temporary-list').innerHTML=chats.map(t=>'<button type="button" data-temporary-id="'+esc(t.id)+'" class="'+(t.id===c.id?'selected':'')+'">'+esc(t.title==='临时聊天'?t.messages.find(m=>m.role==='user')?.text?.slice(0,12)||'新临时聊天':t.title)+'</button>').join('')+'<button type="button" data-new-temporary aria-label="新建临时聊天">＋</button>';
-   const messages=temp.querySelector('.v22-temporary-messages'),html=c.messages.map(m=>'<article class="'+(m.role==='user'?'is-user':'is-assistant')+'">'+esc(m.text||m.error||m.phase||'').replace(/\n/g,'<br>')+'</article>').join('');
-   if(messages.innerHTML!==html){const atBottom=messages.scrollHeight-messages.scrollTop-messages.clientHeight<80;messages.innerHTML=html;if(atBottom)messages.scrollTop=messages.scrollHeight;}
-   const input=temp.querySelector('textarea');if(document.activeElement!==input)input.value=temporaryDrafts.get(c.id)||'';
-   temp.querySelector('[type=submit]').textContent=c.isBusy?'停止':'发送';input.disabled=false;
+   temp.querySelector('.v22-temporary-empty').hidden=c.messages.length>0;
+   temp.querySelector('.v22-temporary-scroller').classList.toggle('is-empty',!c.messages.length);
+   const messages=temp.querySelector('.v22-temporary-messages'),html=c.messages.map(temporaryMessageHTML).join('');
+   const retained=new Set(chats.flatMap(chat=>chat.messages.map(m=>m.id)));for(const id of messageCache.keys())if(!retained.has(id))messageCache.delete(id);
+   if(messages.innerHTML!==html){const scroller=temp.querySelector('.v22-temporary-scroller'),atBottom=scroller.scrollHeight-scroller.scrollTop-scroller.clientHeight<80;messages.innerHTML=html;if(atBottom)scroller.scrollTop=scroller.scrollHeight;}
+   renderTemporaryComposer(c);
+
   };
   async function openTemporary(forceNew=false){
    let c=!forceNew&&temporaryChats().find(c=>c.id===temporaryId);if(!c&&!forceNew)c=temporaryChats()[0];
    if(!c){const data=await C.api('/temporary-chats','POST',{});c=data.conversation;window.dispatchEvent(new CustomEvent('shiyan-temporary',{detail:data.state}));await window.shiyan.api('/api/state');}
-   temporaryId=c.id;temp.hidden=false;C.prefs.rightOpen=true;C.scheduleNative();$('toggleRightWorkspace').getAttribute('aria-expanded')==='false'&&$('toggleRightWorkspace').click();renderTemporary();temp.querySelector('textarea').focus();
+   temporaryId=c.id;let tab=C.tabs.find(t=>t.type==='temporary'&&t.conversationId===c.id);if(tab)C.selectTab(tab.id);else tab=C.openTab({type:'temporary',title:'侧边聊天',conversationId:c.id});if(!tab)return;renderTemporary();temp.querySelector('textarea').focus();
   }
   window.ShiYanV22.openTemporary=()=>openTemporary().catch(toast);
-  for(const grid of document.querySelectorAll('.browser-tool-grid:not(:has([data-workspace-temporary]))')){const add=document.createElement('button');add.type='button';add.setAttribute('data-workspace-temporary','');add.innerHTML=C.icon('newChat')+'<span>临时聊天</span>';grid.appendChild(add);}
+  for(const grid of document.querySelectorAll('.browser-tool-grid:not(:has([data-workspace-temporary]))')){const add=document.createElement('button');add.type='button';add.setAttribute('data-workspace-temporary','');add.innerHTML=C.icon('sideChat')+'<span>临时聊天</span>';grid.appendChild(add);}
   $('rightContent').addEventListener('click',e=>{if(e.target.closest('[data-workspace-temporary]'))openTemporary().catch(toast);});
-  temp.querySelector('[data-hide-temporary]').onclick=()=>{temp.hidden=true;C.scheduleNative();};
-  temp.querySelector('textarea').oninput=e=>{if(temporaryId)temporaryDrafts.set(temporaryId,e.target.value);};
-  temp.onclick=e=>{const tab=e.target.closest('[data-temporary-id]');if(tab){temporaryId=tab.dataset.temporaryId;renderTemporary();}else if(e.target.closest('[data-new-temporary]'))openTemporary(true).catch(toast);};
-  temp.querySelector('form').onsubmit=async e=>{e.preventDefault();const c=temporaryChats().find(c=>c.id===temporaryId);if(!c)return;const input=temp.querySelector('textarea'),button=temp.querySelector('[type=submit]'),error=temp.querySelector('form p');button.disabled=true;error.hidden=true;try{if(c.isBusy)await window.shiyan.api('/api/conversations/'+encodeURIComponent(c.id)+'/stop','POST',{});else{const text=input.value;if(!text.trim())return;await C.api('/temporary-chats/'+c.id+'/send','POST',{text});temporaryDrafts.set(c.id,'');input.value='';await window.shiyan.api('/api/state');}renderTemporary();}catch(err){error.textContent=err.message;error.hidden=false;}finally{button.disabled=false;}};
+  temp.querySelector('[data-temporary-add]').onclick=()=>temp.querySelector('[data-temporary-file-input]').click();
+  temp.querySelector('[data-temporary-file-input]').onchange=async event=>{
+   const id=temporaryId,files=[...event.target.files];event.target.value='';if(!id||!files.length||temporaryUploading.has(id))return;
+   const error=temp.querySelector('form p');error.hidden=true;temporaryUploading.add(id);renderTemporary();
+   try{const selected=temporaryAssets.get(id)||[],uploaded=await window.shiyan.uploadAttachments(files,selected);if(temporaryChats().some(c=>c.id===id))temporaryAssets.set(id,[...(temporaryAssets.get(id)||[]),...uploaded]);}
+   catch(err){if(temporaryId===id){error.textContent=err.message;error.hidden=false;}else toast(err);}
+   finally{temporaryUploading.delete(id);renderTemporary();}
+  };
+  temp.querySelector('textarea').oninput=e=>{if(temporaryId)temporaryDrafts.set(temporaryId,e.target.value);temp.querySelector('form').classList.toggle('is-expanded',!!e.target.value);renderTemporaryComposer(temporaryChats().find(c=>c.id===temporaryId));};
+  temp.querySelector('textarea').onkeydown=e=>{if(e.key!=='Enter'||e.isComposing)return;if(e.ctrlKey){e.preventDefault();const input=e.currentTarget,start=input.selectionStart,end=input.selectionEnd;input.setRangeText('\n',start,end,'end');input.dispatchEvent(new Event('input',{bubbles:true}));return;}e.preventDefault();temp.querySelector('form').requestSubmit();};
+  temp.onclick=e=>{const remove=e.target.closest('[data-remove-attachment]');if(remove){e.stopPropagation();temporaryAssets.set(temporaryId,(temporaryAssets.get(temporaryId)||[]).filter(a=>a.id!==remove.dataset.removeAttachment));renderTemporary();return;}const copy=e.target.closest('[data-copy-message]');if(copy){const m=temporaryChats().find(c=>c.id===temporaryId)?.messages.find(m=>m.id===copy.dataset.copyMessage);if(m)window.shiyan.copyText(m.text||'');return;}};
+  temp.querySelector('form').onsubmit=async e=>{e.preventDefault();const c=temporaryChats().find(c=>c.id===temporaryId);if(!c||temporarySubmitting.has(c.id))return;const input=temp.querySelector('textarea'),button=temp.querySelector('[type=submit]'),error=temp.querySelector('form p');button.disabled=true;error.hidden=true;try{if(c.isBusy)await window.shiyan.api('/api/conversations/'+encodeURIComponent(c.id)+'/stop','POST',{});else{const text=input.value,selected=temporaryAssets.get(c.id)||[];if(temporaryUploading.has(c.id)||(!text.trim()&&!selected.length))return;temporarySubmitting.add(c.id);renderTemporary();await C.api('/temporary-chats/'+c.id+'/send','POST',{text,assetIds:selected.map(a=>a.id)});temporaryDrafts.set(c.id,'');temporaryAssets.delete(c.id);if(temporaryId===c.id)input.value='';await window.shiyan.api('/api/state');}renderTemporary();}catch(err){error.textContent=err.message;error.hidden=false;}finally{temporarySubmitting.delete(c.id);renderTemporary();}};
   window.addEventListener('shiyan-state',renderTemporary);setInterval(renderTemporary,15000);
   window.ShiYanChanges.install(C);
   window.ShiYanExecution.install(C);

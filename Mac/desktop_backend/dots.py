@@ -78,6 +78,32 @@ def register_dots(app):
             "Content-Security-Policy": "sandbox; default-src 'none'",
         })
 
+    @app.get("/api/dots/relationship")
+    async def relationship(request: Request):
+        return await remote(request, "GET", "relationship")
+
+    async def relationship_body(request):
+        data = await request.json()
+        if not isinstance(data, dict):
+            raise ValueError("话题格式无效")
+        return data
+
+    def topic_identifier(value):
+        if not 1 <= len(value) <= 128 or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_" for c in value):
+            raise ValueError("话题标识无效")
+        return quote(value, safe="")
+
+    @app.patch("/api/dots/relationship/topics/{topic_id}")
+    async def save_relationship_topic(topic_id: str, request: Request):
+        data = await relationship_body(request)
+        if not set(data).issubset({"title", "summary", "openQuestion", "revision"}):
+            raise ValueError("话题格式无效")
+        return await remote(request, "PATCH", "relationship/topics/" + topic_identifier(topic_id), data)
+
+    @app.delete("/api/dots/relationship/topics/{topic_id}")
+    async def delete_relationship_topic(topic_id: str, request: Request):
+        return await remote(request, "DELETE", "relationship/topics/" + topic_identifier(topic_id))
+
     @app.get("/api/dots/profile")
     async def profile(request: Request):
         storage = request.app.state.runtime.storage

@@ -36,12 +36,24 @@ private final class AgentCancellation: @unchecked Sendable {
     }
 }
 
+nonisolated struct PinnedHTTPSDeadline: Sendable {
+    let total: TimeInterval
+    let idle: TimeInterval
+    init(timeout: TimeInterval, idleTimeout: TimeInterval? = nil, requestBytes: Int = 0) {
+        total = requestBytes > 256 * 1024 ? max(timeout, 120) : timeout
+        idle = min(total, idleTimeout ?? 20)
+    }
+    func isExpired(elapsed: TimeInterval, idleElapsed: TimeInterval) -> Bool {
+        elapsed > total || idleElapsed > idle
+    }
+}
+
 final class PinnedHTTPSClient: @unchecked Sendable {
     static let shared = PinnedHTTPSClient()
     private init() {}
     func request(host: String, port: UInt16 = 443, method: String, path: String,
                  headers: [String: String] = [:], body: Data? = nil,
-                 maxResponseBytes: Int = 32 * 1024 * 1024, timeout: TimeInterval = 35) async throws -> PinnedHTTPSResponse {
+                 maxResponseBytes: Int = 32 * 1024 * 1024, timeout: TimeInterval = 35, idleTimeout: TimeInterval? = nil) async throws -> PinnedHTTPSResponse {
         guard let certificateURL = Bundle.main.url(forResource: "boss-codex", withExtension: "cer"),
               let certificate = try? Data(contentsOf: certificateURL) else { throw PinnedHTTPSError.missingPinnedCertificate }
         guard let nwPort = NWEndpoint.Port(rawValue: port) else { throw PinnedHTTPSError.invalidPort }
@@ -51,7 +63,7 @@ final class PinnedHTTPSClient: @unchecked Sendable {
             try Task.checkCancellation()
             return try await withCheckedThrowingContinuation { continuation in
                 let operation = AgentHTTPSOperation(host: host, port: nwPort, certificate: certificate,
-                    request: bytes, limit: maxResponseBytes, timeout: timeout, continuation: continuation)
+                    request: bytes, limit: maxResponseBytes, timeout: timeout, idleTimeout: idleTimeout, continuation: continuation)
                 cancellation.install { operation.cancel() }
                 operation.start()
             }
@@ -78,7 +90,7 @@ private final class AgentHTTPSOperation: @unchecked Sendable {
     private let port: NWEndpoint.Port
     private let certificate: Data
     private let request: Data
-    private let timeout: TimeInterval
+    private let deadline: PinnedHTTPSDeadline
     private var parser: AgentHTTPDecoder
     private var responseBody = Data()
     private var connection: NWConnection?
@@ -90,12 +102,12 @@ private final class AgentHTTPSOperation: @unchecked Sendable {
     private var uploadOffset = 0
     private let uploadPartBytes = 64 * 1024
 
-    init(host: String, port: NWEndpoint.Port, certificate: Data, request: Data, limit: Int, timeout: TimeInterval,
+    init(host: String, port: NWEndpoint.Port, certificate: Data, request: Data, limit: Int, timeout: TimeInterval, idleTimeout: TimeInterval?,
          continuation: CheckedContinuation<PinnedHTTPSResponse, Error>) {
         self.host = host; self.port = port; self.certificate = certificate; self.request = request
          
          
-        self.timeout = request.count > 256 * 1024 ? max(timeout, 120) : timeout
+        self.deadline = PinnedHTTPSDeadline(timeout: timeout, idleTimeout: idleTimeout, requestBytes: request.count)
         self.continuation = continuation; self.parser = AgentHTTPDecoder(maximumBodyBytes: limit)
     }
     func start() { queue.async { [self] in begin() } }
@@ -127,7 +139,7 @@ private final class AgentHTTPSOperation: @unchecked Sendable {
         timer.setEventHandler { [weak self] in
             guard let self else { return }
             let now = DispatchTime.now().uptimeNanoseconds
-            if Double(now-self.started)/1e9 > self.timeout || Double(now-self.lastActivity)/1e9 > min(self.timeout, 20) {
+            if self.deadline.isExpired(elapsed: Double(now-self.started)/1e9, idleElapsed: Double(now-self.lastActivity)/1e9) {
                 self.finish(.failure(URLError(.timedOut)))
             }
         }

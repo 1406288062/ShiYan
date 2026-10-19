@@ -38,6 +38,7 @@ class PinnedConnection(http.client.HTTPSConnection):
 class Gateway:
     def __init__(self, root):
         self.project_root = Path(root)
+        self.account_token = None
         endpoint = urlsplit(os.environ.get("SHIYAN_GATEWAY_URL", "https://129.226.81.110/shiyan/v1/"))
         if endpoint.scheme != "https" or endpoint.username or endpoint.password or endpoint.query or endpoint.fragment:
             raise ValueError("服务地址必须是无凭据的 HTTPS 地址")
@@ -88,7 +89,6 @@ class Gateway:
         return self.public_identity
 
     async def request_parts(self, method, route, payload=None):
-        identity = await self.identity()
         path = self.prefix + route
         if "\n" in path or "\r" in path or not path.startswith(self.prefix):
             raise GatewayError("请求地址无效", 400)
@@ -96,6 +96,22 @@ class Gateway:
         maximum = 90 * 1024 * 1024 if route == "sync/assets" else 40 * 1024 * 1024
         if len(body) > maximum:
             raise GatewayError("上传内容超过 40 MB，请减少图片", 413)
+        digest = hashlib.sha256(body).hexdigest()
+        headers = {"Content-Type":"application/json", "Content-Length":str(len(body)),
+                   "X-Shiyan-Body-Sha":digest, "X-Shiyan-Platform":"macos", "Connection":"close"}
+        if self.account_token:
+            headers["Authorization"] = "Bearer " + self.account_token
+            headers["X-Shiyan-Account-Required"] = "1"
+            return path, body, headers
+        if route in {"auth/status", "auth/login", "auth/register", "auth/qr/create", "auth/qr/poll", "auth/device/request", "auth/device/poll"}:
+            return path, body, headers
+        if route not in {"auth/status", "auth/bootstrap", "enroll"}:
+            raise GatewayError("请先登录", 401)
+        try:
+            identity = await self.identity()
+        except GatewayError:
+            if route == "auth/status": return path, body, headers
+            raise
         timestamp = str(int(time.time() * 1000))
         nonce = str(uuid.uuid4())
         digest = hashlib.sha256(body).hexdigest()
@@ -199,10 +215,8 @@ class Gateway:
 
     async def _connect_once(self):
         try:
-            info = await self.identity()
-            enrolled = await self.json("POST", "enroll", info)
-            if enrolled.get("approved") is not True:
-                raise GatewayError("此 Mac 尚未获得服务授权，批准此设备后即可连接", 403)
+            if not self.account_token:
+                raise GatewayError("请先登录", 401)
             caps = await self.json("GET", "capabilities")
             levels = caps.get("reasoningEfforts")
             if not isinstance(levels, list) or not levels or any(not isinstance(x,str) for x in levels):
@@ -306,7 +320,7 @@ class Gateway:
         result = await self.json("POST", "conversations/fork",
                      {"sourceConversationId":source,"targetConversationId":target,
                       "retainedPrompts":retained,"replacedPrompt":replaced}, timeout=65)
-        if result.get("ok") is not True or (retained and not result.get("threadId")):
+        if result.get("ok") is not True or (retained and not result.get("threadId") and result.get("historyRetained") is not True):
             raise GatewayError("无法保留编辑位置之前的上下文，原记录已保留")
         return result.get("threadId")
 

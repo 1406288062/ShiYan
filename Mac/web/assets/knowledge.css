@@ -1,0 +1,21 @@
+/* The original Vue application owns every style inside this isolated frame. */
+.knowledge-shell.wb-modal {
+  --knowledge-rail: 50px;
+  position: fixed;
+  inset: 0 0 0 var(--knowledge-rail);
+  z-index: 240;
+  display: block;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: var(--canvas, #202124);
+}
+#knowledgeFrame { display:block;width:100%;height:100%;border:0; }
+#knowledgeFrame[data-loading] { visibility:hidden; }
+#railKnowledge svg { width:22px;height:22px;stroke:currentColor;stroke-width:1.6;fill:none;stroke-linecap:round;stroke-linejoin:round; }
+
+/* Match the existing rail's outline-to-filled selected glyphs. */
+#railKnowledge .rail-glyph-outline { fill:currentColor;stroke:none; }
+#railKnowledge .rail-glyph-filled { display:none;fill:currentColor;stroke:none; }
+#railKnowledge.is-active .rail-glyph-outline { display:none; }
+#railKnowledge.is-active .rail-glyph-filled { display:block; }

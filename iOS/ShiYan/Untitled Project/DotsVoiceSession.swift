@@ -29,7 +29,12 @@ enum DotsVoicePhase: String {
 // conversation only moves its controls; it does not stop the call.
 @MainActor
 final class DotsVoiceSession: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
-    static let shared = DotsVoiceSession(store: .shared)
+    private static var instance: DotsVoiceSession?
+    static var shared: DotsVoiceSession {
+        if let instance { return instance }
+        let value = DotsVoiceSession(store: .shared); instance = value; return value
+    }
+    static func resetAccount() { instance?.end(); instance = nil }
 
     @Published private(set) var active = false
     @Published private(set) var phase: DotsVoicePhase = .idle
@@ -248,7 +253,8 @@ final class DotsVoiceSession: NSObject, ObservableObject, AVSpeechSynthesizerDel
             if phase == .sending { phase = .waiting }
             beginWaitTimeout(for: accepted.id)
         }
-        let answered = replyQueue.observe(voiceMessages(state.managerMessages ?? []), pendingMessageID: pendingMessageID)
+        let messages = state.managerMessages ?? []
+        let answered = replyQueue.observe(voiceMessages(messages), pendingMessageID: pendingMessageID)
         if answered {
             pendingMessageID = nil
             waitTask?.cancel(); waitTask = nil

@@ -38,11 +38,18 @@ def event_predates_snapshot(message, event):
         return False
 
 class Runtime:
-    def __init__(self, directory, root):
+    def __init__(self, directory, root, account=None, account_token=None):
         self.root = Path(root)
         self.storage = Storage(directory, root)
-        self.storage.import_legacy_outputs()
+        # Side chats belong to this app run; never restore them after quitting.
+        for item in self.storage.list("temporaryConversations"):
+            self.storage.remove("temporaryConversations", item["id"])
+        self.account = dict(account or {})
+        self.server_access = self.account.get("role") == "admin" and self.account.get("serverAccess") is True
+        if self.account.get("owner") == "shiyan-private-owner":
+            self.storage.import_legacy_outputs()
         self.gateway = Gateway(root)
+        self.gateway.account_token = account_token
         self.capabilities = self.storage.setting("capabilities", dict(FALLBACK_CAPABILITIES))
         self.connection = {"status":"connecting","error":None,"deviceID":None}
         self.version = self.storage.setting("revision", 0)
@@ -53,11 +60,12 @@ class Runtime:
         self.enhancement_lock = asyncio.Lock()
         self.closing = False
         self.sync = SyncEngine(self)
-        self.repair_terminal_pending_references()
+        conversations = self.storage.list("conversations")
+        self.repair_terminal_pending_references(conversations)
         self.mac_codex = MacCodex(self)
         self.mac_codex.interrupt_saved()
-        self.backfill_agent_images()
-        if not self.storage.list("conversations"):
+        self.backfill_agent_images(conversations)
+        if not conversations:
             self.new_conversation()
 
     def record_agent_image(self, asset, job_id=None, created_at=None):
@@ -76,17 +84,17 @@ class Runtime:
         seen.add(identifier)
         self.storage.set_setting("spaceAgentImageSeen", sorted(seen))
 
-    def backfill_agent_images(self):
-        for conversation in self.storage.list("conversations"):
+    def backfill_agent_images(self, conversations=None):
+        for conversation in self.storage.list("conversations") if conversations is None else conversations:
             for message in conversation.get("messages", []):
                 if message.get("role") == "assistant":
                     for asset in message.get("assets", []):
                         self.record_agent_image(asset, message.get("remoteJobId"), message.get("completedAt") or message.get("createdAt"))
 
-    def repair_terminal_pending_references(self):
+    def repair_terminal_pending_references(self, conversations=None):
          
          
-        for item in self.storage.list("conversations"):
+        for item in self.storage.list("conversations") if conversations is None else conversations:
             pending=item.get("pendingMessageId")
             message=next((m for m in item["messages"] if m["id"]==pending),None)
             if message and message.get("state") in TERMINAL:
@@ -243,6 +251,7 @@ class Runtime:
             if item["reasoning"] not in capability["reasoningEfforts"]:
                 item["reasoning"]=capability["defaultReasoning"]
         if "fileChangeRoots" in changes:
+            if not self.server_access: raise GatewayError("此账户没有本机文件访问权限", 403)
             roots=changes["fileChangeRoots"]
             if not isinstance(roots,list) or len(roots)>8:
                 raise ValueError("修改记录目录无效")
@@ -291,8 +300,7 @@ class Runtime:
         self.connection.update(status="connecting",error=None)
         self.notify()
         try:
-            identity = await self.gateway.identity()
-            self.connection["deviceID"]=identity["deviceID"]
+            self.connection["deviceID"]=self.account.get("id")
             self.capabilities=await self.gateway.connect(force=force)
             self.storage.set_setting("capabilities",self.capabilities)
             self.connection.update(status="ready",error=None)
@@ -499,6 +507,7 @@ class Runtime:
     async def run_agent(self, identifier):
         _, local_message=self.pending_message(identifier)
         if local_message and local_message.get("localExecution"):
+            if not self.server_access: raise GatewayError("此账户没有本机执行权限", 403)
             return await self.mac_codex.run(identifier)
         try:
             item,message=self.pending_message(identifier)
@@ -506,7 +515,7 @@ class Runtime:
                 return
             if not item.get("pendingJobId"):
                 try:
-                    await asyncio.to_thread(begin_changes,self.storage,item,message)
+                    if self.server_access: await asyncio.to_thread(begin_changes,self.storage,item,message)
                 except (OSError,ValueError):
                     pass
                 index=item["messages"].index(message)
@@ -581,7 +590,7 @@ class Runtime:
                              
                             self.save_conversation(latest,notify=False)
                             try:
-                                local_changes=await asyncio.to_thread(finish_changes,self.storage,current)
+                                local_changes=await asyncio.to_thread(finish_changes,self.storage,current) if self.server_access else []
                             except (OSError,ValueError):
                                 local_changes=[]
                             latest,current=self.pending_message(identifier)
@@ -967,4 +976,6 @@ class Runtime:
                 process.terminate()
         if running:
             await asyncio.gather(*running,return_exceptions=True)
+        for item in self.storage.list("temporaryConversations"):
+            self.storage.remove("temporaryConversations", item["id"])
         self.storage.close()

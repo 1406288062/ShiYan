@@ -36,7 +36,7 @@ def register_v22(app, auth, body):
         data=await body(request)
         item=w.runtime.conversation(identifier)
         if not item.get('temporary'):raise ValueError('不是临时聊天')
-        reply=await w.runtime.send(identifier,data.get('text',''),[],None)
+        reply=await w.runtime.send(identifier,data.get('text',''),data.get('assetIds',[]),None)
         return result(w,message=reply)
 
     @app.delete('/api/workspace/temporary-chats/{identifier}')

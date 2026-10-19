@@ -12,16 +12,18 @@ private struct EnhanceButtonHeightPreferenceKey: PreferenceKey {
 enum ShiyanFeaturePage: String, Identifiable {
     case enhance
     case space
+    case knowledge
     case dots
     case scheduled
     case settings
 
     var id: String { rawValue }
-    var title: String { self == .enhance ? "变清晰" : self == .space ? "空间" : self == .scheduled ? "定时任务" : self == .settings ? "设置" : "Dots" }
+    var title: String { self == .enhance ? "变清晰" : self == .space ? "空间" : self == .knowledge ? "知识库" : self == .scheduled ? "定时任务" : self == .settings ? "设置" : "Dots" }
     var iconAsset: String { self == .enhance ? "enhanceFeatureIcon" : self == .space ? "spaceFeatureIcon" : "dotsPersonalIcon" }
 
     @ViewBuilder var icon: some View {
         if self == .settings { Image(systemName: "gearshape").resizable().scaledToFit() }
+        else if self == .knowledge { Image(systemName: "books.vertical").resizable().scaledToFit() }
         else if self == .scheduled { Image(systemName: "clock").resizable().scaledToFit() }
         else if self == .dots { Image("dotsPersonalIcon").renderingMode(.template).resizable().scaledToFit() }
         else { Image(iconAsset).renderingMode(.template).resizable().scaledToFit() }

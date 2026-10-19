@@ -9,6 +9,7 @@ nonisolated struct ShiyanMemorySettings: Decodable, Sendable {
 
 @MainActor
 private final class ShiyanMemoryStore: ObservableObject {
+    private let client = CodexClient.shared
     @Published private(set) var enabled = true
     @Published private(set) var isLoaded = false
     @Published private(set) var isLoading = false
@@ -20,7 +21,7 @@ private final class ShiyanMemoryStore: ObservableObject {
         isLoading = true
         defer { isLoading = false }
         do {
-            let settings = try await CodexClient.shared.memorySettings()
+            let settings = try await client.memorySettings()
             guard !Task.isCancelled else { return }
             enabled = settings.enabled
             isLoaded = true
@@ -39,7 +40,7 @@ private final class ShiyanMemoryStore: ObservableObject {
         error = nil
         defer { isSaving = false }
         do {
-            let settings = try await CodexClient.shared.setMemoryEnabled(value)
+            let settings = try await client.setMemoryEnabled(value)
             enabled = settings.enabled
         } catch {
             enabled = previous
@@ -54,7 +55,10 @@ struct MemoryView: View {
     let hasUnread: Bool
     let onSidebar: () -> Void
     let onBack: () -> Void
+    @ObservedObject private var account = ShiyanAccount.shared
     @StateObject private var store = ShiyanMemoryStore()
+    @ObservedObject private var dots = DotsStore.shared
+    @State private var editingTopic: DotsRelationshipTopic?
     @Environment(\.scenePhase) private var scenePhase
 
     private var background: Color { Color(uiColor: .systemGroupedBackground) }
@@ -69,7 +73,10 @@ struct MemoryView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Toggle("使用记忆", isOn: Binding(
                             get: { store.enabled },
-                            set: { value in Task { await store.setEnabled(value) } }
+                            set: { value in Task {
+                                await store.setEnabled(value)
+                                if account.canAccessServer { await dots.loadRelationship() }
+                            } }
                         ))
                         .font(.body.weight(.medium))
                         .disabled(busy || !store.isLoaded)
@@ -89,6 +96,49 @@ struct MemoryView: View {
                     .padding(20)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(cardBackground, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                    if account.canAccessServer {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("共同话题").font(.body.weight(.medium))
+                        Text("查看、纠正或删除共同聊过的内容。")
+                            .font(.footnote).foregroundStyle(.secondary)
+                        if let relationship = dots.relationship {
+                            if relationship.topics.isEmpty {
+                                Text("还没有保存的共同话题").font(.subheadline).foregroundStyle(.secondary)
+                            }
+                            ForEach(relationship.topics) { topic in
+                                Button { editingTopic = topic } label: {
+                                    HStack(spacing: 12) {
+                                        VStack(alignment: .leading, spacing: 5) {
+                                            Text(topic.title).font(.subheadline)
+                                            if topic.needsReview {
+                                                Text("请确认这段记忆").font(.footnote).foregroundStyle(.secondary)
+                                            }
+                                            if !topic.summary.isEmpty {
+                                                Text(topic.summary).font(.footnote).foregroundStyle(.secondary).lineLimit(2)
+                                            }
+                                        }
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        Image(systemName: "chevron.right").font(.footnote).foregroundStyle(.secondary)
+                                    }
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(dots.relationshipLoading || dots.relationshipSaving)
+                            }
+                        }
+                        if dots.relationshipLoading { ProgressView("正在读取…").font(.footnote) }
+                        if let error = dots.relationshipNotice {
+                            Text(error).font(.footnote).foregroundStyle(.secondary)
+                            Button("重新读取") { Task { if account.canAccessServer { await dots.loadRelationship() } } }
+                                .disabled(dots.relationshipLoading || dots.relationshipSaving)
+                        }
+                    }
+                    .padding(20)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(cardBackground, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .accessibilityIdentifier("memory-shared-topics")
+                    }
 
                     if let error = store.error {
                         VStack(alignment: .leading, spacing: 12) {
@@ -122,9 +172,99 @@ struct MemoryView: View {
         }
         .foregroundStyle(.primary)
         .accessibilityIdentifier("memory-page")
-        .task { await store.refresh() }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active { Task { await store.refresh() } }
+        .sheet(item: $editingTopic) { topic in
+            NavigationStack {
+                DotsRelationshipTopicEditor(store: dots, topic: topic)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            ShiyanCloseButton(action: { editingTopic = nil }, inToolbar: true)
+                        }
+                    }
+            }
         }
+        .task { await store.refresh(); if account.canAccessServer { await dots.loadRelationship() } }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await store.refresh(); if account.canAccessServer { await dots.loadRelationship() } } }
+        }
+    }
+}
+
+private struct DotsRelationshipTopicEditor: View {
+    @ObservedObject var store: DotsStore
+    let topic: DotsRelationshipTopic
+    @Environment(\.dismiss) private var dismiss
+    @State private var title: String
+    @State private var summary: String
+    @State private var openQuestion: String
+    @State private var confirmingDelete = false
+
+    init(store: DotsStore, topic: DotsRelationshipTopic) {
+        self.store = store
+        self.topic = topic
+        _title = State(initialValue: topic.title)
+        _summary = State(initialValue: topic.summary)
+        _openQuestion = State(initialValue: topic.openQuestion ?? "")
+    }
+    private var busy: Bool { store.relationshipLoading || store.relationshipSaving }
+    private var valid: Bool {
+        !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        title.utf16.count <= 200 && summary.utf16.count <= 4000 && openQuestion.utf16.count <= 2000
+    }
+    private func limited(_ value: Binding<String>, to limit: Int) -> Binding<String> {
+        Binding(get: { value.wrappedValue }, set: { text in
+            var result = "", length = 0
+            for character in text {
+                let part = String(character)
+                guard length + part.utf16.count <= limit else { break }
+                result += part; length += part.utf16.count
+            }
+            value.wrappedValue = result
+        })
+    }
+    var body: some View {
+        Form {
+            if topic.needsReview {
+                Text("请确认这段记忆").font(.subheadline).foregroundStyle(.secondary)
+            }
+            Section("话题") {
+                TextField("标题", text: limited($title, to: 200))
+                TextField("共同聊过的内容", text: limited($summary, to: 4000), axis: .vertical).lineLimit(3...10)
+            }
+            Section("尚未聊完") {
+                TextField("可留空", text: limited($openQuestion, to: 2000), axis: .vertical).lineLimit(2...6)
+            }
+            .disabled(busy)
+            if let error = store.relationshipNotice {
+                Text(error).font(.footnote).foregroundStyle(.secondary)
+            }
+            Section {
+                Button("删除这个话题", role: .destructive) { confirmingDelete = true }.disabled(busy)
+            } footer: {
+                Text("删除后不会再使用这段记忆，聊天记录仍会保留。")
+            }
+        }
+        .disabled(busy)
+        .navigationTitle("共同话题")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("保存") {
+                    Task {
+                        let saved = await store.updateRelationship(.editTopic(id: topic.id, revision: topic.revision,
+                            title: title.trimmingCharacters(in: .whitespacesAndNewlines),
+                            summary: summary.trimmingCharacters(in: .whitespacesAndNewlines),
+                            openQuestion: openQuestion.trimmingCharacters(in: .whitespacesAndNewlines)))
+                        if saved { dismiss() }
+                    }
+                }.disabled(busy || !valid)
+            }
+        }
+        .confirmationDialog("删除这个共同话题？", isPresented: $confirmingDelete, titleVisibility: .visible) {
+            Button("删除", role: .destructive) {
+                Task { if await store.updateRelationship(.deleteTopic(id: topic.id)) { dismiss() } }
+            }
+        }
+        .accessibilityIdentifier("dots-relationship-topic-editor")
     }
 }

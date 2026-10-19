@@ -77,3 +77,8 @@ body.schedules-is-current-view #centerContent{height:100%;max-height:none;overfl
 .schedule-editor-card .schedule-time-field select{width:auto;text-align:right;text-align-last:right;min-width:0}
 .schedule-editor-card .schedule-time-field input[type=time]{flex:0 0 69px;text-align:right}
 .schedule-editor-card .schedule-time-field .wb-icon{margin-left:0;flex:0 0 12px;stroke-width:1.65}
+
+/* Keep the clock hands transparent against the common selected rail surface. */
+#railSchedules .rail-glyph-filled{display:none;fill:currentColor;stroke:none}
+#railSchedules.is-active .rail-glyph-outline{display:none}
+#railSchedules.is-active .rail-glyph-filled{display:block}

@@ -321,6 +321,12 @@ class Workbench:
         return item, root
 
     def create_project(self, data):
+        if not self.runtime.server_access:
+            if data.get("path"): raise ValueError("此账户不能关联本机目录")
+            item = {"id":new_id(), "name":valid_name(data.get("name")), "createdAt":now()}
+            self.storage.put("projects", item)
+            self.runtime.notify()
+            return item
         raw = str(data.get("path", "")).strip()
         if not raw or len(raw) > 4096:
             raise ValueError("请选择本地目录")
@@ -510,7 +516,7 @@ def register_workbench(app):
         if not preferred.is_dir():
             preferred = Path.home()
         return {"ok": True, "token": w.token, "projects": w.storage.list("projects"),
-                "preferences": w.preferences(), "defaultDirectory": str(preferred), "terminalTransport": "SSE"}
+                "preferences": w.preferences(), "defaultDirectory": str(preferred) if w.runtime.server_access else "", "terminalTransport": "SSE" if w.runtime.server_access else None}
 
     @app.patch("/api/workspace/preferences")
     async def preferences(request: Request):

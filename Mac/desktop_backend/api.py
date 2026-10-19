@@ -19,32 +19,27 @@ from .gateway import GatewayError
 from .workbench import Workbench, register_workbench
 from .dots import register_dots
 from .schedules import DesktopSchedules, register_schedules
+from .account_sessions import AccountSessions, register_accounts
+from .knowledge import register_knowledge
 
 def create_app(directory, root, legacy=None):
     root=Path(root)
     @asynccontextmanager
     async def lifespan(app):
-        runtime=Runtime(directory,root)
-        app.state.runtime=runtime
-        app.state.workbench=Workbench(runtime)
-        app.state.schedules=DesktopSchedules(runtime)
+        accounts=AccountSessions(app,directory,root,legacy)
+        app.state.accounts=accounts
         if os.environ.get("SHIYAN_OFFLINE_TEST") != "1":
-            runtime.spawn(runtime.start())
-            runtime.spawn(app.state.schedules.run())
-        if legacy:
-            runtime.spawn(legacy.start())
+            accounts.prepare_restore()
         yield
-        if legacy:
-            await legacy.close()
-        await app.state.schedules.close()
-        await app.state.workbench.close()
-        await runtime.close()
+        await accounts.close()
 
     app=FastAPI(title="拾燕",docs_url=None,redoc_url=None,openapi_url=None,lifespan=lifespan)
 
     register_workbench(app)
     register_dots(app)
     register_schedules(app)
+    register_accounts(app)
+    register_knowledge(app)
 
     @app.middleware("http")
     async def local_only(request,call_next):
@@ -69,14 +64,17 @@ def create_app(directory, root, legacy=None):
                     return JSONResponse({"ok":False,"error":"上传内容过大"},status_code=413)
             except ValueError:
                 return JSONResponse({"ok":False,"error":"请求长度无效"},status_code=400)
+        try:
+            await request.app.state.accounts.protect(request)
+        except GatewayError as error:
+            return JSONResponse({"ok":False,"error":str(error)},status_code=error.status)
         response=await call_next(request)
         response.headers["X-Content-Type-Options"]="nosniff"
         response.headers["Referrer-Policy"]="no-referrer"
-        thumbnail = (request.method in {"GET", "HEAD"} and
-                     request.url.path.startswith("/api/assets/") and
-                     request.url.path.endswith("/thumbnail") and
-                     response.status_code in {200, 206, 304})
-        if request.url.path.startswith("/api/") and not thumbnail:
+        if request.url.path.startswith("/assets/knowledge-ui/"):
+            response.headers["Content-Security-Policy"]="default-src 'self' blob: data:; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self' data:; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'self'"
+            response.headers["Cache-Control"]="no-store"
+        if request.url.path.startswith("/api/"):
             response.headers["Cache-Control"]="no-store"
         return response
 
@@ -120,7 +118,7 @@ def create_app(directory, root, legacy=None):
 
     @app.get("/api/health")
     async def health(request:Request):
-        return {"ok":True,"service":"shiyan-desktop","pid":os.getpid(),"version":runtime(request).version}
+        return {"ok":True,"service":"shiyan-desktop","version":"accounts-v1"}
 
     @app.get("/api/state")
     async def state(request:Request):
@@ -157,12 +155,13 @@ def create_app(directory, root, legacy=None):
         async def stream():
             try:
                 yield "event: state\ndata: "+json.dumps(r.snapshot(),ensure_ascii=False,separators=(",",":"))+"\n\n"
-                while True:
+                while not r.closing:
                     try:
                         state=await asyncio.wait_for(queue.get(),timeout=15)
                     except asyncio.TimeoutError:
                         yield ": keepalive\n\n"
                         continue
+                    if state is None or r.closing: return
                     yield "event: state\ndata: "+json.dumps(state,ensure_ascii=False,separators=(",",":"))+"\n\n"
             finally:
                 r.listeners.discard(queue)

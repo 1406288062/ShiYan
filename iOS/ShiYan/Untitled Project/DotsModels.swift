@@ -279,6 +279,7 @@ struct DotsSavedState: Codable {
 @MainActor
 protocol DotsTransport: AnyObject {
     func dotsRead<T: Decodable>(_ route: String, as type: T.Type) async throws -> T
+    func dotsRelationship(_ change: DotsRelationshipChange) async throws -> DotsRelationshipResponse
     func dotsUploadAttachment(id: String, filename: String, mimeType: String, data: Data) async throws -> DotsAttachment
     func dotsMutate(_ operation: DotsPendingOperation) async throws -> Int?
     func dotsAcknowledge(consumerId: String, cursor: Int) async throws
@@ -287,6 +288,9 @@ protocol DotsTransport: AnyObject {
 
 
 extension DotsTransport {
+    func dotsRelationship(_ change: DotsRelationshipChange) async throws -> DotsRelationshipResponse {
+        throw AgentClientError.message("共同话题暂不可用")
+    }
     func dotsUploadAttachment(id: String, filename: String, mimeType: String, data: Data) async throws -> DotsAttachment {
         throw AgentClientError.message("文件上传暂不可用")
     }
@@ -316,7 +320,11 @@ struct DotsManagerMessage: Codable, Identifiable {
     var respondsToMessageIds: [Int]?
     var deliveryState: String?
     var revision: Int?
+    var origin: String?
+    var topicId: String?
+    var proactiveReason: String?
     var isStreaming: Bool { deliveryState == "streaming" }
+    var isProactive: Bool { role == "assistant" && origin == "proactive" }
 
     func canReplace(_ current: DotsManagerMessage) -> Bool {
         // A legacy GET or a replay must never rewind a reply already advanced
@@ -413,3 +421,63 @@ struct DotsConversationMessage: Decodable, Identifiable {
     var content: String
 }
 struct DotsConversationResponse: Decodable { var messages: [DotsConversationMessage] }
+
+struct DotsRelationshipTopic: Decodable, Identifiable {
+    var id: String
+    var title: String
+    var summary: String
+    var openQuestion: String?
+    var updatedAt: Double?
+    var sourceMessageIds: [Int]?
+    var revision: Int
+    var needsReview: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case id, title, summary, openQuestion, updatedAt, sourceMessageIds, revision, needsReview
+    }
+    init(from decoder: Decoder) throws {
+        let fields = try decoder.container(keyedBy: CodingKeys.self)
+        id = try fields.decode(String.self, forKey: .id)
+        title = try fields.decode(String.self, forKey: .title)
+        summary = try fields.decode(String.self, forKey: .summary)
+        openQuestion = try fields.decodeIfPresent(String.self, forKey: .openQuestion)
+        updatedAt = try fields.decodeIfPresent(Double.self, forKey: .updatedAt)
+        sourceMessageIds = try fields.decodeIfPresent([Int].self, forKey: .sourceMessageIds)
+        revision = try fields.decodeIfPresent(Int.self, forKey: .revision) ?? 1
+        needsReview = try fields.decodeIfPresent(Bool.self, forKey: .needsReview) ?? false
+    }
+}
+struct DotsRelationship: Decodable {
+    var revision: Int
+    var topics: [DotsRelationshipTopic]
+}
+struct DotsRelationshipResponse: Decodable {
+    var ok: Bool
+    var relationship: DotsRelationship
+}
+enum DotsRelationshipChange {
+    case editTopic(id: String, revision: Int, title: String, summary: String, openQuestion: String)
+    case deleteTopic(id: String)
+
+    var method: String {
+        switch self {
+        case .deleteTopic: return "DELETE"
+        case .editTopic: return "PATCH"
+        }
+    }
+    var route: String {
+        switch self {
+        case .editTopic(let id, _, _, _, _), .deleteTopic(let id):
+            var allowed = CharacterSet.urlPathAllowed
+            allowed.remove(charactersIn: "/?#%")
+            return "relationship/topics/" + (id.addingPercentEncoding(withAllowedCharacters: allowed) ?? "")
+        }
+    }
+    var body: [String: Any] {
+        switch self {
+        case .editTopic(_, let revision, let title, let summary, let openQuestion):
+            return ["revision": revision, "title": title, "summary": summary, "openQuestion": openQuestion]
+        case .deleteTopic: return [:]
+        }
+    }
+}

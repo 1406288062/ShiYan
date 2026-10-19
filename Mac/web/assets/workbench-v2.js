@@ -69,7 +69,7 @@
   }
   function syncNative(){
    const tab=C.tabs.find(t=>t.id===C.activeTab),pane=tab&&C.panes.get(tab.id),rect=pane?.getBoundingClientRect();
-   const modal=!!document.querySelector('.modal-overlay:not([hidden]),.wb-modal:not([hidden]),.preview-overlay:not([hidden]),.v2-popup:not([hidden]),#comparePreview:not([hidden]),#v22TextEditor:not([hidden]),#v22TemporaryPane:not([hidden]),#v23FileChanges:not([hidden]),#sessionMenu:not([hidden]),#sessionProjectMenu:not([hidden])');
+   const modal=!!document.querySelector('.modal-overlay:not([hidden]),.wb-modal:not([hidden]),.preview-overlay:not([hidden]),.v2-popup:not([hidden]),#comparePreview:not([hidden]),#v22TextEditor:not([hidden]),#v23FileChanges:not([hidden]),#sessionMenu:not([hidden]),#sessionProjectMenu:not([hidden])');
    const visible=isCoding()&&isVisible($('rightWorkspace'))&&$('rightWorkspace').getAttribute('aria-hidden')!=='true'&&tab?.type==='browser'&&!!tab.url&&!modal;
    const show={tabId:tab?.id||'',visible:!!visible,rect:rect?{x:rect.x+6,y:rect.y,width:Math.max(0,rect.width-6),height:rect.height}:undefined};
    const dividers={items:['leftResizeHandle','rightResizeHandle','bottomResizeHandle'].map(id=>{const el=$(id),r=el.getBoundingClientRect();return {id,visible:!el.hidden&&r.width>0&&r.height>0&&!modal,axis:id==='bottomResizeHandle'?'y':'x',rect:{x:r.x,y:r.y,width:r.width,height:r.height}};})};
@@ -142,7 +142,18 @@
    C.prefs.rightOpen=savedRightOpen;
    S.booted=true;decorateTabs();persist();layout();renderState(state());
   }
-  function positionReasoning(){const panel=$('reasoningPanel'),anchor=$('reasoningButton');if(!panel||panel.hidden||!anchor)return;const r=anchor.getBoundingClientRect();if(!r.width)return;const w=panel.getBoundingClientRect().width||320,h=panel.getBoundingClientRect().height||154;panel.style.left=Math.max(8,Math.min(innerWidth-w-8,r.right-w))+'px';panel.style.top=Math.max(8,r.top-h-10)+'px';panel.style.right='auto';panel.style.bottom='auto';}
+  function positionReasoning(){
+   const panel=$('reasoningPanel'),anchor=$('reasoningButton');if(!panel||panel.hidden||!anchor){S.reasoningAnchorGeometry=null;return;}
+   const r=anchor.getBoundingClientRect();if(!r.width)return;
+   // Keep this opening anchored while model labels change; follow real layout changes.
+   if(!S.reasoningAnchorGeometry||S.reasoningAnchorGeometry.viewport!==innerWidth||Math.abs(S.reasoningAnchorGeometry.right-r.right)>0.5){
+    const labels=[...anchor.querySelectorAll('.v23-composer-model,.v22-strength-label')].map(node=>node.getBoundingClientRect()).filter(rect=>rect.width>0);
+    const center=labels.length?(Math.min(...labels.map(rect=>rect.left))+Math.max(...labels.map(rect=>rect.right)))/2:r.left+r.width/2;
+    S.reasoningAnchorGeometry={center,right:r.right,viewport:innerWidth};
+   }
+   const center=S.reasoningAnchorGeometry.center,w=panel.getBoundingClientRect().width||320,h=panel.getBoundingClientRect().height||154;
+   panel.style.left=Math.max(8,Math.min(innerWidth-w-8,center-w/2))+'px';panel.style.top=Math.max(8,r.top-h-10)+'px';panel.style.right='auto';panel.style.bottom='auto';
+  }
   function browserMenu(anchor){const engine=C.browserState.searchEngine||'bing';menu(anchor,[action('文件',()=>C.workspaceTool('files'),'folder'),action('终端',()=>C.workspaceTool('terminal'),'terminal'),action('临时聊天',()=>window.ShiYanV22.openTemporary(),'newChat'),{separator:true},action('历史记录',()=>C.workspaceTool('history'),'history'),action('书签',()=>C.workspaceTool('bookmarks'),'star'),action('下载记录',()=>C.workspaceTool('downloads'),'download'),{separator:true},{label:'搜索引擎',children:[['bing','Bing'],['baidu','百度'],['duckduckgo','DuckDuckGo']].map(([value,label])=>({label,checked:value===engine,run:()=>C.native('searchEngine',{value})}))},action('清除浏览历史',async()=>{if(await window.shiyan.confirmAction('清除浏览历史？','不影响聊天、作品和下载文件。','清除'))C.native('clearHistory');}),action('清除网站数据',async()=>{if(await window.shiyan.confirmAction('清除网站数据？','清除 Cookie 和缓存后，网站可能需要重新登录。','清除'))C.native('clearWebsiteData');})],{width:194});}
 
    

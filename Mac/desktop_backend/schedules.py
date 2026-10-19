@@ -89,6 +89,13 @@ class DesktopSchedules:
         if not self.owns(task):
             raise ValueError("此任务需要在原执行 Mac 上操作")
 
+    def pending_stop(self, identifier):
+        pending = self.storage.setting("schedulePending", {})
+        if not isinstance(pending, dict):
+            return False
+        request = pending.get("control:" + identifier)
+        return isinstance(pending.get("delete:" + identifier), dict) or isinstance(request, dict) and request.get("action") in {"pause", "delete", "cancel"}
+
     @staticmethod
     def public(task):
         return {k: v for k, v in task.items() if k not in {"lastResultHash", "activeRunId"}}
@@ -269,6 +276,8 @@ class DesktopSchedules:
             "instruction": instruction or task["instruction"], "title": task["title"], "projectId": task.get("projectId"),
             "runLocally": options["runLocally"], "model": options["model"], "reasoning": options["reasoning"],
             "notificationMode": task["notificationMode"], "followup": followup}
+        if due:
+            run["scheduleConfig"] = {key: task.get(key) for key in FIELDS - {"requestId"}}
         task.update(activeRunId=run_id, conversationId=conversation_id, lastRunAt=run["createdAt"], updatedAt=now())
         if due:
             task["nextRunAt"] = next_run(task)
@@ -383,7 +392,19 @@ class DesktopSchedules:
     async def reconcile(self):
         for run in self.storage.list("scheduleRuns"):
             if run["state"] == "prepared":
-                if self.storage.get("scheduledTasks", run["taskId"]):
+                task = self.storage.get("scheduledTasks", run["taskId"])
+                if task:
+                    if run.get("dueAt"):
+                        snapshot = run.get("scheduleConfig") or {key: run[key] for key in ("instruction", "runLocally", "model", "reasoning", "projectId") if key in run}
+                        if not task.get("enabled") or any(task.get(key) != value for key, value in snapshot.items()):
+                            run.update(state="cancelled", reconciled=True, updatedAt=now(), completedAt=now())
+                            self.storage.put("scheduleRuns", run)
+                            if task.get("activeRunId") == run["id"]:
+                                task["activeRunId"] = None
+                                self.storage.put("scheduledTasks", task)
+                            continue
+                        if self.pending_stop(run["taskId"]):
+                            continue
                     await self.dispatch(run)
                 else:
                     run.update(state="cancelled", reconciled=True, updatedAt=now())
@@ -421,7 +442,7 @@ class DesktopSchedules:
             await self.reconcile()
             current = datetime.now(timezone.utc)
             for task in self.storage.list("scheduledTasks"):
-                if not self.owns(task) or not task["enabled"] or not task.get("nextRunAt") or instant(task["nextRunAt"]) > current:
+                if not self.owns(task) or not task["enabled"] or not task.get("nextRunAt") or instant(task["nextRunAt"]) > current or self.pending_stop(task["id"]):
                     continue
                 try:
                     await self.validate({k: task[k] for k in FIELDS if k in task}, task)
@@ -450,7 +471,7 @@ class DesktopSchedules:
                      
                      
                     config_keys = FIELDS - {"requestId"}
-                    if not fresh or not fresh.get("enabled") or fresh.get("nextRunAt") != task["nextRunAt"] or any(fresh.get(k) != task.get(k) for k in config_keys):
+                    if not fresh or not fresh.get("enabled") or self.pending_stop(task["id"]) or fresh.get("nextRunAt") != task["nextRunAt"] or any(fresh.get(k) != task.get(k) for k in config_keys):
                         saved.pop(slot, None)
                         self.storage.set_setting("scheduleLeasePending", saved)
                         continue

@@ -4,7 +4,30 @@ import UIKit
 
 @MainActor
 final class AgentStore: ObservableObject {
-    static let shared = AgentStore()
+    private static var instance: AgentStore?
+    private final class WeakTemporaryStore {
+        weak var value: AgentStore?
+        init(_ value: AgentStore) { self.value = value }
+    }
+    private static var temporaryStores: [WeakTemporaryStore] = []
+    let isTemporarySession: Bool
+    private var temporaryClosed = false
+    static var shared: AgentStore {
+        if let instance { return instance }
+        let value = AgentStore(); instance = value; return value
+    }
+    static func resetAccount() {
+        for value in temporaryStores.compactMap({ $0.value }) { value.closeTemporarySession() }
+        temporaryStores.removeAll()
+        guard let value = instance else { return }
+        value.canSave = false
+        value.bootstrap?.cancel(); value.persistenceTask?.cancel()
+        for task in value.tasks.values { task.cancel() }
+        value.tasks.removeAll(); value.synchronizer.stop()
+        for id in Array(value.backgroundTokens.keys) { value.endBackground(id) }
+        instance = nil
+    }
+    private let client = CodexClient.shared
 #if DEBUG
     private static var isChatRepairUITest: Bool {
         ProcessInfo.processInfo.environment["SHIYAN_UI_TEST_CHAT_REPAIR"] != nil
@@ -17,7 +40,7 @@ final class AgentStore: ObservableObject {
     @Published private(set) var projects: [AgentProject] = []
     @Published var selectedID: UUID? {
         didSet {
-            guard paginationReady, selectedID != oldValue, let id = selectedID else { return }
+            guard paginationReady, !isTemporarySession, selectedID != oldValue, let id = selectedID else { return }
             historyLoading = true
             Task { await openMessageWindow(id) }
         }
@@ -49,7 +72,7 @@ final class AgentStore: ObservableObject {
     private var canSave = true
     private var titleRequests = Set<UUID>()
     private var backgroundTokens: [UUID: UIBackgroundTaskIdentifier] = [:]
-    private let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("AgentSessions", isDirectory: true)
+    private let directory = ShiyanAccountStorage.directory("AgentSessions")
     private lazy var synchronizer = AgentSyncCoordinator(store: self, directory: directory)
     private var readReceipts: [String: AgentReadReceipt] = [:]
     private var readReceiptsWritable = true
@@ -65,7 +88,7 @@ final class AgentStore: ObservableObject {
     private var lastCapabilityCheck: Date?
 
     private func loadVerifiedCapabilitiesCache() {
-        guard let scope = CodexClient.shared.capabilitiesCacheScope,
+        guard let scope = client.capabilitiesCacheScope,
               let data = try? Data(contentsOf: directory.appendingPathComponent("capabilities-verified.json")),
               let snapshot = try? JSONDecoder().decode(CapabilitySnapshot.self, from: data),
               snapshot.scope == scope, snapshot.values.isVerified else { return }
@@ -75,7 +98,7 @@ final class AgentStore: ObservableObject {
     }
 
     private func cacheVerifiedCapabilities(_ values: AgentCapabilities) {
-        guard values.isVerified, let scope = CodexClient.shared.capabilitiesCacheScope else { return }
+        guard values.isVerified, let scope = client.capabilitiesCacheScope else { return }
         let snapshot = CapabilitySnapshot(scope: scope, verifiedAt: Date(), values: values)
         guard let bytes = try? JSONEncoder().encode(snapshot) else { return }
         let folder = directory
@@ -93,7 +116,7 @@ final class AgentStore: ObservableObject {
     }
 
     private func fetchVerifiedCapabilities() async throws -> AgentCapabilities {
-        let scope = CodexClient.shared.capabilitiesCacheScope
+        let scope = client.capabilitiesCacheScope
         if capabilities.isVerified, let lastCapabilityCheck,
            scope == lastVerifiedCapabilityScope, Date().timeIntervalSince(lastCapabilityCheck) < 60 {
             try Task.checkCancellation()
@@ -103,7 +126,7 @@ final class AgentStore: ObservableObject {
         for attempt in 0..<3 {
             try Task.checkCancellation()
             do {
-                let values = try await CodexClient.shared.capabilities()
+                let values = try await client.capabilities()
                 try Task.checkCancellation()
                 guard values.isVerified else { throw AgentClientError.message("模型能力响应无效") }
                 return values
@@ -116,7 +139,21 @@ final class AgentStore: ObservableObject {
         throw lastError
     }
 
-    init() {
+    init(temporary: Bool = false) {
+        isTemporarySession = temporary
+        if temporary {
+            let main = Self.shared
+            capabilities = main.capabilities
+            lastVerifiedCapabilityScope = main.lastVerifiedCapabilityScope
+            lastCapabilityCheck = main.lastCapabilityCheck
+            conversations = [blank]
+            selectedID = blank.id
+            historyLoading = false
+            paginationReady = true
+            Self.temporaryStores.removeAll { $0.value == nil }
+            Self.temporaryStores.append(WeakTemporaryStore(self))
+            return
+        }
 #if DEBUG
         if Self.isChatRepairUITest {
             if let json = ProcessInfo.processInfo.environment["SHIYAN_UI_TEST_MODELS"],
@@ -202,6 +239,7 @@ final class AgentStore: ObservableObject {
         }
     }
     private func refreshMessageSummaries() async throws {
+        guard !isTemporarySession else { return }
         let summaries = try await messageDatabase.summaries()
         for i in conversations.indices {
             let value = summaries[conversations[i].id]
@@ -217,6 +255,7 @@ final class AgentStore: ObservableObject {
         return (c.storedMessageCount ?? c.messages.count) > c.messages.count
     }
     func openMessageWindow(_ id: UUID) async {
+        guard !isTemporarySession else { return }
         let generation = UUID(); windowGeneration = generation
         historyLoading = true; loadingEarlier = false
         guard await persistDurably() else { historyLoading = false; return }
@@ -240,6 +279,7 @@ final class AgentStore: ObservableObject {
     }
      
     func loadEarlierMessages() async -> UUID? {
+        guard !isTemporarySession else { return nil }
         guard !historyLoading, !loadingEarlier, hasEarlierMessages,
               let c = current, let anchor = c.messages.first?.id else { return nil }
         loadingEarlier = true; defer { loadingEarlier = false }
@@ -255,6 +295,7 @@ final class AgentStore: ObservableObject {
         } catch { notice = "更早消息读取失败，可重试"; return nil }
     }
     func refreshMessageWindowsAfterSync() async throws {
+        guard !isTemporarySession else { return }
         try await refreshMessageSummaries()
         for i in conversations.indices where conversations[i].id != selectedID && !conversations[i].isBusy {
             conversations[i].messages = []; windowDepth.removeValue(forKey: conversations[i].id)
@@ -269,6 +310,7 @@ final class AgentStore: ObservableObject {
         Task { [weak self] in await self?.recoverInterruptedSubmissions() }
     }
     func searchMessageHistory(_ query: String) async -> Set<UUID> {
+        if isTemporarySession { return Set(conversations.filter { $0.messages.contains { $0.text.localizedCaseInsensitiveContains(query) } }.map(\.id)) }
         guard !query.isEmpty else { return [] }
         do { return try await messageDatabase.search(query) }
         catch { notice = "历史搜索失败，请重试"; return [] }
@@ -276,10 +318,12 @@ final class AgentStore: ObservableObject {
 
     var current: AgentConversation? { conversations.first { $0.id == selectedID } ?? (selectedID == blank.id ? blank : nil) }
     func attach(history: HistoryManager) {
+        guard !isTemporarySession else { return }
         self.history = history
         Task { await collectGeneratedImages() }
     }
     func collectGeneratedImages() async {
+        guard !isTemporarySession else { return }
         guard let history else { return }
         let archived = (try? await messageDatabase.assets(assistantOnly: true)) ?? []
         let visible = conversations.flatMap { $0.messages }.filter { $0.role == .assistant }.flatMap { $0.assets }
@@ -293,6 +337,11 @@ final class AgentStore: ObservableObject {
     func persistDurably() async -> Bool { await enqueuePersistence(notifySync: false).value }
     @discardableResult
     private func enqueuePersistence(notifySync: Bool = true) -> Task<Bool, Never> {
+        if isTemporarySession {
+            localDirtyMessages.removeAll(); removedMessages.removeAll(); stagedMessages.removeAll()
+            let open = !temporaryClosed
+            return Task { open }
+        }
         guard canSave, paginationReady else { return Task { !self.historyLoading && self.canSave } }
         var snapshot = DiskState(selectedID: selectedID, conversations: conversations, stops: pendingStops, projects: projects)
         var writes: [AgentConversation] = []
@@ -345,6 +394,7 @@ final class AgentStore: ObservableObject {
         conversation.hasUnread = !ids.isEmpty
     }
     private func saveReadReceipt(_ receipt: AgentReadReceipt, for id: UUID) -> Bool {
+        if isTemporarySession { readReceipts[id.uuidString.lowercased()] = receipt; return !temporaryClosed }
         let key = id.uuidString.lowercased()
         guard canSave else { readReceipts[key] = receipt; return true }
         guard readReceiptsWritable else { return false }
@@ -404,6 +454,7 @@ final class AgentStore: ObservableObject {
         viewedLatest(id)
     }
     private func update(_ id: UUID, _ body: (inout AgentConversation) -> Void) {
+        guard !isTemporarySession || !temporaryClosed else { return }
         if id == blank.id && !conversations.contains(where: { $0.id == id }) {
             body(&blank)
             blank.storedHasSentMessage = blank.hasSentMessage
@@ -421,7 +472,7 @@ final class AgentStore: ObservableObject {
             conversations[i].storedLastContent = String(latest.text.prefix(240))
         }
         messageWindowVersions[id, default: 0] += 1
-        conversations[i].messages = Array(conversations[i].messages.suffix(windowDepth[id] ?? AgentMessageDatabase.pageSize))
+        if !isTemporarySession { conversations[i].messages = Array(conversations[i].messages.suffix(windowDepth[id] ?? AgentMessageDatabase.pageSize)) }
         reconcileUnreadState(&conversations[i]); persist()
     }
     private func updateMessage(_ id: UUID, _ messageID: UUID, _ body: (inout AgentMessage) -> Void) {
@@ -455,6 +506,7 @@ final class AgentStore: ObservableObject {
     }
     func select(_ id: UUID) { selectedID = id; viewingLatest = true; update(id) { $0.lastOpenedAt = Date() } }
     func viewedLatest(_ id: UUID) {
+        guard !isTemporarySession else { return }
         guard !historyLoading, visibleConversationID == id, viewingLatest, let conversation = conversation(id) else { return }
         var versions = readReceipts[id.uuidString.lowercased()]?.versions ?? [:]
         versions.merge(Dictionary(uniqueKeysWithValues: conversation.messages.filter { $0.role == .assistant }
@@ -509,6 +561,18 @@ final class AgentStore: ObservableObject {
         }.sorted { $0.updatedAt > $1.updatedAt }
     }
     func prepare() async {
+        guard !temporaryClosed else { return }
+        if isTemporarySession {
+            do {
+                let values = try await fetchVerifiedCapabilities()
+                guard !temporaryClosed, !Task.isCancelled else { return }
+                capabilities = values
+                lastVerifiedCapabilityScope = client.capabilitiesCacheScope
+                lastCapabilityCheck = Date()
+                for intent in Array(pendingStops.values) { Task { [weak self] in await self?.confirmStop(intent) } }
+            } catch { if !Task.isCancelled { notice = error.localizedDescription } }
+            return
+        }
 #if DEBUG
         if Self.isEditingUITest || Self.isChatRepairUITest { return }
 #endif
@@ -521,7 +585,7 @@ final class AgentStore: ObservableObject {
             let values = try await fetchVerifiedCapabilities()
             try Task.checkCancellation()
             if capabilities != values { capabilities = values }
-            lastVerifiedCapabilityScope = CodexClient.shared.capabilitiesCacheScope
+            lastVerifiedCapabilityScope = client.capabilitiesCacheScope
             lastCapabilityCheck = Date()
             cacheVerifiedCapabilities(values)
             for i in conversations.indices {
@@ -548,7 +612,7 @@ final class AgentStore: ObservableObject {
     @discardableResult
     func send(text: String, attachments: [AgentAsset] = [], editingMessageID: UUID? = nil,
               preparedRemoteID: String? = nil, preparedThreadID: String? = nil) -> Bool {
-        guard !historyLoading, let conversation = current, !conversation.isBusy,
+        guard !temporaryClosed, !historyLoading, let conversation = current, !conversation.isBusy,
               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty else { return false }
         guard !capabilities.hasOnlyHiddenModels else {
             notice = "当前没有可用模型，请刷新后重试"
@@ -599,7 +663,7 @@ final class AgentStore: ObservableObject {
         update(id) { item in
             if let editIndex {
                 let discardedIDs = item.messages.dropFirst(editIndex).map(\.id)
-                synchronizer.deleteMany(kind: "messages", ids: discardedIDs)
+                if !isTemporarySession { synchronizer.deleteMany(kind: "messages", ids: discardedIDs) }
                 removedMessages.formUnion(discardedIDs)
                 item.messages = Array(item.messages.prefix(editIndex))
                 item.remoteConversationID = remoteID
@@ -668,12 +732,12 @@ final class AgentStore: ObservableObject {
                 let files = try assets.filter { !$0.isImage }.map {
                     CodexFileUpload(data: try Data(contentsOf: $0.url), filename: $0.filename)
                 }
-                let jobID = try await CodexClient.shared.createJob(
+                let jobID = try await client.createJob(
                     prompt: text, uploads: uploads, conversationID: remoteID,
                     requestID: reply.requestID!, reasoning: reasoning, model: reply.model, files: files
                 )
                 guard self.taskVersions[id] == version, self.conversation(id)?.pendingMessageID == reply.id else {
-                    _ = try? await CodexClient.shared.cancel(jobID: jobID)
+                    _ = try? await client.cancel(jobID: jobID)
                     return
                 }
                 self.update(id) { $0.pendingJobID = jobID }
@@ -725,13 +789,16 @@ final class AgentStore: ObservableObject {
         }
         guard await persistDurably() else { return false }
         let retained: [String]
-        do { retained = try await messageDatabase.prompts(conversation: conversationID, before: messageID) }
+        do {
+            if isTemporarySession { retained = original.messages.prefix(index).filter { $0.role == .user }.map(\.text) }
+            else { retained = try await messageDatabase.prompts(conversation: conversationID, before: messageID) }
+        }
         catch { notice = "历史消息读取失败，原消息未修改"; return false }
         let originalText = original.messages[index].text
         let sourceRemoteID = original.remoteConversationID ?? original.id.uuidString
         let newRemoteID = UUID().uuidString
         do {
-            let forkedThreadID = try await CodexClient.shared.forkConversation(
+            let forkedThreadID = try await client.forkConversation(
                 sourceID: sourceRemoteID, targetID: newRemoteID,
                 retainedPrompts: retained, replacedPrompt: originalText)
             guard selectedID == conversationID,
@@ -787,7 +854,7 @@ final class AgentStore: ObservableObject {
             for _ in 0..<64 {
                 try Task.checkCancellation()
                 guard Date() < deadline else { throw AgentClientError.message("查询提交状态超时") }
-                let response = try await CodexClient.shared.sync(after: cursor)
+                let response = try await client.sync(after: cursor)
                 for change in response.changes where change.kind == "messages" && !change.deleted {
                     guard let data = change.data, data["role"]?.string == "assistant",
                           let requestID = data["requestId"]?.string?.lowercased(), requests.contains(requestID),
@@ -828,14 +895,14 @@ final class AgentStore: ObservableObject {
             guard conversation(id)?.pendingJobID == jobID, !Task.isCancelled else { return }
             do {
                 let after = conversation(id)?.lastEventID ?? 0
-                for try await event in CodexClient.shared.events(jobID: jobID, after: after) {
+                for try await event in client.events(jobID: jobID, after: after) {
                     guard conversation(id)?.pendingJobID == jobID else { return }
                     if event.seq <= (conversation(id)?.lastEventID ?? 0) { continue }
                     for remote in ([event.asset].compactMap { $0 } + (event.assets ?? [])) {
                         let existing = conversation(id)?.messages.first { $0.id == messageID }?.assets ?? []
                         if existing.contains(where: { $0.remoteID == remote.id }) { continue }
                         updateMessage(id, messageID) { $0.phase = "接收结果中" }
-                        let local = try await CodexClient.shared.download(remote, inlineData: event.asset?.id == remote.id ? event.data : nil, dataMimeType: event.dataMimeType, dataFilename: event.dataFilename,
+                        let local = try await client.download(remote, inlineData: event.asset?.id == remote.id ? event.data : nil, dataMimeType: event.dataMimeType, dataFilename: event.dataFilename,
                             onProgress: { [weak self] count, total in
                                 guard let self, self.conversation(id)?.pendingJobID == jobID else { return }
                                 self.updateMessage(id, messageID) { $0.phase = "接收图片 \(count / 1024) / \(max(1, total / 1024)) KB" }
@@ -843,7 +910,7 @@ final class AgentStore: ObservableObject {
                         guard !Task.isCancelled, conversation(id)?.pendingJobID == jobID else { return }
                         updateMessage(id, messageID) { $0.assets.append(local) }
                         if local.isImage, let image = UIImage(contentsOfFile: local.url.path)?.normalizedCGImage {
-                            await history?.collectGeneratedImage(local)
+                            if !isTemporarySession { await history?.collectGeneratedImage(local) }
                             let images = conversation(id)?.messages.first { $0.id == messageID }?.assets.filter(\.isImage) ?? []
                             update(id) { $0.activeImageID = images.count == 1 ? local.id : nil }
                         }
@@ -889,11 +956,12 @@ final class AgentStore: ObservableObject {
     }
 
     private func refreshTitle(_ id: UUID) async {
+        guard !isTemporarySession else { return }
         guard let item = conversation(id), !item.titleIsManual, item.titleWasGenerated != true, !titleRequests.contains(id) else { return }
         titleRequests.insert(id)
         defer { titleRequests.remove(id) }
         let remoteID = item.remoteConversationID ?? id.uuidString
-        guard let title = try? await CodexClient.shared.title(conversationID: remoteID), !title.isEmpty else { return }
+        guard let title = try? await client.title(conversationID: remoteID), !title.isEmpty else { return }
         update(id) {
             if !$0.titleIsManual && ($0.remoteConversationID ?? id.uuidString) == remoteID {
                 $0.title = title
@@ -954,7 +1022,7 @@ final class AgentStore: ObservableObject {
     }
     private func confirmStop(_ intent: StopIntent) async {
         do {
-            let status = try await CodexClient.shared.cancel(requestID: intent.requestID)
+            let status = try await client.cancel(requestID: intent.requestID)
             pendingStops.removeValue(forKey: intent.requestID)
             updateMessage(intent.conversationID, intent.messageID) {
                 $0.state = .cancelled
@@ -995,6 +1063,13 @@ final class AgentStore: ObservableObject {
                         reasoning: reply.reasoning ?? item.reasoning)
     }
     func delete(_ id: UUID) async {
+        if isTemporarySession {
+            await stop(id)
+            conversations.removeAll { $0.id == id }
+            selectedID = conversations.first?.id
+            if conversations.isEmpty && !temporaryClosed { _ = newConversation() }
+            return
+        }
         guard !historyLoading else { return }
         if conversation(id)?.pendingJobID != nil {
             await stop(id)
@@ -1027,6 +1102,7 @@ final class AgentStore: ObservableObject {
     }
     func setProject(_ project: UUID?, conversation id: UUID) { update(id) { $0.projectID = project } }
     func applySync(_ change: AgentSyncChange, id: UUID, assets: [AgentAsset]) async throws {
+        guard !isTemporarySession else { return }
         if change.deleted {
             guard await persistDurably() else { throw NSError(domain: "ShiyanMessages", code: 2) }
             if change.kind == "projects" { projects.removeAll { $0.id == id }; for i in conversations.indices where conversations[i].projectID == id { conversations[i].projectID = nil } }
@@ -1137,5 +1213,26 @@ final class AgentStore: ObservableObject {
     private static func provisionalTitle(_ text: String) -> String {
         let cleaned = text.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespacesAndNewlines)
         return cleaned.isEmpty ? "图片对话" : String(cleaned.prefix(20))
+    }
+}
+
+
+extension AgentStore {
+    func closeTemporarySession() {
+        guard isTemporarySession, !temporaryClosed else { return }
+        temporaryClosed = true; canSave = false
+        let requests = Set(conversations.compactMap { c in
+            c.messages.first(where: { $0.id == c.pendingMessageID })?.requestID
+        } + Array(pendingStops.keys))
+        for task in tasks.values { task.cancel() }
+        tasks.removeAll(); taskVersions.removeAll()
+        for id in Array(backgroundTokens.keys) { endBackground(id) }
+        persistenceTask?.cancel(); bootstrap?.cancel()
+        conversations.removeAll(); selectedID = nil; blank = AgentConversation()
+        stagedMessages.removeAll(); localDirtyMessages.removeAll(); removedMessages.removeAll()
+        pendingStops.removeAll(); readReceipts.removeAll()
+        Self.temporaryStores.removeAll { $0.value == nil || $0.value === self }
+        let service = client
+        Task { for request in requests { _ = try? await service.cancel(requestID: request) } }
     }
 }

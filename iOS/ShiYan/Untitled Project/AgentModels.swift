@@ -172,13 +172,13 @@ struct AgentCapabilities: Codable, Equatable, Sendable {
 
 enum AgentMedia {
     nonisolated static var directory: URL {
-        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("AgentMedia", isDirectory: true)
+        ShiyanAccountStorage.directory("AgentMedia")
     }
     private static let cache = NSCache<NSString, UIImage>()
 
     static func image(_ asset: AgentAsset, maxPixel: Int = 1200) -> UIImage? {
         guard asset.isImage else { return nil }
-        let key = "\(asset.id)-\(maxPixel)" as NSString
+        let key = "\(ShiyanAccountStorage.owner)-\(asset.id)-\(maxPixel)" as NSString
         if let image = cache.object(forKey: key) { return image }
         guard let source = CGImageSourceCreateWithURL(asset.url as CFURL, nil),
               let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, [
