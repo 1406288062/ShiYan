@@ -31,7 +31,20 @@
     parser.renderer.rules.link_open=(tokens,index,options,env,self)=>{
       const t=tokens[index],raw=t.attrGet('href');
       if(generatedFileLink(raw)){t.attrSet('data-generated-file',raw);t.attrSet('href','#');}
-      else {t.attrSet('href',safeURL(raw)||'#');t.attrSet('target','_blank');t.attrSet('rel','noopener noreferrer');}
+      else {
+        const href=safeURL(raw),next=tokens[index+1];
+        t.attrSet('href',href||'#');t.attrSet('target','_blank');t.attrSet('rel','noopener noreferrer');
+        if(href){
+          t.attrJoin('class','message-reference');t.attrSet('title',href);
+          if(next?.type==='text' && tokens[index+2]?.type==='link_close'){
+            const label=next.content;
+            if(/^(?:https?:\/\/|www\.)/i.test(label)){
+              const url=new URL(href),path=url.pathname.split('/').filter(Boolean)[0];
+              next.content=url.hostname.replace(/^www\./,'')+(path?' / '+(path.length>24?path.slice(0,23)+'…':path):'');
+            }
+          }
+        }
+      }
       return link(tokens,index,options,env,self);
     };
     parser.renderer.rules.image=(tokens,index,options,env,self)=>{

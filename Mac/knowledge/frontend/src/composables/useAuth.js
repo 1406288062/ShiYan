@@ -1,5 +1,6 @@
+import {setKnowledgeCacheOwner, clearKnowledgeCache} from './knowledgeCache'
 import { ref } from 'vue'
-import { apiFetch, isShiYanEmbedded } from './useApi'
+import { apiFetch, isShiYanEmbedded, primeKnowledgeCache } from './useApi'
 
 const TOKEN_KEY = 'knowledgeAgentToken'
 
@@ -16,6 +17,7 @@ export function useAuth() {
   function saveSession(result) {
     token.value = result.access_token
     user.value = result.user
+    setKnowledgeCacheOwner(result.user.id)
     localStorage.setItem(TOKEN_KEY, token.value)
   }
 
@@ -29,6 +31,8 @@ export function useAuth() {
         const account = window.parent !== window ? window.parent.ShiYanAccount : null
         const current = account ? await account.ready : (await apiFetch('/api/auth/me')).user
         if (!current?.id) throw new Error('请在拾燕中登录')
+        setKnowledgeCacheOwner(current.id)
+        await primeKnowledgeCache()
         user.value = { ...current, display_name: current.display_name || current.displayName || current.email }
         return true
       } catch (err) {
@@ -49,6 +53,7 @@ export function useAuth() {
     try {
       const result = await apiFetch('/api/auth/me', { token: token.value })
       user.value = result.user
+      setKnowledgeCacheOwner(result.user.id)
       return true
     } catch (err) {
       if (err?.status === 401 || err?.status === 403) {
@@ -94,6 +99,7 @@ export function useAuth() {
   }
 
   function logout() {
+    clearKnowledgeCache(); setKnowledgeCacheOwner('')
     if (embedded) {
       const account = window.parent !== window ? window.parent.ShiYanAccount : null
       if (account) return account.logout(document.createElement('button'))

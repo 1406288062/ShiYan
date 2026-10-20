@@ -38,6 +38,8 @@
   function invalidate() {
     if (expiring) return;
     expiring = true;
+    // Discard reading copies when the account session changes.
+    try { for (const key of Object.keys(localStorage)) if (key.startsWith('shiyan.knowledge.read.v1:')) localStorage.removeItem(key); } catch {}
     document.documentElement.classList.remove('account-ready');
     document.documentElement.classList.add('account-locked');
     if ($('app')) $('app').inert = true;

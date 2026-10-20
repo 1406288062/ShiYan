@@ -596,12 +596,31 @@ extension CodexClient {
     }
     private func knowledgeBytes(method: String = "GET", route: String, object: [String: Any]? = nil,
                                 body: Data? = nil, contentType: String? = nil) async throws -> Data {
+        let owner = ShiyanAccountStorage.owner
+        let mutation = method != "GET" && ["spaces", "knowledge-bases", "documents"].contains(route.components(separatedBy: "/").first ?? "")
+        if mutation { await Task.detached(priority: .utility) { KnowledgeReadingCache.clear(owner) }.value }
+        let cacheEpoch = KnowledgeReadingCache.epoch(owner)
         try await prepareConnection()
         let req = try request(method: method, route: "knowledge/" + route, object: object, rawBody: body, contentType: contentType)
         // Graphs and answers may wait for upstream work before their first byte.
         // Other requests retain the transport's normal 20-second idle limit.
         let waitsForContent = route == "query" || route.hasSuffix("/knowledge")
-        return try await response(req, timeout: 250, idleTimeout: waitsForContent ? 250 : nil).body
+        let data = try await response(req, timeout: 250, idleTimeout: waitsForContent ? 250 : nil).body
+        guard accountGeneration == ShiyanAccountStorage.generation else { throw CancellationError() }
+        await Task.detached(priority: .utility) {
+            if method == "GET" { KnowledgeReadingCache.write(data, route: route, owner: owner, epoch: cacheEpoch) }
+            else if mutation { KnowledgeReadingCache.clear(owner) }
+        }.value
+        return data
+    }
+    func cachedKnowledge<T: Decodable & Sendable>(_ type: T.Type, route: String) async -> T? {
+        let owner = ShiyanAccountStorage.owner
+        let value: T? = await Task.detached(priority: .utility) {
+            guard let data = KnowledgeReadingCache.read(route, owner: owner) else { return nil }
+            return try? JSONDecoder().decode(type, from: data)
+        }.value
+        guard accountGeneration == ShiyanAccountStorage.generation else { return nil }
+        return value
     }
     private func knowledgeDecode<T: Decodable>(_ type: T.Type, method: String = "GET", route: String, object: [String: Any]? = nil) async throws -> T {
         try JSONDecoder().decode(type, from: await knowledgeBytes(method: method, route: route, object: object))
@@ -661,5 +680,61 @@ extension CodexClient {
         body.append(data); body.append(Data("\r\n--\(boundary)--\r\n".utf8))
         let bytes = try await knowledgeBytes(method: "POST", route: "knowledge-bases/\(knowledgeKey(baseID))/documents", body: body, contentType: "multipart/form-data; boundary=\(boundary)")
         return try JSONDecoder().decode(KnowledgeUpload.self, from: bytes)
+    }
+}
+
+// Local reading copies only; source documents and AI answers are not cached here.
+nonisolated enum KnowledgeReadingCache {
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var epochs: [String: Int] = [:]
+    private static let maxAge: TimeInterval = 24 * 60 * 60
+    private static let maxBytes = 32 * 1024 * 1024
+    private static func folder(_ owner: String) -> URL {
+        ShiyanAccountStorage.directory("KnowledgeReading-v1", domain: .cachesDirectory, owner: owner)
+    }
+    private static func file(_ route: String, _ owner: String) -> URL {
+        let key = SHA256.hash(data: Data(route.utf8)).map { String(format: "%02x", $0) }.joined()
+        return folder(owner).appendingPathComponent(key + ".json")
+    }
+    static func eligible(_ route: String) -> Bool {
+        route.range(of: #"^(spaces(/[^/]+/knowledge-bases)?|knowledge-bases/[^/]+/(documents|knowledge)|documents/[^/]+)$"#, options: .regularExpression) != nil
+    }
+    static func epoch(_ owner: String) -> Int { lock.withLock { epochs[owner, default: 0] } }
+    static func clear(_ owner: String) {
+        lock.withLock {
+            epochs[owner, default: 0] += 1
+            try? FileManager.default.removeItem(at: folder(owner))
+        }
+    }
+    static func read(_ route: String, owner: String) -> Data? {
+        guard owner != "signed-out", eligible(route) else { return nil }
+        return lock.withLock {
+            let url = file(route, owner)
+            guard let date = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
+                  Date().timeIntervalSince(date) >= 0, Date().timeIntervalSince(date) < maxAge,
+                  let data = try? Data(contentsOf: url), data.count <= 8 * 1024 * 1024,
+                  (try? JSONSerialization.jsonObject(with: data)) != nil else { try? FileManager.default.removeItem(at: url); return nil }
+            return data
+        }
+    }
+    static func write(_ data: Data, route: String, owner: String, epoch: Int) {
+        guard owner != "signed-out", eligible(route), data.count <= 8 * 1024 * 1024,
+              (try? JSONSerialization.jsonObject(with: data)) != nil else { return }
+        lock.withLock {
+            guard epochs[owner, default: 0] == epoch else { return }
+            let url = file(route, owner), fm = FileManager.default
+            try? data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            try? fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+            let files = (try? fm.contentsOfDirectory(at: folder(owner), includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey])) ?? []
+            let entries = files.compactMap { f -> (URL, Int, Date)? in
+                guard let v = try? f.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey]) else { return nil }
+                return (f, v.fileSize ?? 0, v.contentModificationDate ?? .distantPast)
+            }.sorted { $0.2 < $1.2 }
+            var total = entries.reduce(0) { $0 + $1.1 }, count = entries.count
+            for e in entries {
+                guard total > maxBytes || count > 64 || Date().timeIntervalSince(e.2) > maxAge else { continue }
+                try? fm.removeItem(at: e.0); total -= e.1; count -= 1
+            }
+        }
     }
 }

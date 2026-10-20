@@ -22,6 +22,11 @@ struct AgentSelectableText: UIViewRepresentable {
         view.isOpaque = false
         view.isEditable = false
         view.isSelectable = true
+        view.linkTextAttributes = [
+            .foregroundColor: UIColor.label,
+            .underlineStyle: 0,
+            .backgroundColor: UIColor.secondarySystemFill
+        ]
         view.isScrollEnabled = false
         view.showsVerticalScrollIndicator = false
         view.showsHorizontalScrollIndicator = false
@@ -90,7 +95,44 @@ struct AgentSelectableText: UIViewRepresentable {
                 offset += span.length
             }
         }
+        if markdown { styleReferences(value) }
         return value
+    }
+    // Keep destinations intact; only shorten raw URL labels in the reading view.
+    private static func styleReferences(_ value: NSMutableAttributedString) {
+        var links: [(NSRange, URL)] = []
+        let full = NSRange(location: 0, length: value.length)
+        value.enumerateAttribute(.link, in: full) { target, range, _ in
+            if let url = target as? URL { links.append((range, url)) }
+            else if let target = target as? String, let url = URL(string: target) { links.append((range, url)) }
+        }
+        if let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) {
+            for match in detector.matches(in: value.string, range: full) {
+                guard let url = match.url,
+                      !links.contains(where: { NSIntersectionRange($0.0, match.range).length > 0 }),
+                      value.attribute(.font, at: match.range.location, effectiveRange: nil)
+                        .flatMap({ $0 as? UIFont })?.fontDescriptor.symbolicTraits.contains(.traitMonoSpace) != true
+                else { continue }
+                links.append((match.range, url))
+            }
+        }
+        for (range, url) in links.sorted(by: { $0.0.location > $1.0.location }) {
+            guard ["http", "https", "mailto"].contains(url.scheme?.lowercased() ?? "") else {
+                value.removeAttribute(.link, range: range); continue
+            }
+            var label = (value.string as NSString).substring(with: range)
+            if label.lowercased().hasPrefix("http://") || label.lowercased().hasPrefix("https://") || label.lowercased().hasPrefix("www.") {
+                let host = (url.host ?? label).replacingOccurrences(of: "^www\\.", with: "", options: .regularExpression)
+                let path = url.pathComponents.dropFirst().first
+                label = host + (path.map { " / " + ($0.count > 24 ? String($0.prefix(23)) + "…" : $0) } ?? "")
+            }
+            var attributes = value.attributes(at: range.location, effectiveRange: nil)
+            attributes[.link] = url
+            attributes[.foregroundColor] = UIColor.label
+            attributes[.underlineStyle] = 0
+            attributes[.backgroundColor] = UIColor.secondarySystemFill
+            value.replaceCharacters(in: range, with: NSAttributedString(string: label + " ↗", attributes: attributes))
+        }
     }
     final class SelectionTextView: UITextView {
         private var selectionWork: DispatchWorkItem?

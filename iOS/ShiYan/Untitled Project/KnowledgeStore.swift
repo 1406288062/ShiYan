@@ -36,6 +36,10 @@ final class KnowledgeStore: ObservableObject {
         guard !loading else { return }
         loading = true; error = nil
         defer { loading = false }
+        if spaces.isEmpty, let cached = await client.cachedKnowledge([KnowledgeSpace].self, route: "spaces") {
+            spaces = cached
+            if let id = cached.first?.id { await restoreCachedSpace(id) }
+        }
         do {
             let values = try await client.knowledgeSpaces()
             guard accountGeneration == ShiyanAccountStorage.generation, !Task.isCancelled else { return }
@@ -59,10 +63,12 @@ final class KnowledgeStore: ObservableObject {
         selectedSpaceID = id; selectedBaseID = nil
         documents = []; graph = nil; messages = []; tasks = []; watchedTasks = []; conversationID = nil
         let navigation = navigationID
+        await restoreCachedSpace(id)
         let values = try await client.knowledgeBases(spaceID: id)
         guard isCurrent(navigation) else { return }
         bases = values
         if let first = bases.first { try await loadBase(first.id) }
+        else { selectedBaseID = nil; documents = []; graph = nil }
     }
 
     func selectBase(_ id: String) async {
@@ -76,7 +82,30 @@ final class KnowledgeStore: ObservableObject {
         queryTask?.cancel(); navigationID = UUID()
         cancelGraph()
         selectedBaseID = id; documents = []; graph = nil; messages = []; tasks = []; watchedTasks = []; conversationID = nil
+        await restoreCachedBase(id)
         try await refreshBase(includeHistory: true)
+    }
+
+    private func restoreCachedSpace(_ id: String) async {
+        let navigation = navigationID
+        let cached = await client.cachedKnowledge([KnowledgeBase].self, route: "spaces/\(id)/knowledge-bases")
+        guard isCurrent(navigation) else { return }
+        selectedSpaceID = id; bases = cached ?? []
+        if let first = bases.first { selectedBaseID = first.id; await restoreCachedBase(first.id) }
+    }
+
+    private func restoreCachedBase(_ id: String) async {
+        let navigation = navigationID
+        async let cachedDocuments = client.cachedKnowledge([KnowledgeDocument].self, route: "knowledge-bases/\(id)/documents")
+        async let cachedGraph = client.cachedKnowledge(KnowledgeGraph.self, route: "knowledge-bases/\(id)/knowledge")
+        let values = await (cachedDocuments, cachedGraph)
+        guard isCurrent(navigation), selectedBaseID == id else { return }
+        if let value = values.0 { documents = value }
+        if let value = values.1 { graph = value }
+    }
+
+    func cachedDocumentDetail(_ id: String) async -> KnowledgeDocument? {
+        await client.cachedKnowledge(KnowledgeDocument.self, route: "documents/\(id)")
     }
 
     func refresh() async {

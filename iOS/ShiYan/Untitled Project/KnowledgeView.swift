@@ -571,6 +571,8 @@ private struct KnowledgeDocumentView: View {
             .navigationTitle("文档").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarLeading) { ShiyanCloseButton(action: { dismiss() }, inToolbar: true) } }
             .task {
+                detail = await store.cachedDocumentDetail(document.id)
+                if detail != nil { loading = false }
                 do { detail = try await store.documentDetail(document.id) } catch { self.error = error.localizedDescription }
                 loading = false
             }

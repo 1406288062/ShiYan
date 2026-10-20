@@ -455,7 +455,9 @@ struct AIAgentView: View {
                 GeneratedImagePreview(image: image)
             } else {
                 NavigationStack {
-                    AgentFilePreview(url: asset.url).ignoresSafeArea()
+                    AgentDocumentPreview(asset: asset)
+                        .navigationTitle(asset.filename)
+                        .navigationBarTitleDisplayMode(.inline)
                         .toolbar { ToolbarItem(placement: .topBarLeading) { Button("关闭") { preview = nil } } }
                 }
             }

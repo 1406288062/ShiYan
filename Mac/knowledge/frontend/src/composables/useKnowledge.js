@@ -15,17 +15,18 @@ export function useKnowledge({ token, currentKnowledgeBaseId }) {
       error.value = ''
       return null
     }
+    knowledgeData.value = null
     loading.value = true
     error.value = ''
     try {
-      const result = await apiFetch(`/api/knowledge-bases/${kbId}/knowledge`, { token: token.value })
+      const result = await apiFetch(`/api/knowledge-bases/${kbId}/knowledge`, { token: token.value, onCached: value => { if (currentRequestId === requestId && currentKnowledgeBaseId.value === kbId) knowledgeData.value = value } })
       if (currentRequestId !== requestId || currentKnowledgeBaseId.value !== kbId) return result
       knowledgeData.value = result
       return knowledgeData.value
     } catch (err) {
       if (currentRequestId !== requestId || currentKnowledgeBaseId.value !== kbId) return null
       error.value = err.message || '知识图谱加载失败'
-      knowledgeData.value = null
+      if ([401,403,404].includes(err.status)) knowledgeData.value = null
       throw err
     } finally {
       if (currentRequestId === requestId && currentKnowledgeBaseId.value === kbId) loading.value = false

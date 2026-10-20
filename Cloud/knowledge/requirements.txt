@@ -1,0 +1,8 @@
+fastapi>=0.141,<0.142
+uvicorn>=0.52,<0.55
+pdfplumber==0.11.10
+chromadb==1.5.9
+python-dotenv>=1.2,<2
+pydantic>=2.13,<3
+requests>=2.34,<3
+python-multipart>=0.0.32,<0.1

@@ -1,3 +1,4 @@
+import {readKnowledgeCache} from './knowledgeCache'
 import { ref, computed, watch } from 'vue'
 import { apiFetch } from './useApi'
 
@@ -51,14 +52,14 @@ export function useWorkspace({ token }) {
   async function loadKnowledgeBaseDocuments(kbId, force = false) {
     if (!kbId) return []
     const hasCache = Object.prototype.hasOwnProperty.call(documentsByKnowledgeBase.value, kbId)
-    if (!force && hasCache) return documentsByKnowledgeBase.value[kbId]
+    if (hasCache && currentKnowledgeBaseId.value === kbId) documents.value = documentsByKnowledgeBase.value[kbId]
 
     const pendingRequest = documentsRequests.get(kbId)
     if (pendingRequest && !force) return pendingRequest
     setDocumentsError(kbId, '')
 
     setDocumentsLoading(kbId, true)
-    const request = apiFetch(`/api/knowledge-bases/${kbId}/documents`, { token: token.value })
+    const request = apiFetch(`/api/knowledge-bases/${kbId}/documents`, { token: token.value, onCached: items => { cacheDocuments(kbId, items); if (currentKnowledgeBaseId.value === kbId) documents.value = items } })
       .then((result) => {
         if (documentsRequests.get(kbId) !== request) return result
         const stillVisible = knowledgeBases.value.some(item => item.id === kbId)
@@ -89,8 +90,18 @@ export function useWorkspace({ token }) {
     const previousKnowledgeBaseId = currentKnowledgeBaseId.value
     loading.value = true
     clearError()
+    const cachedSpaces = readKnowledgeCache('/api/spaces')
+    if (!currentSpaceId.value && cachedSpaces?.length) {
+      spaces.value = cachedSpaces
+      currentSpaceId.value = cachedSpaces[0].id
+      knowledgeBases.value = sortKnowledgeBases(readKnowledgeCache(`/api/spaces/${currentSpaceId.value}/knowledge-bases`) || [])
+      if (knowledgeBases.value.length) {
+        currentKnowledgeBaseId.value = knowledgeBases.value[0].id
+        documents.value = readKnowledgeCache(`/api/knowledge-bases/${currentKnowledgeBaseId.value}/documents`) || []
+      }
+    }
     try {
-      const result = await apiFetch('/api/spaces', { token: token.value })
+      const result = await apiFetch('/api/spaces', { token: token.value, onCached: items => { if (requestId === spacesRequestId) spaces.value = items } })
       if (requestId !== spacesRequestId) return
       spaces.value = result
       const selected = spaces.value.find(item => item.id === previousSpaceId) || spaces.value[0]
@@ -119,8 +130,17 @@ export function useWorkspace({ token }) {
     documentsErrorByKnowledgeBase.value = {}
     documentsRequests.clear()
     loading.value = true
+    const cachedBases = readKnowledgeCache(`/api/spaces/${spaceId}/knowledge-bases`)
+    if (cachedBases) {
+      knowledgeBases.value = sortKnowledgeBases(cachedBases)
+      const selected = knowledgeBases.value.find(item => item.id === preferredKnowledgeBaseId) || knowledgeBases.value[0]
+      if (selected) {
+        currentKnowledgeBaseId.value = selected.id
+        documents.value = readKnowledgeCache(`/api/knowledge-bases/${selected.id}/documents`) || []
+      }
+    }
     try {
-      const result = await apiFetch(`/api/spaces/${spaceId}/knowledge-bases`, { token: token.value })
+      const result = await apiFetch(`/api/spaces/${spaceId}/knowledge-bases`, { token: token.value, onCached: items => { if (requestId === spaceRequestId && currentSpaceId.value === spaceId) knowledgeBases.value = sortKnowledgeBases(items) } })
       if (requestId !== spaceRequestId || currentSpaceId.value !== spaceId) return
       knowledgeBases.value = sortKnowledgeBases(result)
       const selected = knowledgeBases.value.find(item => item.id === preferredKnowledgeBaseId) || knowledgeBases.value[0]

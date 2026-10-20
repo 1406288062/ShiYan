@@ -383,6 +383,9 @@ def register_accounts(app):
             async with manager.restore_lock:
                 if manager.matches(request):
                     resources = manager.resources
+                    if resources:
+                        from .knowledge_cache import KnowledgeReadCache
+                        await asyncio.to_thread(KnowledgeReadCache(resources.runtime.storage.root).clear)
                     generation = manager.generation
                     try:
                         if resources: await resources.runtime.gateway.json("POST", "auth/logout", {}, timeout=10)

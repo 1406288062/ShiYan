@@ -1,0 +1,19 @@
+[Unit]
+Description=ShiYan cloud knowledge storage and retrieval
+After=network-online.target shiyan-knowledge-embedding.service
+Wants=shiyan-knowledge-embedding.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/ubuntu/shiyan-knowledge/app
+EnvironmentFile=/home/ubuntu/shiyan-knowledge/service.env
+ExecStart=/home/ubuntu/shiyan-knowledge/venv/bin/python /home/ubuntu/shiyan-knowledge/app/Cloud/knowledge/run_service.py
+Restart=on-failure
+RestartSec=5
+UMask=0077
+MemoryMax=700M
+MemorySwapMax=512M
+Nice=5
+
+[Install]
+WantedBy=default.target

@@ -7,11 +7,17 @@ import re
 from fastapi import Request
 from fastapi.responses import Response
 from .gateway import GatewayError
+from .knowledge_cache import KnowledgeReadCache
 
 MAX_BODY = 60 * 1024 * 1024
 
 
 def register_knowledge(app):
+    @app.get('/api/knowledge-cache')
+    async def reading_cache(request: Request):
+        cache = KnowledgeReadCache(request.app.state.runtime.storage.root)
+        return await asyncio.to_thread(cache.snapshot)
+
     @app.api_route('/api/knowledge/{route:path}', methods=['GET', 'POST', 'PATCH', 'DELETE'])
     async def knowledge(route: str, request: Request):
         if not re.fullmatch(r'[A-Za-z0-9_/-]{1,600}', route) or '..' in route:
@@ -19,6 +25,11 @@ def register_knowledge(app):
         gateway = request.app.state.runtime.gateway
         if not gateway.account_token:
             raise GatewayError('请先登录', 401)
+        cache = KnowledgeReadCache(request.app.state.runtime.storage.root)
+        mutation = request.method != 'GET' and route.split('/')[0] in {'spaces', 'knowledge-bases', 'documents'}
+        if mutation:
+            await asyncio.to_thread(cache.clear)
+        cache_epoch = cache.epoch()
         body = bytearray()
         async for part in request.stream():
             body.extend(part)
@@ -45,6 +56,13 @@ def register_knowledge(app):
 
         try:
             status, result = await asyncio.to_thread(perform)
+            if 200 <= status < 300:
+                if request.method == 'GET' and not query:
+                    await asyncio.to_thread(cache.write, route, result, cache_epoch)
+                elif mutation:
+                    await asyncio.to_thread(cache.clear)
+            elif status in {401, 403, 404}:
+                await asyncio.to_thread(cache.clear)
             return Response(result, status_code=status, media_type='application/json', headers={'Cache-Control': 'no-store'})
         except (OSError, http.client.HTTPException) as error:
             raise GatewayError('Mac 知识库暂时无法连接，请稍后重试', 503) from error

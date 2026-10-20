@@ -489,8 +489,8 @@ onUnmounted(() => {
               <span v-if="knowledgeData?.relation_count" class="stage-relation-count">{{ knowledgeData.relation_count }} 条关系</span>
             </div>
           </div>
-          <div v-if="knowledgeLoading || workspaceLoading" class="workspace-loading"><div class="loading-orbit"></div><span>正在绘制知识地图…</span></div>
-          <div v-else-if="combinedError" class="workspace-empty workspace-empty--error">
+          <div v-if="(knowledgeLoading || workspaceLoading) && !knowledgeData?.structure" class="workspace-loading"><div class="loading-orbit"></div><span>正在绘制知识地图…</span></div>
+          <div v-else-if="combinedError && !knowledgeData?.structure" class="workspace-empty workspace-empty--error">
             <h2>暂时无法读取知识库</h2>
             <p>{{ combinedError }}</p>
             <button class="primary-button" type="button" @click="retryKnowledgeBase">重新加载</button>

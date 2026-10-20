@@ -67,7 +67,7 @@ class VectorService:
     @staticmethod
     def _provider_model(provider: str) -> str:
         if provider == "qwen":
-            return str(LOCAL_EMBEDDING_MODEL)
+            return os.getenv("SHIYAN_QWEN_MODEL_ID", str(LOCAL_EMBEDDING_MODEL))
         return DOUBAO_EM_MODEL
 
     @staticmethod
@@ -338,6 +338,13 @@ class VectorService:
         PyTorch/MPS never loads into the FastAPI worker, so Metal allocations are
         returned to macOS when the child exits.
         """
+        endpoint = os.getenv("SHIYAN_QWEN_EMBEDDING_URL", "")
+        if endpoint:
+            try:
+                from services.qwen_http import embed_qwen
+                return embed_qwen(texts, operation, LOCAL_EMBEDDING_QUERY_INSTRUCTION, endpoint, progress_callback)
+            except Exception as error:
+                raise LocalEmbeddingError("云端向量服务暂时不可用，请稍后重试。") from error
         worker_path = Path(__file__).with_name("embedding_worker.py")
         payload = {
             "texts": texts,

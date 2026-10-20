@@ -1,6 +1,8 @@
 import SwiftUI
 import UIKit
 import QuickLook
+import PDFKit
+import UniformTypeIdentifiers
 import CoreText
 
 extension UIImage {
@@ -756,6 +758,155 @@ struct AgentGauge: View, Animatable {
             .frame(width: 25, height: 25)
         }
         .accessibilityHidden(true)
+    }
+}
+
+// A synced document may not be on disk when its card is tapped. Keep loading,
+// format recognition, and native PDF reading in the same presentation.
+struct AgentDocumentPreview: View {
+    let asset: AgentAsset
+    @ObservedObject private var account = ShiyanAccount.shared
+    @State private var owner = ShiyanAccountStorage.owner
+    @State private var readyURL: URL?
+    @State private var failure: String?
+    @State private var attempt = 0
+
+    var body: some View {
+        Group {
+            if let readyURL {
+                if readyURL.pathExtension.lowercased() == "pdf" {
+                    AgentPDFReader(url: readyURL)
+                } else {
+                    AgentFilePreview(url: readyURL)
+                }
+            } else {
+                VStack(spacing: 16) {
+                    if let failure {
+                        Image(systemName: "doc.text").font(.title2).foregroundStyle(.secondary)
+                        Text(failure).font(.body).multilineTextAlignment(.center)
+                        Button("重新加载") { attempt += 1 }
+                    } else {
+                        ProgressView("正在加载文件…")
+                        Text(asset.filename).font(.subheadline).foregroundStyle(.secondary)
+                    }
+                }
+                .padding(24).frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .accessibilityIdentifier("agent-document-preview")
+        .task(id: attempt) { await load() }
+        .onChange(of: account.user?.owner) { _, _ in
+            readyURL = nil
+            failure = "账户已切换，请关闭后重新打开文件。"
+        }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                if let readyURL {
+                    ShareLink(item: readyURL) { Label("分享文件", systemImage: "square.and.arrow.up") }
+                }
+            }
+        }
+    }
+
+    private func load() async {
+        guard owner == ShiyanAccountStorage.owner else {
+            failure = "账户已切换，请关闭后重新打开文件。"; return
+        }
+        readyURL = nil; failure = nil
+        let generation = ShiyanAccountStorage.generation
+        let original = asset.url
+        let folder = AgentMedia.directory.appendingPathComponent("DocumentPreviews", isDirectory: true)
+            .appendingPathComponent(asset.id.uuidString.lowercased(), isDirectory: true)
+        let filename = asset.filename, mimeType = asset.mimeType
+        do {
+            var source = original
+            if (attempt > 0 && (asset.syncAssetID != nil || asset.remoteID != nil)) ||
+                !FileManager.default.fileExists(atPath: original.path) ||
+                ((try? original.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) == 0 {
+                if let key = asset.syncAssetID {
+                    let bytes = try await CodexClient.shared.syncAsset(id: key)
+                    try Task.checkCancellation()
+                    guard generation == ShiyanAccountStorage.generation else { throw CancellationError() }
+                    try await Task.detached(priority: .userInitiated) {
+                        try FileManager.default.createDirectory(at: original.deletingLastPathComponent(), withIntermediateDirectories: true)
+                        try bytes.write(to: original, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+                    }.value
+                } else if let remoteID = asset.remoteID {
+                    let remote = AgentRemoteAsset(id: remoteID, filename: filename, mimeType: mimeType, bytes: nil)
+                    let downloaded = try await CodexClient.shared.download(remote)
+                    source = downloaded.url
+                } else {
+                    throw AgentClientError.message("文件尚未下载完成，请稍后重试。")
+                }
+            }
+            try Task.checkCancellation()
+            guard generation == ShiyanAccountStorage.generation else { throw CancellationError() }
+            let sourceURL = source
+            let prepared = try await Task.detached(priority: .userInitiated) {
+                try AgentDocumentPreviewFiles.prepare(source: sourceURL, filename: filename, mimeType: mimeType, folder: folder)
+            }.value
+            try Task.checkCancellation()
+            guard generation == ShiyanAccountStorage.generation else { throw CancellationError() }
+            readyURL = prepared
+        } catch is CancellationError {
+            // Closing the reader or switching accounts must not reveal stale data.
+        } catch {
+            failure = error.localizedDescription
+        }
+    }
+}
+
+private nonisolated enum AgentDocumentPreviewFiles {
+    static func prepare(source: URL, filename: String, mimeType: String, folder: URL) throws -> URL {
+        var name = (filename.replacingOccurrences(of: "\0", with: "") as NSString).lastPathComponent
+        if name.isEmpty || name == "." || name == ".." { name = "附件" }
+        let isPDF = mimeType.lowercased().split(separator: ";").first == "application/pdf" ||
+            (name as NSString).pathExtension.lowercased() == "pdf"
+        if isPDF, (name as NSString).pathExtension.lowercased() != "pdf" { name += ".pdf" }
+        if (name as NSString).pathExtension.isEmpty,
+           let ext = UTType(mimeType: mimeType)?.preferredFilenameExtension { name += "." + ext }
+        guard let size = try source.resourceValues(forKeys: [.fileSizeKey]).fileSize, size > 0 else {
+            throw AgentClientError.message("文件内容为空，请重新加载。")
+        }
+        if isPDF {
+            guard let document = PDFDocument(url: source) else {
+                throw AgentClientError.message("PDF 文件不完整或无法读取，请重新加载。")
+            }
+            guard !document.isLocked else {
+                throw AgentClientError.message("PDF 已加密，请先解锁文件后再打开。")
+            }
+            guard document.pageCount > 0 else {
+                throw AgentClientError.message("PDF 中没有可显示的页面。")
+            }
+        }
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let target = folder.appendingPathComponent(name)
+        // Keep the original sync path and IDs intact. A correctly named reading
+        // copy lets Quick Look recognize Word and other supported formats too.
+        let bytes = try Data(contentsOf: source, options: .mappedIfSafe)
+        try bytes.write(to: target, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: target.path)
+        return target
+    }
+}
+
+private struct AgentPDFReader: UIViewRepresentable {
+    let url: URL
+    func makeUIView(context: Context) -> PDFView {
+        let view = PDFView()
+        view.displayMode = .singlePageContinuous
+        view.displayDirection = .vertical
+        view.displaysPageBreaks = true
+        view.backgroundColor = .systemBackground
+        view.document = PDFDocument(url: url)
+        view.autoScales = true
+        view.accessibilityIdentifier = "agent-pdf-reader"
+        return view
+    }
+    func updateUIView(_ view: PDFView, context: Context) {
+        guard view.document?.documentURL != url else { return }
+        view.document = PDFDocument(url: url)
+        view.autoScales = true
     }
 }
 

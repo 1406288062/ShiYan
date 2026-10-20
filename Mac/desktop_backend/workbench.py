@@ -25,16 +25,18 @@ import struct
 import subprocess
 import sys
 import termios
+import threading
 import time
 from urllib.parse import urlsplit
 import uuid
 
 from fastapi import HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
 from .storage import now, new_id
 
 TEXT_LIMIT = 2 * 1024 * 1024
 IMAGE_LIMIT = 8 * 1024 * 1024
+PDF_LIMIT = 64 * 1024 * 1024
 
 
 def valid_name(value):
@@ -269,6 +271,8 @@ class Workbench:
         self.storage = runtime.storage
         self.token = secrets.token_urlsafe(32)
         self.terminals = {}
+        self.pdf_previews = {}
+        self.pdf_preview_lock = threading.RLock()
 
     def preferences(self):
         return self.storage.setting("workspace", {})
@@ -418,6 +422,13 @@ class Workbench:
         size = target.stat().st_size
         mime = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
         base = {"name": target.name, "path": str(target), "size": size, "projectId": project_id, "fileId": file_id}
+        if target.suffix.lower() == ".pdf":
+            if size > PDF_LIMIT:
+                return {**base, "kind": "large", "message": "PDF 超过 64 MB 预览上限，请在本地阅读器中打开"}
+            with target.open("rb") as handle:
+                if b"%PDF-" not in handle.read(1024):
+                    raise ValueError("PDF 文件不完整或格式无效")
+            return {**base, "kind": "pdf", "mimeType": "application/pdf"}
         image = mime in {"image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp"}
         limit = IMAGE_LIMIT if image else TEXT_LIMIT
         if size > limit:
@@ -456,6 +467,26 @@ class Workbench:
         return {**base, "kind": "text", "text": text, "encoding": encoding,
                 "language": target.suffix.lower().lstrip("."), "sensitive": sensitive, "contentHash":hashlib.sha256(raw).hexdigest()}
 
+    def pdf_preview_file(self, reference):
+        file = self.read_file(reference)
+        if file["kind"] == "large":
+            raise HTTPException(413, file["message"])
+        if file["kind"] != "pdf":
+            raise HTTPException(415, "此文件不是可预览的 PDF")
+        return file
+
+    def create_pdf_preview(self, reference):
+        self.pdf_preview_file(reference)
+        reference = {key: reference[key] for key in ("fileId", "projectId", "path") if key in reference}
+        now = time.monotonic()
+        with self.pdf_preview_lock:
+            self.pdf_previews = {key: value for key, value in self.pdf_previews.items() if value["expires"] > now}
+            while len(self.pdf_previews) >= 64:
+                self.pdf_previews.pop(next(iter(self.pdf_previews)))
+            ticket = secrets.token_urlsafe(32)
+            self.pdf_previews[ticket] = {"reference": reference, "expires": now + 1800}
+        return "/api/workspace/files/pdf/" + ticket
+
     def grant_file(self, path):
         target = Path(str(path or "")).expanduser().resolve()
         if not target.is_file():
@@ -468,6 +499,7 @@ class Workbench:
     async def close(self):
         await asyncio.gather(*(x.close() for x in self.terminals.values()), return_exceptions=True)
         self.terminals.clear()
+        self.pdf_previews.clear()
 
 
 def register_workbench(app):
@@ -561,6 +593,29 @@ def register_workbench(app):
     async def directory(request: Request, projectId: str, path: str = ""):
         w = auth(request)
         return {"ok": True, **await asyncio.to_thread(w.list_directory, projectId, path)}
+
+    @app.post("/api/workspace/files/pdf")
+    async def create_pdf_preview(request: Request):
+        w = auth(request)
+        url = await asyncio.to_thread(w.create_pdf_preview, await body(request))
+        return {"ok": True, "previewUrl": url}
+
+    @app.get("/api/workspace/files/pdf/{ticket}")
+    async def preview_pdf(ticket: str, request: Request):
+        # Browser frames cannot attach the workspace header. A short-lived ticket
+        # is issued by the authorized POST above and belongs to this account's
+        # Workbench; the existing account middleware still protects every GET.
+        same_origin(request)
+        w = work(request)
+        with w.pdf_preview_lock:
+            preview = w.pdf_previews.get(ticket)
+            if not preview or preview["expires"] <= time.monotonic():
+                w.pdf_previews.pop(ticket, None)
+                raise HTTPException(403, "PDF 预览已失效，请重新打开文件")
+        file = await asyncio.to_thread(w.pdf_preview_file, preview["reference"])
+        return FileResponse(file["path"], media_type="application/pdf", filename=file["name"],
+                            content_disposition_type="inline",
+                            headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
 
     @app.post("/api/workspace/files/read")
     async def read_file(request: Request):

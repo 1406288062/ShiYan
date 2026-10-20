@@ -182,6 +182,7 @@ final class ShiyanAccount: ObservableObject {
         user = value
     }
     private func clearStores() {
+        KnowledgeReadingCache.clear(ShiyanAccountStorage.owner)
         DotsVoiceSession.resetAccount()
         DotsStore.resetAccount()
         AgentStore.resetAccount()
@@ -211,7 +212,16 @@ struct ShiyanAccountRoot: View {
     @Environment(\.scenePhase) private var scenePhase
     var body: some View {
         Group {
-            if let user = account.user { ContentView().id(user.id + ":" + ShiyanAccountStorage.generation.uuidString) }
+            if account.checking {
+                if let image = UIImage(named: "LaunchImage"), let cgImage = image.cgImage {
+                    Image(decorative: cgImage, scale: 1)
+                        .resizable()
+                        .scaledToFill()
+                        .ignoresSafeArea()
+                } else {
+                    Color(.systemBackground).ignoresSafeArea()
+                }
+            } else if let user = account.user { ContentView().id(user.id + ":" + ShiyanAccountStorage.generation.uuidString) }
             else { ShiyanLoginView() }
         }
         .sheet(item: $loginRequest) { request in

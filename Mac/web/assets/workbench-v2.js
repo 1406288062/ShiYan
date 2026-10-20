@@ -225,6 +225,14 @@
    const rev=++f.readRevision;
    try{const result=await C.api('/files/read','POST',fileId?{fileId}:{projectId:f.projectId,path});if(f.disposed||rev!==f.readRevision)return;if(f.tab.assetName)result.file.name=f.tab.assetName;f.selected=result.file;f.tab.file=result.file;f.tab.selectedPath=path||null;f.tab.fileId=fileId||undefined;f.tab.title=result.file.name;f.tab.path=path||undefined;f.preview.innerHTML='';f.preview.__shiyanFile={file:result.file,reference:fileReference(f),reload:()=>openFile(f,f.tab.selectedPath,f.tab.fileId)};const file=result.file;if(file.kind==='text'&&!f.baselines.has(file.path))f.baselines.set(file.path,file.text);
     if(file.kind==='text'){const lines=file.text.split('\n'),limited=lines.slice(0,4000),code=document.createElement('div');code.className='code-reader';code.innerHTML=`<pre class="line-numbers" aria-hidden="true">${limited.map((_,i)=>i+1).join('\n')}</pre><pre class="source-code"><code>${C.highlight(limited.join('\n'))}</code></pre>`;f.preview.appendChild(code);if(lines.length>4000)f.preview.insertAdjacentHTML('beforeend','<p class="file-preview-note">当前预览前 4000 行；复制保留全部已读取文本。</p>');}
+    else if(file.kind==='pdf'){
+     f.preview.innerHTML='<div class="v2-file-empty" role="status"><span>正在加载 PDF…</span></div>';
+     const result=await C.api('/files/pdf','POST',fileId?{fileId}:{projectId:f.projectId,path});
+     if(f.disposed||rev!==f.readRevision)return;
+     if(!/^\/api\/workspace\/files\/pdf\/[A-Za-z0-9_-]+$/.test(result.previewUrl))throw Error('PDF 预览地址无效');
+     const frame=document.createElement('iframe');frame.className='file-pdf-reader';frame.title='PDF 预览：'+file.name;frame.referrerPolicy='no-referrer';frame.src=result.previewUrl+'#view=FitH';
+     f.preview.replaceChildren(frame);
+    }
     else if(file.kind==='image')f.preview.innerHTML=`<div class="file-image-stage"><img src="${esc(file.dataUrl)}" alt="${esc(file.name)}"></div>`;
     else f.preview.innerHTML=`<div class="v2-file-empty">${icon('file')}<strong>${esc(file.name)}</strong><span>${esc(file.message||'请在编辑器中打开')}</span></div>`;
     updateBreadcrumb(f);markSelectedFile(f);C.renderTabs();persist();

@@ -1,0 +1,17 @@
+[Unit]
+Description=ShiYan private Qwen cloud embedding worker
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/home/ubuntu/shiyan-knowledge/bin/llama-b11739/llama-server --model /home/ubuntu/shiyan-knowledge/models/Qwen3-Embedding-0.6B-Q8_0.gguf --host 127.0.0.1 --port 8770 --embeddings --pooling last --ctx-size 2048 --batch-size 2048 --ubatch-size 2048 --threads 2 --parallel 1 --no-warmup
+Restart=on-failure
+RestartSec=5
+UMask=0077
+MemoryMax=1100M
+MemorySwapMax=512M
+CPUQuota=150%
+Nice=10
+
+[Install]
+WantedBy=default.target
