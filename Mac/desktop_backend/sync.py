@@ -13,7 +13,7 @@ from .storage import now, new_id
 
 KINDS = {"projects", "conversations", "messages", "scheduledTasks"}
 CONVERSATION_KEYS = {"id", "title", "projectId", "createdAt", "updatedAt", "remoteConversationId", "threadId", "titleIsManual", "isPinned"}
-MESSAGE_KEYS = {"id", "conversationId", "role", "text", "createdAt", "completedAt", "state", "phase", "error", "requestId", "remoteJobId", "reasoning", "model", "requestStartedAt", "rawResult", "fileChanges", "displayItems", "usage"}
+MESSAGE_KEYS = {"id", "conversationId", "role", "text", "createdAt", "updatedAt", "completedAt", "state", "phase", "error", "requestId", "remoteJobId", "reasoning", "model", "requestStartedAt", "rawResult", "fileChanges", "displayItems", "usage", "executionDetailsAvailable", "executionDetailsChanged"}
 SCHEDULE_KEYS = {"id", "title", "instruction", "emoji", "enabled", "repeat", "time", "timezone", "startDate", "endDate", "runLocally", "notificationMode", "newChatEachRun", "model", "reasoning", "projectId", "executorDeviceId", "status", "nextRunAt", "lastRunAt", "lastRunState", "lastError", "conversationId", "createdAt", "updatedAt", "source"}
 SCHEDULE_CONFIG = SCHEDULE_KEYS - {"id", "executorDeviceId", "status", "nextRunAt", "lastRunAt", "lastRunState", "lastError", "conversationId", "createdAt", "updatedAt", "source"}
 ASSET_KEYS = {"filename", "mimeType", "bytes", "sha256", "width", "height", "createdAt"}
@@ -55,10 +55,49 @@ def asset_wire(asset):
     identifier = asset.get("syncAssetId") or asset.get("remoteId") or asset.get("id")
     return {"syncAssetId": identifier, "id": identifier, **{k: asset[k] for k in ASSET_KEYS if k in asset}}
 
-def message_wire(message, conversation_id):
+def message_wire(message, conversation_id, baseline=None):
     value = {k: message[k] for k in MESSAGE_KEYS if k in message}
+    if message.get("executionDetailsAvailable") is True:
+        # Keep this cloud projection explicitly marked. The service restores
+        # canonical fields except those explicitly produced by a local execution.
+        dirty = {key for key in ("rawResult", "fileChanges", "displayItems") if key in (message.get("executionDetailsChanged") or [])}
+        if dirty:
+            value["executionDetailsChanged"] = sorted(dirty)
+        else:
+            value.pop("executionDetailsChanged", None)
+        for key in ("rawResult", "fileChanges", "displayItems"):
+            if key in dirty:
+                value[key] = message.get(key, None if key == "rawResult" else [])
+            elif baseline is not None and key in baseline:
+                value[key] = baseline[key]
+        if baseline is not None:
+            for key, default in (("phase", ""), ("error", None)):
+                if key not in baseline and value.get(key) == default:
+                    value.pop(key, None)
     value.update(conversationId=conversation_id, assets=[asset_wire(a) for a in message.get("assets", []) if isinstance(a, dict)])
     return value
+
+def merge_compact_details(message, original, incoming):
+    """Keep full cached bodies, but let incoming file membership be authoritative."""
+    for key in ("rawResult", "fileChanges", "displayItems"):
+        if (key == "rawResult" or key not in incoming) and key in original:
+            message[key] = original[key]
+    if isinstance(incoming.get("fileChanges"), list):
+        prior = {item.get("path"): item for item in (original.get("fileChanges") or []) if isinstance(item, dict)}
+        files = []
+        for item in incoming["fileChanges"]:
+            previous = prior.get(item.get("path"), {}) if isinstance(item, dict) else {}
+            same = isinstance(item, dict) and all(previous.get(key) == item.get(key) for key in ("path", "kind", "added", "removed", "available"))
+            merged = {**previous, **item} if same else item
+            if same and previous.get("diff") and not previous.get("diffTruncated") and (not item.get("diff") or item.get("diffTruncated")):
+                merged["diff"] = previous["diff"]
+                merged["diffTruncated"] = False
+            files.append(merged)
+        message["fileChanges"] = files
+    if isinstance(incoming.get("displayItems"), list):
+        prior = {item.get("id"): item for item in (original.get("displayItems") or []) if isinstance(item, dict)}
+        message["displayItems"] = [{**prior.get(item.get("id"), {}), **item} if isinstance(item, dict) else item for item in incoming["displayItems"]]
+
 
 class SyncEngine:
     def __init__(self, runtime):
@@ -68,6 +107,13 @@ class SyncEngine:
         self.importing = False
         self.last_error = None
         self.schedule_host_registered = 0
+        self.schedule_host_error = None
+        self._schedule_host_task = None
+        self._schedule_host_task_session = None
+        self._schedule_host_session = None
+        self._schedule_host_retry_at = 0
+        self.schedule_host_timeout = 30
+        self.schedule_host_interval = 25
         with self.storage.lock, self.storage.db:
             self.storage.db.executescript("""
             CREATE TABLE IF NOT EXISTS sync_entities(kind TEXT NOT NULL,id TEXT NOT NULL,revision INTEGER NOT NULL DEFAULT 0,base TEXT,snapshot TEXT,deleted INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(kind,id));
@@ -142,7 +188,10 @@ class SyncEngine:
         if previous and previous["deleted"] and not deleted:
             return
         content = encoded(data) if data is not None else None
-        if previous and previous["deleted"] == deleted and previous["snapshot"] == data:
+        snapshot = previous["snapshot"] if previous else None
+        if kind == "messages" and snapshot:
+            snapshot = message_wire(snapshot, snapshot.get("conversationId"), previous.get("base"))
+        if previous and previous["deleted"] == deleted and snapshot == data:
             return
         revision = previous["revision"] if previous else 0
         self.storage.db.execute("INSERT INTO sync_entities(kind,id,revision,snapshot,deleted) VALUES(?,?,?,?,?) ON CONFLICT(kind,id) DO UPDATE SET snapshot=excluded.snapshot,deleted=excluded.deleted", (kind, identifier, revision, content, int(deleted)))
@@ -166,17 +215,37 @@ class SyncEngine:
         self._record(kind, item["id"], {k: item[k] for k in CONVERSATION_KEYS if k in item} if value else None, value is None)
         current_ids = set()
         if value:
+            previous_messages = {m["id"]: m for m in (previous or {}).get("messages", [])}
+            changed_local_details = False
             for message in value.get("messages", []):
                 current_ids.add(message["id"])
-                self._record("messages", message["id"], message_wire(message, item["id"]))
+                prior = previous_messages.get(message["id"])
+                if message.get("executionDetailsAvailable") is True and prior is not None:
+                    dirty = {key for key in ("rawResult", "fileChanges", "displayItems") if key in (message.get("executionDetailsChanged") or []) or key in (prior.get("executionDetailsChanged") or [])}
+                    dirty.update(key for key in ("rawResult", "fileChanges", "displayItems") if message.get(key) != prior.get(key))
+                    if dirty and message.get("executionDetailsChanged") != sorted(dirty):
+                        # A local producer may update only one full field. Keep
+                        # the projection marker for all remaining preview fields.
+                        message["executionDetailsChanged"] = sorted(dirty)
+                        changed_local_details = True
+                    for key in dirty:
+                        if key not in message:
+                            message[key] = None if key == "rawResult" else []
+                            changed_local_details = True
+                entity = self._entity("messages", message["id"])
+                self._record("messages", message["id"], message_wire(message, item["id"], (entity or {}).get("base")))
+            if changed_local_details:
+                # Storage.put writes before its observer; persist this metadata
+                # in the same transaction without notifying recursively.
+                self.storage.db.execute("UPDATE documents SET data=? WHERE kind='conversations' AND id=?", (encoded(value), item["id"]))
         rows = self.storage.db.execute("SELECT id FROM sync_entities WHERE kind='messages' AND deleted=0 AND json_extract(snapshot,'$.conversationId')=?", (item["id"],)).fetchall()
         for (identifier,) in rows:
             if identifier not in current_ids:
                 self._record("messages", identifier, None, True)
 
-    def pending(self, limit=100):
+    def pending(self, limit=100, include_schedules=True):
         with self.storage.lock:
-            rows = self.storage.db.execute("SELECT kind,id,mutation_id,base_revision,data,deleted FROM sync_outbox ORDER BY CASE kind WHEN 'projects' THEN 0 WHEN 'conversations' THEN 1 ELSE 2 END,rowid LIMIT ?", (limit,)).fetchall()
+            rows = self.storage.db.execute("SELECT kind,id,mutation_id,base_revision,data,deleted FROM sync_outbox WHERE (? OR kind!='scheduledTasks') ORDER BY CASE kind WHEN 'projects' THEN 0 WHEN 'conversations' THEN 1 ELSE 2 END,rowid LIMIT ?", (int(include_schedules), limit)).fetchall()
             return [{"kind": r[0], "id": r[1], "mutationId": r[2], "baseRevision": r[3], "data": json.loads(r[4]) if r[4] else None, "deleted": bool(r[5])} for r in rows]
 
     def _lookup_asset(self, identifier):
@@ -334,6 +403,14 @@ class SyncEngine:
         else:
             original = messages[index] if index is not None else {}
             message = {"id": identifier, "role": "assistant", "text": "", "assets": [], "createdAt": now(), "state": "completed", "phase": "", "error": None, **original, **data}
+            for key in ("executionDetailsChanged", "detailsDeferred", "detailsToken"):
+                message.pop(key, None)
+            if data.get("executionDetailsAvailable") is True:
+                merge_compact_details(message, original, data)
+                message["detailsDeferred"] = True
+                message["detailsToken"] = "sync:" + str(change["revision"])
+            else:
+                message.pop("executionDetailsAvailable", None)
 
 
 
@@ -443,35 +520,112 @@ class SyncEngine:
                         if kind == "messages" and remote.get("role") == "assistant" and remote.get("remoteJobId") and key in {"text", "state", "phase", "error", "completedAt", "rawResult", "displayItems", "usage"}:
                             continue
                         merged[key] = value
+                if kind == "messages" and local.get("executionDetailsAvailable") is True:
+                    dirty = {key for key in ("rawResult", "fileChanges", "displayItems") if key in (local.get("executionDetailsChanged") or []) and key in local}
+                    if dirty:
+                        merged["executionDetailsAvailable"] = True
+                        merged["executionDetailsChanged"] = sorted(dirty)
+                        if not remote.get("remoteJobId"):
+                            # Explicit full values remain intentional even when
+                            # they equal the old base but the new base is a preview.
+                            for key in dirty:
+                                merged[key] = local[key]
             self.storage.db.execute("INSERT INTO sync_conflicts(kind,entity_id,local_data,remote_data,created_at) VALUES(?,?,?,?,?)", (kind, identifier, encoded(local), encoded(remote), now()))
             self.storage.db.execute("UPDATE sync_entities SET revision=?,base=? WHERE kind=? AND id=?", (int(current["revision"]), encoded(remote), kind, identifier))
             self.storage.db.execute("UPDATE sync_outbox SET mutation_id=?,base_revision=?,data=? WHERE kind=? AND id=? AND mutation_id=?", (new_id(), int(current["revision"]), None if mutation["deleted"] else encoded(merged), kind, identifier, mutation["mutationId"]))
 
+    def _clear_accepted_details(self, mutation, revision):
+        data = mutation.get("data") or {}
+        if mutation["kind"] != "messages" or not data.get("executionDetailsChanged"):
+            return
+        entity = self._entity("messages", mutation["id"])
+        if entity and entity["snapshot"]:
+            snapshot = dict(entity["snapshot"])
+            snapshot.pop("executionDetailsChanged", None)
+            self.storage.db.execute("UPDATE sync_entities SET snapshot=? WHERE kind='messages' AND id=?", (encoded(snapshot), mutation["id"]))
+        conversation = self.storage.get("conversations", data.get("conversationId"))
+        if not conversation:
+            return
+        message = next((item for item in conversation.get("messages", []) if item.get("id") == mutation["id"]), None)
+        if message is not None:
+            for key in ("executionDetailsChanged", "detailsDeferred", "detailsToken"):
+                message.pop(key, None)
+            message["detailsToken"] = "sync:" + str(revision)
+            self.storage.db.execute("UPDATE documents SET data=? WHERE kind='conversations' AND id=?", (encoded(conversation), conversation["id"]))
+
+    def _host_session(self):
+        return self.runtime.account.get("owner"), self.gateway.account_token
+
+    def _start_schedule_host_update(self):
+        # Host discovery uses local Keychain/model helpers; account chat sync
+        # authenticates with its bearer token and must not wait for those helpers.
+        if self.runtime.closing or not self.runtime.server_access:
+            self._schedule_host_session = None
+            self.schedule_host_registered = 0
+            if self._schedule_host_task and not self._schedule_host_task.done():
+                self._schedule_host_task.cancel()
+            return
+        session = self._host_session()
+        if self._schedule_host_session != session:
+            self._schedule_host_session = None
+            self.schedule_host_registered = 0
+        if self._schedule_host_task and not self._schedule_host_task.done():
+            if self._schedule_host_task_session != session:
+                self._schedule_host_task.cancel()
+            return
+        if self._schedule_host_task_session != session:
+            self._schedule_host_retry_at = 0
+        if asyncio.get_running_loop().time() < self._schedule_host_retry_at:
+            return
+        self._schedule_host_task_session = session
+        self._schedule_host_task = self.runtime.spawn(self._update_schedule_host(session))
+
+    async def _update_schedule_host(self, session):
+        try:
+            await asyncio.wait_for(self._register_schedule_host(), timeout=self.schedule_host_timeout)
+            if session == self._host_session() and self.runtime.server_access and not self.runtime.closing:
+                self._schedule_host_session = session
+                self.schedule_host_registered = asyncio.get_running_loop().time()
+                self.schedule_host_error = None
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            self.schedule_host_error = str(exc) or type(exc).__name__
+        finally:
+            self._schedule_host_retry_at = asyncio.get_running_loop().time() + self.schedule_host_interval
+
+    async def _register_schedule_host(self):
+        await self.gateway.ensure_enrolled()
+        identity = (await self.gateway.identity())["deviceID"]
+        for task in self.storage.list("scheduledTasks"):
+            if not task.get("executorDeviceId"):
+                task["executorDeviceId"] = identity
+                self.storage.put("scheduledTasks", task)
+        try:
+            local = await self.runtime.mac_codex.models()
+        except (ValueError, OSError, asyncio.TimeoutError):
+            local = []
+        timestamp, nonce = int(time.time() * 1000), new_id()
+        proof = "\n".join(["shiyan-schedule-host-v1", self.runtime.account["owner"], identity, str(timestamp), nonce]).encode()
+        signature = (await self.gateway.helper_json("sign", proof))["signature"]
+        await self.gateway.json("POST", "sync/schedules/host", {"deviceId": identity,
+            "devicePublicKey": self.gateway.public_identity["publicKey"], "deviceTime": timestamp,
+            "deviceNonce": nonce, "deviceSignature": signature, "local": local,
+            "cloud": self.runtime.capabilities.get("models") or [], "defaultModel": self.runtime.capabilities.get("model")})
+
     async def once(self):
         async with self.lock:
-            await self.gateway.ensure_enrolled()
-            identity = (await self.gateway.identity())["deviceID"]
-            for task in self.storage.list("scheduledTasks"):
-                if not task.get("executorDeviceId"):
-                    task["executorDeviceId"] = identity
-                    self.storage.put("scheduledTasks", task)
-            if asyncio.get_running_loop().time() - self.schedule_host_registered > 25:
-                try:
-                    local = await self.runtime.mac_codex.models()
-                except (ValueError, OSError, asyncio.TimeoutError):
-                    local = []
-                timestamp, nonce = int(time.time() * 1000), new_id()
-                proof = "\n".join(["shiyan-schedule-host-v1", self.runtime.account["owner"], identity, str(timestamp), nonce]).encode()
-                signature = (await self.gateway.helper_json("sign", proof))["signature"]
-                await self.gateway.json("POST", "sync/schedules/host", {"deviceId": identity,
-                    "devicePublicKey": self.gateway.public_identity["publicKey"], "deviceTime": timestamp,
-                    "deviceNonce": nonce, "deviceSignature": signature, "local": local,
-                    "cloud": self.runtime.capabilities.get("models") or [], "defaultModel": self.runtime.capabilities.get("model")})
-                self.schedule_host_registered = asyncio.get_running_loop().time()
-            after = int(self.storage.setting("sync.cursor", 0))
-            reply = await self.gateway.sync_get(after)
-            await self.apply_changes(reply.get("changes", []), reply.get("cursor", after))
-            mutations = self.pending()
+            self._start_schedule_host_update()
+            for _ in range(8):
+                after = int(self.storage.setting("sync.cursor", 0))
+                reply = await self.gateway.sync_get(after)
+                await self.apply_changes(reply.get("changes", []), reply.get("cursor", after))
+                applied = int(self.storage.setting("sync.cursor", 0))
+                if not reply.get("hasMore") or applied <= after:
+                    break
+            # The server authorizes schedule edits only after this login session
+            # has proved its local host. Retain those edits while chat catches up.
+            mutations = self.pending(limit=10, include_schedules=self.runtime.server_access and self._schedule_host_session == self._host_session())
             if mutations:
                 await self.upload_assets(mutations)
                 sent = {m["mutationId"]: m for m in mutations}
@@ -482,8 +636,13 @@ class SyncEngine:
                         if not mutation:
                             continue
                         kind, identifier, revision = mutation["kind"], mutation["id"], int(accepted["revision"])
-                        self.storage.db.execute("UPDATE sync_entities SET revision=?,base=? WHERE kind=? AND id=?", (revision, encoded(mutation["data"]) if mutation["data"] else None, kind, identifier))
-                        self.storage.db.execute("DELETE FROM sync_outbox WHERE kind=? AND id=? AND mutation_id=?", (kind, identifier, mutation["mutationId"]))
+                        baseline = dict(mutation["data"]) if mutation["data"] else None
+                        if kind == "messages" and baseline:
+                            baseline.pop("executionDetailsChanged", None)
+                        self.storage.db.execute("UPDATE sync_entities SET revision=?,base=? WHERE kind=? AND id=?", (revision, encoded(baseline) if baseline else None, kind, identifier))
+                        removed = self.storage.db.execute("DELETE FROM sync_outbox WHERE kind=? AND id=? AND mutation_id=?", (kind, identifier, mutation["mutationId"])).rowcount
+                        if removed:
+                            self._clear_accepted_details(mutation, revision)
 
 
                         self.storage.db.execute("UPDATE sync_outbox SET base_revision=? WHERE kind=? AND id=?", (revision, kind, identifier))

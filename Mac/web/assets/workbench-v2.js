@@ -22,7 +22,7 @@
   const button=(id,name,label,cls='')=>`<button type="button" ${id?'id="'+id+'"':''} class="wb-icon-button ${cls}" aria-label="${esc(label)}" title="${esc(label)}">${id==='spaceSearchToggle'?C.toolbarIcon('search'):icon(name)}</button>`;
   const action=(label,run,name)=>({label,run,icon:name});
   const state=()=>window.shiyan?.getState();
-  const isCoding=()=>['agent','search'].includes(window.shiyan?.getView()||'agent');
+  const isCoding=()=>['agent','search','dots'].includes(window.shiyan?.getView()||'agent');
   const isVisible=el=>!!el&&!el.hidden&&el.getBoundingClientRect().width>1&&el.getBoundingClientRect().height>1;
   const notify=text=>window.shiyan?.toast(String(text));
   const handleError=e=>notify(e?.message||String(e));

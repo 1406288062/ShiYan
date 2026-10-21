@@ -22,10 +22,36 @@
   function generatedDocumentVisible(asset) {
     return generatedAssetVisible(asset)&&!(asset.mimeType||'').startsWith('image/')&&generatedDocuments.has(asset.filename.split('.').at(-1).toLowerCase());
   }
-  let parser;
-  function getParser() {
-    if(parser || !window.markdownit)return parser;
-    parser=window.markdownit({html:false,linkify:true,breaks:true,typographer:false});
+  const parsers=new Map();
+  function getParser(prose=false) {
+    if(!window.markdownit)return;
+    if(parsers.has(prose))return parsers.get(prose);
+    const parser=window.markdownit({html:false,linkify:true,breaks:true,typographer:false});
+    if(prose){
+      parser.disable('code');
+      // Email HTML often leaves layout-sized runs of non-breaking spaces.
+      // Normalize text tokens only: fenced code, URLs and Markdown structure stay intact.
+      parser.core.ruler.after('text_join','shiyan-prose-spacing',state=>{
+        for(const block of state.tokens){
+          if(block.type!=='inline'||!block.children)continue;
+          block.children=block.children.flatMap(token=>{
+            if(token.type!=='text')return [token];
+            const parts=token.content.replace(/[ \t\u00a0\u3000]{4,}/g,'\n').split('\n');
+            const result=[];
+            parts.forEach((part,index)=>{
+              if(index)result.push(new state.Token('softbreak','br',0));
+              const text=new state.Token('text','',0);
+              text.content=part.replace(/[ \t\u00a0\u3000]+/g,' ');
+              if(index)text.content=text.content.trimStart();
+              if(index<parts.length-1)text.content=text.content.trimEnd();
+              if(text.content)result.push(text);
+            });
+            return result;
+          });
+        }
+      });
+    }
+    parsers.set(prose,parser);
     parser.validateLink=href=>generatedFileLink(href)||!!safeURL(href);
     const link=parser.renderer.rules.link_open || ((t,i,o,e,s)=>s.renderToken(t,i,o));
     parser.renderer.rules.link_open=(tokens,index,options,env,self)=>{
@@ -71,8 +97,8 @@
     });
     return parser;
   }
-  function markdown(text,copyIcon='') {
-    const p=getParser();return p?p.render(String(text??''),{copyIcon}):'<p>'+esc(text).replace(/\n/g,'<br>')+'</p>';
+  function markdown(text,copyIcon='',{prose=false}={}) {
+    const p=getParser(prose);return p?p.render(String(text??''),{copyIcon}):'<p>'+esc(text).replace(/\n/g,'<br>')+'</p>';
   }
   function itemsFor(message) {
     if(Array.isArray(message.displayItems))return message.displayItems.filter(i=>i&&allowed.has(i.type)).slice(-60);

@@ -27,7 +27,7 @@ def execution_stats(message, raw):
 def message_view(message):
     view = dict(message)
     digest = hashlib.sha256()
-    deferred = False
+    deferred = message.get("executionDetailsAvailable") is True
     def files(records):
         nonlocal deferred
         if not isinstance(records, list):

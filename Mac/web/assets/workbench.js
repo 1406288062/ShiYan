@@ -519,6 +519,15 @@
     });
     window.addEventListener('shiyan-state',e=>renderState(e.detail));
     window.addEventListener('shiyan-view',()=>renderState(window.shiyan?.getState()));
+    document.addEventListener('click',event=>{
+      const link=event.target.closest?.('#dotsView a.message-reference[href]');
+      if(!link||event.defaultPrevented||event.button>0)return;
+      let url;try{url=new URL(link.getAttribute('href'),location.href);}catch{return;}
+      if(!['http:','https:'].includes(url.protocol))return;
+      // Route Dots links directly; do not depend on WKWebView target=_blank forwarding.
+      event.preventDefault();
+      openTab({type:'browser',title:url.hostname,url:url.href});
+    });
     window.addEventListener('shiyan-native',event=>{
       const d=event.detail||{};
       if(d.type==='workspacePicked'){pickerRequests.get(d.id)?.(d);pickerRequests.delete(d.id);scheduleNative();}

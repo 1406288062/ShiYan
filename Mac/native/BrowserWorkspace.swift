@@ -92,6 +92,8 @@ final class BrowserWorkspace: NSObject, WKNavigationDelegate, WKUIDelegate, WKDo
          
         config.userContentController = WKUserContentController()
         let view = WKWebView(frame: rect, configuration: config)
+        // Bare WKWebView omits Safari's browser tokens; some sites return an empty fallback page.
+        view.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"
         view.navigationDelegate = self
         view.uiDelegate = self
         view.allowsBackForwardNavigationGestures = true

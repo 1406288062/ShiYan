@@ -68,11 +68,12 @@ struct ShiyanMoreButtonLabel: View {
 struct ShiyanMoreMenu<Content: View>: View {
     var showsCloseIcon = false
     var inToolbar = false
+    var hasGlass = true
     @ViewBuilder let content: () -> Content
 
     var body: some View {
         Menu { content() } label: {
-            ShiyanMoreButtonLabel(showsCloseIcon: showsCloseIcon)
+            ShiyanMoreButtonLabel(showsCloseIcon: showsCloseIcon, hasGlass: hasGlass)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("更多")

@@ -3,6 +3,16 @@ import UIKit
 import ImageIO
 
  
+nonisolated struct AgentQueuedMessage: Identifiable, Codable, Equatable, Sendable {
+    var id = UUID()
+    var text: String
+    var assets: [AgentAsset]
+    var model: String?
+    var reasoning: String
+    var urgent = false
+    var createdAt = Date()
+}
+
 nonisolated struct AgentConversation: Identifiable, Codable, Equatable, Sendable {
     var id = UUID()
     var projectID: UUID?
@@ -20,6 +30,8 @@ nonisolated struct AgentConversation: Identifiable, Codable, Equatable, Sendable
     var reasoning = "low"
     var draft = ""
     var draftAssets: [AgentAsset] = []
+    var messageQueue: [AgentQueuedMessage]?
+    var queueError: String?
     var activeImageID: UUID?
      
     var storedMessageCount: Int?

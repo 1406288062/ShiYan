@@ -248,6 +248,22 @@ struct AgentExecutionHistoryView: View {
     private var rounds: [AgentMessage] { messages.filter { $0.role == .assistant } }
     private var selection: AgentMessage? { rounds.first { $0.id == selectedID } ?? rounds.last }
     private var selectedIndex: Int { rounds.firstIndex { $0.id == selection?.id } ?? 0 }
+    private func messageName(for round: AgentMessage) -> String {
+        guard let index = messages.firstIndex(where: { $0.id == round.id }),
+              let prompt = messages[..<index].last(where: { $0.role == .user }) else { return "" }
+        let title = prompt.text.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+        return title.isEmpty ? (prompt.assets.first?.filename ?? "附件消息") : title
+    }
+
+    private func roundLabel(_ round: AgentMessage, index: Int) -> some View {
+        HStack(spacing: 10) {
+            Text("第 \(index + 1) 轮").fixedSize()
+            Text(messageName(for: round))
+                .foregroundStyle(.secondary)
+                .lineLimit(1).truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -255,8 +271,12 @@ struct AgentExecutionHistoryView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Button { choosingRound.toggle() } label: {
                         HStack {
-                            Text(rounds.isEmpty ? "暂无执行轮次" : "第 \(selectedIndex + 1) 轮")
-                            Spacer()
+                            if let round = selection {
+                                roundLabel(round, index: selectedIndex)
+                            } else {
+                                Text("暂无执行轮次")
+                                Spacer()
+                            }
                             Image(systemName: choosingRound ? "chevron.up" : "chevron.down")
                         }
                         .font(.subheadline).padding(.horizontal, 12).frame(minHeight: rowHeight)
@@ -267,15 +287,14 @@ struct AgentExecutionHistoryView: View {
                     .accessibilityIdentifier("execution-round-picker")
                     if choosingRound {
                         ScrollViewReader { proxy in
-                            ScrollView {
+                            ScrollView(showsIndicators: false) {
                                 LazyVStack(spacing: 0) {
                                     ForEach(Array(rounds.enumerated()), id: \.element.id) { index, message in
                                         Button {
                                             selectedID = message.id; choosingRound = false
                                         } label: {
                                             HStack {
-                                                Text("第 \(index + 1) 轮")
-                                                Spacer()
+                                                roundLabel(message, index: index)
                                                 if message.id == selection?.id { Image(systemName: "checkmark") }
                                             }
                                             .font(.body).padding(.horizontal, 12).frame(height: rowHeight)
@@ -291,7 +310,7 @@ struct AgentExecutionHistoryView: View {
                         }
                         .accessibilityIdentifier("execution-round-list")
                     }
-                    ScrollView {
+                    ScrollView(showsIndicators: false) {
                         if let message = selection {
                             if AgentExecutionDetails.hasDetails(message) {
                                 AgentExecutionDetails(message: message, initiallyExpanded: true).id(message.id)

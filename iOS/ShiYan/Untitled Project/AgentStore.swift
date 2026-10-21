@@ -21,7 +21,7 @@ final class AgentStore: ObservableObject {
         temporaryStores.removeAll()
         guard let value = instance else { return }
         value.canSave = false
-        value.bootstrap?.cancel(); value.persistenceTask?.cancel()
+        value.bootstrap?.cancel(); value.persistenceTask?.cancel(); value.windowTask?.cancel(); value.readAcknowledgmentTask?.cancel()
         for task in value.tasks.values { task.cancel() }
         value.tasks.removeAll(); value.synchronizer.stop()
         for id in Array(value.backgroundTokens.keys) { value.endBackground(id) }
@@ -41,8 +41,14 @@ final class AgentStore: ObservableObject {
     @Published var selectedID: UUID? {
         didSet {
             guard paginationReady, !isTemporarySession, selectedID != oldValue, let id = selectedID else { return }
+            windowGeneration = UUID()
+            windowTask?.cancel()
             historyLoading = true
-            Task { await openMessageWindow(id) }
+            windowTask = Task { [weak self] in
+                await Task.yield()
+                guard !Task.isCancelled, self?.selectedID == id else { return }
+                await self?.openMessageWindow(id)
+            }
         }
     }
     @Published private(set) var historyLoading = true
@@ -50,12 +56,14 @@ final class AgentStore: ObservableObject {
     private var paginationReady = false
     private var bootstrap: Task<Void, Never>?
     private var windowGeneration = UUID()
+    private var windowTask: Task<Void, Never>?
     private var messageWindowVersions: [UUID: Int] = [:]
     private var windowDepth: [UUID: Int] = [:]
     private var stagedMessages: [UUID: (UUID, AgentMessage)] = [:]
     private var removedMessages = Set<UUID>()
     private var localDirtyMessages = Set<UUID>()
     private var persistenceTask: Task<Bool, Never>?
+    private var pendingPersistence: PendingPersistence?
     lazy var messageDatabase = AgentMessageDatabase(directory: directory)
     @Published private(set) var capabilities = AgentCapabilities.fallback
     @Published var notice: String?
@@ -77,7 +85,53 @@ final class AgentStore: ObservableObject {
     private var readReceipts: [String: AgentReadReceipt] = [:]
     private var readReceiptsWritable = true
     private var pendingReadAcknowledgments = Set<UUID>()
+    private struct VisibleRead {
+        var version: Int
+        var readAt: Date
+        var observed: [String: AgentUnreadContent]
+        var unreadIDs: Set<String>
+    }
+    private var pendingVisibleReads: [UUID: VisibleRead] = [:]
+    private var readAcknowledgmentTask: Task<Void, Never>?
+    private var acknowledgedWindowVersions: [UUID: Int] = [:]
     nonisolated private struct DiskState: Codable, Sendable { var version = 2; var selectedID: UUID?; var conversations: [AgentConversation]; var stops: [String: StopIntent]?; var projects: [AgentProject]? }
+
+    // Only a not-yet-started batch is mutable. Keep at most one queued snapshot
+    // behind the current write, while retaining every dirty message and deletion.
+    private final class PendingPersistence {
+        var snapshot: DiskState
+        var messages: [UUID: (UUID, AgentMessage)] = [:]
+        var order: [UUID] = []
+        var deletions = Set<UUID>()
+        var locallyChanged = Set<UUID>()
+
+        init(snapshot: DiskState) { self.snapshot = snapshot }
+
+        func merge(snapshot: DiskState, writes: [AgentConversation], deleting: Set<UUID>, locallyChanged: Set<UUID>) {
+            self.snapshot = snapshot
+            for conversation in writes {
+                for message in conversation.messages {
+                    if messages[message.id] == nil { order.append(message.id) }
+                    messages[message.id] = (conversation.id, message)
+                    deletions.remove(message.id)
+                }
+            }
+            self.locallyChanged.formUnion(locallyChanged)
+            for id in deleting { messages.removeValue(forKey: id) }
+            deletions.formUnion(deleting)
+            self.locallyChanged.subtract(deletions)
+        }
+
+        var writes: [AgentConversation] {
+            var seen = Set<UUID>()
+            let ordered = order.filter { seen.insert($0).inserted }.compactMap { messages[$0] }
+            return Dictionary(grouping: ordered, by: { $0.0 }).map { id, values in
+                var conversation = AgentConversation(id: id)
+                conversation.messages = values.map { $0.1 }
+                return conversation
+            }
+        }
+    }
 
     private struct CapabilitySnapshot: Codable {
         let scope: String
@@ -223,7 +277,7 @@ final class AgentStore: ObservableObject {
             try await refreshMessageSummaries()
             if conversations.isEmpty { _ = newConversation() }
             if !conversations.contains(where: { $0.id == selectedID }) { selectedID = conversations.first?.id }
-            for c in conversations where c.pendingJobID != nil || c.pendingMessageID != nil || c.storedIsBusy == true || c.id == selectedID {
+            for c in conversations where c.pendingJobID != nil || c.pendingMessageID != nil || c.storedIsBusy == true || c.id == selectedID || !(c.messageQueue ?? []).isEmpty {
                 windowDepth[c.id] = AgentMessageDatabase.pageSize
                 let page = try await messageDatabase.page(conversation: c.id)
                 if let i = conversations.firstIndex(where: { $0.id == c.id }) { conversations[i].messages = page }
@@ -255,10 +309,14 @@ final class AgentStore: ObservableObject {
         return (c.storedMessageCount ?? c.messages.count) > c.messages.count
     }
     func openMessageWindow(_ id: UUID) async {
-        guard !isTemporarySession else { return }
+        guard !isTemporarySession, !Task.isCancelled, selectedID == id else { return }
         let generation = UUID(); windowGeneration = generation
         historyLoading = true; loadingEarlier = false
-        guard await persistDurably() else { historyLoading = false; return }
+        guard await persistDurably() else {
+            if selectedID == id, windowGeneration == generation { historyLoading = false }
+            return
+        }
+        guard !Task.isCancelled, selectedID == id, windowGeneration == generation else { return }
         do {
             let version = messageWindowVersions[id] ?? 0
             var page = try await messageDatabase.page(conversation: id)
@@ -267,23 +325,28 @@ final class AgentStore: ObservableObject {
                 for message in current.messages { merged[message.id] = message }
                 page = Array(AgentMessageOrder.ordered(Array(merged.values)).suffix(AgentMessageDatabase.pageSize))
             }
-            guard selectedID == id, windowGeneration == generation else { return }
-            for i in conversations.indices where conversations[i].id != id && !conversations[i].isBusy {
+            guard !Task.isCancelled, selectedID == id, windowGeneration == generation else { return }
+            for i in conversations.indices where conversations[i].id != id && !conversations[i].isBusy && (conversations[i].messageQueue ?? []).isEmpty {
                 conversations[i].messages = []; windowDepth.removeValue(forKey: conversations[i].id)
             }
             if let i = conversations.firstIndex(where: { $0.id == id }) { conversations[i].messages = page }
             windowDepth[id] = AgentMessageDatabase.pageSize; historyLoading = false
             viewedLatest(id)
+            resumePending()
             Task { [weak self] in await self?.recoverInterruptedSubmissions() }
-        } catch { if selectedID == id { historyLoading = false }; notice = "历史消息读取失败，可稍后重试" }
+        } catch {
+            guard !Task.isCancelled, selectedID == id, windowGeneration == generation else { return }
+            historyLoading = false; notice = "历史消息读取失败，可稍后重试"
+        }
     }
      
     func loadEarlierMessages() async -> UUID? {
         guard !isTemporarySession else { return nil }
         guard !historyLoading, !loadingEarlier, hasEarlierMessages,
               let c = current, let anchor = c.messages.first?.id else { return nil }
-        loadingEarlier = true; defer { loadingEarlier = false }
         let generation = windowGeneration
+        loadingEarlier = true
+        defer { if windowGeneration == generation { loadingEarlier = false } }
         do {
             let page = try await messageDatabase.page(conversation: c.id, before: anchor)
             guard selectedID == c.id, windowGeneration == generation,
@@ -297,14 +360,14 @@ final class AgentStore: ObservableObject {
     func refreshMessageWindowsAfterSync() async throws {
         guard !isTemporarySession else { return }
         try await refreshMessageSummaries()
-        for i in conversations.indices where conversations[i].id != selectedID && !conversations[i].isBusy {
+        for i in conversations.indices where conversations[i].id != selectedID && !conversations[i].isBusy && (conversations[i].messageQueue ?? []).isEmpty {
             conversations[i].messages = []; windowDepth.removeValue(forKey: conversations[i].id)
         }
-        for c in conversations where c.id == selectedID || c.isBusy {
+        for c in conversations where c.id == selectedID || c.isBusy || !(c.messageQueue ?? []).isEmpty {
             let version = messageWindowVersions[c.id] ?? 0
             let page = try await messageDatabase.page(conversation: c.id, limit: windowDepth[c.id] ?? AgentMessageDatabase.pageSize)
             guard (messageWindowVersions[c.id] ?? 0) == version,
-                  c.id == selectedID || conversation(c.id)?.isBusy == true else { continue }
+                  c.id == selectedID || conversation(c.id)?.isBusy == true || !(conversation(c.id)?.messageQueue ?? []).isEmpty else { continue }
             if let i = conversations.firstIndex(where: { $0.id == c.id }) { conversations[i].messages = page }
         }
         Task { [weak self] in await self?.recoverInterruptedSubmissions() }
@@ -356,11 +419,23 @@ final class AgentStore: ObservableObject {
         let deletions = removedMessages; removedMessages.removeAll()
         let locallyChanged = localDirtyMessages; localDirtyMessages.removeAll()
         for i in snapshot.conversations.indices { snapshot.conversations[i].messages = [] }
+        if let pendingPersistence, let persistenceTask {
+            pendingPersistence.merge(snapshot: snapshot, writes: writes, deleting: deletions, locallyChanged: locallyChanged)
+            if notifySync { synchronizer.changed() }
+            return persistenceTask
+        }
+        let batch = PendingPersistence(snapshot: snapshot)
+        batch.merge(snapshot: snapshot, writes: writes, deleting: deletions, locallyChanged: locallyChanged)
+        pendingPersistence = batch
         let previous = persistenceTask, database = messageDatabase, destination = directory
-        let task = Task { [weak self, writes, snapshot] () -> Bool in
+        let task = Task { [weak self, batch] () -> Bool in
             if let previous, !(await previous.value) {
+                if self?.pendingPersistence === batch { self?.pendingPersistence = nil }
                 self?.notice = "会话保存失败，已暂停后续写入以保留数据"; return false
             }
+            if self?.pendingPersistence === batch { self?.pendingPersistence = nil }
+            let writes = batch.writes, snapshot = batch.snapshot
+            let deletions = batch.deletions, locallyChanged = batch.locallyChanged
             do {
                 try await database.save(writes, deleting: deletions, locallyChanged: locallyChanged)
                 try await Task.detached(priority: .utility) {
@@ -393,16 +468,20 @@ final class AgentStore: ObservableObject {
         conversation.unreadMessageIDs = ids
         conversation.hasUnread = !ids.isEmpty
     }
-    private func saveReadReceipt(_ receipt: AgentReadReceipt, for id: UUID) -> Bool {
+    private func saveReadReceipt(_ receipt: AgentReadReceipt, for id: UUID) async -> Bool {
         if isTemporarySession { readReceipts[id.uuidString.lowercased()] = receipt; return !temporaryClosed }
         let key = id.uuidString.lowercased()
         guard canSave else { readReceipts[key] = receipt; return true }
         guard readReceiptsWritable else { return false }
         var snapshot = readReceipts
         snapshot[key] = receipt
+        let destination = directory
         do {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            try JSONEncoder().encode(snapshot).write(to: directory.appendingPathComponent("read-receipts.json"), options: .atomic)
+            try await Task.detached(priority: .utility) { [snapshot] in
+                try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+                try JSONEncoder().encode(snapshot).write(to: destination.appendingPathComponent("read-receipts.json"), options: .atomic)
+            }.value
+            guard !Task.isCancelled else { return false }
             readReceipts = snapshot
             return true
         } catch {
@@ -508,14 +587,50 @@ final class AgentStore: ObservableObject {
     func viewedLatest(_ id: UUID) {
         guard !isTemporarySession else { return }
         guard !historyLoading, visibleConversationID == id, viewingLatest, let conversation = conversation(id) else { return }
-        var versions = readReceipts[id.uuidString.lowercased()]?.versions ?? [:]
-        versions.merge(Dictionary(uniqueKeysWithValues: conversation.messages.filter { $0.role == .assistant }
-            .map { ($0.id.uuidString.lowercased(), $0.unreadContent.version) })) { _, new in new }
-         
-        guard saveReadReceipt(AgentReadReceipt(readAt: Date(), versions: versions), for: id) else { return }
-        pendingReadAcknowledgments.remove(id)
-        if conversation.hasUnread || conversation.unreadMessageIDs == nil {
-            update(id) { $0.hasUnread = false; $0.unreadMessageIDs = [] }
+        guard acknowledgedWindowVersions[id] != (messageWindowVersions[id] ?? 0) ||
+                conversation.hasUnread || pendingReadAcknowledgments.contains(id) else { return }
+        pendingVisibleReads[id] = VisibleRead(version: messageWindowVersions[id] ?? 0, readAt: Date(),
+            observed: Dictionary(uniqueKeysWithValues: conversation.messages.filter { $0.role == .assistant }
+                .map { ($0.id.uuidString.lowercased(), $0.unreadContent) }), unreadIDs: unreadIDs(in: conversation))
+        guard readAcknowledgmentTask == nil else { return }
+        readAcknowledgmentTask = Task { [weak self] in await self?.acknowledgeVisibleReads() }
+    }
+
+    private func acknowledgeVisibleReads() async {
+        defer { readAcknowledgmentTask = nil }
+        while !pendingVisibleReads.isEmpty, !Task.isCancelled {
+            // Geometry and streaming updates can request the same receipt repeatedly.
+            // Coalesce them before hashing reply text and writing the receipt file.
+            do { try await Task.sleep(for: .milliseconds(100)) } catch { return }
+            let reads = pendingVisibleReads; pendingVisibleReads.removeAll()
+            for (id, read) in reads {
+                guard !Task.isCancelled, conversation(id) != nil else { continue }
+                let version = read.version, observed = read.observed
+                let computed = await Task.detached(priority: .utility) {
+                    observed.mapValues { $0.version }
+                }.value
+                guard !Task.isCancelled else { return }
+                var versions = readReceipts[id.uuidString.lowercased()]?.versions ?? [:]
+                versions.merge(computed) { _, new in new }
+                guard await saveReadReceipt(AgentReadReceipt(readAt: read.readAt, versions: versions), for: id) else { return }
+                acknowledgedWindowVersions[id] = version
+                if (messageWindowVersions[id] ?? 0) == version { pendingReadAcknowledgments.remove(id) }
+                if let index = conversations.firstIndex(where: { $0.id == id }) {
+                    var current = conversations[index]
+                    var unread = unreadIDs(in: current)
+                    if (messageWindowVersions[id] ?? 0) == version { unread.subtract(read.unreadIDs) }
+                    for message in current.messages where message.role == .assistant {
+                        let key = message.id.uuidString.lowercased()
+                        if observed[key] == message.unreadContent { unread.remove(key) }
+                    }
+                    if current.unreadMessageIDs != unread || current.hasUnread != !unread.isEmpty {
+                        current.unreadMessageIDs = unread; current.hasUnread = !unread.isEmpty
+                        conversations[index] = current
+                        persist()
+                    }
+                }
+                if (messageWindowVersions[id] ?? 0) != version { viewedLatest(id) }
+            }
         }
     }
     func setDraft(_ text: String) { if let id = selectedID { update(id) { $0.draft = text } } }
@@ -611,13 +726,16 @@ final class AgentStore: ObservableObject {
      
     @discardableResult
     func send(text: String, attachments: [AgentAsset] = [], editingMessageID: UUID? = nil,
-              preparedRemoteID: String? = nil, preparedThreadID: String? = nil) -> Bool {
-        guard !temporaryClosed, !historyLoading, let conversation = current, !conversation.isBusy,
+              preparedRemoteID: String? = nil, preparedThreadID: String? = nil,
+              conversationID: UUID? = nil, queuedMessageID: UUID? = nil) -> Bool {
+        guard !temporaryClosed, !historyLoading, var conversation = conversationID.flatMap({ self.conversation($0) }) ?? current,
               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty else { return false }
         guard !capabilities.hasOnlyHiddenModels else {
             notice = "当前没有可用模型，请刷新后重试"
             return false
         }
+
+        guard text.count <= 200_000 else { notice = "消息过长"; return false }
 
         if attachments.contains(where: { !$0.isImage }) {
             let totalSize = attachments.reduce(0) { total, asset in
@@ -626,6 +744,24 @@ final class AgentStore: ObservableObject {
             guard totalSize <= 24 * 1024 * 1024 else {
                 notice = "附件总大小不能超过 24 MB"; return false
             }
+        }
+
+        if editingMessageID == nil && queuedMessageID == nil &&
+            (conversation.isBusy || !(conversation.messageQueue ?? []).isEmpty || pendingStops.values.contains(where: { $0.conversationID == conversation.id })) {
+            guard (conversation.messageQueue ?? []).count < 30 else {
+                notice = "等待队列已满，请等待部分消息处理完成"; return false
+            }
+            let entry = AgentQueuedMessage(text: text, assets: attachments, model: conversation.model, reasoning: conversation.reasoning)
+            update(conversation.id) {
+                $0.messageQueue = ($0.messageQueue ?? []) + [entry]
+                $0.draft = ""; $0.draftAssets = []
+            }
+            dispatchQueuedMessage(conversation.id)
+            return true
+        }
+        guard !conversation.isBusy, !pendingStops.values.contains(where: { $0.conversationID == conversation.id }) else { return false }
+        if let queuedMessageID, let entry = conversation.messageQueue?.first(where: { $0.id == queuedMessageID }) {
+            conversation.model = entry.model; conversation.reasoning = entry.reasoning
         }
 
         let editIndex: Int?
@@ -676,8 +812,13 @@ final class AgentStore: ObservableObject {
             }
             item.remoteConversationID = remoteID
             item.messages.append(contentsOf: [user, reply])
-            item.draft = ""
-            item.draftAssets = []
+            if let queuedMessageID {
+                item.messageQueue?.removeAll { $0.id == queuedMessageID }
+                item.queueError = nil
+            } else {
+                item.draft = ""
+                item.draftAssets = []
+            }
             item.updatedAt = Date()
             item.pendingJobID = nil
             item.pendingMessageID = reply.id
@@ -708,6 +849,7 @@ final class AgentStore: ObservableObject {
                 self.updateMessage(id, reply.id) { $0.text += "回复完成标记_CHAT_REPAIR_OK"; $0.state = .completed }
                 self.update(id) { $0.pendingJobID = nil; $0.pendingMessageID = nil }
                 self.tasks[id] = nil
+                self.dispatchQueuedMessage(id)
             }
             return true
         }
@@ -715,6 +857,35 @@ final class AgentStore: ObservableObject {
 #endif
         startSubmission(id: id, reply: reply, text: text, assets: assets, remoteID: remoteID, reasoning: conversation.reasoning)
         return true
+    }
+
+    func prioritizeQueuedMessage(_ messageID: UUID, in id: UUID) {
+        update(id) { item in
+            guard var queue = item.messageQueue, let index = queue.firstIndex(where: { $0.id == messageID }) else { return }
+            var entry = queue.remove(at: index); entry.urgent = true
+            queue.insert(entry, at: 0); item.messageQueue = queue
+        }
+        dispatchQueuedMessage(id)
+    }
+
+    func removeQueuedMessage(_ messageID: UUID, in id: UUID) {
+        update(id) { $0.messageQueue?.removeAll { $0.id == messageID } }
+        dispatchQueuedMessage(id)
+    }
+
+    private func dispatchQueuedMessage(_ id: UUID) {
+        guard (canSave || isTemporarySession), !temporaryClosed, !historyLoading, tasks[id] == nil,
+              let item = conversation(id), !item.isBusy,
+              !pendingStops.values.contains(where: { $0.conversationID == id }),
+              let entry = item.messageQueue?.first else { return }
+        // A failed submission may already exist remotely: resolve it before starting another turn.
+        guard item.messages.last?.state != .failed else {
+            update(id) { $0.queueError = "请先重试当前失败消息，再继续等待队列" }
+            return
+        }
+        if !send(text: entry.text, attachments: entry.assets, conversationID: id, queuedMessageID: entry.id) {
+            update(id) { $0.queueError = notice ?? "等待消息暂时无法发送，请稍后重试" }
+        }
     }
 
     private func startSubmission(id: UUID, reply: AgentMessage, text: String, assets: [AgentAsset], remoteID: String, reasoning: String) {
@@ -725,6 +896,9 @@ final class AgentStore: ObservableObject {
             guard let self else { return }
             defer { self.finishTask(id, version: version) }
             do {
+                guard await self.persistDurably() else {
+                    throw AgentClientError.message("消息保存失败，请重试")
+                }
                 let uploads = try assets.filter(\.isImage).map { asset -> CodexImageUpload in
                     let suffix = asset.mimeType == "image/png" ? ".png" : asset.mimeType == "image/webp" ? ".webp" : ".jpg"
                     return CodexImageUpload(data: try Data(contentsOf: asset.url), suffix: suffix)
@@ -732,9 +906,14 @@ final class AgentStore: ObservableObject {
                 let files = try assets.filter { !$0.isImage }.map {
                     CodexFileUpload(data: try Data(contentsOf: $0.url), filename: $0.filename)
                 }
+                let userMessageID = self.conversation(id)?.messages.last(where: { $0.role == .user && $0.requestID == reply.requestID })?.id
+                guard isTemporarySession || userMessageID != nil else { throw AgentClientError.message("原始消息尚未加载，请重试") }
                 let jobID = try await client.createJob(
                     prompt: text, uploads: uploads, conversationID: remoteID,
-                    requestID: reply.requestID!, reasoning: reasoning, model: reply.model, files: files
+                    requestID: reply.requestID!, reasoning: reasoning, model: reply.model, files: files,
+                    syncConversationID: isTemporarySession ? nil : id,
+                    userMessageID: isTemporarySession ? nil : userMessageID,
+                    assistantMessageID: isTemporarySession ? nil : reply.id
                 )
                 guard self.taskVersions[id] == version, self.conversation(id)?.pendingMessageID == reply.id else {
                     _ = try? await client.cancel(jobID: jobID)
@@ -817,6 +996,7 @@ final class AgentStore: ObservableObject {
     }
 
     func resumePending() {
+        for item in conversations where !(item.messageQueue ?? []).isEmpty { dispatchQueuedMessage(item.id) }
         for item in conversations where item.pendingJobID != nil && tasks[item.id] == nil {
             guard let jobID = item.pendingJobID, let messageID = item.pendingMessageID else { continue }
             beginBackground(item.id)
@@ -1030,6 +1210,7 @@ final class AgentStore: ObservableObject {
                 $0.error = nil
             }
             persist()
+            dispatchQueuedMessage(intent.conversationID)
         } catch {
             updateMessage(intent.conversationID, intent.messageID) {
                 $0.state = .cancelled; $0.phase = "已停止接收"
@@ -1206,6 +1387,7 @@ final class AgentStore: ObservableObject {
         guard taskVersions[id] == version else { return }
         tasks[id] = nil; taskVersions.removeValue(forKey: id)
         endBackground(id)
+        dispatchQueuedMessage(id)
     }
     private func endBackground(_ id: UUID) {
         if let token = backgroundTokens.removeValue(forKey: id), token != .invalid { UIApplication.shared.endBackgroundTask(token) }
@@ -1227,7 +1409,7 @@ extension AgentStore {
         for task in tasks.values { task.cancel() }
         tasks.removeAll(); taskVersions.removeAll()
         for id in Array(backgroundTokens.keys) { endBackground(id) }
-        persistenceTask?.cancel(); bootstrap?.cancel()
+        persistenceTask?.cancel(); bootstrap?.cancel(); windowTask?.cancel(); readAcknowledgmentTask?.cancel()
         conversations.removeAll(); selectedID = nil; blank = AgentConversation()
         stagedMessages.removeAll(); localDirtyMessages.removeAll(); removedMessages.removeAll()
         pendingStops.removeAll(); readReceipts.removeAll()

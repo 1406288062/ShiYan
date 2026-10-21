@@ -644,7 +644,7 @@ struct AIAgentView: View {
                                 }.frame(maxWidth: .infinity).padding(.horizontal, 18)
                                     .padding(.top, store.isTemporarySession ? max(80, (height - top - composerHeight) / 2 - 80) : 130)
                             }
-                            if store.hasEarlierMessages {
+                            if !store.historyLoading, store.hasEarlierMessages {
                                 Button {
                                     Task { await loadEarlierHistory() }
                                 } label: {
@@ -654,7 +654,7 @@ struct AIAgentView: View {
                                     }.frame(maxWidth: .infinity).padding(.vertical, 8)
                                 }.buttonStyle(.plain).disabled(store.loadingEarlier).padding(.horizontal, 18)
                             }
-                            ForEach(conversation.messages) { message in
+                            ForEach(store.historyLoading ? [] : conversation.messages) { message in
                                 VStack(alignment: .leading, spacing: 16) {
                                     if message.role == .user {
                                         Text(messageTimestamp(message.createdAt))
@@ -679,7 +679,7 @@ struct AIAgentView: View {
                      
                     .padding(.bottom, 40)
                     .id(store.selectedID)
-                    .transition(reduceMotion ? .opacity : .asymmetric(
+                    .transition(!newChatSwitchInFlight ? .identity : reduceMotion ? .opacity : .asymmetric(
                         insertion: .offset(y: 62).combined(with: .opacity),
                         removal: .offset(y: -92).combined(with: .opacity)))
                     .background {
@@ -732,9 +732,8 @@ struct AIAgentView: View {
                         .accessibilityIdentifier("test-edit-branch-action")
                     }
     #endif
-                    HStack(spacing: 8) {
+                    HStack(spacing: 2) {
                         if !store.isTemporarySession {
-                        HStack(spacing: 2) {
                         Button {
                             speech.cancel(); speechConversationID = nil; editedMessageID = nil
                             resetConversationPresentation()
@@ -743,10 +742,8 @@ struct AIAgentView: View {
                         } label: {
                             Image(systemName: "square.and.pencil").font(.system(size: 21, weight: .medium)).frame(width: 46, height: 46).contentShape(Rectangle())
                         }.buttonStyle(.plain).accessibilityLabel("新建聊天")
-                    }.padding(.horizontal, 3).foregroundStyle(.primary)
-                        .shiyanGlass(in: Capsule(), tint: .white.opacity(0.04), interactive: true)
                         }
-                        ShiyanMoreMenu {
+                        ShiyanMoreMenu(hasGlass: false) {
                             Button("扫一扫", systemImage: "qrcode.viewfinder") {
                                 speech.cancel(); inputFocused = false
                                 showingScanner = true
@@ -765,6 +762,8 @@ struct AIAgentView: View {
                         .menuOrder(.fixed)
                         .accessibilityIdentifier("agent-chat-more")
                     }
+                    .padding(.horizontal, 3).foregroundStyle(.primary)
+                    .shiyanGlass(in: Capsule(), tint: .white.opacity(0.04), interactive: true)
                 }.padding(.horizontal, 16).padding(.top, top + 3)
                 .padding(.bottom, topBlurEarlyLead)
                  
@@ -817,6 +816,7 @@ struct AIAgentView: View {
                     if latest, let id = store.selectedID { store.viewedLatest(id) }
                 }
                 .onChange(of: store.selectedID) { _, id in
+                    chatScrollPosition = ScrollPosition(edge: .bottom)
                     copyFeedbackTask?.cancel(); copyFeedbackTask = nil; copiedMessageID = nil
                     if !newChatSwitchInFlight { cancelNewChatPull() }
                     attachmentOpen = false
@@ -1352,11 +1352,36 @@ struct AIAgentView: View {
                         .modifier(AgentReasoningVisibility(presentation: reasoningPresentation))
                 }
                 let attachments = conversation.draftAssets
+                let hasMessageToSend = !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty
                 let waitingForMessage = !conversation.isBusy &&
                     inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
                     attachments.isEmpty
                 let expanded = inputFocused || speech.isRecording || !attachments.isEmpty
                 VStack(spacing: 0) {
+                    if let queue = conversation.messageQueue, !queue.isEmpty {
+                        ScrollView {
+                            VStack(spacing: 8) {
+                                ForEach(Array(queue.enumerated()), id: \.element.id) { index, entry in
+                                    HStack(spacing: 8) {
+                                        Text(entry.urgent ? "优先等待" : "等待 \(index + 1)")
+                                            .font(.caption).foregroundStyle(.secondary)
+                                        Text(entry.text.isEmpty ? "附件消息" : entry.text)
+                                            .font(.subheadline).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
+                                        Button { store.prioritizeQueuedMessage(entry.id, in: conversation.id) } label: {
+                                            Image(systemName: "arrow.turn.down.left").frame(width: 32, height: 32)
+                                        }.buttonStyle(.plain).disabled(entry.urgent)
+                                            .accessibilityLabel("优先处理这条等待消息")
+                                        Button { store.removeQueuedMessage(entry.id, in: conversation.id) } label: {
+                                            Image(systemName: "xmark").frame(width: 32, height: 32)
+                                        }.buttonStyle(.plain).accessibilityLabel("移除等待消息")
+                                    }
+                                }
+                                if let error = conversation.queueError {
+                                    Text(error).font(.caption).foregroundStyle(.secondary)
+                                }
+                            }.padding(10)
+                        }.frame(maxHeight: min(CGFloat(queue.count) * 56 + (conversation.queueError == nil ? 0 : 30), 160))
+                    }
                     if !attachments.isEmpty {
                         ScrollView(.horizontal) {
                             HStack(spacing: 10) {
@@ -1434,9 +1459,14 @@ struct AIAgentView: View {
                             Image(systemName: speech.isRecording ? "stop.fill" : "mic").font(.system(size: 20))
                                 .foregroundStyle(speech.isRecording ? Color.red : Color.primary).frame(width: 36, height: 40).contentShape(Rectangle())
                         }.buttonStyle(.plain).accessibilityLabel(speech.isRecording ? "结束语音输入" : "语音转文字")
+                        if conversation.isBusy && hasMessageToSend {
+                            Button { Task { await store.stop(conversation.id) } } label: {
+                                Image(systemName: "stop.fill").frame(width: 32, height: 36)
+                            }.buttonStyle(.plain).accessibilityLabel("停止处理")
+                        }
                         Button {
                             guard let latest = store.current else { return }
-                            if latest.isBusy { Task { await store.stop(latest.id) } }
+                            if latest.isBusy && !hasMessageToSend { Task { await store.stop(latest.id) } }
                             else {
                                 let text = inputText
                                 let assets = latest.draftAssets
@@ -1463,13 +1493,13 @@ struct AIAgentView: View {
                                 }
                             }
                         } label: {
-                            Image(systemName: conversation.isBusy ? "stop.fill" : "arrow.up")
-                                .font(.system(size: conversation.isBusy ? 16 : 19, weight: .bold))
+                            Image(systemName: conversation.isBusy && !hasMessageToSend ? "stop.fill" : "arrow.up")
+                                .font(.system(size: conversation.isBusy && !hasMessageToSend ? 16 : 19, weight: .bold))
                                 .foregroundStyle(.white)
                                 .frame(width: 36, height: 36)
                                 .background(Color.accentColor, in: Circle())
                         }.buttonStyle(.plain)
-                        .disabled(editInFlight || (!conversation.isBusy && (loadingPhotos || (inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && conversation.draftAssets.isEmpty))))
+                        .disabled(editInFlight || loadingPhotos || (!conversation.isBusy && !hasMessageToSend))
                          
                         .overlay {
                             if waitingForMessage {
@@ -1486,7 +1516,7 @@ struct AIAgentView: View {
                                 .accessibilityHidden(true)
                             }
                         }
-                        .accessibilityLabel(conversation.isBusy ? "停止处理" : "发送")
+                        .accessibilityLabel(conversation.isBusy ? (hasMessageToSend ? "追加问题" : "停止处理") : "发送")
                     }.padding(.horizontal, 5).padding(.bottom, 2)
                         .modifier(AgentReasoningVisibility(presentation: reasoningPresentation))
                 }

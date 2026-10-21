@@ -352,16 +352,40 @@ final class AgentSyncCoordinator {
             }
     }
     private func publishReadyMutations() async {
-        let batch = Array(ledger.pending.filter { mutation in
-            mutation.deleted || (mutation.data?["assets"]?.array ?? []).allSatisfy { value in
+        var textOnly: [String: AgentSyncMutation] = [:]
+        let batch = Array(ledger.pending.compactMap { mutation -> AgentSyncMutation? in
+            let ready = mutation.deleted || (mutation.data?["assets"]?.array ?? []).allSatisfy { value in
                 guard let id = value.object["syncAssetId"]?.string ?? value.object["id"]?.string else { return false }
                 return ledger.uploadedAssets.contains(id)
             }
+            if ready { return mutation }
+            guard mutation.kind == "messages", var data = mutation.data, data["role"]?.string == "user",
+                  !(data["text"]?.string ?? "").isEmpty else { return nil }
+            let key = AgentSyncLedger.key(mutation.kind, mutation.id)
+            if let previous = ledger.baseline[key], previous["text"] == data["text"],
+               previous["requestId"] == data["requestId"], previous["conversationId"] == data["conversationId"] { return nil }
+            // Publish the original message ID/text immediately. Keep the full
+            // mutation pending so its attachments are delivered after upload.
+            data["assets"] = ledger.baseline[key]?["assets"] ?? .array([])
+            var preview = mutation
+            preview.mutationId += "-text"
+            preview.data = data
+            textOnly[preview.mutationId] = mutation
+            return preview
         }.prefix(100))
         guard !batch.isEmpty else { return }
         do {
             let posted = try await client.sync(after: ledger.cursor, mutations: batch)
-            for receipt in posted.accepted ?? [] { ledger.accept(receipt) }
+            for receipt in posted.accepted ?? [] {
+                if let original = textOnly[receipt.mutationId],
+                   let index = ledger.pending.firstIndex(where: { $0.mutationId == original.mutationId }),
+                   let preview = batch.first(where: { $0.mutationId == receipt.mutationId }) {
+                    let key = AgentSyncLedger.key(receipt.kind, receipt.id)
+                    ledger.revisions[key] = max(ledger.revisions[key] ?? 0, receipt.revision)
+                    ledger.baseline[key] = preview.data
+                    ledger.pending[index].baseRevision = receipt.revision
+                } else { ledger.accept(receipt) }
+            }
             for conflict in posted.conflicts ?? [] {
                 if let current = conflict.current, let merged = ledger.absorb(current) { try await importChange(merged) }
             }

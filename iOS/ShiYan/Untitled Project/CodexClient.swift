@@ -265,7 +265,8 @@ final class CodexClient {
         return try JSONDecoder().decode(AgentCapabilities.self, from: data)
     }
     func createJob(prompt: String, uploads: [CodexImageUpload], conversationID: String,
-                   requestID: String, reasoning: String, model: String? = nil, history: [CodexHistoryTurn] = [], files: [CodexFileUpload] = []) async throws -> String {
+                   requestID: String, reasoning: String, model: String? = nil, history: [CodexHistoryTurn] = [], files: [CodexFileUpload] = [],
+                   syncConversationID: UUID? = nil, userMessageID: UUID? = nil, assistantMessageID: UUID? = nil) async throws -> String {
         try await prepareConnection()
         var payload: [String: Any] = [
             "prompt": prompt,  
@@ -273,6 +274,9 @@ final class CodexClient {
             "images": uploads.map { ["data": $0.data.base64EncodedString(), "suffix": $0.suffix] }
         ]
         if !files.isEmpty { payload["files"] = files.map { ["data": $0.data.base64EncodedString(), "filename": $0.filename] } }
+        if let syncConversationID { payload["syncConversationId"] = syncConversationID.uuidString.lowercased() }
+        if let userMessageID { payload["userMessageId"] = userMessageID.uuidString.lowercased() }
+        if let assistantMessageID { payload["assistantMessageId"] = assistantMessageID.uuidString.lowercased() }
         if let model { payload["model"] = model }
         if !history.isEmpty {
             payload["history"] = history.map { ["role": $0.role, "text": $0.text] }

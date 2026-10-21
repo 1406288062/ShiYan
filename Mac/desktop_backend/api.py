@@ -289,10 +289,24 @@ def create_app(directory, root, legacy=None):
 
     @app.get("/api/conversations/{identifier}/messages/{message_id}/details")
     async def message_details(identifier:str,message_id:str,request:Request):
-        conversation=runtime(request).conversation(identifier)
+        r=runtime(request)
+        conversation=r.conversation(identifier)
         message=next((m for m in conversation.get("messages",[]) if m.get("id")==message_id),None)
         if message is None:
             raise ValueError("消息不存在")
+        if message.get("executionDetailsAvailable") is True:
+            details=await r.gateway.json("GET","sync/messages/"+quote(message_id,safe="")+"/details",timeout=90)
+            fields=("rawResult","fileChanges","displayItems")
+            if not isinstance(details,dict) or details.get("ok") is not True or any(field not in details for field in fields):
+                raise GatewayError("完整记录暂时无法读取，请重试",502)
+            # A details view never changes the sync baseline or stages a partial
+            # execution record as a new cloud mutation.
+            full={field:details[field] for field in fields}
+            if not message.get("remoteJobId"):
+                for field in fields:
+                    if field in (message.get("executionDetailsChanged") or []):
+                        full[field]=message.get(field,None if field=="rawResult" else [])
+            message={**message,**full,"detailsDeferred":False}
         return {"ok":True,"message":message}
 
     @app.get("/api/memory")

@@ -331,25 +331,27 @@ struct HistoryView: View {
 
     private func modeMenuIcon(_ icon: String, selected: Bool) -> some View {
         Image(uiImage: makeModeMenuIcon(icon: icon, selected: selected))
-            .frame(width: 34, height: 20)
+            .frame(width: 38, height: 22)
     }
 
     private func makeModeMenuIcon(icon: String, selected: Bool) -> UIImage {
-        let originalConfig = UIImage.SymbolConfiguration(pointSize: 16, weight: .regular)
+        let originalConfig = UIImage.SymbolConfiguration(pointSize: 20, weight: .regular)
         let original = UIImage(systemName: icon, withConfiguration: originalConfig)?
             .withTintColor(.label, renderingMode: .alwaysOriginal)
         let checkmark = UIImage(systemName: "checkmark",
                                 withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold))?
             .withTintColor(.label, renderingMode: .alwaysOriginal)
 
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 34, height: 20))
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 38, height: 22))
         return renderer.image { _ in
             if selected, let checkmark {
-                checkmark.draw(in: CGRect(x: 0, y: 4, width: 12, height: 12))
+                checkmark.draw(in: CGRect(x: 0, y: 5, width: 12, height: 12))
             }
             if let original {
                  
-                original.draw(in: CGRect(x: 17, y: 2, width: 16, height: 16))
+                let height: CGFloat = 20
+                let width = height * original.size.width / original.size.height
+                original.draw(in: CGRect(x: 17 + (20 - width) / 2, y: 1, width: width, height: height))
             }
         }
     }

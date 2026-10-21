@@ -24,8 +24,8 @@ struct AgentSelectableText: UIViewRepresentable {
         view.isSelectable = true
         view.linkTextAttributes = [
             .foregroundColor: UIColor.label,
-            .underlineStyle: 0,
-            .backgroundColor: UIColor.secondarySystemFill
+            .underlineStyle: NSUnderlineStyle.single.union(.patternDot).rawValue,
+            .underlineColor: UIColor.secondaryLabel
         ]
         view.isScrollEnabled = false
         view.showsVerticalScrollIndicator = false
@@ -45,11 +45,12 @@ struct AgentSelectableText: UIViewRepresentable {
         let font = monospaced
             ? UIFont.monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .footnote).pointSize, weight: .regular)
             : headingLevel > 0 ? UIFont(descriptor: base.fontDescriptor.withSymbolicTraits(.traitBold) ?? base.fontDescriptor, size: base.pointSize) : base
-        let key = "\(text)\u{0}\(font.pointSize)-\(markdown)-\(monospaced)-\(headingLevel)-\(textAlignment.rawValue)"
-        if context.coordinator.renderKey != key {
+        let key = "\(font.pointSize)-\(markdown)-\(monospaced)-\(headingLevel)-\(textAlignment.rawValue)"
+        if context.coordinator.renderKey != key || context.coordinator.renderedText != text {
             let selection = view.selectedRange
             UIView.performWithoutAnimation {
                 view.attributedText = Self.attributed(text, font: font, markdown: markdown, alignment: textAlignment)
+                view.invalidateMeasuredSize()
                 if selection.length > 0 {
                     let length = view.attributedText.length
                     let start = min(selection.location, length)
@@ -58,6 +59,7 @@ struct AgentSelectableText: UIViewRepresentable {
                 view.invalidateIntrinsicContentSize()
             }
             context.coordinator.renderKey = key
+            context.coordinator.renderedText = text
         }
         view.accessibilityIdentifier = identifier
         if selectOnAppear && context.coordinator.lastSelectionRequest != selectionRequestID {
@@ -67,7 +69,7 @@ struct AgentSelectableText: UIViewRepresentable {
     }
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: SelectionTextView, context: Context) -> CGSize? {
         guard let width = proposal.width, width.isFinite, width > 0 else { return nil }
-        let size = uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
+        let size = uiView.measuredSize(for: width)
         return CGSize(width: width, height: ceil(size.height))
     }
     private static func attributed(_ text: String, font: UIFont, markdown: Bool, alignment: NSTextAlignment) -> NSAttributedString {
@@ -129,12 +131,22 @@ struct AgentSelectableText: UIViewRepresentable {
             var attributes = value.attributes(at: range.location, effectiveRange: nil)
             attributes[.link] = url
             attributes[.foregroundColor] = UIColor.label
-            attributes[.underlineStyle] = 0
-            attributes[.backgroundColor] = UIColor.secondarySystemFill
+            attributes[.underlineStyle] = NSUnderlineStyle.single.union(.patternDot).rawValue
+            attributes[.underlineColor] = UIColor.secondaryLabel
+            attributes.removeValue(forKey: .backgroundColor)
             value.replaceCharacters(in: range, with: NSAttributedString(string: label + " ↗", attributes: attributes))
         }
     }
     final class SelectionTextView: UITextView {
+        private var measuredWidth: CGFloat?
+        private var cachedSize: CGSize?
+        func invalidateMeasuredSize() { measuredWidth = nil; cachedSize = nil }
+        func measuredSize(for width: CGFloat) -> CGSize {
+            if measuredWidth == width, let cachedSize { return cachedSize }
+            let size = sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
+            measuredWidth = width; cachedSize = size
+            return size
+        }
         private var selectionWork: DispatchWorkItem?
         private var pendingSelection = false
         func requestSelection() {
@@ -178,6 +190,7 @@ struct AgentSelectableText: UIViewRepresentable {
     }
     final class Coordinator: NSObject, UITextViewDelegate {
         var renderKey = ""
+        var renderedText: String?
         var lastSelectionRequest: Int?
         var selectionActive = false
         var onSelectionChanged: ((Bool) -> Void)?

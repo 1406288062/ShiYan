@@ -55,10 +55,7 @@ struct MemoryView: View {
     let hasUnread: Bool
     let onSidebar: () -> Void
     let onBack: () -> Void
-    @ObservedObject private var account = ShiyanAccount.shared
     @StateObject private var store = ShiyanMemoryStore()
-    @ObservedObject private var dots = DotsStore.shared
-    @State private var editingTopic: DotsRelationshipTopic?
     @Environment(\.scenePhase) private var scenePhase
 
     private var background: Color { Color(uiColor: .systemGroupedBackground) }
@@ -75,7 +72,6 @@ struct MemoryView: View {
                             get: { store.enabled },
                             set: { value in Task {
                                 await store.setEnabled(value)
-                                if account.canAccessServer { await dots.loadRelationship() }
                             } }
                         ))
                         .font(.body.weight(.medium))
@@ -97,48 +93,6 @@ struct MemoryView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(cardBackground, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
 
-                    if account.canAccessServer {
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("共同话题").font(.body.weight(.medium))
-                        Text("查看、纠正或删除共同聊过的内容。")
-                            .font(.footnote).foregroundStyle(.secondary)
-                        if let relationship = dots.relationship {
-                            if relationship.topics.isEmpty {
-                                Text("还没有保存的共同话题").font(.subheadline).foregroundStyle(.secondary)
-                            }
-                            ForEach(relationship.topics) { topic in
-                                Button { editingTopic = topic } label: {
-                                    HStack(spacing: 12) {
-                                        VStack(alignment: .leading, spacing: 5) {
-                                            Text(topic.title).font(.subheadline)
-                                            if topic.needsReview {
-                                                Text("请确认这段记忆").font(.footnote).foregroundStyle(.secondary)
-                                            }
-                                            if !topic.summary.isEmpty {
-                                                Text(topic.summary).font(.footnote).foregroundStyle(.secondary).lineLimit(2)
-                                            }
-                                        }
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        Image(systemName: "chevron.right").font(.footnote).foregroundStyle(.secondary)
-                                    }
-                                    .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                                .disabled(dots.relationshipLoading || dots.relationshipSaving)
-                            }
-                        }
-                        if dots.relationshipLoading { ProgressView("正在读取…").font(.footnote) }
-                        if let error = dots.relationshipNotice {
-                            Text(error).font(.footnote).foregroundStyle(.secondary)
-                            Button("重新读取") { Task { if account.canAccessServer { await dots.loadRelationship() } } }
-                                .disabled(dots.relationshipLoading || dots.relationshipSaving)
-                        }
-                    }
-                    .padding(20)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(cardBackground, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .accessibilityIdentifier("memory-shared-topics")
-                    }
 
                     if let error = store.error {
                         VStack(alignment: .leading, spacing: 12) {
@@ -172,19 +126,9 @@ struct MemoryView: View {
         }
         .foregroundStyle(.primary)
         .accessibilityIdentifier("memory-page")
-        .sheet(item: $editingTopic) { topic in
-            NavigationStack {
-                DotsRelationshipTopicEditor(store: dots, topic: topic)
-                    .toolbar {
-                        ToolbarItem(placement: .topBarLeading) {
-                            ShiyanCloseButton(action: { editingTopic = nil }, inToolbar: true)
-                        }
-                    }
-            }
-        }
-        .task { await store.refresh(); if account.canAccessServer { await dots.loadRelationship() } }
+        .task { await store.refresh() }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { Task { await store.refresh(); if account.canAccessServer { await dots.loadRelationship() } } }
+            if phase == .active { Task { await store.refresh() } }
         }
     }
 }

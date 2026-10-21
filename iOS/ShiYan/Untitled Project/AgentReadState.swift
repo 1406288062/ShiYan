@@ -2,7 +2,7 @@ import Foundation
 import CryptoKit
 
  
-struct AgentUnreadContent: Codable, Equatable {
+nonisolated struct AgentUnreadContent: Codable, Equatable, Sendable {
     let text: String
     let attachmentIDs: [String]
     let state: String
@@ -28,7 +28,7 @@ struct AgentUnreadContent: Codable, Equatable {
     }
 }
 
-struct AgentReadReceipt: Codable {
+nonisolated struct AgentReadReceipt: Codable, Sendable {
     var readAt: Date
     var versions: [String: String]
 }

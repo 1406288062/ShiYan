@@ -99,6 +99,8 @@ class Gateway:
         digest = hashlib.sha256(body).hexdigest()
         headers = {"Content-Type":"application/json", "Content-Length":str(len(body)),
                    "X-Shiyan-Body-Sha":digest, "X-Shiyan-Platform":"macos", "Connection":"close"}
+        if route == "sync" or route.startswith("sync?"):
+            headers["X-Shiyan-Sync-Profile"] = "compact"
         if self.account_token:
             headers["Authorization"] = "Bearer " + self.account_token
             headers["X-Shiyan-Account-Required"] = "1"

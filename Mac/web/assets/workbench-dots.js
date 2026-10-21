@@ -374,7 +374,7 @@
  const labels={active:'等待执行',running:'处理中',waiting:'等待中',scheduled:'已排队',pending:'已排队',queued:'已排队',paused:'已暂停',blocked:'需处理',completed:'已完成',done:'已完成',cancelled:'已取消',canceled:'已取消',failed:'失败',awaiting_approval:'需要你批准操作',waiting_approval:'需要你批准操作',sleeping:'等待唤醒'};
  const label=s=>labels[s]||s||'等待中';
  const date=n=>n?new Date(Number(n)*1000).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
- const markdown=s=>window.ShiYanOutput?.markdown(s,C.icon('copy'))||'<p>'+esc(s).replace(/\n/g,'<br>')+'</p>';
+ const markdown=s=>window.ShiYanOutput?.markdown(s,C.icon('copy'),{prose:true})||'<p>'+esc(s).replace(/\n/g,'<br>')+'</p>';
  const api=(path,method='GET',data)=>window.shiyan.api('/api/dots'+path,method,data);
  function persist(){
   const snapshot=JSON.parse(JSON.stringify({manager,messages,tasks,goals,details,drafts,pending,cursor,readState}));
