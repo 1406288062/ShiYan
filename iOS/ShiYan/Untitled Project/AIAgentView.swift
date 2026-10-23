@@ -14,13 +14,15 @@ private struct AgentMultilineContextPreviewLayout: Layout {
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         guard let bubble = subviews.first else { return .zero }
-        let offeredWidth = max(1, min(maxBubbleWidth, proposal.width ?? maxBubbleWidth))
-        return bubble.sizeThatFits(ProposedViewSize(width: offeredWidth, height: nil))
+        // UIKit probes a context preview with compressed proposals. Reflowing
+        // long text at those widths produces a tall, narrow preview snapshot.
+        let size = bubble.sizeThatFits(ProposedViewSize(width: maxBubbleWidth, height: nil))
+        return CGSize(width: maxBubbleWidth, height: size.height)
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         guard let bubble = subviews.first else { return }
-        bubble.place(at: bounds.origin, proposal: ProposedViewSize(width: bounds.width, height: bounds.height))
+        bubble.place(at: bounds.origin, anchor: .topLeading, proposal: ProposedViewSize(width: maxBubbleWidth, height: nil))
     }
 }
 
@@ -368,6 +370,13 @@ struct AIAgentView: View {
         let windows = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap(\.windows)
         let width = windows.first(where: \.isKeyWindow)?.bounds.width ?? 390
         return min(360, max(160, width * 0.78))
+    }
+    private var messagePreviewLineLimit: Int {
+        let height = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows).first(where: \.isKeyWindow)?.bounds.height ?? 844
+        let availableHeight = min(360, height * 0.45) - 26
+        let lineHeight = UIFont.preferredFont(forTextStyle: .body).lineHeight + 5
+        return max(1, Int(availableHeight / lineHeight))
     }
     private func bubblePreviewWidth(for text: String) -> CGFloat {
          
@@ -1093,7 +1102,7 @@ struct AIAgentView: View {
      
      
      
-    private func userMessageBubble(_ text: String, selectionIdentifier: String? = nil) -> some View {
+    private func userMessageBubble(_ text: String, selectionIdentifier: String? = nil, previewLineLimit: Int? = nil) -> some View {
         let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
          
         return Text(text)
@@ -1109,6 +1118,8 @@ struct AIAgentView: View {
             }
             .font(.body)
             .lineSpacing(5)
+            .lineLimit(previewLineLimit)
+            .truncationMode(.tail)
             .fixedSize(horizontal: false, vertical: true)
             .padding(13)
             .background {
@@ -1202,7 +1213,7 @@ struct AIAgentView: View {
                                      
                                      
                                     AgentMultilineContextPreviewLayout(maxBubbleWidth: bubblePreviewWidth(for: message.text)) {
-                                        userMessageBubble(message.text)
+                                        userMessageBubble(message.text, previewLineLimit: messagePreviewLineLimit)
                                             .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 20, style: .continuous))
                                     }
                                     .background(AgentContextPreviewBackground())
