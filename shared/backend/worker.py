@@ -16,7 +16,6 @@ def main():
     parser.add_argument("--input", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--model", choices=["general","anime"], default="general")
-    parser.add_argument("--max-file-bytes", type=int, default=0)
     args = parser.parse_args()
     import cv2
     import numpy as np
@@ -41,10 +40,6 @@ def main():
         completed += 1
         report(progress=min(completed / max(count,1), 0.99), label="正在增强")
     handle = enhancer._model.register_forward_hook(completed_tile)
-    if args.max_file_bytes:
-        if args.max_file_bytes < height * width * 16 * 3:
-            raise ValueError("增强结果超过文件空间限制")
-        resource.setrlimit(resource.RLIMIT_FSIZE, (args.max_file_bytes, args.max_file_bytes))
     pixels_path = Path(str(args.output) + ".pixels")
     output = None
     try:

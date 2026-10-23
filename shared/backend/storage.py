@@ -1,8 +1,6 @@
  
 from __future__ import annotations
 import hashlib
-import fcntl
-from contextlib import contextmanager
 import io
 import json
 import mimetypes
@@ -11,9 +9,6 @@ from pathlib import Path
 import shutil
 import sqlite3
 import threading
-import tempfile
-import time
-import stat
 import uuid
 import warnings
 from datetime import datetime, timezone
@@ -34,20 +29,14 @@ def anime_export_filename(filename):
         return name
     return stem + "_anime" + suffix
 
-MEMBER_CACHE_QUOTA_BYTES = 256 * 1024 * 1024
-_RESERVATION_LOCK = threading.RLock()
-
 class Storage:
-    def __init__(self, directory, project_root, *, quota_bytes=None, minimum_free_bytes=1024 * 1024 * 1024, reservation_file=None):
+    def __init__(self, directory, project_root):
         self.root = Path(directory).expanduser().resolve()
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.media = self.root / "assets"
         self.media.mkdir(exist_ok=True, mode=0o700)
         self.transfers = self.root / "transfers"
         self.transfers.mkdir(exist_ok=True, mode=0o700)
-        self.quota_bytes = quota_bytes
-        self.minimum_free_bytes = minimum_free_bytes
-        self.reservation_file = Path(reservation_file or Path(tempfile.gettempdir()) / ("shiyan-storage-reservations-" + str(os.getuid()) + ".json"))
         self.thumbnail_lock = threading.Lock()
         self.lock = threading.RLock()
         self.db = sqlite3.connect(self.root / "state.sqlite3", check_same_thread=False)
@@ -63,133 +52,6 @@ class Storage:
         self.project_root = Path(project_root)
         self.sync_observer = None
 
-    def _cache_usage(self):
-        size = count = 0
-        for folder, directories, files in os.walk(self.root, followlinks=False):
-            directories[:] = [name for name in directories if not (Path(folder) / name).is_symlink()]
-            for name in files:
-                try:
-                    info = (Path(folder) / name).lstat()
-                except FileNotFoundError:
-                    continue
-                if stat.S_ISREG(info.st_mode):
-                    size += info.st_size
-                    count += 1
-        return size, count
-
-    @contextmanager
-    def _reservations(self):
-        # A stable lock protects an atomically replaced ledger. A process dying
-        # during a write cannot corrupt admission accounting for other owners.
-        with _RESERVATION_LOCK:
-            lock_path = self.reservation_file.with_name(self.reservation_file.name + ".lock")
-            descriptor = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
-            info = os.fstat(descriptor)
-            if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_nlink != 1:
-                os.close(descriptor)
-                raise ValueError("文件存储暂不可用")
-            with os.fdopen(descriptor, "r+") as lock:
-                fcntl.flock(lock, fcntl.LOCK_EX)
-                data_fd = os.open(self.reservation_file, os.O_CREAT | os.O_RDONLY | os.O_NOFOLLOW, 0o600)
-                info = os.fstat(data_fd)
-                if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_nlink != 1:
-                    os.close(data_fd)
-                    raise ValueError("文件存储暂不可用")
-                with os.fdopen(data_fd, "r", encoding="utf-8") as stream:
-                    raw = stream.read(1024 * 1024 + 1)
-                if len(raw) > 1024 * 1024:
-                    raise ValueError("文件存储暂不可用")
-                entries = json.loads(raw) if raw else {}
-                for key, entry in list(entries.items()):
-                    alive = entry["at"] > time.time() - 3600
-                    if alive:
-                        try:
-                            os.kill(entry["pid"], 0)
-                        except (ProcessLookupError, PermissionError):
-                            alive = False
-                    if not alive:
-                        del entries[key]
-                yield entries
-                temporary = self.reservation_file.with_name(self.reservation_file.name + "." + uuid.uuid4().hex + ".tmp")
-                try:
-                    with temporary.open("x", encoding="utf-8") as stream:
-                        os.chmod(temporary, 0o600)
-                        json.dump(entries, stream, separators=(",", ":"))
-                        stream.flush()
-                        os.fsync(stream.fileno())
-                    temporary.replace(self.reservation_file)
-                finally:
-                    temporary.unlink(missing_ok=True)
-
-    @contextmanager
-    def reserve(self, size):
-        if self.quota_bytes is None:
-            yield
-            return
-        if not isinstance(size, int) or size < 0:
-            raise ValueError("文件大小无效")
-        token, owner, device = uuid.uuid4().hex, str(self.root), self.root.stat().st_dev
-        with self._reservations() as entries:
-            usage, count = self._cache_usage()
-            outstanding = sum(entry["bytes"] for entry in entries.values() if entry["owner"] == owner)
-            host_reserved = sum(entry["bytes"] for entry in entries.values() if entry["device"] == device)
-            if usage + outstanding + size > self.quota_bytes or count >= 4096:
-                raise ValueError("个人文件空间已满，请联系管理员清理后重试")
-            if shutil.disk_usage(self.root).free - host_reserved - size < self.minimum_free_bytes:
-                raise ValueError("文件存储空间不足，请稍后重试")
-            entries[token] = {"owner": owner, "device": device, "pid": os.getpid(), "at": time.time(), "bytes": size}
-        try:
-            yield
-        finally:
-            with self._reservations() as entries:
-                entries.pop(token, None)
-
-    @contextmanager
-    def _metadata_admission(self, table, key_fields, values, encoded):
-        if self.quota_bytes is None:
-            yield
-            return
-        size = len(encoded.encode("utf-8"))
-        with self._reservations() as entries:
-            where = " AND ".join(field + "=?" for field in key_fields)
-            row = self.db.execute("SELECT length(CAST(data AS BLOB)) FROM " + table + " WHERE " + where, values).fetchone()
-            previous = row[0] if row else 0
-            if row and size <= previous:
-                yield
-                return
-            documents = self.db.execute("SELECT COALESCE(SUM(length(CAST(data AS BLOB))),0),COUNT(*) FROM documents").fetchone()
-            settings = self.db.execute("SELECT COALESCE(SUM(length(CAST(data AS BLOB))),0),COUNT(*) FROM preferences").fetchone()
-            if documents[0] + settings[0] + size - previous > 64 * 1024 * 1024 or (not row and documents[1] + settings[1] >= 4096):
-                raise ValueError("个人记录空间已满，请删除不需要的会话或记录")
-            # SQLite and the sync observer may rewrite several copies of a
-            # document. Keep their transient journal allocation in admission.
-            required = size * 6 + 65536
-            usage, _ = self._cache_usage()
-            reserved = sum(entry["bytes"] for entry in entries.values() if entry["owner"] == str(self.root))
-            device = self.root.stat().st_dev
-            host_reserved = sum(entry["bytes"] for entry in entries.values() if entry["device"] == device)
-            if usage + reserved + required > self.quota_bytes:
-                raise ValueError("个人文件空间已满，请联系管理员清理后重试")
-            if shutil.disk_usage(self.root).free - host_reserved - required < self.minimum_free_bytes:
-                raise ValueError("文件存储空间不足，请稍后重试")
-            yield
-
-    def write_bytes(self, target, data):
-        target = Path(target)
-        if not target.resolve().is_relative_to(self.root):
-            raise ValueError("文件存储路径无效")
-        temporary = target.with_name(target.name + "." + uuid.uuid4().hex + ".tmp")
-        with self.reserve(len(data) + 65536):
-            try:
-                with temporary.open("xb") as output:
-                    os.chmod(temporary, 0o600)
-                    output.write(data)
-                    output.flush()
-                    os.fsync(output.fileno())
-                temporary.replace(target)
-            finally:
-                temporary.unlink(missing_ok=True)
-
     def list(self, kind):
         with self.lock:
             return [json.loads(row[0]) for row in self.db.execute("SELECT data FROM documents WHERE kind=?", (kind,))]
@@ -201,7 +63,7 @@ class Storage:
 
     def put(self, kind, value):
         encoded = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
-        with self.lock, self._metadata_admission("documents", ("kind", "id"), (kind, value["id"]), encoded), self.db:
+        with self.lock, self.db:
             previous = self.get(kind, value["id"]) if self.sync_observer else None
             self.db.execute("INSERT INTO documents(kind,id,data) VALUES(?,?,?) ON CONFLICT(kind,id) DO UPDATE SET data=excluded.data",
                             (kind, value["id"], encoded))
@@ -222,10 +84,9 @@ class Storage:
             return json.loads(row[0]) if row else fallback
 
     def set_setting(self, key, value):
-        encoded = json.dumps(value, ensure_ascii=False)
-        with self.lock, self._metadata_admission("preferences", ("key",), (key,), encoded), self.db:
+        with self.lock, self.db:
             self.db.execute("INSERT INTO preferences(key,data) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET data=excluded.data",
-                            (key, encoded))
+                            (key, json.dumps(value, ensure_ascii=False)))
 
     def asset(self, identifier):
         value = self.get("assets", identifier)
@@ -262,9 +123,10 @@ class Storage:
                     image = ImageOps.exif_transpose(opened)
                     if image.mode not in {"RGB", "RGBA"}:
                         image = image.convert("RGBA")
-                    output = io.BytesIO()
-                    image.save(output, "PNG", optimize=True)
-                self.write_bytes(target, output.getvalue())
+                    with temporary.open("xb") as output:
+                        os.chmod(temporary, 0o600)
+                        image.save(output, "PNG", optimize=True)
+                temporary.replace(target)
             finally:
                 temporary.unlink(missing_ok=True)
         return target
@@ -368,26 +230,18 @@ class Storage:
         stored = identifier + suffix
         destination = self.media / stored
         temporary = destination.with_suffix(destination.suffix + ".tmp")
-        if len(data) > 40 * 1024 * 1024:
-            raise ValueError("文件超过 40 MB")
-        with self.reserve(len(data) + 65536):
-            try:
-                with open(temporary, "xb") as output:
-                    os.chmod(temporary, 0o600)
-                    output.write(data)
-                    output.flush()
-                    os.fsync(output.fileno())
-                temporary.replace(destination)
-                item = {"id":identifier,"filename":Path(filename).stem + suffix,"mimeType":mime,
-                        "width":width,"height":height,"bytes":len(data),"createdAt":now(),"storedName":stored,
-                        "sha256":hashlib.sha256(data).hexdigest(),"url":f"/api/assets/{identifier}/file",
-                        "downloadUrl":f"/api/assets/{identifier}/file?download=1","remoteId":remote_id}
-                self.put("assets", item)
-                return self.public_asset(item)
-            except BaseException:
-                temporary.unlink(missing_ok=True)
-                destination.unlink(missing_ok=True)
-                raise
+        with open(temporary, "xb") as output:
+            os.chmod(temporary, 0o600)
+            output.write(data)
+            output.flush()
+            os.fsync(output.fileno())
+        temporary.replace(destination)
+        item = {"id":identifier,"filename":Path(filename).stem + suffix,"mimeType":mime,
+                "width":width,"height":height,"bytes":len(data),"createdAt":now(),"storedName":stored,
+                "sha256":hashlib.sha256(data).hexdigest(),"url":f"/api/assets/{identifier}/file",
+                "downloadUrl":f"/api/assets/{identifier}/file?download=1","remoteId":remote_id}
+        self.put("assets", item)
+        return self.public_asset(item)
 
     def import_worker_output(self, source, filename, job_id, expected_size):
          
@@ -433,30 +287,29 @@ class Storage:
         digest = hashlib.sha256()
         copied = 0
         try:
-            with self.reserve(size + 65536):
-                with open(source, "rb") as incoming, open(temporary, "xb") as outgoing:
-                    os.chmod(temporary, 0o600)
-                    while chunk := incoming.read(1024 * 1024):
-                        copied += len(chunk)
-                        if copied > MAX_LOCAL_OUTPUT_BYTES:
-                            raise ValueError("增强结果文件超过可保存大小")
-                        outgoing.write(chunk)
-                        digest.update(chunk)
-                    if copied != size:
-                        raise ValueError("增强结果在保存期间发生变化")
-                    outgoing.flush()
-                    os.fsync(outgoing.fileno())
-                current = self.get("photoJobs", canonical_id)
-                if not current or current.get("state") != "running":
-                    raise ValueError("增强任务已停止")
-                temporary.replace(destination)
-                item = {"id":identifier,"filename":Path(filename).stem + ".jpg","mimeType":"image/jpeg",
-                        "width":width,"height":height,"bytes":copied,"createdAt":now(),
-                        "storedName":destination.name,"sha256":digest.hexdigest(),
-                        "url":f"/api/assets/{identifier}/file",
-                        "downloadUrl":f"/api/assets/{identifier}/file?download=1","remoteId":None}
-                self.put("assets", item)
-                return self.public_asset(item)
+            with open(source, "rb") as incoming, open(temporary, "xb") as outgoing:
+                os.chmod(temporary, 0o600)
+                while chunk := incoming.read(1024 * 1024):
+                    copied += len(chunk)
+                    if copied > MAX_LOCAL_OUTPUT_BYTES:
+                        raise ValueError("增强结果文件超过可保存大小")
+                    outgoing.write(chunk)
+                    digest.update(chunk)
+                if copied != size:
+                    raise ValueError("增强结果在保存期间发生变化")
+                outgoing.flush()
+                os.fsync(outgoing.fileno())
+            current = self.get("photoJobs", canonical_id)
+            if not current or current.get("state") != "running":
+                raise ValueError("增强任务已停止")
+            temporary.replace(destination)
+            item = {"id":identifier,"filename":Path(filename).stem + ".jpg","mimeType":"image/jpeg",
+                    "width":width,"height":height,"bytes":copied,"createdAt":now(),
+                    "storedName":destination.name,"sha256":digest.hexdigest(),
+                    "url":f"/api/assets/{identifier}/file",
+                    "downloadUrl":f"/api/assets/{identifier}/file?download=1","remoteId":None}
+            self.put("assets", item)
+            return self.public_asset(item)
         except BaseException:
             temporary.unlink(missing_ok=True)
             destination.unlink(missing_ok=True)

@@ -205,52 +205,28 @@ def create_app(directory, root, legacy=None, profile="desktop"):
     async def upload(request:Request):
         r=runtime(request)
         items=[]
-        maximum=64*1024*1024
-        declared=int(request.headers.get("content-length") or maximum)
-        if not 0 <= declared <= maximum:
-            raise ValueError("上传内容超过 64 MB")
-        original_stream=request.stream
-        async def bounded_stream():
-            received=0
-            async for chunk in original_stream():
-                received+=len(chunk)
-                if received>maximum or (declared and received>declared):
-                    if request.headers.get("content-type", "").startswith("multipart/"):
-                        # Starlette closes every partial spool on this error.
-                        from starlette.formparsers import MultiPartException
-                        raise MultiPartException("上传内容超过 64 MB")
-                    raise GatewayError("上传内容超过 64 MB", 413)
-                yield chunk
-        form=None
-        request.stream=bounded_stream
-        try:
-            with r.storage.reserve(declared or maximum):
-                if request.headers.get("content-type","").startswith("application/json"):
-                    data=await object_body(request)
-                    encoded=str(data.get("dataUrl",""))
-                    if "," not in encoded or not encoded.startswith("data:image/"):
-                        raise ValueError("图片数据无效")
-                    head,encoded=encoded.split(",",1)
-                    try:
-                        raw=base64.b64decode(encoded,validate=True)
-                    except ValueError:
-                        raise ValueError("图片数据不完整")
-                    items=[(data.get("filename","图片.png"),head[5:].split(";")[0],raw)]
-                    kind=data.get("kind","input")
-                else:
-                    form=await request.form(max_files=8,max_fields=4,max_part_size=40*1024*1024)
-                    kind=str(form.get("kind","input"))
-                    files=form.getlist("files") or form.getlist("file")
-                    for uploaded in files:
-                        if not hasattr(uploaded,"read"):
-                            continue
-                        data=await uploaded.read(40*1024*1024+1)
-                        await uploaded.close()
-                        items.append((uploaded.filename,uploaded.content_type,data))
-        finally:
-            request.stream=original_stream
-            if form is not None:
-                await form.close()
+        if request.headers.get("content-type","").startswith("application/json"):
+            data=await object_body(request)
+            encoded=str(data.get("dataUrl",""))
+            if "," not in encoded or not encoded.startswith("data:image/"):
+                raise ValueError("图片数据无效")
+            head,encoded=encoded.split(",",1)
+            try:
+                raw=base64.b64decode(encoded,validate=True)
+            except ValueError:
+                raise ValueError("图片数据不完整")
+            items=[(data.get("filename","图片.png"),head[5:].split(";")[0],raw)]
+            kind=data.get("kind","input")
+        else:
+            form=await request.form(max_files=8,max_fields=4,max_part_size=40*1024*1024)
+            kind=str(form.get("kind","input"))
+            files=form.getlist("files") or form.getlist("file")
+            for uploaded in files:
+                if not hasattr(uploaded,"read"):
+                    continue
+                data=await uploaded.read(40*1024*1024+1)
+                await uploaded.close()
+                items.append((uploaded.filename,uploaded.content_type,data))
         if not items or len(items)>8:
             raise ValueError("请选择 1 到 8 个附件")
         assets=[]
@@ -261,24 +237,13 @@ def create_app(directory, root, legacy=None, profile="desktop"):
                 with tempfile.TemporaryDirectory(dir=r.storage.transfers) as tmp:
                     source=Path(tmp)/"input.heic"
                     target=Path(tmp)/"converted.png"
-                    await asyncio.to_thread(r.storage.write_bytes,source,data)
-                    limit=128*1024*1024
-                    command=["/usr/bin/sips","-s","format","png",str(source),"--out",str(target)]
-                    if r.storage.quota_bytes is not None:
-                        import sys
-                        command=[sys.executable,"-c","import os,resource,sys; n=int(sys.argv[1]); resource.setrlimit(resource.RLIMIT_FSIZE,(n,n)); os.execv(sys.argv[2],sys.argv[2:])",str(limit),*command]
-                    with r.storage.reserve(limit):
-                        process=await asyncio.create_subprocess_exec(*command,
-                                stdout=asyncio.subprocess.DEVNULL,stderr=asyncio.subprocess.DEVNULL)
-                        try:
-                            await asyncio.wait_for(process.wait(),30)
-                        finally:
-                            if process.returncode is None:
-                                process.kill()
-                                await process.wait()
-                        if process.returncode!=0 or not target.exists() or target.stat().st_size>limit:
-                            raise ValueError("HEIC 图片转换失败或文件过大")
-                        data=target.read_bytes()
+                    source.write_bytes(data)
+                    process=await asyncio.create_subprocess_exec("/usr/bin/sips","-s","format","png",str(source),"--out",str(target),
+                            stdout=asyncio.subprocess.DEVNULL,stderr=asyncio.subprocess.DEVNULL)
+                    await asyncio.wait_for(process.wait(),30)
+                    if process.returncode!=0 or not target.exists():
+                        raise ValueError("HEIC 图片转换失败")
+                    data=target.read_bytes()
                     filename=Path(filename).stem+".png"
                     mime="image/png"
             mime = (mime or "").split(";")[0].lower()

@@ -14,7 +14,7 @@ import zipfile
 from datetime import datetime
 from .message_view import conversation_view
 from .file_changes import begin_changes,finish_changes
-from .storage import Storage, MEMBER_CACHE_QUOTA_BYTES, new_id, now, anime_export_filename
+from .storage import Storage, new_id, now, anime_export_filename
 from .gateway import Gateway, GatewayError, FALLBACK_CAPABILITIES
 from .sync import SyncEngine
 from .mac_codex import MacCodex
@@ -42,12 +42,12 @@ class Runtime:
     def __init__(self, directory, root, account=None, account_token=None, platform=None):
         self.root = Path(root)
         self.platform = resolve_profile(platform,root)
-        self.account = dict(account or {})
-        self.server_access = self.account.get("role") == "admin" and self.account.get("serverAccess") is True
-        self.storage = Storage(directory, root, quota_bytes=None if self.server_access else MEMBER_CACHE_QUOTA_BYTES)
+        self.storage = Storage(directory, root)
         # Side chats belong to this app run; never restore them after quitting.
         for item in self.storage.list("temporaryConversations"):
             self.storage.remove("temporaryConversations", item["id"])
+        self.account = dict(account or {})
+        self.server_access = self.account.get("role") == "admin" and self.account.get("serverAccess") is True
         if self.account.get("owner") == "shiyan-private-owner":
             self.storage.import_legacy_outputs()
         self.gateway = Gateway(root,platform=self.platform)
@@ -796,27 +796,16 @@ class Runtime:
         task_directory=self.storage.transfers/("enhance-"+identifier)
         temporary=task_directory/"result.jpg"
         process=None
-        reservation=None
         try:
             async with self.enhancement_lock:
                 job=self.storage.get("photoJobs",identifier)
                 if job["state"]=="cancelled":
                     return
                 self.update_photo(identifier,state="running",label="加载增强模型")
-                worker_limits=[]
-                if self.storage.quota_bytes is not None:
-                    from .limits import normalized_size
-                    source=self.storage.asset(job["inputAssetId"])
-                    width,height=normalized_size(source["width"],source["height"])
-                    pixel_bytes=width*height*16*3
-                    file_limit=max(pixel_bytes,40*1024*1024)
-                    reservation=self.storage.reserve(pixel_bytes+file_limit+65536)
-                    reservation.__enter__()
-                    worker_limits=["--max-file-bytes",str(file_limit)]
                 task_directory.mkdir(mode=0o700, exist_ok=True)
                 process=await asyncio.create_subprocess_exec(sys.executable,"-m","desktop_backend.worker",
                             "--input",str(self.storage.asset_path(job["inputAssetId"])),"--output",str(temporary),
-                            "--model",job["model"],*worker_limits,cwd=str(self.root),
+                            "--model",job["model"],cwd=str(self.root),
                             stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.PIPE)
                 self.processes[identifier]=process
                 stderr_task=asyncio.create_task(process.stderr.read())
@@ -833,9 +822,6 @@ class Runtime:
                         self.update_photo(identifier,progress=event.get("progress",0),label=event.get("label","正在增强"),**details)
                 code=await process.wait()
                 await stderr_task
-                if reservation:
-                    reservation.__exit__(None,None,None)
-                    reservation=None
                 current=self.storage.get("photoJobs",identifier)
                 if current["state"]=="cancelled":
                     return
@@ -885,8 +871,6 @@ class Runtime:
                     await process.wait()
             self.processes.pop(identifier,None)
             shutil.rmtree(task_directory,ignore_errors=True)
-            if reservation:
-                reservation.__exit__(None,None,None)
 
     async def run_remote_photo(self,identifier):
         try:

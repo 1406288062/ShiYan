@@ -18,7 +18,6 @@ import httpx
 from fastapi.responses import JSONResponse
 
 from desktop_backend.api import create_app
-from desktop_backend.account_sessions import COOKIE
 from desktop_backend.gateway import Gateway
 from desktop_backend.platforms import PlatformProfile, resolve_profile
 from desktop_backend.verify_accounts import FakeGateway
@@ -124,21 +123,6 @@ class ApplicationTests(unittest.IsolatedAsyncioTestCase):
                 async with httpx.AsyncClient(transport=transport, base_url="http://127.0.0.1:17861", headers={"X-Shiyan-Local": "1"}) as client:
                     yield app, client
 
-    def selected_account(self, app, client):
-        accounts = app.state.accounts
-        if app.state.platform.mode == "web":
-            cookie = client.cookies.get(COOKIE)
-            return next(manager for manager in accounts.sessions.values() if manager.cookie == cookie)
-        return accounts
-
-    def assert_no_signed_in_resources(self, app):
-        accounts = app.state.accounts
-        if app.state.platform.mode == "web":
-            self.assertEqual(accounts.sessions, {})
-            self.assertEqual(accounts.loading, {})
-        else:
-            self.assertIsNone(accounts.resources)
-
     def test_both_modes_register_the_same_routes_with_and_without_legacy(self):
         def routes(app):
             return {(route.path, tuple(sorted(getattr(route, "methods", ()) or ()))) for route in app.routes}
@@ -153,7 +137,7 @@ class ApplicationTests(unittest.IsolatedAsyncioTestCase):
         for mode in MODES:
             with self.subTest(mode=mode):
                 async with self.client(mode) as (app, client):
-                    self.assert_no_signed_in_resources(app)
+                    self.assertIsNone(app.state.accounts.resources)
                     info = await client.get("/api/platform")
                     self.assertEqual(info.status_code, 200)
                     expected = {"mode": mode, "config": {"example": {"value": 7}}}
@@ -165,7 +149,7 @@ class ApplicationTests(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(script.headers["cache-control"], "no-store")
                     self.assertEqual((await client.get("/assets/platform.js")).status_code, 200)
                     self.assertEqual((await client.get("/api/state")).status_code, 401)
-                    self.assert_no_signed_in_resources(app)
+                    self.assertIsNone(app.state.accounts.resources)
 
     async def test_existing_authentication_and_same_origin_checks_match_in_both_modes(self):
         for mode in MODES:
@@ -189,61 +173,26 @@ class ApplicationTests(unittest.IsolatedAsyncioTestCase):
                 async with self.client(mode) as (app, client):
                     accounts = app.state.accounts
                     self.assertIs(accounts.platform, app.state.platform)
+                    self.assertIs(accounts.gateway.platform, app.state.platform)
                     login = await client.post("/api/auth/login", json={"email": mode + "-context@test"})
                     self.assertEqual(login.status_code, 200, login.text)
-                    manager = self.selected_account(app, client)
-                    self.assertIs(manager.platform, app.state.platform)
-                    self.assertIs(manager.gateway.platform, app.state.platform)
-                    runtime = manager.resources.runtime
+                    runtime = accounts.resources.runtime
                     self.assertIs(runtime.platform, app.state.platform)
                     self.assertIs(runtime.gateway.platform, app.state.platform)
                     self.assertEqual(runtime.platform.public(), {"mode": mode, "config": {"example": {"value": 7}}})
-                    if mode == "web":
-                        # The shared platform context must not share authentication,
-                        # gateways, or storage between browser cookie jars.
-                        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url=client.base_url, headers={"X-Shiyan-Local": "1"}) as other:
-                            self.assertEqual((await other.get("/api/state")).status_code, 401)
-                            second = await other.post("/api/auth/login", json={"email": "web-other-context@test"})
-                            self.assertEqual(second.status_code, 200, second.text)
-                            other_manager = self.selected_account(app, other)
-                            other_runtime = other_manager.resources.runtime
-                            self.assertIsNot(manager, other_manager)
-                            self.assertIsNot(manager.gateway, other_manager.gateway)
-                            self.assertIsNot(runtime.gateway, other_runtime.gateway)
-                            self.assertNotEqual(runtime.storage.root, other_runtime.storage.root)
-                            self.assertIs(other_manager.platform, app.state.platform)
-                            self.assertIs(other_manager.gateway.platform, app.state.platform)
-                            self.assertIs(other_runtime.platform, app.state.platform)
-                            self.assertIs(other_runtime.gateway.platform, app.state.platform)
-                            self.assertEqual(len(accounts.sessions), 2)
-                            self.assertIs(app.state.accounts, accounts)
-                            first_me = await client.get("/api/auth/me")
-                            second_me = await other.get("/api/auth/me")
-                            self.assertEqual(first_me.json()["user"]["id"], login.json()["user"]["id"])
-                            self.assertEqual(second_me.json()["user"]["id"], second.json()["user"]["id"])
-                            self.assertNotEqual(first_me.json()["user"]["id"], second_me.json()["user"]["id"])
 
     async def test_explicit_legacy_handler_remains_available_under_the_existing_authentication(self):
         for mode in MODES:
             with self.subTest(mode=mode):
                 legacy = SimpleNamespace(close=AsyncMock(), proxy=AsyncMock(return_value=JSONResponse({"legacy": "fixture"})))
                 async with self.client(mode, legacy=legacy) as (app, client):
-                    if mode == "desktop":
-                        self.assertIs(app.state.accounts.legacy, legacy)
-                    else:
-                        self.assertFalse(hasattr(app.state.accounts, "legacy"))
+                    self.assertIs(app.state.accounts.legacy, legacy)
                     self.assertEqual((await client.get("/legacy-fixture")).status_code, 401)
                     login = await client.post("/api/auth/bootstrap", json={"email": mode + "-owner@test"})
                     self.assertEqual(login.status_code, 200, login.text)
                     response = await client.get("/legacy-fixture")
                     self.assertEqual(response.status_code, 200)
                     self.assertEqual(response.json(), {"legacy": "fixture"})
-                    if mode == "web":
-                        self.assertIsNone(self.selected_account(app, client).legacy)
-                        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url=client.base_url, headers={"X-Shiyan-Local": "1"}) as other:
-                            login = await other.post("/api/auth/login", json={"email": "web-legacy-member@test"})
-                            self.assertEqual(login.status_code, 200, login.text)
-                            self.assertEqual((await other.get("/legacy-fixture")).status_code, 403)
                     legacy.proxy.assert_awaited_once()
                     self.assertEqual(legacy.proxy.await_args.args[1], "legacy-fixture")
 

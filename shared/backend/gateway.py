@@ -479,7 +479,8 @@ class Gateway:
                                 if code != 206 or len(value) != size or fields.get("x-content-sha256") != expected or not fields.get("content-range","").startswith(f"bytes {offset}-"):
                                     raise GatewayError("结果分段校验失败")
                                 temporary = path.with_suffix(".tmp")
-                                storage.write_bytes(path, value)
+                                temporary.write_bytes(value)
+                                temporary.replace(path)
                                 break
                             except (GatewayError,OSError):
                                 if attempt==2:
