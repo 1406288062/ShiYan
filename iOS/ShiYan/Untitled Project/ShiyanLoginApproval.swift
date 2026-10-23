@@ -21,8 +21,7 @@ struct ShiyanLoginApproval: View {
             Image(systemName: "desktopcomputer").font(.system(size: 38)).foregroundStyle(.secondary)
             Text("确认电脑登录").font(.title2.bold())
             Text(request.device).foregroundStyle(.secondary)
-            Text(request.code).font(.system(size: 32, weight: .semibold, design: .monospaced))
-            Text("请确认电脑上的确认码一致。确认后将以“\(account.user?.name ?? "")”登录。").multilineTextAlignment(.center).foregroundStyle(.secondary)
+            Text("确认后将以“\(account.user?.name ?? "")”登录。").multilineTextAlignment(.center).foregroundStyle(.secondary)
             if let message { Text(message).foregroundStyle(.red).multilineTextAlignment(.center) }
             Button { Task { await respond(true) } } label: {
                 HStack { if busy { ProgressView() }; Text("确认登录") }.frame(maxWidth: .infinity, minHeight: 44)
@@ -56,9 +55,8 @@ struct ShiyanLoginApproval: View {
 // Only a small account avatar is shared for the remembered desktop login entry.
 @MainActor
 func shiyanLoginAvatar() -> String? {
-    let file = ShiyanAccountStorage.directory("Profile").appendingPathComponent("avatar.jpg")
-    guard let data = try? Data(contentsOf: file), data.count <= 2 * 1024 * 1024,
-          let image = UIImage(data: data) else { return nil }
+    guard ShiyanAccount.shared.user != nil,
+          let image = ShiyanAvatarStore.shared.image else { return nil }
     let format = UIGraphicsImageRendererFormat(); format.scale = 1; format.opaque = true
     let resized = UIGraphicsImageRenderer(size: CGSize(width: 64, height: 64), format: format).image { _ in
         UIColor.white.setFill(); UIRectFill(CGRect(x: 0, y: 0, width: 64, height: 64))

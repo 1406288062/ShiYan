@@ -66,8 +66,7 @@ struct ShiyanQRScanner: View {
                     Text("登录这台电脑？").font(.title2.bold())
                     if !completed {
                         Text(preview.device).foregroundStyle(.secondary)
-                        Text(preview.code).font(.system(size: 36, weight: .semibold, design: .monospaced))
-                        Text("请核对电脑上的确认码。将使用当前账户“\(account.user?.name ?? "")”登录。")
+                        Text("将使用当前账户“\(account.user?.name ?? "")”登录。")
                             .multilineTextAlignment(.center).foregroundStyle(.secondary)
                         if let message {
                             Image(systemName: "xmark.circle").font(.system(size: 40)).foregroundStyle(.red)

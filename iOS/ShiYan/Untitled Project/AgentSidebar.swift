@@ -46,7 +46,7 @@ struct AgentSidebar: View {
                         let pinned = store.list(query: "", pinned: true)
                         let recent = store.list(query: "", pinned: false)
                             .filter { $0.projectID == nil }
-                        if account.canAccessServer {
+                        if account.canUseAI {
                             featureRow(.dots)
                             featureRow(.scheduled)
                         }
@@ -150,6 +150,8 @@ struct AgentSidebar: View {
              
              
         }
+        // Keep the background sidebar anchored while an editing cover shows its keyboard.
+        .ignoresSafeArea(.keyboard, edges: .bottom)
         .fullScreenCover(isPresented: $searching) {
             AgentConversationSearch(store: store) { id in searching = false; onSelect(id) }
         }
@@ -175,20 +177,23 @@ struct AgentSidebar: View {
                 projectDialog = false
             }, heading: projectTarget == nil ? "新建项目" : "重命名项目", fieldPlaceholder: "项目名称")
         }
+        // These transparent editing covers fade their own content; skip the system page transition.
+        .transaction(value: projectDialog) { $0.disablesAnimations = true }
+        .transaction(value: renameTarget) { $0.disablesAnimations = true }
         .task {
             if scenePhase == .active { dotsStore.startMonitoring() }
-            if account.canAccessServer { await dotsStore.refreshIdentity() }
+            if account.canUseAI { await dotsStore.refreshIdentity() }
         }
         .onDisappear { dotsStore.stopMonitoring() }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 dotsStore.startMonitoring()
-                Task { if account.canAccessServer { await dotsStore.refreshIdentity() } }
+                Task { if account.canUseAI { await dotsStore.refreshIdentity() } }
             } else { dotsStore.stopMonitoring() }
         }
         .onChange(of: isOpen) { _, open in
             if !open { deleteTarget = nil; menuTarget = nil }
-            else { Task { if account.canAccessServer { await dotsStore.refreshIdentity() } } }
+            else { Task { if account.canUseAI { await dotsStore.refreshIdentity() } } }
         }
         .animation(.easeInOut(duration: 0.2), value: deleteTarget)
         .animation(.easeInOut(duration: 0.18), value: menuTarget)
@@ -490,11 +495,12 @@ private struct AgentRenameDialog: View {
     var fieldPlaceholder = "会话名称"
 
     @FocusState private var nameFocused: Bool
+    @State private var appeared = false
 
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                Color.black.opacity(0.20)
+                Color.black.opacity(appeared ? 0.20 : 0)
                     .ignoresSafeArea()
                     .onTapGesture(perform: cancel)
 
@@ -543,11 +549,13 @@ private struct AgentRenameDialog: View {
                 .shadow(color: .black.opacity(0.13), radius: 20, y: 8)
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("rename-conversation-dialog")
+                .opacity(appeared ? 1 : 0)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .presentationBackground(.clear)
         .task {
+            withAnimation(.easeOut(duration: 0.16)) { appeared = true }
             try? await Task.sleep(for: .milliseconds(180))
             nameFocused = true
         }

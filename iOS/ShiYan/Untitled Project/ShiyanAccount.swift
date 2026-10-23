@@ -68,6 +68,7 @@ final class ShiyanAccount: ObservableObject {
     private var started = false
     private var validating = false
     var canAccessServer: Bool { user?.canAccessServer == true }
+    var canUseAI: Bool { user?.status == "active" && token != nil }
 
     private var keychainQuery: [String: Any] {
         [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
@@ -180,8 +181,10 @@ final class ShiyanAccount: ObservableObject {
         ShiyanAccountStorage.activate(value.owner)
         CodexClient.resetAccount()
         user = value
+        ShiyanAvatarStore.shared.activate(owner: value.owner)
     }
     private func clearStores() {
+        ShiyanAvatarStore.shared.reset()
         KnowledgeReadingCache.clear(ShiyanAccountStorage.owner)
         DotsVoiceSession.resetAccount()
         DotsStore.resetAccount()
@@ -228,6 +231,10 @@ struct ShiyanAccountRoot: View {
             ShiyanLoginApproval(request: request) { loginRequest = nil }
         }
         .onChange(of: account.user?.id) { _, _ in loginRequest = nil }
+        .task(id: "avatar:\(account.user?.id ?? ""):\(scenePhase == .active):\(ShiyanAccountStorage.generation)") {
+            guard account.user != nil, scenePhase == .active else { return }
+            await ShiyanAvatarStore.shared.observe()
+        }
         .task(id: "\(account.user?.id ?? ""):\(scenePhase == .active):\(ShiyanAccountStorage.generation)") {
             guard account.user != nil, scenePhase == .active else { return }
             let generation = ShiyanAccountStorage.generation

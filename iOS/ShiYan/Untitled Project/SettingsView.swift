@@ -1,7 +1,5 @@
 import SwiftUI
 import PhotosUI
-import ImageIO
-import UniformTypeIdentifiers
 
 struct SettingsView: View {
     let topInset: CGFloat
@@ -10,18 +8,19 @@ struct SettingsView: View {
     let onSidebar: () -> Void
     let onClose: () -> Void
     @ObservedObject private var account = ShiyanAccount.shared
+    @ObservedObject private var avatars = ShiyanAvatarStore.shared
     @State private var showingUsers = false
     @State private var showingMemory = false
     @State private var showingCodexQuota = false
     @State private var showingScanner = false
     @State private var selectedAvatar: PhotosPickerItem?
-    @State private var avatarImage: UIImage?
     @State private var loadingAvatar = false
     @State private var avatarError: String?
     @ScaledMetric(relativeTo: .body) private var rowHeight: CGFloat = 56
 
     private var background: Color { Color(uiColor: .systemGroupedBackground) }
     private var groupBackground: Color { Color(uiColor: .secondarySystemGroupedBackground) }
+    private var avatarImage: UIImage? { avatars.image }
 
     var body: some View {
         Group {
@@ -104,7 +103,6 @@ struct SettingsView: View {
                 .foregroundStyle(.primary)
                 .accessibilityIdentifier("settings-page")
                 .fullScreenCover(isPresented: $showingScanner) { ShiyanQRScanner() }
-                .task(id: account.user?.id) { loadSavedAvatar() }
                 .task(id: selectedAvatar) { await updateAvatar() }
                 .alert("无法更新头像", isPresented: Binding(
                     get: { avatarError != nil }, set: { if !$0 { avatarError = nil } })) {
@@ -124,7 +122,7 @@ struct SettingsView: View {
                         Image(systemName: "person.crop.circle.fill")
                             .resizable().scaledToFit().foregroundStyle(.secondary)
                     }
-                    if loadingAvatar {
+                    if loadingAvatar || avatars.saving {
                         Color.black.opacity(0.2)
                         ProgressView().tint(.white)
                     }
@@ -140,7 +138,7 @@ struct SettingsView: View {
                 .contentShape(Circle())
             }
             .buttonStyle(.plain)
-            .disabled(loadingAvatar || account.user == nil)
+            .disabled(loadingAvatar || avatars.saving || account.user == nil)
             .accessibilityLabel(avatarImage == nil ? "上传头像" : "更换头像")
             .accessibilityIdentifier("settings-avatar-picker")
             Text(account.user?.name ?? "账户")
@@ -152,64 +150,24 @@ struct SettingsView: View {
         .padding(.top, 8)
     }
 
-    private func loadSavedAvatar() {
-        avatarImage = nil
-        guard account.user != nil else { return }
-        let file = ShiyanAccountStorage.directory("Profile").appendingPathComponent("avatar.jpg")
-        if let data = try? Data(contentsOf: file), data.count <= 2 * 1024 * 1024 {
-            avatarImage = UIImage(data: data)
-        }
-    }
-
     private func updateAvatar() async {
         guard let selection = selectedAvatar, let userID = account.user?.id else { return }
         let generation = ShiyanAccountStorage.generation
-        let owner = ShiyanAccountStorage.owner
         loadingAvatar = true
         defer { loadingAvatar = false; selectedAvatar = nil }
         do {
             guard let data = try await selection.loadTransferable(type: Data.self) else {
-                throw AvatarFailure.invalidImage
+                throw AgentClientError.message("无法读取这张照片，请选择其他图片。")
             }
             guard !Task.isCancelled else { return }
-            let jpeg = try await Task.detached(priority: .userInitiated) {
-                try Self.avatarJPEG(data)
-            }.value
             guard !Task.isCancelled, account.user?.id == userID,
                   ShiyanAccountStorage.generation == generation else { return }
-            let file = ShiyanAccountStorage.directory("Profile", owner: owner).appendingPathComponent("avatar.jpg")
-            try jpeg.write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
-            avatarImage = UIImage(data: jpeg)
+            try await avatars.upload(data)
         } catch {
             guard !Task.isCancelled, account.user?.id == userID,
                   ShiyanAccountStorage.generation == generation else { return }
             avatarError = error.localizedDescription
         }
-    }
-
-    nonisolated private enum AvatarFailure: LocalizedError {
-        case invalidImage
-        var errorDescription: String? { "无法读取这张照片，请选择其他图片（不超过 20 MB）。" }
-    }
-
-    nonisolated private static func avatarJPEG(_ data: Data) throws -> Data {
-        guard data.count <= 20 * 1024 * 1024,
-              let source = CGImageSourceCreateWithData(data as CFData, nil),
-              let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
-                kCGImageSourceCreateThumbnailFromImageAlways: true,
-                kCGImageSourceCreateThumbnailWithTransform: true,
-                kCGImageSourceThumbnailMaxPixelSize: 512
-              ] as CFDictionary) else { throw AvatarFailure.invalidImage }
-        let side = min(image.width, image.height)
-        let rect = CGRect(x: (image.width - side) / 2, y: (image.height - side) / 2, width: side, height: side)
-        guard let cropped = image.cropping(to: rect) else { throw AvatarFailure.invalidImage }
-        let output = NSMutableData()
-        guard let destination = CGImageDestinationCreateWithData(output, UTType.jpeg.identifier as CFString, 1, nil) else {
-            throw AvatarFailure.invalidImage
-        }
-        CGImageDestinationAddImage(destination, cropped, [kCGImageDestinationLossyCompressionQuality: 0.85] as CFDictionary)
-        guard CGImageDestinationFinalize(destination) else { throw AvatarFailure.invalidImage }
-        return output as Data
     }
 
     private var logoutButton: some View {

@@ -74,7 +74,7 @@ enum AgentExecutionPresentation {
     }
     static func files(_ values: [AgentSyncValue]?) -> [File] {
         var seen = Set<String>()
-        return (values ?? []).prefix(64).compactMap { value in
+        return (values ?? []).compactMap { value in
             let object = value.object, path = clipped(object["path"], 1000)
             guard !path.isEmpty, seen.insert(path).inserted else { return nil }
             return File(path: path, kind: clipped(object["kind"], 80), diff: clipped(object["diff"], 12000),
@@ -93,7 +93,7 @@ enum AgentExecutionPresentation {
                 let decoded = try? JSONDecoder().decode(AgentSyncValue.self, from: data) {
             values = decoded.array.isEmpty ? decoded.object["items"]?.array ?? [] : decoded.array
         } else { values = [] }
-        for value in values.prefix(80) where value.object["type"]?.string == "file_change" {
+        for value in values where value.object["type"]?.string == "file_change" {
             let status = value.object["status"]?.string
             guard status == nil || status == "completed" else { continue }
             for file in files(value.object["changes"]?.array) {
@@ -102,7 +102,7 @@ enum AgentExecutionPresentation {
                     if result[index].added == nil { result[index].added = file.added }
                     if result[index].removed == nil { result[index].removed = file.removed }
                     if result[index].kind.isEmpty { result[index].kind = file.kind }
-                } else if result.count < 64 {
+                } else {
                     indices[file.path] = result.count
                     result.append(file)
                 }

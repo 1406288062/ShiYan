@@ -12,7 +12,15 @@ pip install -r requirements.txt
 
 模型权重不会提交到仓库。首次运行时，程序会根据所选模式自动下载到 `models/` 目录；下载地址和模型配置见 [`src/engine.py`](src/engine.py)。
 
-## 启动网页界面
+## 共用架构
+
+业务源码已移到总目录的 `shared/frontend/`、`shared/backend/`、`shared/image/`。桌面入口、原生工程与打包器在 `apps/desktop/`，网页入口在 `apps/web/`，平台配置在 `config/platforms.json`。
+
+本目录的 `web`、`desktop_backend`、`src`、`native`、`tools`、`tests`、`platforms.json` 是相对兼容链接，旧启动命令仍可使用。模型、知识库独立工程、输入输出和已有安装包位置保持原样。完整结构与开发约定见[总目录说明](../README.md#目录)。
+
+目录迁移不改变任何平台的页面、功能或权限。下文原启动和图像处理命令继续兼容。
+
+## 启动界面
 
 ```bash
 python webui.py

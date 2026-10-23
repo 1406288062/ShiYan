@@ -30,7 +30,13 @@ struct AgentQuestionForm: View {
                                 Image(systemName: selections[question.id] == option ? "checkmark.circle.fill" : "circle")
                                     .foregroundStyle(selections[question.id] == option ? Color.accentColor : .secondary)
                                     .padding(.top, 2)
-                                Text(option).multilineTextAlignment(.leading)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(option).multilineTextAlignment(.leading)
+                                    if let description = question.descriptions[option] {
+                                        Text(description).font(.footnote).foregroundStyle(.secondary)
+                                            .multilineTextAlignment(.leading)
+                                    }
+                                }
                                 Spacer(minLength: 0)
                             }
                             .padding(12).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)

@@ -202,6 +202,11 @@ struct AIAgentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var featurePage: ShiyanFeaturePage?
     @State private var settingsReturnPage: ShiyanFeaturePage?
+    @State private var liveInputScope: AgentLiveInputScope?
+    @State private var liveInputRequests: [AgentLiveInputRequest] = []
+    @State private var submittingLiveInputs = Set<String>()
+    @State private var answeredLiveInputs = Set<String>()
+    @State private var structuredInputJobs = Set<String>()
     @State private var inputText = ""
     @State private var drawer: CGFloat = 0
     @State private var dragOrigin: CGFloat?
@@ -255,6 +260,103 @@ struct AIAgentView: View {
     @FocusState private var inputFocused: Bool
 
     private var current: AgentConversation? { store.current }
+    private var currentLiveInputScope: AgentLiveInputScope? {
+        guard !store.historyLoading, let conversation = current,
+              let message = conversation.messages.last, message.role == .assistant,
+              let jobID = message.remoteJobID ?? conversation.pendingJobID else { return nil }
+        return AgentLiveInputScope(conversationID: conversation.id, messageID: message.id,
+            jobID: jobID, accountGeneration: ShiyanAccountStorage.generation,
+            isWorking: message.isWorking || conversation.isBusy)
+    }
+    private var pollingLiveInputScope: AgentLiveInputScope? {
+        scenePhase == .active && featurePage == nil ? currentLiveInputScope : nil
+    }
+
+    private func pollLiveInputs(_ scope: AgentLiveInputScope) async {
+        if liveInputScope != scope {
+            if liveInputScope?.jobID != scope.jobID || liveInputScope?.accountGeneration != scope.accountGeneration {
+                answeredLiveInputs.removeAll(); submittingLiveInputs.removeAll()
+            }
+            liveInputScope = scope; liveInputRequests = []
+        }
+        let client = CodexClient.shared
+        while !Task.isCancelled && currentLiveInputScope == scope {
+            do {
+                let requests = try await client.liveInputRequests(jobID: scope.jobID)
+                guard !Task.isCancelled, currentLiveInputScope == scope,
+                      ShiyanAccountStorage.generation == scope.accountGeneration else { return }
+                if requests.contains(where: { $0.jobId == scope.jobID }) {
+                    if structuredInputJobs.count > 80 { structuredInputJobs.removeAll() }
+                    structuredInputJobs.insert(scope.jobID)
+                }
+                let visible = requests.filter {
+                    $0.jobId == scope.jobID && ["pending", "cancelled", "expired"].contains($0.status) &&
+                    !$0.questions.isEmpty && !answeredLiveInputs.contains($0.id)
+                }
+                if liveInputRequests != visible { liveInputRequests = visible }
+            } catch {
+                if Task.isCancelled || ShiyanAccountStorage.generation != scope.accountGeneration { return }
+                // Keep existing selections on a transient failure and retry while visible.
+            }
+            if !scope.isWorking { return }
+            do { try await Task.sleep(for: .milliseconds(1500)) } catch { return }
+        }
+    }
+    private func submitLiveInput(_ request: AgentLiveInputRequest, answers: [String: String], scope: AgentLiveInputScope) async -> String? {
+        guard currentLiveInputScope == scope, liveInputScope == scope,
+              ShiyanAccountStorage.generation == scope.accountGeneration,
+              request.jobId == scope.jobID, request.status == "pending",
+              liveInputRequests.contains(request), !submittingLiveInputs.contains(request.id),
+              let payload = request.answerPayload(answers) else { return "问题已变化，请查看当前问题后重试" }
+        submittingLiveInputs.insert(request.id)
+        defer { submittingLiveInputs.remove(request.id) }
+        do {
+            let result = try await CodexClient.shared.answerLiveInput(jobID: scope.jobID, requestID: request.id, answers: payload)
+            guard ShiyanAccountStorage.generation == scope.accountGeneration,
+                  store.selectedID == scope.conversationID,
+                  current?.messages.last?.id == scope.messageID else { return nil }
+            guard result.id == request.id, result.jobId == scope.jobID, result.status == "answered" else {
+                return "问题已失效，请查看当前问题后重试"
+            }
+            answeredLiveInputs.insert(request.id)
+            liveInputRequests.removeAll { $0.id == request.id }
+            return nil
+        } catch {
+            guard ShiyanAccountStorage.generation == scope.accountGeneration,
+                  store.selectedID == scope.conversationID else { return nil }
+            return error.localizedDescription
+        }
+    }
+    @ViewBuilder
+    private func liveQuestionForms(message: AgentMessage, conversationID: UUID) -> some View {
+        if let scope = currentLiveInputScope, scope == liveInputScope,
+           scope.conversationID == conversationID, scope.messageID == message.id {
+            ForEach(liveInputRequests) { request in
+                if request.status == "pending" {
+                    AgentQuestionForm(questions: request.choices, isBusy: submittingLiveInputs.contains(request.id)) { answers in
+                        await submitLiveInput(request, answers: answers, scope: scope)
+                    }
+                    .id(scope.jobID + ":" + request.id)
+                } else {
+                    Text(request.status == "expired" ? "问题已过期" : "问题已取消")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+            }
+        }
+        // Old replies can still contain ordinary Markdown choices. Never stop an
+        // active server job merely to turn those words into a new user message.
+        if !message.isWorking, store.conversation(conversationID)?.isBusy != true, !structuredInputJobs.contains(message.remoteJobID ?? "") {
+            let questions = AgentChoiceQuestion.parse(message.text)
+            if !questions.isEmpty {
+                AgentQuestionForm(questions: questions, isBusy: store.answeringQuestions.contains(conversationID)) { answers in
+                    let sent = await store.answerQuestions(questions, answers: answers,
+                        conversationID: conversationID, messageID: message.id)
+                    return sent ? nil : (store.notice ?? "选择尚未提交，请重试")
+                }
+                .id(message.id)
+            }
+        }
+    }
     private var canPullNewChat: Bool {
         !store.isTemporarySession && featurePage == nil && !store.hasEarlierMessages && !store.historyLoading && !store.loadingEarlier && !(current?.messages.isEmpty ?? true) && drawer == 0 && dragOrigin == nil &&
         !attachmentOpen && !keyboardVisible && !inputFocused &&
@@ -478,6 +580,11 @@ struct AIAgentView: View {
 #if DEBUG
             await DotsSmoke.runIfRequested()
 #endif
+        }
+
+        .task(id: pollingLiveInputScope) {
+            guard let scope = pollingLiveInputScope else { return }
+            await pollLiveInputs(scope)
         }
 
         .onChange(of: canPullNewChat) { _, enabled in
@@ -837,6 +944,9 @@ struct AIAgentView: View {
                 .onChange(of: current?.messages.last?.assets.count) { _, _ in
                     if followLatest, !(current?.messages.isEmpty ?? true) { bottomScrollRequest += 1 }
                 }
+                .onChange(of: liveInputRequests) { _, _ in
+                    if followLatest, !(current?.messages.isEmpty ?? true) { bottomScrollRequest += 1 }
+                }
                 .onAppear { bottomScrollRequest += 1 }
                 .task(id: bottomScrollRequest) {
                      
@@ -853,22 +963,26 @@ struct AIAgentView: View {
                     withTransaction(transaction) { chatScrollPosition.scrollTo(edge: .bottom) }
                 }
                 .overlay(alignment: .bottom) {
-                    if !atLatest && !(current?.messages.isEmpty ?? true) {
-                        Button {
-                            followLatest = true; scrollIsUserDriven = false
-                            traceChatScroll("bottom-button-tapped")
-                            bottomScrollRequest += 1
-                        } label: {
-                            Image(systemName: "arrow.down").font(.system(size: 16, weight: .medium))
-                                .frame(width: 36, height: 36).shiyanGlass(in: Circle())
-                                .contentShape(Circle())
-                        }.buttonStyle(.plain).accessibilityLabel("查看最新消息")
-                            .accessibilityIdentifier("chat-scroll-bottom")
-                            .modifier(AgentReasoningVisibility(presentation: reasoningPresentation))
-                             
-                             
-                            .offset(y: -8)
-                    }
+                    let showsBottomButton = !atLatest && !(current?.messages.isEmpty ?? true)
+                    Button {
+                        followLatest = true; scrollIsUserDriven = false
+                        traceChatScroll("bottom-button-tapped")
+                        bottomScrollRequest += 1
+                    } label: {
+                        Image(systemName: "arrow.down").font(.system(size: 16, weight: .medium))
+                            .frame(width: 36, height: 36).shiyanGlass(in: Circle())
+                            .contentShape(Circle())
+                    }.buttonStyle(.plain).accessibilityLabel("查看最新消息")
+                        .accessibilityIdentifier("chat-scroll-bottom")
+                        .modifier(AgentReasoningVisibility(presentation: reasoningPresentation))
+                         
+                         
+                        .offset(y: -8)
+                        .opacity(showsBottomButton ? 1 : 0)
+                        .offset(y: reduceMotion || showsBottomButton ? 0 : 8)
+                    .allowsHitTesting(showsBottomButton)
+                    .accessibilityHidden(!showsBottomButton)
+                    .animation(reduceMotion ? .easeOut(duration: 0.16) : .easeInOut(duration: 0.28), value: showsBottomButton)
                 }
             }
              
@@ -1104,16 +1218,7 @@ struct AIAgentView: View {
                 }
                 if message.role == .assistant,
                    store.conversation(conversationID)?.messages.last?.id == message.id {
-                    let questions = AgentChoiceQuestion.parse(message.text, isStreaming: message.isWorking)
-                    if !questions.isEmpty {
-                        AgentQuestionForm(questions: questions,
-                            isBusy: store.answeringQuestions.contains(conversationID)) { answers in
-                            let sent = await store.answerQuestions(questions, answers: answers,
-                                conversationID: conversationID, messageID: message.id)
-                            return sent ? nil : (store.notice ?? "选择尚未提交，请重试")
-                        }
-                        .id(message.id)
-                    }
+                    liveQuestionForms(message: message, conversationID: conversationID)
                 }
                 if message.isWorking { AgentActivityView(message: message) }
                 if let error = message.presentationError { Text(error).font(.subheadline).foregroundStyle(.red).textSelection(.enabled) }
@@ -1459,11 +1564,6 @@ struct AIAgentView: View {
                             Image(systemName: speech.isRecording ? "stop.fill" : "mic").font(.system(size: 20))
                                 .foregroundStyle(speech.isRecording ? Color.red : Color.primary).frame(width: 36, height: 40).contentShape(Rectangle())
                         }.buttonStyle(.plain).accessibilityLabel(speech.isRecording ? "结束语音输入" : "语音转文字")
-                        if conversation.isBusy && hasMessageToSend {
-                            Button { Task { await store.stop(conversation.id) } } label: {
-                                Image(systemName: "stop.fill").frame(width: 32, height: 36)
-                            }.buttonStyle(.plain).accessibilityLabel("停止处理")
-                        }
                         Button {
                             guard let latest = store.current else { return }
                             if latest.isBusy && !hasMessageToSend { Task { await store.stop(latest.id) } }

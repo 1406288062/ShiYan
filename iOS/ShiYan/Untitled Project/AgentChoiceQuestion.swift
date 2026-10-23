@@ -3,7 +3,12 @@ import Foundation
 nonisolated struct AgentChoiceQuestion: Identifiable, Equatable, Sendable {
     let title: String
     let options: [String]
-    var id: String { title + "\u{1F}" + options.joined(separator: "\u{1F}") }
+    private let questionID: String?
+    let descriptions: [String: String]
+    init(title: String, options: [String], id: String? = nil, descriptions: [String: String] = [:]) {
+        self.title = title; self.options = options; self.questionID = id; self.descriptions = descriptions
+    }
+    var id: String { questionID ?? (title + "\u{1F}" + options.joined(separator: "\u{1F}")) }
 
     // The current transport renders input requests as question + Markdown list.
     // Recognize complete, explicit questions; never turn ordinary lists into UI.
@@ -50,4 +55,45 @@ nonisolated struct AgentChoiceQuestion: Identifiable, Equatable, Sendable {
         }
         return parts.joined(separator: "\n\n") + "\n\n请按这些选择继续当前任务。"
     }
+}
+
+// Structured questions belong to the running server job, not to reply text.
+nonisolated struct AgentLiveInputOption: Decodable, Equatable, Sendable {
+    let label: String
+    let description: String?
+}
+nonisolated struct AgentLiveInputQuestion: Decodable, Equatable, Sendable {
+    let id: String
+    let question: String
+    let options: [AgentLiveInputOption]?
+    var choice: AgentChoiceQuestion {
+        let details = Dictionary((options ?? []).compactMap { option -> (String, String)? in
+            guard let description = option.description, !description.isEmpty else { return nil }
+            return (option.label, description)
+        }, uniquingKeysWith: { _, last in last })
+        return AgentChoiceQuestion(title: question, options: (options ?? []).map(\.label), id: id, descriptions: details)
+    }
+}
+nonisolated struct AgentLiveInputRequest: Decodable, Identifiable, Equatable, Sendable {
+    let id: String
+    let jobId: String
+    let status: String
+    let questions: [AgentLiveInputQuestion]
+    var choices: [AgentChoiceQuestion] { questions.map(\.choice) }
+    func answerPayload(_ answers: [String: String]) -> [String: [String: [String]]]? {
+        guard status == "pending", (1...3).contains(questions.count),
+              Set(questions.map(\.id)).count == questions.count,
+              Set(answers.keys) == Set(questions.map(\.id)),
+              AgentChoiceQuestion.reply(questions: choices, answers: answers) != nil else { return nil }
+        return Dictionary(uniqueKeysWithValues: questions.map { ($0.id, ["answers": [answers[$0.id]!.trimmingCharacters(in: .whitespacesAndNewlines)]]) })
+    }
+}
+nonisolated struct AgentLiveInputListing: Decodable, Sendable { let pendingQuestions: [AgentLiveInputRequest] }
+nonisolated struct AgentLiveInputAnswer: Decodable, Sendable { let request: AgentLiveInputRequest }
+nonisolated struct AgentLiveInputScope: Hashable, Sendable {
+    let conversationID: UUID
+    let messageID: UUID
+    let jobID: String
+    let accountGeneration: UUID
+    let isWorking: Bool
 }

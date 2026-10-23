@@ -39,6 +39,12 @@ enum AgentClientError: LocalizedError {
     var errorDescription: String? { if case let .message(value) = self { return value }; return nil }
 }
 
+nonisolated struct ShiyanAvatarHTTPFailure: LocalizedError {
+    let status: Int
+    let message: String
+    var errorDescription: String? { message }
+}
+
 struct AgentRemoteAsset: Decodable {
     let id: String
     let filename: String
@@ -136,7 +142,7 @@ final class CodexClient {
         let timeout: TimeInterval = ["auth/me", "auth/status", "auth/logout"].contains(route) ? 8 : 35
         return try await response(req, timeout: timeout).body
     }
-    private func response(_ request: URLRequest, timeout: TimeInterval = 35, idleTimeout: TimeInterval? = nil, rejectDotsErrors: Bool = false, rejectScheduleErrors: Bool = false) async throws -> PinnedHTTPSResponse {
+    private func response(_ request: URLRequest, timeout: TimeInterval = 35, idleTimeout: TimeInterval? = nil, rejectDotsErrors: Bool = false, rejectScheduleErrors: Bool = false, rejectAvatarErrors: Bool = false) async throws -> PinnedHTTPSResponse {
         guard let url = request.url else { throw AgentClientError.message("服务地址无效") }
         let route = url.path + (url.query.map { "?" + $0 } ?? "")
         let result = try await PinnedHTTPSClient.shared.request(host: host, method: request.httpMethod ?? "GET", path: route,
@@ -176,6 +182,9 @@ final class CodexClient {
             }
             if rejectDotsErrors && [400, 403, 404, 409, 422].contains(result.statusCode) && rejectionCode != "action_uncertain" {
                 throw DotsRejectedRequest(status: result.statusCode, message: message ?? "服务器未接受此操作（\(result.statusCode)）")
+            }
+            if rejectAvatarErrors {
+                throw ShiyanAvatarHTTPFailure(status: result.statusCode, message: message ?? "头像操作暂不可用（\(result.statusCode)）")
             }
             throw AgentClientError.message(message ?? "服务暂不可用（\(result.statusCode)）")
         }
@@ -225,6 +234,77 @@ final class CodexClient {
         return try JSONDecoder().decode(CodexQuotaResponse.self, from: bytes).quota
     }
 
+    private func decodeAccountAvatar(_ bytes: Data) throws -> ShiyanAccountAvatar {
+        guard bytes.count <= 1_400_000 else { throw AgentClientError.message("头像响应过大") }
+        let value = try JSONDecoder().decode(ShiyanAccountAvatarResponse.self, from: bytes).avatar
+        guard value.revision >= 0, value.mimeType == "image/jpeg" else {
+            throw AgentClientError.message("头像响应无效")
+        }
+        if let encoded = value.data {
+            guard encoded.utf8.count <= 1_398_104,
+                  let image = Data(base64Encoded: encoded), !image.isEmpty,
+                  image.count <= 1_048_576 else { throw AgentClientError.message("头像图片无效") }
+        }
+        return value
+    }
+
+    func accountAvatar() async throws -> ShiyanAccountAvatar {
+        try await prepareConnection()
+        let bytes = try await response(request(method: "GET", route: "account/avatar"),
+                                       timeout: 20, rejectAvatarErrors: true).body
+        return try decodeAccountAvatar(bytes)
+    }
+
+    func updateAccountAvatar(data: Data, expectedRevision: Int? = nil) async throws -> ShiyanAccountAvatar {
+        try await prepareConnection()
+        guard !data.isEmpty, data.count <= 1_048_576 else { throw AgentClientError.message("头像图片过大，请重新选择") }
+        var object: [String: Any] = ["data": data.base64EncodedString()]
+        if let expectedRevision {
+            guard expectedRevision >= 0 else { throw AgentClientError.message("头像版本无效") }
+            object["expectedRevision"] = expectedRevision
+        }
+        let bytes = try await response(request(method: "PUT", route: "account/avatar", object: object),
+                                       timeout: 25, rejectAvatarErrors: true).body
+        return try decodeAccountAvatar(bytes)
+    }
+
+    func accountAvatarEvents() async throws -> AsyncThrowingStream<Data, Error> {
+        try await prepareConnection()
+        var req = try request(method: "GET", route: "account/avatar/events")
+        req.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        guard let url = req.url,
+              let authorization = req.value(forHTTPHeaderField: "Authorization"),
+              let file = Bundle.main.url(forResource: "boss-codex", withExtension: "cer"),
+              let certificate = try? Data(contentsOf: file) else { throw AgentClientError.message("服务证书不可用") }
+        let path = url.path + (url.query.map { "?" + $0 } ?? "")
+        let headers = req.allHTTPHeaderFields ?? [:]
+        return AsyncThrowingStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
+            let worker = Task { @MainActor in
+                do {
+                    try Task.checkCancellation()
+                    guard accountGeneration == ShiyanAccountStorage.generation,
+                          authorization == ShiyanAccount.shared.token.map({ "Bearer " + $0 }) else { throw CancellationError() }
+                    let raw = AsyncThrowingStream<Data, Error>(bufferingPolicy: .bufferingNewest(1)) { output in
+                        let transport = AgentEventTransport(host: host, path: path, headers: headers,
+                                                            certificate: certificate, continuation: output)
+                        output.onTermination = { _ in transport.cancel() }
+                        transport.start()
+                    }
+                    for try await bytes in raw {
+                        try Task.checkCancellation()
+                        guard accountGeneration == ShiyanAccountStorage.generation,
+                              authorization == ShiyanAccount.shared.token.map({ "Bearer " + $0 }) else { throw CancellationError() }
+                        // The shared transport parses SSE data frames and ignores heartbeat comments.
+                        _ = try decodeAccountAvatar(bytes)
+                        continuation.yield(bytes)
+                    }
+                    continuation.finish()
+                } catch { continuation.finish(throwing: error) }
+            }
+            continuation.onTermination = { _ in worker.cancel() }
+        }
+    }
+
     func executionDetails(messageID: UUID) async throws -> AgentExecutionPayload {
         try await prepareConnection()
         let bytes = try await response(request(method: "GET", route: "sync/messages/" + messageID.uuidString.lowercased() + "/details"), timeout: 90).body
@@ -263,6 +343,21 @@ final class CodexClient {
         try await prepareConnection()
         let data = try await send(request(method: "GET", route: "capabilities"))
         return try JSONDecoder().decode(AgentCapabilities.self, from: data)
+    }
+    private func liveInputRoute(jobID: String, requestID: String? = nil) throws -> String {
+        let identifiers = [jobID] + (requestID.map { [$0] } ?? [])
+        guard identifiers.allSatisfy({ $0.range(of: "^[A-Za-z0-9_-]{1,160}$", options: .regularExpression) != nil }) else {
+            throw AgentClientError.message("选择请求无效，请刷新当前会话")
+        }
+        return "jobs/\(jobID)/questions" + (requestID.map { "/\($0)/answer" } ?? "")
+    }
+    func liveInputRequests(jobID: String) async throws -> [AgentLiveInputRequest] {
+        let bytes = try await send(request(method: "GET", route: liveInputRoute(jobID: jobID)))
+        return try JSONDecoder().decode(AgentLiveInputListing.self, from: bytes).pendingQuestions
+    }
+    func answerLiveInput(jobID: String, requestID: String, answers: [String: [String: [String]]]) async throws -> AgentLiveInputRequest {
+        let bytes = try await send(request(method: "POST", route: liveInputRoute(jobID: jobID, requestID: requestID), object: ["answers": answers]))
+        return try JSONDecoder().decode(AgentLiveInputAnswer.self, from: bytes).request
     }
     func createJob(prompt: String, uploads: [CodexImageUpload], conversationID: String,
                    requestID: String, reasoning: String, model: String? = nil, history: [CodexHistoryTurn] = [], files: [CodexFileUpload] = [],
@@ -530,6 +625,15 @@ extension CodexClient: DotsTransport {
         try await prepareConnection()
         let data = try await send(request(method: "GET", route: "dots/" + route))
         return try JSONDecoder().decode(type, from: data)
+    }
+    func dotsSubscriptions(_ provider: String? = nil, method: String = "GET", fields: [String: Any]? = nil) async throws -> DotsSubscriptionsResponse {
+        try await prepareConnection()
+        guard provider == nil || ["github", "email", "google-calendar"].contains(provider!) else {
+            throw AgentClientError.message("不支持的订阅类型")
+        }
+        let route = "dots/subscriptions" + (provider.map { "/" + $0 } ?? "")
+        let bytes = try await response(request(method: method, route: route, object: fields), rejectDotsErrors: true).body
+        return try JSONDecoder().decode(DotsSubscriptionsResponse.self, from: bytes)
     }
     func dotsRelationship(_ change: DotsRelationshipChange) async throws -> DotsRelationshipResponse {
         try await prepareConnection()

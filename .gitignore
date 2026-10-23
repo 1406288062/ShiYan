@@ -67,6 +67,7 @@ xcuserdata/
 # Desktop generated state and migration reports
 /migration-verification.json
 /Mac/desktop_backend/verification-*.json
+/shared/backend/verification-*.json
 /Mac/outputs/*
 !/Mac/outputs/sample_4x.jpg
 /Mac/inputs/*

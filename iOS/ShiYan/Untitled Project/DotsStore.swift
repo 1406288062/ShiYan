@@ -180,7 +180,7 @@ final class DotsStore: ObservableObject {
     }
      
     func startMonitoring() {
-        guard ShiyanAccount.shared.canAccessServer, !active else { return }
+        guard ShiyanAccount.shared.canUseAI, !active else { return }
         do { try configure() } catch { return }
         active = true
         liveTask = Task { [weak self] in await self?.connect() }

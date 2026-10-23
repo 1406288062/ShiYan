@@ -36,7 +36,9 @@ struct DotsView: View {
     @ObservedObject private var voicePresentation = DotsVoicePresentation.shared
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showTasks = false
+    @State private var showSubscriptions = false
     @State private var showFiles = false
     @State private var attachmentPreview: URL?
     @State private var approval: DotsApprovalContext?
@@ -166,13 +168,17 @@ struct DotsView: View {
                         if requestId != nil { scheduleApprovalReveal() }
                     }
                     .overlay(alignment: .bottomTrailing) {
-                        if !atBottom {
-                            Button { proxy.scrollTo("dots-bottom", anchor: .bottom) } label: {
-                                Image(systemName: "arrow.down").frame(width: 38, height: 38)
-                                    .background(.regularMaterial, in: Circle())
-                            }.buttonStyle(.plain).padding(16).padding(.bottom, composerHeight)
-                                .accessibilityLabel("回到底部")
-                        }
+                        let showsBottomButton = !atBottom
+                        Button { proxy.scrollTo("dots-bottom", anchor: .bottom) } label: {
+                            Image(systemName: "arrow.down").frame(width: 38, height: 38)
+                                .background(.regularMaterial, in: Circle())
+                        }.buttonStyle(.plain).padding(16).padding(.bottom, composerHeight)
+                            .accessibilityLabel("回到底部")
+                            .opacity(showsBottomButton ? 1 : 0)
+                        .offset(y: reduceMotion || showsBottomButton ? 0 : 8)
+                        .allowsHitTesting(showsBottomButton)
+                        .accessibilityHidden(!showsBottomButton)
+                        .animation(reduceMotion ? .easeOut(duration: 0.16) : .easeInOut(duration: 0.28), value: showsBottomButton)
                     }
                 }
                 .overlay {
@@ -206,6 +212,7 @@ struct DotsView: View {
         }
         .quickLookPreview($attachmentPreview)
         .sheet(isPresented: $showTasks) { taskSheet }
+        .sheet(isPresented: $showSubscriptions) { DotsSubscriptionsView() }
         .onChange(of: showTasks) { _, visible in
             onTaskSheetPresented(visible)
             if !visible { store.select(nil) }
@@ -263,6 +270,9 @@ struct DotsView: View {
     }
     private var assistantMenu: some View {
         ShiyanMoreMenu {
+            Button("事件订阅", systemImage: "bell.badge") {
+                inputFocused = false; showSubscriptions = true
+            }
             Button("任务", systemImage: "list.bullet.rectangle") {
                 inputFocused = false; showTasks = true
             }
@@ -887,5 +897,114 @@ private enum DotsPetFrames {
         let width = sheet.width / 8, height = 208
         guard let crop = sheet.cropping(to: CGRect(x: column * width, y: row * height, width: width, height: height)) else { return nil }
         let image = UIImage(cgImage: crop);frames.setObject(image, forKey: key);return image
+    }
+}
+
+
+struct DotsSubscriptionsResponse: Decodable {
+    let subscriptions: [DotsSubscription]
+}
+struct DotsSubscription: Decodable, Identifiable {
+    let provider: String
+    let configured: Bool
+    let enabled: Bool
+    let status: String?
+    let credentialsConfigured: Bool?
+    let repository: String?
+    let address: String?
+    let calendarId: String?
+    let accountKey: String?
+    var id: String { provider }
+}
+
+private struct DotsSubscriptionsView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var subscriptions: [DotsSubscription] = []
+    @State private var error: String?
+    @State private var loading = true
+    @State private var client = CodexClient()
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section { Text("配置你自己的事件来源，通知只发送给当前账号。").foregroundStyle(.secondary) }
+                if loading { ProgressView() }
+                if let error { Text(error).foregroundStyle(.red) }
+                ForEach(["github", "email", "google-calendar"], id: \.self) { provider in
+                    DotsSubscriptionEditor(provider: provider,
+                        item: subscriptions.first { $0.provider == provider }, client: client,
+                        changed: { subscriptions = $0 })
+                }
+            }
+            .navigationTitle("事件订阅")
+            .toolbar { ToolbarItem(placement: .confirmationAction) { ShiyanCloseButton(action: { dismiss() }, inToolbar: true) } }
+            .task {
+                defer { loading = false }
+                do { subscriptions = try await client.dotsSubscriptions().subscriptions }
+                catch { self.error = error.localizedDescription }
+            }
+        }
+    }
+}
+
+private struct DotsSubscriptionEditor: View {
+    let provider: String
+    let item: DotsSubscription?
+    let client: CodexClient
+    let changed: ([DotsSubscription]) -> Void
+    @State private var enabled = false
+    @State private var fields: [String: String] = [:]
+    @State private var busy = false
+    @State private var error: String?
+    @State private var confirmRemoval = false
+    private var title: String { ["github":"GitHub", "email":"邮件", "google-calendar":"Google 日历"][provider] ?? provider }
+    private var definitions: [(key: String, title: String, secret: Bool)] {
+        switch provider {
+        case "github": return [("repository", "仓库（owner/repository）", false), ("token", "访问令牌", true)]
+        case "email": return [("address", "QQ / Foxmail 邮箱", false), ("authorizationCode", "邮箱授权码", true)]
+        default: return [("calendarId", "日历 ID", false), ("accountKey", "账户标识", false), ("clientId", "Client ID", false), ("clientSecret", "Client Secret", true), ("refreshToken", "Refresh Token", true)]
+        }
+    }
+    var body: some View {
+        Section {
+            Toggle("启用通知", isOn: $enabled)
+            ForEach(definitions, id: \.key) { field in
+                let value = Binding(get: { fields[field.key] ?? "" }, set: { fields[field.key] = $0 })
+                if field.secret {
+                    SecureField(item?.credentialsConfigured == true ? field.title + "（留空保留）" : field.title, text: value)
+                } else {
+                    TextField(field.title, text: value).textInputAutocapitalization(.never).autocorrectionDisabled()
+                }
+            }
+            if let status = item?.status { Text(status).font(.footnote).foregroundStyle(.secondary) }
+            if let error { Text(error).foregroundStyle(.red) }
+            Button("保存") { mutate(remove: false) }.disabled(busy)
+            if item?.configured == true {
+                Button("取消订阅", role: .destructive) { confirmRemoval = true }.disabled(busy)
+            }
+        } header: { Text(title) }
+        .onAppear { restore() }
+        .onChange(of: item?.enabled) { _, _ in restore() }
+        .confirmationDialog("取消当前账号的这项订阅？", isPresented: $confirmRemoval, titleVisibility: .visible) {
+            Button("取消订阅", role: .destructive) { mutate(remove: true) }
+        } message: { Text("不会影响其他用户。") }
+    }
+    private func restore() {
+        enabled = item?.enabled ?? false
+        fields = ["repository":item?.repository ?? "", "address":item?.address ?? "", "calendarId":item?.calendarId ?? "", "accountKey":item?.accountKey ?? ""]
+    }
+    private func mutate(remove: Bool) {
+        busy = true; error = nil
+        let value: [String: Any] = fields.reduce(into: ["enabled": enabled] as [String: Any]) { result, entry in
+            let text = entry.value.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !text.isEmpty { result[entry.key] = text }
+        }
+        Task { @MainActor in
+            defer { busy = false }
+            do {
+                let response = try await client.dotsSubscriptions(provider, method: remove ? "DELETE" : "PATCH", fields: remove ? nil : value)
+                fields = fields.filter { entry in !definitions.contains { $0.key == entry.key && $0.secret } }
+                changed(response.subscriptions)
+            } catch { self.error = error.localizedDescription }
+        }
     }
 }
