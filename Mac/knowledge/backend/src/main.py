@@ -62,6 +62,7 @@ from services.pdf_service import (
     split_pages_into_chunks,
 )
 from services.vector_service import EmbeddingError, vector_service
+from services.mac_compute import owner_context, owner_for_ingestion
 
 
 ensure_runtime_dirs()
@@ -569,7 +570,10 @@ def process_document_task(task_id: str, user_id: str, kb_id: str, document_id: s
                 workers=0,
             )
 
-        vector_service.add_chunks(kb_id, vector_chunks, progress_callback=on_embedding_progress)
+        # Ingestion runs outside the HTTP context. Resolve its persisted,
+        # authenticated RAG user and verify document access before Mac routing.
+        with owner_context(owner_for_ingestion(user_id, kb_id, document_id)):
+            vector_service.add_chunks(kb_id, vector_chunks, progress_callback=on_embedding_progress)
         set_progress(76, "mapping")
 
         def on_knowledge_progress(done: int, total: int) -> None:

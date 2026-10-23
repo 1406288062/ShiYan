@@ -14,6 +14,23 @@ VectorService = vector_module.VectorService
 
 
 class LocalEmbeddingTests(unittest.TestCase):
+    def test_bound_owner_uses_mac_for_documents_and_questions(self):
+        service = VectorService.__new__(VectorService)
+        service.provider = "qwen"
+        with patch.object(vector_module, "current_mac_owner", return_value="owner-a"), patch.object(vector_module, "embed_on_mac", return_value=[[0.1, 0.2]]) as mac, patch.object(service, "_get_local_embeddings") as cpu:
+            service.get_embeddings(["文档"], operation="document_embedding")
+            service.get_embedding("问题", operation="question_embedding")
+        self.assertEqual([call.args[2] for call in mac.call_args_list], ["document_embedding", "question_embedding"])
+        cpu.assert_not_called()
+
+    def test_bound_owner_mac_failure_never_falls_back_to_cpu(self):
+        service = VectorService.__new__(VectorService)
+        service.provider = "qwen"
+        with patch.object(vector_module, "current_mac_owner", return_value="owner-a"), patch.object(vector_module, "embed_on_mac", side_effect=vector_module.MacEmbeddingError("Mac 离线")), patch.object(service, "_get_local_embeddings") as cpu:
+            with self.assertRaisesRegex(vector_module.LocalEmbeddingError, "Mac 离线"):
+                service.get_embeddings(["文档"])
+        cpu.assert_not_called()
+
     def test_qwen_provider_does_not_call_remote_embedding(self):
         service = VectorService.__new__(VectorService)
         service.provider = "qwen"

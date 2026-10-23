@@ -29,6 +29,7 @@ from config import (
     LOCAL_EMBEDDING_QUERY_INSTRUCTION,
 )
 from services.model_response_logger import log_model_response
+from services.mac_compute import MacEmbeddingError, current_mac_owner, embed_on_mac
 
 
 class EmbeddingError(RuntimeError):
@@ -479,6 +480,15 @@ class VectorService:
         if not normalized or any(not text for text in normalized):
             raise EmbeddingError("待向量化文本不能为空。")
         if self.provider == "qwen":
+            try:
+                mac_owner = current_mac_owner()
+                if mac_owner:
+                    return embed_on_mac(
+                        mac_owner, normalized, operation,
+                        LOCAL_EMBEDDING_QUERY_INSTRUCTION, progress_callback,
+                    )
+            except MacEmbeddingError as error:
+                raise LocalEmbeddingError(str(error)) from error
             return self._get_local_embeddings(
                 normalized, operation=operation, progress_callback=progress_callback
             )

@@ -69,6 +69,8 @@ class OwnerBridge:
         self.database = database
         self.auth = auth
         self.lock = threading.Lock()
+        from services.mac_compute import configure_owner_mapping
+        configure_owner_mapping(self.mapping)
 
     def owner_token(self, owner: str) -> str:
         mapped = self.mapping.get(owner)
@@ -132,7 +134,11 @@ class OwnerBridge:
             (key, value) for key, value in headers
             if key.lower() not in {b"authorization", b"x-shiyan-owner", b"cookie"}
         ] + [(b"authorization", ("Bearer " + token).encode("ascii"))]
-        await self.app(child_scope, receive, send)
+        # This owner came from the authenticated private relay, not query/body
+        # parameters. ContextVar propagation also covers FastAPI thread pools.
+        from services.mac_compute import owner_context
+        with owner_context(owner):
+            await self.app(child_scope, receive, send)
 
 
 def create_app(config_path: str | Path | None = None, source_path: str | Path | None = None):

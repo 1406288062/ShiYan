@@ -19,6 +19,7 @@ from .gateway import Gateway, GatewayError, FALLBACK_CAPABILITIES
 from .sync import SyncEngine
 from .mac_codex import MacCodex
 from .platforms import resolve_profile
+from shared.compute.client import MacComputeClient, MacComputeError
 
 WORKING = {"submitting","queued","running","reconnecting"}
 TERMINAL = {"completed","failed","cancelled","interrupted"}
@@ -329,7 +330,17 @@ class Runtime:
         self.spawn(self.expire_temporaries())
         self.spawn(self.sync.run())
         for job in self.storage.list("photoJobs"):
+            if job.get("macCancelPending") and job.get("remoteTaskId"):
+                try:
+                    await asyncio.to_thread(MacComputeClient().cancel,self.account.get("owner"),job["remoteTaskId"])
+                    job.pop("macCancelPending",None)
+                    self.storage.put("photoJobs",job)
+                except MacComputeError:
+                    pass
             if job["feature"]=="enhance" and job["state"] in WORKING:
+                if job.get("macCompute"):
+                    self.launch("photo:"+job["id"],self.run_mac_enhancement(job["id"]))
+                    continue
                 job.update(state="interrupted",label="增强已中断",error="应用已退出，本地增强未完成，请重新开始")
                 self.storage.put("photoJobs",job)
                 shutil.rmtree(self.storage.transfers/("enhance-"+job["id"]),ignore_errors=True)
@@ -779,6 +790,8 @@ class Runtime:
              "inputAssetId":asset["id"],"maskAssetId":payload.get("maskAssetId"),"outputAssetId":None,
              "outputAssets":[],"error":None,"createdAt":now(),"updatedAt":now(),"requestId":new_id(),
              "remoteConversationId":f"shiyan-{feature}-{new_id()}","remoteJobId":None,"lastEventId":0}
+        if feature=="enhance" and self.platform.mode=="web" and MacComputeClient.enabled_for(self.account.get("owner")):
+            job["macCompute"]=True
         self.storage.put("photoJobs",job)
         self.notify()
         self.launch("photo:"+identifier,self.run_enhancement(identifier) if feature=="enhance" else self.run_remote_photo(identifier))
@@ -793,6 +806,8 @@ class Runtime:
         return job
 
     async def run_enhancement(self,identifier):
+        if self.storage.get("photoJobs",identifier).get("macCompute"):
+            return await self.run_mac_enhancement(identifier)
         task_directory=self.storage.transfers/("enhance-"+identifier)
         temporary=task_directory/"result.jpg"
         process=None
@@ -872,6 +887,130 @@ class Runtime:
             self.processes.pop(identifier,None)
             shutil.rmtree(task_directory,ignore_errors=True)
 
+    async def run_mac_enhancement(self,identifier):
+        """Resume durable owner-bound GPU tasks without executing on this host."""
+        task_directory=self.storage.transfers/("enhance-"+identifier)
+        task_directory.mkdir(mode=0o700,exist_ok=True)
+        output=task_directory/"result.jpg"
+        owner=self.account.get("owner")
+        remote_id=None
+        try:
+            if self.platform.mode!="web" or not MacComputeClient.enabled_for(owner):
+                raise ValueError("此账户的 Mac 计算授权不可用")
+            client=MacComputeClient()
+            job=self.storage.get("photoJobs",identifier)
+            if job["state"]=="cancelled":return
+            remote_id=job.get("remoteTaskId")
+            if remote_id:
+                while True:
+                    try:
+                        initial=await asyncio.to_thread(client.status,owner,remote_id)
+                        if initial["state"]=="uploading":remote_id=None
+                        break
+                    except MacComputeError as error:
+                        if (400 <= error.status < 500 and error.status != 429) or error.code=="configuration":raise
+                        self.update_photo(identifier,state="reconnecting",label="等待恢复 Mac 连接")
+                        await asyncio.sleep(3)
+            if not remote_id:
+                def prepare_input():
+                    from PIL import Image
+                    data,_=self.storage.request_image(job["inputAssetId"])
+                    source=task_directory/"input.img"
+                    source.write_bytes(data)
+                    with Image.open(source) as opened:
+                        return source,opened.width,opened.height
+                source,width,height=await asyncio.to_thread(prepare_input)
+                self.update_photo(identifier,state="queued",label="等待 Mac 处理",macInputWidth=width,macInputHeight=height)
+                def remember_task(task_id):
+                    # Persist the identifier before streaming the input. Storage
+                    # serializes this callback with other thread-side writes.
+                    current=self.storage.get("photoJobs",identifier)
+                    if current:
+                        current["remoteTaskId"]=task_id
+                        self.storage.put("photoJobs",current)
+                async def submit():
+                    while True:
+                        attempt=asyncio.create_task(asyncio.to_thread(client.submit_enhance,owner,job["requestId"],job["model"],source,width,height,remember_task))
+                        try:
+                            return await asyncio.shield(attempt)
+                        except asyncio.CancelledError:
+                            try:await attempt
+                            except Exception:pass
+                            raise
+                        except MacComputeError as error:
+                            if (400 <= error.status < 500 and error.status != 429) or error.code=="configuration":raise
+                            self.update_photo(identifier,state="reconnecting",label="等待恢复 Mac 连接")
+                            await asyncio.sleep(3)
+                pending=asyncio.create_task(submit())
+                try:
+                    remote=await asyncio.shield(pending)
+                except asyncio.CancelledError:
+                    # The HTTP request can finish after cancellation. Keep its id
+                    # for restart, or cancel it if the user explicitly stopped.
+                    pending.cancel()
+                    await asyncio.gather(pending,return_exceptions=True)
+                    current=self.storage.get("photoJobs",identifier)
+                    remote_id=(current or {}).get("remoteTaskId")
+                    if not self.closing and remote_id:
+                        try:await asyncio.to_thread(client.cancel,owner,remote_id)
+                        except MacComputeError:
+                            self.update_photo(identifier,macCancelPending=True)
+                    raise
+                remote_id=remote["id"]
+                self.update_photo(identifier,remoteTaskId=remote_id)
+            while not self.closing:
+                current=self.storage.get("photoJobs",identifier)
+                if current["state"]=="cancelled":return
+                try:
+                    remote=await asyncio.to_thread(client.status,owner,remote_id)
+                except MacComputeError as error:
+                    if (400 <= error.status < 500 and error.status != 429) or error.code=="configuration":raise
+                    self.update_photo(identifier,state="reconnecting",label="等待恢复 Mac 连接")
+                    await asyncio.sleep(3)
+                    continue
+                state=remote["state"]
+                if state=="completed":break
+                if state in {"failed","cancelled"}:
+                    if state=="cancelled":
+                        self.update_photo(identifier,state="cancelled",label="已停止",error=None)
+                        return
+                    raise ValueError(remote.get("error") or "Mac 增强未完成，请重试")
+                self.update_photo(identifier,state="running" if state=="running" else "queued",
+                                  progress=remote.get("progress",0),label=remote.get("label") or "等待 Mac 处理",
+                                  **{key:remote.get("details",{}).get(key) for key in ("device",) if key in remote.get("details",{})})
+                await asyncio.sleep(2)
+            if self.closing:return
+            self.update_photo(identifier,state="running",label="正在保存图片",device="mps")
+            await asyncio.to_thread(client.download_image,owner,remote_id,output)
+            current=self.storage.get("photoJobs",identifier)
+            if current["state"]=="cancelled":return
+            source=self.storage.asset(job["inputAssetId"])
+            filename=Path(source["filename"]).stem+"_4x.jpg"
+            if job["model"]=="anime":filename=anime_export_filename(filename)
+            width=current["macInputWidth"]*4
+            height=current["macInputHeight"]*4
+            importing=asyncio.create_task(asyncio.to_thread(self.storage.import_worker_output,output,filename,identifier,(width,height)))
+            try:
+                asset=await asyncio.shield(importing)
+            except asyncio.CancelledError:
+                asset=await importing
+                saved=self.storage.asset_path(asset["id"])
+                self.storage.remove("assets",asset["id"])
+                saved.unlink(missing_ok=True)
+                raise
+            self.storage.add_history(asset["id"],"动漫增强" if job["model"]=="anime" else "通用增强",job_id=identifier)
+            self.update_photo(identifier,state="completed",progress=1,label="增强完成",device="mps",
+                              outputAssetId=asset["id"],outputAssets=[asset],error=None)
+        except asyncio.CancelledError:
+            if not self.closing and remote_id:
+                try:await asyncio.to_thread(client.cancel,owner,remote_id)
+                except Exception:pass
+            raise
+        except Exception as error:
+            self.update_photo(identifier,state="failed",label="",error=str(error))
+        finally:
+            shutil.rmtree(task_directory,ignore_errors=True)
+
     async def run_remote_photo(self,identifier):
         try:
             job=self.storage.get("photoJobs",identifier)
@@ -943,6 +1082,12 @@ class Runtime:
         if task:
             task.cancel()
         self.update_photo(identifier,state="cancelled",label="已停止",error=None)
+        if job.get("macCompute") and job.get("remoteTaskId"):
+            try:
+                await asyncio.to_thread(MacComputeClient().cancel,self.account.get("owner"),job["remoteTaskId"])
+            except MacComputeError:
+                # Keep a durable cancellation marker; it is retried on restart.
+                self.update_photo(identifier,macCancelPending=True)
         if job["feature"]!="enhance":
             intent={"id":job["requestId"],"requestId":job["requestId"],"kind":"photo","entityId":identifier}
             self.storage.put("stops",intent)
