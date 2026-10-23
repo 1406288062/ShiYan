@@ -74,3 +74,9 @@ body.desktop-workbench.workbench-v22.workbench-v2 #spaceSearchToggle:hover {back
 
 /* Feature titles follow the Home sidebar's computed typography in each theme/viewport. */
 body.desktop-workbench.workbench-v22.workbench-v2 :is(.v2-space-sidebar h2,.schedule-sidebar-header h2){font-size:var(--shiyan-sidebar-title-size,19px);color:var(--shiyan-sidebar-title-color,var(--text))}
+
+/* A profile can omit the right workspace while retaining the shared DOM. */
+#desktopLayout[data-right-workspace="false"] #rightWorkspace,
+#desktopLayout[data-right-workspace="false"] #toggleRightWorkspace,
+#desktopLayout[data-right-workspace="false"] #toggleFullWorkspace,
+#desktopLayout[data-right-workspace="false"] #rightResizeHandle { display: none !important; }

@@ -1,5 +1,9 @@
 {
   "shared": {},
   "desktop": {},
-  "web": {}
+  "web": {
+    "ui": {
+      "rightWorkspace": false
+    }
+  }
 }

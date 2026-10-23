@@ -43,6 +43,7 @@
     if(!glyph)return icon(name);
     return `<svg class="wb-icon toolbar-glyph ${name==='search'?'wb-search-icon':''}" viewBox="${glyph.box}" aria-hidden="true">${glyph.body || '<path d="'+glyph.path+'"></path>'}</svg>`;
   };
+  const rightWorkspaceEnabled=window.ShiYanPlatform?.get('ui.rightWorkspace',true)!==false;
   const toolbarButtonIds=new Set(['sidebarSearch','toggleLeftSidebar','toggleRightWorkspace','addWorkspaceTab']);
   const button = (id, name, title, extra='') => `<button id="${id}" class="wb-icon-button ${extra}" type="button" title="${esc(title)}" aria-label="${esc(title)}">${toolbarButtonIds.has(id)?toolbarIcon(name):icon(name)}</button>`;
   const uuid = () => crypto.randomUUID();
@@ -139,7 +140,7 @@
     if(compact && !wasCompact)compactPane='left';
     wasCompact=compact;
     const leftVisible=!!prefs.leftOpen && (!compact || compactPane==='left');
-    const rightVisible=!!prefs.rightOpen && (!compact || compactPane==='right');
+    const rightVisible=rightWorkspaceEnabled&&!!prefs.rightOpen && (!compact || compactPane==='right');
     const minCenter=compact?Math.max(400,Math.min(540,width*.55)):Math.max(520,Math.min(620,width*.45));
     let left=leftVisible?Math.min(prefs.leftWidth||262,compact?Math.max(195,width*.30):Math.max(225,width*.32)):0;
     let right=rightVisible?Math.min(prefs.rightWidth||460,width*.60):0;
@@ -550,6 +551,7 @@
       handle.onpointerup=handle.onpointercancel=()=>{if(drag){drag=null;document.body.classList.remove('resizing-workbench');persist();}};
     }
     document.addEventListener('keydown',e=>{
+      if(!rightWorkspaceEnabled&&(e.metaKey||e.ctrlKey)&&['o','l'].includes(e.key.toLowerCase()))return;
       if((e.metaKey||e.ctrlKey)&&!e.altKey&&e.key.toLowerCase()==='o'){e.preventDefault();e.stopImmediatePropagation();workspaceTool('files');return;}
       if((e.metaKey||e.ctrlKey)&&!e.altKey&&e.key.toLowerCase()==='o'){e.preventDefault();e.stopImmediatePropagation();workspaceTool('files');return;}
       if(e.key==='Escape'&&!$('workbenchModal').hidden){e.preventDefault();e.stopImmediatePropagation();$('workbenchModal').hidden=true;scheduleNative();}
@@ -562,6 +564,7 @@
   async function start() {
     createShell();bind();
     v2=window.ShiYanV2.install({
+      rightWorkspaceEnabled,
       get prefs(){return prefs;},get projects(){return projects;},get tabs(){return tabs;},
       get activeTab(){return activeTab;},get browserState(){return browserState;},
       get defaultDirectory(){return defaultDirectory;},get ready(){return ready;},
@@ -582,7 +585,7 @@
       activeTab=data.preferences?.activeTab||tabs[0]?.id||'';
       ready=true;loading=false;lastSelected='';
       for(const[name,id]of Object.entries({pinned:'pinnedGroup',projects:'projectsGroup',recent:'recentGroup'}))$(id).open=prefs.groups[name]!==false;
-      if(!tabs.length){if(prefs.rightOpen)openTab();else renderTabs();}else{if(!tabs.some(t=>t.id===activeTab))activeTab=tabs[0].id;renderTabs();}
+      if(!tabs.length){if(rightWorkspaceEnabled&&prefs.rightOpen)openTab();else renderTabs();}else{if(!tabs.some(t=>t.id===activeTab))activeTab=tabs[0].id;renderTabs();}
       if(window.innerWidth<1140)compactPane='left';
       renderState(window.shiyan?.getState());await v2?.afterBoot();layout();native('state');
     }catch(error){notify(error.message);$('rightContent').innerHTML=`<p class="wb-error">${esc(error.message)}</p>`;}

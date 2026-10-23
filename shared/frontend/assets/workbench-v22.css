@@ -783,3 +783,20 @@ body.workbench-v22 .v22-elapsed-number { display: inline-block; text-align: righ
 body.workbench-v22 .v22-elapsed-minutes { width: 3ch; }
 body.workbench-v22 .v22-elapsed-seconds { width: 2ch; }
 body.workbench-v22 .v22-elapsed-decimal { width: 4ch; }
+
+/* Desktop dark workbench: shallow-black session navigation, black everywhere else. */
+@media (prefers-color-scheme: dark) {
+  body.desktop-workbench.workbench-v22.workbench-v2 {
+    --canvas: #000000;
+    --v22-panel: #000000;
+    --v22-side: #000000;
+    --v22-code: #000000;
+    --sidebar: #141414;
+  }
+  body.desktop-workbench.workbench-v22.workbench-v2 .activity-rail {
+    background: #000000;
+  }
+  body.desktop-workbench.workbench-v22.workbench-v2 :is(.left-container, #agentSidebar, .sidebar-header, .sidebar-scroll) {
+    background: #141414;
+  }
+}

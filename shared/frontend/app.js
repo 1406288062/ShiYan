@@ -9,7 +9,7 @@
   const drafts = new Map(), assets = new Map(), stoppingConversations = new Set();
   const ui = {
     view:'agent', feature:'enhance', model:'general', input:null, result:null, showOriginal:false,
-    photoJobId:null, photoSubmitting:false, photoError:'', strokes:[], currentStroke:null, brush:.055, drawer:false, reasoning:false, reasoningDragging:false, reasoningPosition:0,
+    photoJobId:null, photoUploading:false, photoUploadFile:null, photoLocalURL:null, photoSubmitting:false, photoError:'', strokes:[], currentStroke:null, brush:.055, drawer:false, reasoning:false, reasoningDragging:false, reasoningPosition:0,
     editing:null, submitting:false, speech:false, speechFinishing:false, speechSessionId:null, speechPrefix:'', recordingConversation:null,
     selection:new Set(), selecting:false, sessionMenuId:null, deletingSessionId:null,
     preview:null, zoom:1, panX:0, panY:0, previewPointer:null, searchTerm:'', restoring:false, historyReturnView:'agent'
@@ -576,11 +576,48 @@
     if(!state.conversations.length)await api('/api/conversations','POST',{});
   }
   async function saveWorkspace() {
+    if(ui.photoUploadFile)return;
     await api('/api/settings','PATCH',{homeInputAssetId:ui.input && ui.input.id,homeFeature:ui.feature,homeModel:ui.model});
+  }
+  async function chooseWebHomeImage(file) {
+    const keys=['input','result','showOriginal','photoJobId','strokes','photoError','photoUploadFile','photoLocalURL'];
+    const previous=Object.fromEntries(keys.map(key=>[key,ui[key]]));
+    const url=URL.createObjectURL(file);
+    const local={id:'local:'+url,url,filename:file.name,mimeType:file.type};
+    ui.input=local;ui.result=null;ui.showOriginal=false;ui.photoJobId=null;ui.strokes=[];
+    ui.photoError='';ui.photoUploadFile=file;ui.photoLocalURL=url;ui.photoUploading=true;
+    $('homeFileInput').disabled=true;
+    renderPhoto(); // Preview the selected file before waiting for the network.
+    const image=new Image();
+    image.onload=()=>{if(ui.input===local){local.width=image.naturalWidth;local.height=image.naturalHeight;renderPhoto();}};
+    image.src=url;
+    let restored=false;
+    try {
+      const result=await upload([file]);if(!result[0])throw new Error('没有读取到图片');
+      const asset=result[0];
+      if(Math.max(asset.width || 0,asset.height || 0)>2000 && !await confirmAction('图片较大','图片分辨率超过 2000px，处理时间可能较长且占用更多内存，是否继续？','继续')){
+        Object.assign(ui,previous);restored=true;return;
+      }
+      // Keep the decoded local original visible while using the server asset ID
+      // for processing and persistence. Blob URLs are never saved to settings.
+      ui.input=image.naturalWidth?{...asset,url}:asset;ui.photoUploadFile=null;
+      if(!image.naturalWidth){URL.revokeObjectURL(url);ui.photoLocalURL=null;}
+      try {await saveWorkspace();}catch(error){toast('图片已上传，但保存图片选择失败：'+error.message);}
+    } catch(error) {
+      const timeout=error.status===408 || /\b408\b/.test(error.message || '');
+      ui.photoError=timeout?'图片上传超时，原图已保留，请点击“重试上传”。'
+        :'图片上传失败：'+(error.message || '连接中断')+'。原图已保留，请点击“重试上传”。';
+    } finally {
+      ui.photoUploading=false;
+      if(restored)URL.revokeObjectURL(url);
+      else if(previous.photoLocalURL && previous.photoLocalURL!==ui.photoLocalURL)URL.revokeObjectURL(previous.photoLocalURL);
+      $('homeFileInput').disabled=false;$('homeFileInput').value='';renderPhoto();
+    }
   }
   async function chooseHomeImage(file) {
     if(!file)return;
     if(photoBusy()){toast('请先停止当前处理');return;}
+    if(window.ShiYanPlatform?.mode==='web')return chooseWebHomeImage(file);
     $('homeFileInput').disabled=true;
     try {
       const result=await upload([file]);if(!result[0])throw new Error('没有读取到图片');
@@ -591,7 +628,7 @@
     finally {$('homeFileInput').disabled=false;$('homeFileInput').value='';}
   }
   function photoJob(){return state && (state.photoJobs || []).find(j=>j.id===ui.photoJobId);}
-  function photoBusy(){const j=photoJob();return ui.photoSubmitting || !!(j && busyStates.has(j.state));}
+  function photoBusy(){const j=photoJob();return ui.photoUploading || ui.photoSubmitting || !!(j && busyStates.has(j.state));}
   function setFeature(feature) {
     if(feature==='agent'){setView('agent');return;}
     if(feature!=='enhance'){toast('此图片工具已下线');return;}
@@ -623,17 +660,17 @@
     const canDraw=ui.feature==='remove' && !!ui.input && !busy && (!ui.result || ui.showOriginal);
     show('maskCanvas',canDraw);$('maskCanvas').style.pointerEvents=canDraw?'auto':'none';
     const redo=ui.feature==='remove' && !!ui.result;
-    const processLabel=redo?'重新涂抹':ui.feature==='enhance'?'开始增强':ui.feature==='remove'?'开始消除':'开始上色';
+    const processLabel=ui.photoUploadFile?'重试上传':redo?'重新涂抹':ui.feature==='enhance'?'开始增强':ui.feature==='remove'?'开始消除':'开始上色';
     $('processIcon').dataset.symbol=redo?'pencil.tip':ui.feature==='remove'?'eraser':ui.feature==='colorize'?'paintpalette':'wand.and.stars';
     $('homeView').style.setProperty('--image-accent',ui.feature==='enhance' && ui.model==='anime'?'var(--pink)':'var(--accent)');
-    setText('processLabel',busy?(ui.photoSubmitting?'正在准备':job && job.label || '处理中'):processLabel);
+    setText('processLabel',busy?(ui.photoUploading?'正在上传图片':ui.photoSubmitting?'正在准备':job && job.label || '处理中'):processLabel);
     $('processButton').disabled=!ui.input || busy || (ui.feature==='remove' && !ui.strokes.length && !redo);
     $('saveResultButton').disabled=!ui.result || busy;
     show('saveResultButton',!!ui.result);show('cancelProcessButton',busy && !ui.photoSubmitting && !!job);
     $('changeImageButton').disabled=busy;
     $('brushWidth').value=ui.brush;$('brushWidth').disabled=busy;
     $('undoStrokeButton').disabled=busy || !ui.strokes.length;$('clearStrokesButton').disabled=busy || !ui.strokes.length;
-    show('processingOverlay',busy);$('processingOverlay').classList.toggle('is-indeterminate',busy && ui.feature!=='enhance');
+    show('processingOverlay',busy && !ui.photoUploading);$('processingOverlay').classList.toggle('is-indeterminate',busy && ui.feature!=='enhance');
     const raw=job && !ui.photoSubmitting?Number(job.progress)||0:0,progress=raw>1?Math.min(1,raw/100):Math.min(1,Math.max(0,raw));
     if($('progressRing'))$('progressRing').style.strokeDashoffset=String(175.929*(1-progress));
     setText('progressValue',Math.round(progress*100)+'%');setText('processingStatus',ui.photoSubmitting?'正在准备':job && job.label || '处理中');
@@ -682,6 +719,7 @@
   }
   async function processPhoto() {
     if(!ui.input || photoBusy())return;
+    if(ui.photoUploadFile){await chooseHomeImage(ui.photoUploadFile);return;}
     if(ui.feature==='remove' && ui.result){ui.result=null;ui.photoJobId=null;ui.strokes=[];ui.showOriginal=false;ui.photoError='';renderPhoto();return;}
     ui.photoError='';ui.photoSubmitting=true;renderPhoto();show('photoError',false);
     try {
@@ -1200,8 +1238,8 @@
     getView:()=>ui.view,renderMessage:messageHTML,renderAttachment:attachmentItemHTML,
     uploadAttachments:(files,existing=[])=>{validateAttachmentFiles(files,existing);return upload(files,'attachment');},
     navigate:setView,toast,copyText,confirmAction,api,sessionHTML,sessionMenuIcon,openPreview,openGeneratedDocument,saveAsset,shareAssets,
-    getPhotoState:()=>({input:ui.input,result:ui.result,model:ui.model,busy:photoBusy(),
-      progress:photoJob()?.progress || 0,label:photoJob()?.label || (ui.photoSubmitting?'正在准备':''),error:photoJob()?.error || ui.photoError}),
+    getPhotoState:()=>({input:ui.input,result:ui.result,model:ui.model,busy:photoBusy(),uploading:ui.photoUploading,
+      progress:photoJob()?.progress || 0,label:ui.photoUploading?'正在上传图片':photoJob()?.label || (ui.photoSubmitting?'正在准备':''),error:photoJob()?.error || ui.photoError}),
     addContext:async text=>{
       if(!current())await newConversation();
       setView('agent');

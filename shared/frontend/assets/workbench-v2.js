@@ -17,6 +17,7 @@
   share:'M12 16V2m-5 5 5-5 5 5M5 11H3v10h18V11h-2',trash:'M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7m4-7v7'
  };
  function install(C){
+  const rightWorkspaceEnabled=C.rightWorkspaceEnabled!==false;
   const S={full:false,compactSide:'left',compact:false,bottomId:null,bottomIds:[],bottomShown:false,booted:false,bottomHeight:230,menuCallbacks:new Map(),closedProjects:new Set(),spaceSelection:new Set(),spaceQuery:'',spaceColumns:0,lastSpaceSignature:'',photoSignature:'',compare:{zoom:1,x:0,y:0},overlayCompare:false,files:new Map(),animationUntil:0,animationFrame:0,dragging:null,lastView:'agent',spaceSidebarOpen:true,photoInput:null,photoOutput:null};
   function icon(name){if(['rename','pin','unpin','project'].includes(name))return window.shiyan.sessionMenuIcon(name);if(name==="folderOpen")return C.icon(name);return extraPaths[name]?`<svg class="wb-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${extraPaths[name]}"></path></svg>`:C.icon(name);}
   const button=(id,name,label,cls='')=>`<button type="button" ${id?'id="'+id+'"':''} class="wb-icon-button ${cls}" aria-label="${esc(label)}" title="${esc(label)}">${id==='spaceSearchToggle'?C.toolbarIcon('search'):icon(name)}</button>`;
@@ -43,10 +44,11 @@
   }
   function animateLayout(){if(matchMedia('(prefers-reduced-motion: reduce)').matches){layout();return;}S.animationUntil=performance.now()+235;layout();if(S.animationFrame)return;const step=()=>{S.animationFrame=0;syncNative();positionReasoning();fitTerminals();if(performance.now()<S.animationUntil)S.animationFrame=requestAnimationFrame(step);};S.animationFrame=requestAnimationFrame(step);}
   function layout(){
+   if(!rightWorkspaceEnabled)S.full=false;
    const width=innerWidth,height=innerHeight,rail=50,view=window.shiyan?.getView()||'agent',photo=view==='home',space=view==='history',coding=!photo&&!space;
    const compact=width<1060;if(compact&&!S.compact)S.compactSide='left';S.compact=compact;
    let showLeft=coding?!!C.prefs.leftOpen&&(!compact||S.compactSide==='left'):space&&S.spaceSidebarOpen;
-   let showRight=coding&&!!C.prefs.rightOpen&&(!compact||S.compactSide==='right'||S.full);
+   let showRight=rightWorkspaceEnabled&&coding&&!!C.prefs.rightOpen&&(!compact||S.compactSide==='right'||S.full);
    if(S.full&&coding){showRight=true;if(compact)showLeft=false;}
    const preferredLeft=Math.min(Math.max(190,Math.min(Number(C.prefs.leftWidth)||250,350)),compact?Math.max(190,width*.28):350);
    let left=showLeft?preferredLeft:0;
@@ -62,13 +64,14 @@
    const titleStyle=getComputedStyle($('agentSidebar').querySelector('.sidebar-header h2'));
    shell.style.setProperty('--shiyan-sidebar-title-size',titleStyle.fontSize);
    shell.style.setProperty('--shiyan-sidebar-title-color',titleStyle.color);
+   shell.dataset.rightWorkspace=String(rightWorkspaceEnabled);
    shell.dataset.view=view;shell.dataset.full=String(S.full&&coding);shell.dataset.compact=String(compact);shell.dataset.bottom=String(bottom);
    shell.classList.toggle('v2-left-open',showLeft);shell.classList.toggle('v2-right-open',showRight);shell.style.setProperty('--left-width',left+'px');shell.style.setProperty('--right-width',right+'px');shell.style.setProperty('--bottom-height',bh+'px');
-   $('leftContainer').hidden=false;$('rightWorkspace').hidden=false;$('mainWorkspace').inert=S.full&&coding;$('leftContainer').inert=!showLeft;$('rightWorkspace').inert=!showRight;
+   $('leftContainer').hidden=false;$('rightWorkspace').hidden=!rightWorkspaceEnabled;$('mainWorkspace').inert=S.full&&coding;$('leftContainer').inert=!showLeft;$('rightWorkspace').inert=!showRight;
    $('leftContainer').setAttribute('aria-hidden',String(!showLeft));$('rightWorkspace').setAttribute('aria-hidden',String(!showRight));
    $('agentSidebar').hidden=!coding;$('spaceSidebar').hidden=!space;$('desktopToolbar').hidden=photo||space;$('bottomTerminal').hidden=!bottom;
    const toggle=$('toggleLeftSidebar');toggle.hidden=!(coding||space);toggle.style.left=(showLeft?rail+left-43:rail+11)+'px';toggle.setAttribute('aria-expanded',String(showLeft));const sidebarGlyph=showLeft?'left':'leftCollapsed';if(toggle.dataset.sidebarGlyph!==sidebarGlyph){toggle.innerHTML=C.toolbarIcon(sidebarGlyph);toggle.dataset.sidebarGlyph=sidebarGlyph;}toggle.title=toggle.ariaLabel=showLeft?'隐藏左侧栏':'显示左侧栏';
-   $('toggleRightWorkspace').hidden=!coding;$('toggleRightWorkspace').innerHTML=C.toolbarIcon(showRight?'pane':'addPanel');$('toggleRightWorkspace').setAttribute('aria-expanded',String(showRight));$('toggleRightWorkspace').title=$('toggleRightWorkspace').ariaLabel=showRight?'隐藏右侧工作区':'打开右侧工作区';
+   $('toggleRightWorkspace').hidden=!rightWorkspaceEnabled||!coding;$('toggleRightWorkspace').innerHTML=C.toolbarIcon(showRight?'pane':'addPanel');$('toggleRightWorkspace').setAttribute('aria-expanded',String(showRight));$('toggleRightWorkspace').title=$('toggleRightWorkspace').ariaLabel=showRight?'隐藏右侧工作区':'打开右侧工作区';
    $('toggleFullWorkspace').hidden=!coding||!showRight;$('toggleFullWorkspace').innerHTML=C.toolbarIcon(S.full?'contract':'expand');$('toggleFullWorkspace').title=$('toggleFullWorkspace').ariaLabel=S.full?'退出完整视图':'进入完整视图';$('toggleFullWorkspace').setAttribute('aria-pressed',String(S.full));shell.classList.toggle('v2-left-visible',showLeft);
    $('leftResizeHandle').hidden=!coding||!showLeft;$('rightResizeHandle').hidden=!coding||!showRight||S.full;$('leftResizeHandle').style.left=(rail+left-5)+'px';$('rightResizeHandle').style.left=(width-right-5)+'px';$('bottomResizeHandle').hidden=!bottom;
    window.ShiYanSchedules?.layout?.();
@@ -84,9 +87,9 @@
    C.native('show',show);C.native('dividers',dividers);S.nativeLayoutSignature=signature;
   }
   function toggleLeft(){closePopup();const shown=$('toggleLeftSidebar').getAttribute('aria-expanded')==='true';if(window.shiyan?.getView()==='history')S.spaceSidebarOpen=!shown;else C.prefs.leftOpen=!shown;S.compactSide='left';animateLayout();persist();}
-  function revealRight(){C.prefs.rightOpen=true;S.compactSide='right';}
+  function revealRight(){if(!rightWorkspaceEnabled)return;C.prefs.rightOpen=true;S.compactSide='right';}
   function closeEmptyWorkspace(){if(C.tabs.some(t=>!S.bottomIds.includes(t.id)))return false;C.prefs.rightOpen=false;S.full=false;S.compactSide='left';return true;}
-  function toggleRight(){closePopup();const shown=$('toggleRightWorkspace').getAttribute('aria-expanded')==='true';C.prefs.rightOpen=!shown;if(shown){S.full=false;S.compactSide='left';}else {S.compactSide='right';if(!C.tabs.some(t=>!S.bottomIds.includes(t.id)))C.openTab();}animateLayout();persist();}
+  function toggleRight(){if(!rightWorkspaceEnabled)return;closePopup();const shown=$('toggleRightWorkspace').getAttribute('aria-expanded')==='true';C.prefs.rightOpen=!shown;if(shown){S.full=false;S.compactSide='left';}else {S.compactSide='right';if(!C.tabs.some(t=>!S.bottomIds.includes(t.id)))C.openTab();}animateLayout();persist();}
   function dragStart(id,x,y){closePopup();document.getSelection()?.removeAllRanges();window.getSelection()?.removeAllRanges();S.dragging={id,x,y,left:$('leftContainer').getBoundingClientRect().width,right:$('rightWorkspace').getBoundingClientRect().width,bottom:S.bottomHeight};document.body.classList.add('v2-dragging');document.body.classList.toggle('v2-drag-y',id==='bottomResizeHandle');}
   function dragMove(x,y){const d=S.dragging;if(!d)return;const dx=x-d.x;if(d.id==='leftResizeHandle')C.prefs.leftWidth=Math.max(190,Math.min(350,d.left+dx,innerWidth-50-($('rightWorkspace').getAttribute('aria-hidden')==='false'?240:0)-280));else if(d.id==='rightResizeHandle')C.prefs.rightWidth=Math.max(240,Math.min(innerWidth-50-$('leftContainer').getBoundingClientRect().width-280,d.right-dx));else S.bottomHeight=Math.max(150,Math.min(innerHeight*.5,d.bottom-(y-d.y)));layout();}
   function dragEnd(){if(!S.dragging)return;S.dragging=null;document.body.classList.remove('v2-dragging','v2-drag-y');persist();C.scheduleNative();}
@@ -327,7 +330,7 @@
   function renderCompare(){
    if(!$('compareWorkbench'))return;const p=window.shiyan?.getPhotoState?.();if(!p)return;const signature=(p.input?.id||'')+':'+(p.result?.id||'');if(signature!==S.photoSignature){S.photoSignature=signature;S.compare={zoom:1,x:0,y:0};}S.photoInput=p.input;S.photoOutput=p.result;
    for(const card of document.querySelectorAll('[data-compare]')){const a=card.dataset.compare==='original'?p.input:p.result,img=card.querySelector('img'),empty=card.querySelector('.v2-compare-empty');img.hidden=!a;empty.hidden=!!a;if(a){const url=assetURL(a);if(img.getAttribute('src')!==url)img.src=url;}else img.removeAttribute('src');card.querySelector('.v2-compare-dimensions').textContent=a?.width&&a?.height?`${a.width} × ${a.height}`:'';if(card.dataset.compare==='result')empty.querySelector('span').textContent=p.busy?(p.label||'正在增强…'):'增强结果显示在这里';card.classList.toggle('is-processing',p.busy&&card.dataset.compare==='result');}
-   $('compareWorkbench').dataset.model=p.model||'general';$('chooseCompareImage').disabled=p.busy;$('saveResultButton').hidden=false;$('compareStatus').textContent=p.error||(p.busy?((p.label||'正在增强…')+' · '+Math.round((Number(p.progress)>1?Math.min(100,Number(p.progress)):Math.min(1,Math.max(0,Number(p.progress))))*(Number(p.progress)>1?1:100))+'%'):p.result?'处理完成':p.input?'准备就绪':'选择图片后即可开始处理');$('compareStatus').classList.toggle('is-error',!!p.error);renderCompareTransform();
+   $('compareWorkbench').dataset.model=p.model||'general';$('chooseCompareImage').disabled=p.busy;$('saveResultButton').hidden=false;$('compareStatus').textContent=p.error||(p.uploading?'正在上传图片…':p.busy?((p.label||'正在增强…')+' · '+Math.round((Number(p.progress)>1?Math.min(100,Number(p.progress)):Math.min(1,Math.max(0,Number(p.progress))))*(Number(p.progress)>1?1:100))+'%'):p.result?'处理完成':p.input?'准备就绪':'选择图片后即可开始处理');$('compareStatus').classList.toggle('is-error',!!p.error);renderCompareTransform();
   }
   function buildSpace(){
    const sidebar=document.createElement('aside');sidebar.id='spaceSidebar';sidebar.className='v2-space-sidebar';sidebar.hidden=true;sidebar.innerHTML=`<header><h2>空间</h2>${button('spaceSearchToggle','search','搜索图像')}</header><label id="spaceSearchField" hidden><input id="spaceSearchInput" type="search" aria-label="搜索空间图像" placeholder="搜索图像…"></label><button type="button" class="v2-space-category selected">${icon('image')}<span>图像</span></button>`;$('leftContainer').appendChild(sidebar);
@@ -398,7 +401,7 @@
     finally{btn.disabled=false;}
    };
    const popup=document.createElement('div');popup.id='v2Popup';popup.className='v2-popup';popup.hidden=true;popup.setAttribute('role','menu');$('app').appendChild(popup);
-   shell.appendChild($('toggleLeftSidebar'));shell.appendChild($('toggleRightWorkspace'));const full=document.createElement('button');full.id='toggleFullWorkspace';full.type='button';full.className='wb-icon-button';shell.appendChild(full);$('toggleLeftSidebar').classList.add('v2-floating-left-toggle');$('toggleRightWorkspace').classList.add('v2-floating-right-toggle');full.classList.add('v2-floating-full-toggle');$('toggleLeftSidebar').onclick=toggleLeft;$('toggleRightWorkspace').onclick=toggleRight;full.onclick=()=>{closePopup();S.full=!S.full;revealRight();animateLayout();};
+   shell.appendChild($('toggleLeftSidebar'));shell.appendChild($('toggleRightWorkspace'));const full=document.createElement('button');full.id='toggleFullWorkspace';full.type='button';full.className='wb-icon-button';shell.appendChild(full);$('toggleLeftSidebar').classList.add('v2-floating-left-toggle');$('toggleRightWorkspace').classList.add('v2-floating-right-toggle');full.classList.add('v2-floating-full-toggle');$('toggleLeftSidebar').onclick=toggleLeft;$('toggleRightWorkspace').onclick=toggleRight;full.onclick=()=>{if(!rightWorkspaceEnabled)return;closePopup();S.full=!S.full;revealRight();animateLayout();};
    for(const id of ['sessionMenu','sessionDeletePopover','reasoningPanel','reasoningBackdrop'])$('app').appendChild($(id));
    const actions=$('composerSurface').querySelector('.composer-actions');$('composerSurface').insertBefore($('messageInput'),actions);$('composerSurface').insertBefore($('attachmentList'),$('messageInput'));const spacer=document.createElement('span');spacer.className='composer-spacer';$('addImageButton').after(spacer);
    $('projectDialogTitle').textContent='添加项目';$('projectForm').querySelector('.project-type-switch').hidden=true;$('projectPathLabel').textContent='项目目录或创建位置';$('projectForm').querySelector('footer').innerHTML='<button id="openProjectSubmit" class="wb-secondary" type="button">打开已有项目</button><button id="createProjectSubmit" class="wb-primary" type="submit">新建项目</button>';
