@@ -222,6 +222,7 @@ class TaskRunner:
                     if params.get("model") not in {"anime", "general"}:
                         raise ValueError("Unsupported enhancement model")
                     source, output = directory / "input.img", directory / "result.jpg"
+                    self.update(0, "Mac 正在接收图片")
                     self.http.request("GET", self.route + "/input", self.lease, destination=source)
                     from PIL import Image
                     with Image.open(source) as image:
@@ -234,6 +235,7 @@ class TaskRunner:
                     with Image.open(output) as image:
                         if image.format != "JPEG" or image.size != (params["width"] * 4, params["height"] * 4):
                             raise ValueError("Invalid enhancement result")
+                    self.update(0.99, "Mac 正在回传图片")
                     self.http.request("PUT", self.route + "/result", self.lease, source=output)
                 elif self.task["kind"] == "embed":
                     texts = params.get("texts")
