@@ -248,6 +248,7 @@ def copy_application(require_complete: bool) -> None:
         "models": PROJECT / "models",
         "shared/paths.py": REPOSITORY_ROOT / "shared" / "paths.py",
         "shared/launcher.py": REPOSITORY_ROOT / "shared" / "launcher.py",
+        "shared/compute": REPOSITORY_ROOT / "shared" / "compute",
         "apps/desktop/adapters": REPOSITORY_ROOT / "apps" / "desktop" / "adapters",
         "config/platforms.json": REPOSITORY_ROOT / "config" / "platforms.json",
     }

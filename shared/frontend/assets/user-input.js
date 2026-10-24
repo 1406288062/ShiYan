@@ -1,14 +1,14 @@
 (() => {
  'use strict';
  const entries=new Map();let timer,requesting=false,lastContext='';
- const web=window.ShiYanPlatform?.mode==='web',nextPoll=new Map();
+ const nextPoll=new Map();
  const terminalStates=new Set(['completed','failed','cancelled','interrupted']);
  function deferPoll(key,delay){nextPoll.set(key,Date.now()+delay);while(nextPoll.size>64)nextPoll.delete(nextPoll.keys().next().value);}
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  function context(){
   const s=window.shiyan?.getState(),c=s?.conversations?.find(c=>c.id===s.selectedConversationId);
   const m=c?.messages?.slice().reverse().find(m=>m.role==='assistant'&&m.remoteJobId);
-  if(web&&m&&terminalStates.has(m.state))return null;
+  if(m&&terminalStates.has(m.state))return null;
   return c&&m?{conversationId:c.id,messageId:m.id,jobId:m.remoteJobId,key:c.id+':'+m.remoteJobId}:null;
  }
  function valid(questions,form){
@@ -65,16 +65,14 @@
  }
  async function poll(){
   const ctx=context();mount(ctx);
-  if(!ctx||requesting||document.hidden||(web&&Date.now()<(nextPoll.get(ctx.key)||0)))return;
+  if(!ctx||requesting||document.hidden||Date.now()<(nextPoll.get(ctx.key)||0))return;
   requesting=true;
   try{
    const data=await window.shiyan.api('/api/conversations/'+encodeURIComponent(ctx.conversationId)+'/questions');
    if(context()?.key!==ctx.key)return;
-   if(web){
-    if(data.polling===false)deferPoll(ctx.key,30000);
-    else if(Number(data.pollAfterMs)>0)deferPoll(ctx.key,Math.min(60000,Math.max(1500,Number(data.pollAfterMs))));
-    else nextPoll.delete(ctx.key);
-   }
+   if(data.polling===false)deferPoll(ctx.key,30000);
+   else if(Number(data.pollAfterMs)>0)deferPoll(ctx.key,Math.min(60000,Math.max(1500,Number(data.pollAfterMs))));
+   else nextPoll.delete(ctx.key);
    for(const r of data.pendingQuestions||[]){
     if(r.jobId!==ctx.jobId||!['pending','answered','cancelled','expired'].includes(r.status)||!r.questions?.length)continue;
     const key=ctx.key+':'+r.id;let entry=entries.get(key);
@@ -84,7 +82,7 @@
    }
    while(entries.size>40){const key=entries.keys().next().value;entries.get(key).node.remove();entries.delete(key);}
    mount(ctx);
-  }catch(error){if(web)deferPoll(ctx.key,[404,410].includes(error.status)?30000:10000);}
+  }catch(error){deferPoll(ctx.key,[404,410].includes(error.status)?30000:10000);}
   finally{requesting=false;}
  }
  function update(){const ctx=context();mount(ctx);if(ctx?.key!==lastContext){lastContext=ctx?.key||'';clearTimeout(timer);timer=setTimeout(poll,0);}}

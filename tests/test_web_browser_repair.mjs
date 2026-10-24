@@ -51,6 +51,16 @@ test('A failed old job cannot suppress questions for a newly selected job',async
 test('Background tabs do not issue question polling requests',async()=>{
  const p=questions();p.document.hidden=true;await p.poll();assert.equal(p.calls.length,0);
 });
-test('Desktop question polling retains its previous behavior',async()=>{
- const p=questions('desktop','completed');await p.poll();await p.poll();assert.equal(p.calls.length,2);
+test('Desktop stops polling completed, failed, cancelled and interrupted jobs',async()=>{
+ for(const state of ['completed','failed','cancelled','interrupted']){
+  const p=questions('desktop',state);
+  await p.poll();await p.poll();assert.equal(p.calls.length,0);
+ }
+});
+test('Desktop keeps active questions and backs off missing mailboxes',async()=>{
+ const p=questions('desktop','running');await p.poll();await p.poll();
+ assert.equal(p.calls.length,2);
+ p.setFailure(Object.assign(new Error('missing'),{status:404}));
+ await p.poll();await p.poll();assert.equal(p.calls.length,3);
+ p.advance(30000);p.setFailure(null);await p.poll();assert.equal(p.calls.length,4);
 });
