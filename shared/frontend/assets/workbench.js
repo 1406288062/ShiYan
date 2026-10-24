@@ -177,7 +177,7 @@
       if(ready) persist();
     }
     const project=projects.find(p=>p.id===prefs.selectedProjectId);
-    $('workspaceTitle').innerHTML=icon('folder')+'<span></span>';$('workspaceTitle').querySelector('span').textContent=current?.title||'新聊天';
+    $('workspaceTitle').innerHTML=icon('folder')+'<span data-workspace-title-text></span>';$('workspaceTitle').querySelector('[data-workspace-title-text]').textContent=current?.title||'新聊天';
     $('agentView').classList.toggle('is-empty',!current?.messages?.length);
     renderProjects();
     $('pinnedSection').hidden=false;
