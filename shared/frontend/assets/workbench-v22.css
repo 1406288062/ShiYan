@@ -449,7 +449,9 @@ body.workbench-v22 .v26-avatar-card footer kbd { justify-self:end;color:var(--se
 .message-queue-row .queue-return-button:disabled{opacity:.4;cursor:default}
 
  
-body.workbench-v22.workbench-v2 #compareActions #saveResultButton { min-height:39px;height:39px;align-self:center; }
+/* Keep the toolbar height stable when the stop button appears during enhancement. */
+body.workbench-v22.workbench-v2 #compareActions #saveResultButton,
+body.workbench-v22.workbench-v2 #compareActions #cancelProcessButton { min-height:39px;height:39px;align-self:center; }
 body.workbench-v22.workbench-v2 #compareActions #saveResultButton .wb-icon { width:16px;height:16px;flex:0 0 16px; }
 
  
