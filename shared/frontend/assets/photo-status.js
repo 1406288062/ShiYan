@@ -1,7 +1,7 @@
 /* Enhancement updates must not wait behind the full conversation snapshot. */
 (() => {
   'use strict';
-  const working=new Set(['submitting','queued','running','reconnecting']);
+  const working=new Set(['submitting','queued','running','reconnecting','cancelling']);
   function newer(left,right){
     if(!right)return true;
     const a=Number(left.photoRevision)||0,b=Number(right.photoRevision)||0;

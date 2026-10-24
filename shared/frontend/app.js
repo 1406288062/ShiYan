@@ -9,7 +9,7 @@
   const drafts = new Map(), assets = new Map(), stoppingConversations = new Set();
   const ui = {
     view:'agent', feature:'enhance', model:'general', input:null, result:null, showOriginal:false,
-    photoJobId:null, photoUploading:false, photoUploadFile:null, photoLocalURL:null, photoSubmitting:false, photoError:'', strokes:[], currentStroke:null, brush:.055, drawer:false, reasoning:false, reasoningDragging:false, reasoningPosition:0,
+    photoBatchEntries:[], photoBatchIndex:0, photoBatch:null, photoExporting:false, photoJobId:null, photoUploading:false, photoUploadFile:null, photoLocalURL:null, photoSubmitting:false, photoError:'', strokes:[], currentStroke:null, brush:.055, drawer:false, reasoning:false, reasoningDragging:false, reasoningPosition:0,
     editing:null, submitting:false, speech:false, speechFinishing:false, speechSessionId:null, speechPrefix:'', recordingConversation:null,
     selection:new Set(), selecting:false, sessionMenuId:null, deletingSessionId:null,
     preview:null, zoom:1, panX:0, panY:0, previewPointer:null, searchTerm:'', restoring:false, historyReturnView:'agent'
@@ -92,7 +92,7 @@
       };
       let data=null;
       if(kind==='input' && window.ShiYanPlatform?.mode==='web' && window.ShiYanCosTransfer)
-        data=await window.ShiYanCosTransfer.upload(files,kind,api,progress);
+        data=await window.ShiYanCosTransfer.upload(files,kind,api,progress,ui.feature==='enhance'?'enhance':null);
       if(data===null)data=priority?await priority.upload(path,form,progress):await api(path,'POST',form);
       finishTiming?.('completed',data.assets?.[0]?.id,Array.from(files).reduce((n,f)=>n+(f.size||0),0));
       return (data.assets || []).map(remember);
@@ -585,6 +585,13 @@
     ui.restoring=true;
     ui.feature='enhance';  
     ui.model=state.settings.homeModel==='anime'?'anime':'general';
+    const batchInputs=state.settings.homeInputAssetIds;
+    if(Array.isArray(batchInputs)&&batchInputs.length>1){
+      await restorePhotoBatch(batchInputs.slice(0,10),state.settings.homePhotoBatchId);
+      ui.restoring=false;renderPhoto();
+      if(!state.conversations.length)await api('/api/conversations','POST',{});
+      return;
+    }
     ui.input=await resolveAsset(state.settings.homeInputAssetId);
     if(ui.input){
       const jobs=state.photoJobs.filter(j=>j.inputAssetId===ui.input.id && j.feature===ui.feature).sort((a,b)=>new Date(b.createdAt || 0)-new Date(a.createdAt || 0));
@@ -596,13 +603,152 @@
   let workspaceSaveQueue=Promise.resolve();
   async function saveWorkspace() {
     if(ui.photoUploadFile)return;
-    const settings={homeInputAssetId:ui.input && ui.input.id,homeFeature:ui.feature,homeModel:ui.model};
+    const settings={homeInputAssetId:ui.input && ui.input.id,homeFeature:ui.feature,homeModel:ui.model,homeInputAssetIds:(ui.photoBatchEntries||[]).map(item=>item.input?.id).filter(id=>id&&!id.startsWith('local:')),homePhotoBatchId:ui.photoBatch?.id||null};
     if(state)state.settings={...state.settings,...settings};
     // Persist selections in order, independently of upload readiness.
     const operation=workspaceSaveQueue.catch(()=>{}).then(()=>api('/api/settings?compact=1','PATCH',settings));
     workspaceSaveQueue=operation;
     await operation;
   }
+
+  function photoBatchEntries(){return ui.photoBatchEntries||[];}
+  function clearPhotoBatch(){
+    photoBatchPoll.stop();
+    for(const entry of photoBatchEntries())if(entry.localURL)URL.revokeObjectURL(entry.localURL);
+    ui.photoBatchEntries=[];ui.photoBatchIndex=0;ui.photoBatch=null;
+  }
+  function syncPhotoBatchSelection(){
+    const entries=photoBatchEntries();if(entries.length<2)return;
+    for(const entry of entries){
+      const verified=assets.get(entry.input?.id);
+      if(verified)entry.input={...entry.input,...verified,...(entry.localURL?{url:entry.localURL}:{})};
+      const job=(state?.photoJobs||[]).find(item=>item.id===entry.jobId);
+      if(job?.outputAssetId)entry.result=assets.get(job.outputAssetId)||entry.result;
+    }
+    const selected=entries[ui.photoBatchIndex]||entries[0];
+    ui.input=selected.input;ui.result=selected.result||null;ui.photoJobId=selected.jobId||null;
+  }
+  function selectPhotoBatch(index){
+    if(!Number.isInteger(index)||!photoBatchEntries()[index])return;
+    ui.photoBatchIndex=index;ui.showOriginal=false;ui.photoError=photoBatchEntries()[index].error||'';
+    syncPhotoBatchSelection();renderPhoto();
+    if(!ui.photoUploading)saveWorkspace().catch(error=>toast(error.message));
+  }
+  function photoBatchSummary(){
+    const entries=photoBatchEntries();let completed=0,failed=0,waiting=0;
+    for(const entry of entries){
+      const job=(state?.photoJobs||[]).find(item=>item.id===entry.jobId);
+      if(entry.result||job?.state==='completed')completed++;
+      else if(entry.error||['failed','cancelled'].includes(job?.state))failed++;
+      else waiting++;
+    }
+    return {total:entries.length,completed,failed,waiting};
+  }
+  function renderPhotoBatch(){
+    const entries=photoBatchEntries(),bar=$('photoBatchBar');if(!bar)return;
+    bar.hidden=entries.length<2;const summary=photoBatchSummary();
+    setText('photoBatchSummary','共 '+entries.length+' 张'+(ui.photoBatch?' · 已完成 '+summary.completed+' 张'+(summary.failed?' · 失败 '+summary.failed+' 张':''):' · 一次最多 10 张'));
+    const html=entries.map((entry,index)=>{
+      const job=(state?.photoJobs||[]).find(item=>item.id===entry.jobId);
+      const label=entry.uploading?'上传中':entry.file?(entry.error?'上传失败':'等待上传'):
+        job?.state==='completed'?'已完成':job?.state==='failed'?'增强失败':job?.state==='cancelled'?'已停止':
+        job&&busyStates.has(job.state)?(job.state==='queued'?'等待增强':job.label||'增强中'):'待增强';
+      return '<button type="button" class="photo-batch-item'+(index===ui.photoBatchIndex?' is-selected':'')+'" data-photo-batch-index="'+index+'" aria-pressed="'+(index===ui.photoBatchIndex)+'" title="'+esc(entry.error||job?.error||entry.input?.filename||'')+'"><span class="photo-batch-number">'+(index+1)+'</span><img src="'+esc(entry.localURL||assetUrl(entry.input)||'')+'" alt="" loading="lazy"><span class="photo-batch-copy"><strong>'+esc(entry.input?.filename||entry.file?.name||'图片')+'</strong><span class="'+(entry.error||job?.state==='failed'?'is-error':'')+'">'+esc(label)+'</span></span></button>';
+    }).join('');
+    const list=$('photoBatchItems');if(list&&list._photoBatchHTML!==html){list._photoBatchHTML=html;list.innerHTML=html;}
+    const button=$('saveBatchButton');
+    if(button){button.hidden=entries.length<2;button.disabled=ui.photoExporting||photoBusy()||!summary.completed;
+      button.textContent=ui.photoExporting?(ui.photoExportLabel||'正在打包…'):'下载 ZIP'+(summary.completed?'（'+summary.completed+'）':'');}
+  }
+  async function chooseHomeImages(files){
+    const items=Array.from(files||[]);if(!items.length)return;
+    if(items.length>10){toast('一次最多选择 10 张图片');$('homeFileInput').value='';return;}
+    if(photoBusy()||ui.photoExporting){toast('请先等待当前处理完成');return;}
+    if(items.some(file=>!(file.type||'').startsWith('image/')&&!/\.(?:jpe?g|png|webp|heic|heif)$/i.test(file.name||''))){toast('请选择 JPG、PNG、WebP 或 HEIC 图片');return;}
+    clearPhotoBatch();
+    if(items.length===1)return chooseHomeImage(items[0]);
+    if(ui.photoLocalURL){URL.revokeObjectURL(ui.photoLocalURL);ui.photoLocalURL=null;}
+    ui.photoUploadFile=null;ui.photoJobId=null;ui.result=null;ui.photoError='';
+    ui.photoBatchEntries=items.map(file=>{
+      const localURL=URL.createObjectURL(file),input={id:'local:'+localURL,url:localURL,filename:file.name,mimeType:file.type};
+      const image=new Image();image.onload=()=>{input.width=image.naturalWidth;input.height=image.naturalHeight;renderPhoto();};image.src=localURL;
+      return {file,localURL,input,result:null,jobId:null,error:''};
+    });
+    syncPhotoBatchSelection();renderPhoto();await uploadPhotoBatch();
+  }
+  async function uploadPhotoBatch(){
+    ui.photoUploading=true;$('homeFileInput').disabled=true;
+    try{
+      for(const entry of photoBatchEntries()){
+        if(!entry.file)continue;entry.uploading=true;entry.error='';ui.photoUploadLabel='正在上传图片 0%';renderPhoto();
+        try{
+          const [asset]=await upload([entry.file]);if(!asset)throw Error('没有读取到图片');
+          entry.input={...asset,url:entry.localURL,...(entry.input.width?{width:entry.input.width,height:entry.input.height}:{})};
+          entry.file=null;
+        }catch(error){entry.error=error.message||'上传失败';}
+        finally{entry.uploading=false;syncPhotoBatchSelection();renderPhoto();}
+      }
+      ui.photoError=photoBatchEntries().some(entry=>entry.file)?'部分图片上传失败，原图已保留，请点击“重试上传”。':'';
+      if(!ui.photoError)saveWorkspace().catch(error=>toast(error.message));
+    }finally{ui.photoUploading=false;$('homeFileInput').disabled=false;$('homeFileInput').value='';renderPhoto();}
+  }
+  async function restorePhotoBatch(ids,batchId){
+    const inputs=await Promise.all(ids.map(resolveAsset));
+    ui.photoBatchEntries=inputs.filter(Boolean).map(input=>{
+      const job=(state.photoJobs||[]).filter(job=>job.inputAssetId===input.id).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))[0];
+      return {input,jobId:job?.id||null,result:job?.outputAssetId?assets.get(job.outputAssetId):null,error:'',file:null,localURL:null};
+    });
+    ui.photoBatchIndex=Math.max(0,ui.photoBatchEntries.findIndex(entry=>entry.input.id===state.settings.homeInputAssetId));
+    if(batchId)try{applyPhotoBatchStatus(await api('/api/photo/batches/'+encodeURIComponent(batchId)));}catch(error){ui.photoError='恢复批量状态失败：'+error.message;}
+    syncPhotoBatchSelection();
+  }
+  function applyPhotoBatchStatus(data){
+    if(!state||!data?.batch)return;
+    if(ui.photoBatch?.id&&ui.photoBatch.id!==data.batch.id)return;
+    if(ui.photoBatch?.updatedAt&&data.batch.updatedAt&&Date.parse(data.batch.updatedAt)<Date.parse(ui.photoBatch.updatedAt))return;
+    ui.photoBatch=data.batch;
+    const jobs=new Map((state.photoJobs||[]).map(job=>[job.id,job]));
+    for(const job of data.jobs||[]){
+      if(window.ShiYanPhotoStatus.newer(job,jobs.get(job.id)))jobs.set(job.id,job);
+      const entry=photoBatchEntries().find(entry=>entry.input?.id===job.inputAssetId);
+      if(entry)entry.jobId=job.id;
+    }
+    state.photoJobs=[...jobs.values()];(data.assets||[]).forEach(remember);
+    const history=new Map((state.history||[]).map(item=>[item.id,item]));
+    for(const item of data.history||[]){history.set(item.id,item);remember(item.asset);}
+    state.history=[...history.values()];syncPhotoBatchSelection();renderPhoto();
+    if(data.history?.length)renderHistory();
+  }
+  async function processPhotoBatch(){
+    if(photoBusy())return;
+    if(photoBatchEntries().some(entry=>entry.file)){await uploadPhotoBatch();return;}
+    const failed=photoBatchEntries().filter(entry=>['failed','cancelled'].includes((state.photoJobs||[]).find(job=>job.id===entry.jobId)?.state));
+    const targets=failed.length?failed:photoBatchEntries();
+    ui.photoSubmitting=true;ui.photoError='';renderPhoto();
+    try{
+      const data=await api('/api/photo/jobs/batch','POST',{feature:'enhance',assetIds:targets.map(entry=>entry.input.id),model:ui.model});
+      ui.photoBatch=null;
+      for(const entry of targets){entry.result=null;entry.error='';}
+      applyPhotoBatchStatus(data);saveWorkspace().catch(error=>toast(error.message));
+    }catch(error){ui.photoError=error.message;}
+    finally{ui.photoSubmitting=false;renderPhoto();}
+  }
+  async function savePhotoBatch(){
+    const results=photoBatchEntries().map(entry=>entry.result).filter(Boolean);
+    if(!results.length||ui.photoExporting||photoBusy())return;
+    ui.photoExporting=true;ui.photoExportLabel='正在打包…';renderPhoto();
+    try{
+      if(window.ShiYanPlatform?.mode==='desktop'){
+        const ids=results.map(asset=>(state.history||[]).find(item=>item.assetId===asset.id)?.id);
+        if(ids.some(id=>!id))throw Error('部分增强结果尚未保存，请稍后重试');
+        const data=await api('/api/history/export','POST',{ids});await saveAsset(data.asset);
+      }else await window.ShiYanPhotoArchive.download(results.map(asset=>({...asset,filename:exportFilename(asset)})),{
+        onProgress:({completed,total})=>{ui.photoExportLabel='正在打包 '+completed+'/'+total;renderPhotoBatch();}
+      });
+    }catch(error){if(error.name!=='AbortError')toast(error.message);}
+    finally{ui.photoExporting=false;renderPhoto();}
+  }
+
   async function chooseWebHomeImage(file) {
     const keys=['input','result','showOriginal','photoJobId','strokes','photoError','photoUploadFile','photoLocalURL'];
     const previous=Object.fromEntries(keys.map(key=>[key,ui[key]]));
@@ -670,12 +816,21 @@
       const data=await response.json();if(data.ok===false)throw Error('增强状态暂不可用');return data;
     },apply:applyPhotoStatus,isVisible:()=>!document.hidden
   });
-  document.addEventListener('visibilitychange',()=>{if(!document.hidden)photoStatusPoll.refresh();});
-  window.addEventListener('online',()=>photoStatusPoll.refresh());
-  window.addEventListener('pagehide',()=>photoStatusPoll.stop());
-  window.addEventListener('pageshow',()=>{const job=photoJob();if(job&&busyStates.has(job.state))photoStatusPoll.watch(job.id);});
+  const photoBatchPoll=window.ShiYanPhotoStatus.create({
+    request:async(id,signal)=>{
+      const response=await fetch('/api/photo/batches/'+encodeURIComponent(id),{credentials:'same-origin',signal});
+      if(!response.ok)throw Error('批量增强状态暂不可用');
+      const data=await response.json();if(data.ok===false||data.batch?.id!==id)throw Error('批量增强状态暂不可用');
+      return {...data,job:data.batch};
+    },apply:applyPhotoBatchStatus,isVisible:()=>!document.hidden
+  });
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden){photoStatusPoll.refresh();photoBatchPoll.refresh();}});
+
+  window.addEventListener('online',()=>{photoStatusPoll.refresh();photoBatchPoll.refresh();});
+  window.addEventListener('pagehide',()=>{photoStatusPoll.stop();photoBatchPoll.stop();});
+  window.addEventListener('pageshow',()=>renderPhoto());
   function photoJob(){return state && (state.photoJobs || []).find(j=>j.id===ui.photoJobId);}
-  function photoBusy(){const j=photoJob();return ui.photoUploading || ui.photoSubmitting || !!(j && busyStates.has(j.state));}
+  function photoBusy(){const j=photoJob();return ui.photoUploading || ui.photoSubmitting || busyStates.has(ui.photoBatch?.state) || !!(j && busyStates.has(j.state));}
   function setFeature(feature) {
     if(feature==='agent'){setView('agent');return;}
     if(feature!=='enhance'){toast('此图片工具已下线');return;}
@@ -685,8 +840,10 @@
   }
   function renderPhoto() {
     if(!state)return;
-    const job=photoJob(),busy=photoBusy();
-    photoStatusPoll.watch(job&&busyStates.has(job.state)?job.id:null);
+    syncPhotoBatchSelection();
+    const job=photoJob(),busy=photoBusy(),batch=photoBatchEntries().length>1;
+    photoStatusPoll.watch(!batch&&job&&busyStates.has(job.state)?job.id:null);
+    photoBatchPoll.watch(batch&&busyStates.has(ui.photoBatch?.state)?ui.photoBatch.id:null);
     if(job && job.outputAssetId && assets.has(job.outputAssetId))ui.result=assets.get(job.outputAssetId);
     const image=ui.showOriginal || !ui.result?ui.input:ui.result;
     $('homeWorkspace').style.setProperty('--photo-aspect',String(image && image.width && image.height?image.width/image.height:1));
@@ -709,13 +866,14 @@
     const canDraw=ui.feature==='remove' && !!ui.input && !busy && (!ui.result || ui.showOriginal);
     show('maskCanvas',canDraw);$('maskCanvas').style.pointerEvents=canDraw?'auto':'none';
     const redo=ui.feature==='remove' && !!ui.result;
-    const processLabel=ui.photoUploadFile?'重试上传':redo?'重新涂抹':ui.feature==='enhance'?'开始增强':ui.feature==='remove'?'开始消除':'开始上色';
+    let processLabel=ui.photoUploadFile?'重试上传':redo?'重新涂抹':ui.feature==='enhance'?'开始增强':ui.feature==='remove'?'开始消除':'开始上色';
+    if(batch){const summary=photoBatchSummary();processLabel=photoBatchEntries().some(entry=>entry.file)?'重试上传':summary.failed?'重试失败项 '+summary.failed+' 张':(summary.completed===summary.total?'重新增强 ':'开始增强 ')+summary.total+' 张';}
     $('processIcon').dataset.symbol=redo?'pencil.tip':ui.feature==='remove'?'eraser':ui.feature==='colorize'?'paintpalette':'wand.and.stars';
     $('homeView').style.setProperty('--image-accent',ui.feature==='enhance' && ui.model==='anime'?'var(--pink)':'var(--accent)');
     setText('processLabel',busy?(ui.photoUploading?(ui.photoUploadLabel||'正在上传图片'):ui.photoSubmitting?'正在准备':job && job.label || '处理中'):processLabel);
     $('processButton').disabled=!ui.input || busy || (ui.feature==='remove' && !ui.strokes.length && !redo);
-    $('saveResultButton').disabled=!ui.result || busy;
-    show('saveResultButton',!!ui.result);show('cancelProcessButton',busy && !ui.photoSubmitting && !!job);
+    $('saveResultButton').disabled=!ui.result || (job&&busyStates.has(job.state));
+    show('saveResultButton',!!ui.result);show('cancelProcessButton',busy && !ui.photoSubmitting && (!!job||!!ui.photoBatch));
     $('changeImageButton').disabled=busy;
     $('brushWidth').value=ui.brush;$('brushWidth').disabled=busy;
     $('undoStrokeButton').disabled=busy || !ui.strokes.length;$('clearStrokesButton').disabled=busy || !ui.strokes.length;
@@ -726,6 +884,7 @@
     const error=!ui.photoSubmitting && ((job && job.error) || ui.photoError);
     if(error){setText('photoError',error);show('photoError');}else{show('photoError',false);}
     requestAnimationFrame(resizeMask);
+    renderPhotoBatch();
     window.dispatchEvent(new CustomEvent("shiyan-photo"));
   }
   function imageDisplayRect() {
@@ -767,6 +926,7 @@
     return new File([blob],'mask.png',{type:'image/png'});
   }
   async function processPhoto() {
+    if(photoBatchEntries().length>1)return processPhotoBatch();
     if(!ui.input || photoBusy())return;
     if(ui.photoUploadFile){await chooseHomeImage(ui.photoUploadFile);return;}
     if(ui.feature==='remove' && ui.result){ui.result=null;ui.photoJobId=null;ui.strokes=[];ui.showOriginal=false;ui.photoError='';renderPhoto();return;}
@@ -783,6 +943,7 @@
     finally {ui.photoSubmitting=false;renderPhoto();}
   }
   async function cancelPhoto() {
+    if(ui.photoBatch?.id){try{applyPhotoBatchStatus(await api('/api/photo/batches/'+encodeURIComponent(ui.photoBatch.id)+'/cancel','POST',{}));}catch(error){ui.photoError='停止尚未确认：'+error.message;renderPhoto();}return;}
     if(!ui.photoJobId)return;
     try{applyPhotoStatus(await api('/api/photo/jobs/'+encodeURIComponent(ui.photoJobId)+'/cancel','POST',{}));}
     catch(e){ui.photoError='停止尚未确认：'+e.message;setText('photoError',ui.photoError);show('photoError');}
@@ -839,6 +1000,7 @@
     if(native('share',{assets:items.map(a=>({url:new URL(assetUrl(a,true),location.href).href,filename:exportFilename(a)}))}))return;
     if(items.length===1){await saveAsset(items[0]);return;}
     try {
+      if(window.ShiYanPlatform?.mode==='web'){await window.ShiYanPhotoArchive.download(items.map(asset=>({...asset,filename:exportFilename(asset)})));return;}
       const ids=state.history.filter(h=>items.some(a=>h.asset && h.asset.id===a.id)).map(h=>h.id);
       const data=await api('/api/history/export','POST',{ids});remember(data.asset);await saveAsset(data.asset);
     }catch(e){toast(e.message);}
@@ -1140,7 +1302,7 @@
       messageLastScrollTop=top;
       show('latestButton',!messageAutoFollow && !!current()?.messages?.length);saveReadingPosition();
     },{passive:true});
-    $('homeFileInput').addEventListener('change',event=>chooseHomeImage(event.target.files[0]));
+    $('homeFileInput').addEventListener('change',event=>chooseHomeImages(event.target.files));
     bindClick('imageEmptyState',()=>$('homeFileInput').click());
     bindClick('changeImageButton',()=>$('homeFileInput').click());
     bindClick('previewHomeButton',()=>openPreview(ui.showOriginal || !ui.result?ui.input:ui.result));
@@ -1153,6 +1315,8 @@
     bindClick('clearStrokesButton',()=>{ui.strokes=[];renderPhoto();});
     bindClick('processButton',processPhoto);
     bindClick('saveResultButton',()=>saveAsset(ui.result));
+    bindClick('saveBatchButton',savePhotoBatch);
+    $('photoBatchItems')?.addEventListener('click',event=>{const target=event.target.closest('[data-photo-batch-index]');if(target)selectPhotoBatch(Number(target.dataset.photoBatchIndex));});
     bindClick('cancelProcessButton',cancelPhoto);
     const canvas=$('maskCanvas');
     canvas.addEventListener('pointerdown',event=>{
@@ -1261,7 +1425,7 @@
     document.addEventListener('dragleave',event=>{if(!event.relatedTarget){$('composerForm').classList.remove('is-drop-target');$('imageDropZone').classList.remove('is-drop-target');}});
     document.addEventListener('drop',event=>{
       if(!event.dataTransfer.files.length)return;event.preventDefault();$('composerForm').classList.remove('is-drop-target');$('imageDropZone').classList.remove('is-drop-target');
-      const files=Array.from(event.dataTransfer.files);if(ui.view==='agent')addAttachments(files);else {if(ui.view!=='home')setView('home');chooseHomeImage(files[0]);}
+      const files=Array.from(event.dataTransfer.files);if(ui.view==='agent')addAttachments(files);else {if(ui.view!=='home')setView('home');chooseHomeImages(files);}
     });
     window.addEventListener('resize',resizeMask);
     window.addEventListener('online',()=>{if(state && state.connection.status!=='ready')connectAgent();});
@@ -1300,6 +1464,7 @@
     uploadAttachments:(files,existing=[])=>{validateAttachmentFiles(files,existing);return upload(files,'attachment');},
     navigate:setView,toast,copyText,confirmAction,api,sessionHTML,sessionMenuIcon,openPreview,openGeneratedDocument,saveAsset,shareAssets,
     getPhotoState:()=>({input:ui.input,result:ui.result,model:ui.model,busy:photoBusy(),uploading:ui.photoUploading,
+      batch:photoBatchEntries().length>1?photoBatchSummary():null,itemBusy:busyStates.has(photoJob()?.state),
       progress:photoJob()?.progress || 0,label:ui.photoUploading?(ui.photoUploadLabel||'正在上传图片'):photoJob()?.label || (ui.photoSubmitting?'正在准备':''),error:photoJob()?.error || ui.photoError}),
     addContext:async text=>{
       if(!current())await newConversation();

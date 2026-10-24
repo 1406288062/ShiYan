@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import hashlib
 import http.client
 import ipaddress
 import json
@@ -10,6 +11,7 @@ import math
 import os
 from pathlib import Path
 import queue
+import re
 import signal
 import socket
 import subprocess
@@ -90,6 +92,115 @@ class WorkerHTTP:
             connection.close()
 
 
+class CosHTTP:
+    """An isolated data plane: no broker token, lease header, fixed IP or redirects."""
+    def __init__(self, host, lost, *, connection_factory=http.client.HTTPSConnection, deadline=900):
+        if not isinstance(host, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]*-\d+\.cos\.[a-z0-9-]+\.myqcloud\.com", host):
+            raise ValueError("Invalid COS endpoint")
+        self.host, self.lost, self.connection_factory, self.deadline = host, lost, connection_factory, deadline
+
+    def transfer(self, plan, key, *, source=None, destination=None, expected_size=None, limit=512*1024*1024):
+        url = urlsplit(str(plan.get("url") or ""))
+        method = "PUT" if source is not None else "GET"
+        if (url.scheme != "https" or url.hostname != self.host or url.port not in {None,443}
+                or url.username or url.password or url.fragment or plan.get("method") != method
+                or url.path != "/" + quote(key, safe="/-_.~") or "q-signature=" not in url.query):
+            raise ValueError("Invalid COS transfer destination")
+        headers = plan.get("headers")
+        if not isinstance(headers, dict) or any(not isinstance(k,str) or not isinstance(v,str) or "\r" in v or "\n" in v for k,v in headers.items()):
+            raise ValueError("Invalid COS transfer headers")
+        values = {k.lower():v for k,v in headers.items()}
+        allowed = {"if-match"} if method == "GET" else {"content-type","content-length","x-cos-acl","x-cos-meta-sha256"}
+        if set(values) != allowed:
+            raise ValueError("Invalid COS transfer headers")
+        if method == "PUT" and (values["x-cos-acl"] != "private" or values["content-type"] != "image/jpeg"
+                or values["content-length"] != str(Path(source).stat().st_size)
+                or not re.fullmatch(r"[a-f0-9]{64}", values["x-cos-meta-sha256"])):
+            raise ValueError("Invalid COS upload constraints")
+        if self.lost.is_set():
+            raise RuntimeError("Task lease lost")
+        connection = self.connection_factory(self.host, 443, timeout=30)
+        finished = threading.Event()
+        started = time.monotonic()
+        # A hard transfer deadline and lease cancellation also interrupt a stalled
+        # response header / sendall / read rather than waiting for the next chunk.
+        def watch():
+            while not finished.wait(0.2):
+                if self.lost.is_set() or time.monotonic() - started >= self.deadline:
+                    sock = getattr(connection, "sock", None)
+                    if sock is not None:
+                        try: sock.shutdown(socket.SHUT_RDWR)
+                        except OSError: pass
+                    connection.close()
+                    return
+        watcher = threading.Thread(target=watch, daemon=True)
+        watcher.start()
+        partial = Path(destination).with_suffix(".part") if destination is not None else None
+        try:
+            target = url.path + "?" + url.query
+            if source is None:
+                connection.request("GET", target, headers=headers)
+            else:
+                connection.putrequest("PUT", target)
+                for name,value in headers.items(): connection.putheader(name,value)
+                connection.endheaders()
+                with Path(source).open("rb") as stream:
+                    while block := stream.read(256*1024):
+                        if self.lost.is_set() or time.monotonic()-started >= self.deadline: raise RuntimeError("Transfer cancelled")
+                        connection.send(block)
+            response = connection.getresponse()
+            if response.status not in ({200} if source is None else {200,201,204}):
+                raise RuntimeError("COS transfer refused")
+            if destination is not None:
+                length = response.getheader("Content-Length", "")
+                if not length.isdigit() or int(length) != expected_size or int(length) > limit:
+                    raise ValueError("Invalid COS input length")
+                size = 0
+                with partial.open("xb") as output:
+                    while block := response.read1(256*1024):
+                        if self.lost.is_set() or time.monotonic()-started >= self.deadline: raise RuntimeError("Transfer cancelled")
+                        size += len(block)
+                        if size > expected_size or size > limit: raise ValueError("COS input too large")
+                        output.write(block)
+                if size != expected_size: raise ValueError("Incomplete COS input")
+                partial.replace(destination)
+            if self.lost.is_set() or time.monotonic()-started >= self.deadline: raise RuntimeError("Transfer cancelled")
+        except Exception:
+            raise MacComputeError("COS 图片传输未完成", code="cos_transfer_failed") from None
+        finally:
+            finished.set(); connection.close(); watcher.join(timeout=1)
+            if partial: partial.unlink(missing_ok=True)
+
+
+def file_info(path):
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as source:
+        while block := source.read(256*1024): digest.update(block)
+    return {"bytes": Path(path).stat().st_size, "sha256": digest.hexdigest()}
+
+
+def prepare_cos_input(source, destination):
+    """Validate/resize on the authorized Mac and use a lossless inference input."""
+    from PIL import Image, ImageOps
+    try:
+        from pillow_heif import register_heif_opener
+        register_heif_opener()
+    except ImportError:
+        pass
+    with Image.open(source) as opened:
+        if opened.width < 1 or opened.height < 1 or opened.width * opened.height > 144_000_000:
+            raise ValueError("Input image dimensions exceed limit")
+        image = ImageOps.exif_transpose(opened)
+        image.thumbnail((3000,3000), Image.Resampling.LANCZOS)
+        mode = "RGBA" if "A" in image.getbands() or "transparency" in opened.info else "RGB"
+        image = image.convert(mode)
+        image.save(destination, "PNG")
+        width,height = image.size
+    info = file_info(destination)
+    if info["bytes"] > 40*1024*1024: raise ValueError("Normalized image exceeds limit")
+    return {**info, "width":width, "height":height}
+
+
 def require_mps():
     import torch
     if not torch.backends.mps.is_available():
@@ -158,7 +269,7 @@ class TaskRunner:
     def run_process(self, command, request=None):
         environment = dict(os.environ, PYTORCH_ENABLE_MPS_FALLBACK="0", PYTHONUNBUFFERED="1")
         environment["PYTHONPATH"] = os.pathsep.join((str(REPOSITORY_ROOT), str(APP_ROOT)))
-        if self.task["kind"]=="enhance":environment["SHIYAN_ENHANCEMENT_TASK_ID"]=str(self.task["id"])
+        if self.task["kind"] in {"enhance","enhance_cos"}:environment["SHIYAN_ENHANCEMENT_TASK_ID"]=str(self.task["id"])
         if self.lost.is_set():
             raise RuntimeError("Task lease lost")
         self.process = subprocess.Popen(command, cwd=APP_ROOT, env=environment,
@@ -214,6 +325,45 @@ class TaskRunner:
         drain.join(timeout=2)
         return result
 
+    def execute_cos(self, directory, params):
+        from PIL import Image
+        source_info = params["input"]
+        owner = hashlib.sha256(str(self.task["owner_id"]).encode()).hexdigest()
+        expected_key = f"shiyan-web/assets/{owner}/input-{source_info['id']}"
+        if source_info["key"] != expected_key or params["model"] not in {"anime","general"}:
+            raise ValueError("Invalid COS task input")
+        transport = CosHTTP(self.task["cos_host"], self.lost)
+        raw, source, output = directory/"original.img", directory/"input.png", directory/"result.jpg"
+        self.update(0,"Mac 正在接收图片")
+        plan = self.http.request("GET",self.route+"/cos-input",self.lease)
+        if plan.get("headers",{}).get("If-Match") != source_info["etag"]:
+            raise ValueError("Invalid COS object revision")
+        with timed_stage("mac_download",taskId=str(self.task["id"]),source="mac",bytes=source_info["bytes"]):
+            transport.transfer(plan,expected_key,destination=raw,expected_size=source_info["bytes"],limit=40*1024*1024)
+        normalized = prepare_cos_input(raw,source)
+        self.run_process([sys.executable,"-m","shared.compute.worker","--engine-image",str(source),str(output),params["model"]])
+        with Image.open(output) as image:
+            if image.format != "JPEG" or image.size != (normalized["width"]*4,normalized["height"]*4):
+                raise ValueError("Invalid enhancement result")
+        thumbnail = directory/"thumbnail.jpg"
+        with Image.open(output) as image:
+            image.draft("RGB",(768,768))
+            image.thumbnail((768,768),Image.Resampling.LANCZOS)
+            image.convert("RGB").save(thumbnail,"JPEG",quality=85)
+        self.update(0.99,"Mac 正在回传图片")
+        lease_hash = hashlib.sha256(self.lease.encode()).hexdigest()[:32]
+        with timed_stage("mac_upload",taskId=str(self.task["id"]),source="mac",bytes=output.stat().st_size+thumbnail.stat().st_size):
+            for kind,path in [("output",output),("thumbnail",thumbnail)]:
+                if self.lost.is_set(): raise RuntimeError("Task lease lost")
+                info=file_info(path)
+                with Image.open(path) as image: info.update(width=image.width,height=image.height)
+                info.update(kind=kind,inputWidth=normalized["width"],inputHeight=normalized["height"],
+                            inputSha256=normalized["sha256"],inputBytes=normalized["bytes"])
+                plan=self.http.request("POST",self.route+"/cos-output",self.lease,payload=info)
+                key=f"shiyan-web/assets/{owner}/{kind}-{self.task['id']}-{lease_hash}.jpg"
+                transport.transfer(plan,key,source=path)
+        self.http.request("PUT",self.route+"/result",self.lease,payload={"transport":"cos"})
+
     def execute(self):
         heartbeat = threading.Thread(target=self.heartbeat, daemon=True)
         heartbeat.start()
@@ -244,6 +394,8 @@ class TaskRunner:
                     self.update(0.99, "Mac 正在回传图片")
                     with timed_stage("mac_upload",taskId=str(self.task["id"]),source="mac",bytes=output.stat().st_size):
                         self.http.request("PUT", self.route + "/result", self.lease, source=output)
+                elif self.task["kind"] == "enhance_cos":
+                    self.execute_cos(directory,params)
                 elif self.task["kind"] == "embed":
                     texts = params.get("texts")
                     if (not isinstance(texts, list) or not 1 <= len(texts) <= 8
@@ -318,7 +470,7 @@ def main(argv=None):
         delay = 2
         while True:
             try:
-                task = http.request("POST", "/v1/worker/claim", payload={}).get("task")
+                task = http.request("POST", "/v1/worker/claim", payload={"capabilities":["enhance_cos"]}).get("task")
                 delay = 2
                 if task:
                     TaskRunner(http, task, config).execute()

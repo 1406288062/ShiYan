@@ -96,6 +96,8 @@ class Storage:
 
     def asset_path(self, identifier):
         item = self.asset(identifier)
+        if item.get("remoteOnly"):
+            raise ValueError("此图片保存在云端，请通过图片增强预览或下载访问")
         target = (self.media / item["storedName"]).resolve()
         if not target.is_relative_to(self.media) or not target.is_file():
             raise ValueError("本地文件不存在")
@@ -133,7 +135,7 @@ class Storage:
 
     @staticmethod
     def public_asset(item):
-        return {k: v for k, v in item.items() if k not in {"storedName", "sourcePath"}}
+        return {k: v for k, v in item.items() if k not in {"storedName", "sourcePath", "cosObject", "thumbnailCosObject", "normalizedInput"}}
 
     def public_assets(self, ids):
         result = []
@@ -191,6 +193,28 @@ class Storage:
         if len(data) > 40 * 1024 * 1024:
             raise ValueError("图片请求副本超过 40 MB")
         return upload_image_copy(data, suffix, mask=mask)
+
+    def save_remote_image(self, identifier, filename, mime, size, reference, *, width=None, height=None,
+                          sha256=None, validated=False, thumbnail=None):
+        if str(uuid.UUID(identifier)) != identifier or not str(mime).startswith("image/"):
+            raise ValueError("云端图片元数据无效")
+        if isinstance(size, bool) or not isinstance(size, int) or not 0 < size <= 512 * 1024 * 1024:
+            raise ValueError("云端图片大小无效")
+        existing = self.get("assets", identifier)
+        if existing:
+            if existing.get("cosObject") != reference or existing.get("sha256") != sha256:
+                raise ValueError("云端图片标识冲突")
+            return self.public_asset(existing)
+        filename = Path(filename or "图片").name.replace("\x00", "")[:180]
+        item = {"id": identifier, "filename": filename, "mimeType": mime, "bytes": size,
+                "width": width, "height": height, "sha256": sha256, "createdAt": now(),
+                "remoteOnly": True, "validated": bool(validated), "cosObject": dict(reference),
+                "url": f"/api/assets/{identifier}/file", "downloadUrl": f"/api/assets/{identifier}/file?download=1",
+                "remoteId": None}
+        if thumbnail:
+            item["thumbnailCosObject"] = dict(thumbnail)
+        self.put("assets", item)
+        return self.public_asset(item)
 
     def save_bytes(self, data, filename, mime=None, *, normalize=False, mask=False, remote_id=None):
         if not data or len(data) > 40 * 1024 * 1024:

@@ -340,7 +340,7 @@ class Runtime:
                     pass
             if job["feature"]=="enhance" and job["state"] in WORKING:
                 if job.get("macCompute"):
-                    self.launch("photo:"+job["id"],self.run_mac_enhancement(job["id"]))
+                    self.launch("photo:"+job["id"],self.run_enhancement(job["id"]))
                     continue
                 job.update(state="interrupted",label="增强已中断",error="应用已退出，本地增强未完成，请重新开始")
                 self.storage.put("photoJobs",job)
@@ -769,6 +769,172 @@ class Runtime:
             self.save_conversation(item)
             self.launch("conversation:"+identifier,self.run_agent(identifier))
 
+    def web_cos_transfer(self):
+        if self.platform.mode != "web":
+            raise ValueError("此图片需要网页端的云端传输配置")
+        transfer = getattr(self, "_web_cos_transfer", None)
+        if transfer is None:
+            from apps.web.adapters.cos_transfer import CosConfig, CosTransfer
+            config = CosConfig.from_environment()
+            if config is None:
+                raise ValueError("图片云端传输未启用，请稍后重试")
+            transfer = self._web_cos_transfer = CosTransfer(config)
+        return transfer
+
+    def create_photo_batch(self, payload):
+        identifiers = payload.get("assetIds")
+        if (payload.get("feature") != "enhance" or payload.get("model", "general") not in {"general", "anime"}
+                or not isinstance(identifiers, list) or not 1 <= len(identifiers) <= 10
+                or any(not isinstance(value, str) for value in identifiers)
+                or len(set(identifiers)) != len(identifiers)):
+            raise ValueError("请选择 1 到 10 张不同的图片")
+        # Validate every member before creating or launching any of the jobs.
+        for identifier in identifiers:
+            asset = self.storage.asset(identifier)
+            if not str(asset.get("mimeType", "")).startswith("image/"):
+                raise ValueError("请选择图片")
+            if asset.get("remoteOnly"):
+                if not MacComputeClient.enabled_for(self.account.get("owner")):
+                    raise ValueError("此账户的 Mac 计算授权不可用")
+                self.web_cos_transfer().descriptor(self, asset)
+            else:
+                self.storage.asset_path(identifier)
+        batch = {"id": new_id(), "assetIds": identifiers, "jobIds": [], "state": "queued",
+                 "model": payload.get("model", "general"), "createdAt": now(), "updatedAt": now()}
+        self.storage.put("photoBatches", batch)
+        for identifier in identifiers:
+            job = self.create_photo_job({"feature": "enhance", "model": batch["model"], "assetId": identifier})
+            batch["jobIds"].append(job["id"])
+            self.storage.put("photoBatches", batch)
+        return self.photo_batch_status(batch["id"])
+
+    def photo_batch_status(self, identifier):
+        batch = self.storage.get("photoBatches", identifier)
+        if not batch:
+            raise ValueError("批量任务不存在")
+        jobs, assets, history = [], {}, []
+        for asset_id in batch["assetIds"]:
+            item = self.storage.get("assets", asset_id)
+            if item:
+                assets[asset_id] = self.storage.public_asset(item)
+        for job_id in batch["jobIds"]:
+            status = self.photo_status(job_id)
+            jobs.append(status["job"])
+            assets.update({asset["id"]: asset for asset in status["assets"]})
+            history.extend(status["history"])
+        states = [job["state"] for job in jobs]
+        active = any(state in WORKING for state in states)
+        if active:
+            state = "cancelling" if batch.get("cancelRequested") else "running" if "running" in states else "queued"
+        else:
+            state = "completed" if "completed" in states else "cancelled" if states and all(s == "cancelled" for s in states) else "failed"
+        progress = sum(1 if job["state"] in TERMINAL else max(0, min(1, float(job.get("progress") or 0))) for job in jobs) / max(1, len(batch["assetIds"]))
+        batch.update(state=state, progress=progress, total=len(batch["assetIds"]),
+                     completedCount=states.count("completed"), failedCount=states.count("failed"),
+                     cancelledCount=states.count("cancelled"), updatedAt=max([batch["updatedAt"]] + [job["updatedAt"] for job in jobs]))
+        self.storage.put("photoBatches", batch)
+        return {"batch": batch, "jobs": jobs, "assets": list(assets.values()), "history": history}
+
+    async def stop_photo_batch(self, identifier):
+        batch = self.storage.get("photoBatches", identifier)
+        if not batch:
+            raise ValueError("批量任务不存在")
+        batch.update(cancelRequested=True, updatedAt=now())
+        self.storage.put("photoBatches", batch)
+        await asyncio.gather(*(self.stop_photo(job_id) for job_id in batch["jobIds"]))
+        return self.photo_batch_status(identifier)
+
+    async def run_cos_enhancement(self, identifier):
+        """Only exchange task and COS object metadata; image bytes stay off this host."""
+        owner = self.account.get("owner")
+        remote_id = None
+        try:
+            if self.platform.mode != "web" or not MacComputeClient.enabled_for(owner):
+                raise ValueError("此账户的 Mac 计算授权不可用")
+            transfer, client = self.web_cos_transfer(), MacComputeClient()
+            job = self.storage.get("photoJobs", identifier)
+            if not job or job["state"] == "cancelled":
+                return
+            remote_id = job.get("remoteTaskId")
+            if not remote_id:
+                metadata = await asyncio.to_thread(transfer.ensure_input, self, job["inputAssetId"])
+                def remember(task_id):
+                    current = self.storage.get("photoJobs", identifier)
+                    if current:
+                        current["remoteTaskId"] = task_id
+                        self.storage.put("photoJobs", current)
+                while not self.closing:
+                    submission = asyncio.create_task(asyncio.to_thread(client.submit_enhance_cos, owner,
+                        job["requestId"], job["model"], metadata, remember))
+                    try:
+                        remote = await asyncio.shield(submission)
+                        remote_id = remote["id"]
+                        break
+                    except asyncio.CancelledError:
+                        try:
+                            await submission
+                        except Exception:
+                            pass
+                        remote_id = (self.storage.get("photoJobs", identifier) or {}).get("remoteTaskId")
+                        raise
+                    except MacComputeError as error:
+                        if 400 <= error.status < 500 and error.status != 429 or error.code == "configuration":
+                            raise
+                        self.update_photo(identifier, state="reconnecting", label="等待恢复 Mac 连接")
+                        await asyncio.sleep(3)
+            if self.closing or not remote_id:
+                return
+            self.update_photo(identifier, remoteTaskId=remote_id)
+            emit_timing("task_link", "linked", source="server", photoJobId=identifier,
+                        requestId=job["requestId"], assetId=job["inputAssetId"], taskId=remote_id)
+            while not self.closing:
+                current = self.storage.get("photoJobs", identifier)
+                if current["state"] == "cancelled":
+                    return
+                try:
+                    remote = await asyncio.to_thread(client.status, owner, remote_id)
+                except MacComputeError as error:
+                    if 400 <= error.status < 500 and error.status != 429 or error.code == "configuration":
+                        raise
+                    self.update_photo(identifier, state="reconnecting", label="等待恢复 Mac 连接")
+                    await asyncio.sleep(3)
+                    continue
+                if remote["state"] == "completed":
+                    break
+                if remote["state"] == "cancelled":
+                    self.update_photo(identifier, state="cancelled", label="已停止", error=None)
+                    return
+                if remote["state"] == "failed":
+                    raise ValueError(remote.get("error") or "Mac 增强未完成，请重试")
+                self.update_photo(identifier, state="running" if remote["state"] == "running" else "queued",
+                                  progress=remote.get("progress", 0), label=remote.get("label") or "等待 Mac 处理")
+                await asyncio.sleep(2)
+            if self.closing:
+                return
+            result = remote.get("result")
+            if not isinstance(result, dict):
+                result = await asyncio.to_thread(client.result_cos, owner, remote_id)
+            current = self.storage.get("photoJobs", identifier)
+            if current["state"] == "cancelled":
+                return
+            # Metadata-only registration is synchronous and small, so cancellation
+            # cannot land between recording the asset and recording its job result.
+            asset = transfer.register_result(self, current, result)
+            self.storage.add_history(asset["id"], "动漫增强" if job["model"] == "anime" else "通用增强", job_id=identifier)
+            self.update_photo(identifier, state="completed", progress=1, label="增强完成", device="mps",
+                              outputAssetId=asset["id"], outputAssets=[asset], error=None)
+            emit_timing("task_link", "linked", source="server", photoJobId=identifier, requestId=job["requestId"],
+                        assetId=job["inputAssetId"], taskId=remote_id, outputAssetId=asset["id"])
+        except asyncio.CancelledError:
+            if not self.closing and remote_id:
+                try:
+                    await asyncio.to_thread(MacComputeClient().cancel, owner, remote_id)
+                except MacComputeError:
+                    self.update_photo(identifier, macCancelPending=True)
+            raise
+        except Exception as error:
+            self.update_photo(identifier, state="failed", label="", error=str(error))
+
     def create_photo_job(self,payload):
         feature=payload.get("feature")
         if feature != "enhance":
@@ -776,7 +942,12 @@ class Runtime:
         asset=self.storage.asset(payload.get("assetId"))
         if not asset["mimeType"].startswith("image/"):
             raise ValueError("请选择图片")
-        self.storage.asset_path(asset["id"])
+        if asset.get("remoteOnly"):
+            if self.platform.mode != "web" or not MacComputeClient.enabled_for(self.account.get("owner")):
+                raise ValueError("此账户的 Mac 计算授权不可用")
+            self.web_cos_transfer().descriptor(self, asset)
+        else:
+            self.storage.asset_path(asset["id"])
         model=payload.get("model","general")
         if model not in {"general","anime"}:
             raise ValueError("未知增强模型")
@@ -793,6 +964,8 @@ class Runtime:
              "remoteConversationId":f"shiyan-{feature}-{new_id()}","remoteJobId":None,"lastEventId":0}
         if feature=="enhance" and self.platform.mode=="web" and MacComputeClient.enabled_for(self.account.get("owner")):
             job["macCompute"]=True
+            if asset.get("remoteOnly") or os.environ.get("SHIYAN_COS_CONFIG"):
+                job["cosCompute"] = True
         self.storage.put("photoJobs",job)
         if feature=="enhance":emit_timing("task_link","linked",source="server",photoJobId=identifier,requestId=job["requestId"],assetId=asset["id"])
         # Photo progress is consumed through the bounded per-task endpoint.
@@ -823,6 +996,8 @@ class Runtime:
         return job
 
     async def run_enhancement(self,identifier):
+        if self.storage.get("photoJobs",identifier).get("cosCompute"):
+            return await self.run_cos_enhancement(identifier)
         if self.storage.get("photoJobs",identifier).get("macCompute"):
             return await self.run_mac_enhancement(identifier)
         task_directory=self.storage.transfers/("enhance-"+identifier)

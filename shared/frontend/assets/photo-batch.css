@@ -1,0 +1,17 @@
+/* Shared desktop/web enhancement queue. iOS uses its own native UI. */
+.photo-batch-bar{flex:0 0 auto;min-width:0;max-width:100%;padding:0;color:var(--text)}
+.photo-batch-bar[hidden],.photo-batch-download[hidden]{display:none!important}
+.photo-batch-bar>p{margin:0 0 8px;font-size:12px;color:var(--secondary)}
+.photo-batch-items{display:flex;gap:8px;overflow-x:auto;overscroll-behavior-x:contain;padding:2px 1px 6px}
+.photo-batch-item{display:flex;align-items:center;gap:8px;flex:0 0 174px;min-width:0;padding:8px;border:1px solid var(--line);border-radius:10px;background:var(--soft-fill);color:var(--text);text-align:left}
+.photo-batch-item.is-selected{border-color:var(--mode-accent,var(--accent));box-shadow:0 0 0 1px var(--mode-accent,var(--accent))}
+.photo-batch-item img{width:36px;height:42px;object-fit:cover;border-radius:5px;flex:none}
+.photo-batch-number{font-size:11px;color:var(--secondary);font-variant-numeric:tabular-nums}
+.photo-batch-copy{display:flex;flex-direction:column;gap:5px;min-width:0}
+.photo-batch-copy strong{font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.photo-batch-copy>span{font-size:11px;color:var(--secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.photo-batch-copy>.is-error{color:#d64b4b}
+.photo-batch-download{height:39px;min-width:98px;padding:0 12px;border:1px solid var(--line);border-radius:8px;color:var(--text);background:var(--soft-fill);font-size:13px;white-space:nowrap}
+.photo-batch-download:disabled{opacity:.5}
+.home-content>.photo-batch-bar{grid-column:1/-1}
+@media(max-width:600px){.photo-batch-item{flex-basis:148px}.photo-batch-item img{width:30px;height:36px}.photo-batch-items{gap:6px}}

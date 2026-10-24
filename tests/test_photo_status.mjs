@@ -22,3 +22,10 @@ test('old full snapshots cannot regress completed jobs or remove their history',
  for(const jobs of [[],[{id:'job-a',state:'running',photoRevision:2,updatedAt:'2026-10-24T08:00:00Z'}]]){const merged=s.api.mergeSnapshot({photoJobs:jobs,history:[],conversations:['new-chat-state']},previous);assert.equal(merged.photoJobs[0].state,'completed');assert.equal(merged.history[0].id,'h-a');assert.equal(merged.conversations[0],'new-chat-state');}
  assert(s.api.newer({photoRevision:5},{photoRevision:4}));assert(!s.api.newer({photoRevision:3},{photoRevision:4}));
 });
+
+test('cancelling batches keep polling until all jobs have settled',async()=>{
+ const s=setup(),seen=[];let count=0;
+ const poll=s.api.create({request:async id=>({job:{id,state:++count===1?'cancelling':'cancelled'}}),apply:data=>seen.push(data.job.state)});
+ poll.watch('batch-a');await settle();assert.deepEqual(seen,['cancelling']);s.run(1000);await settle();
+ assert.deepEqual(seen,['cancelling','cancelled']);assert.equal(s.timers.size,0);
+});

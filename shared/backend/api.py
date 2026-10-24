@@ -7,6 +7,7 @@ import io
 import json
 import hashlib
 from shared.compute.timing import browser_timing, emit_timing
+from shared.compute.client import MacComputeClient, MacComputeError
 import mimetypes
 import os
 from pathlib import Path
@@ -146,8 +147,14 @@ def create_app(directory, root, legacy=None, profile="desktop"):
             return {"ok":True,"available":False}
         if len(await request.body()) > 8192:
             raise ValueError("图片上传信息过大")
+        r = runtime(request)
         try:
-            return await asyncio.to_thread(transfer.initialize,runtime(request),await object_body(request))
+            if not MacComputeClient.enabled_for(getattr(r,"account",{}).get("owner")):
+                return {"ok":True,"available":False}
+        except MacComputeError:
+            return JSONResponse({"ok":False,"error":"Mac 计算配置暂时不可用"},status_code=503)
+        try:
+            return await asyncio.to_thread(transfer.initialize,r,await object_body(request))
         except CosUnavailable:
             return JSONResponse({"ok":False,"error":"图片传输暂时失败，请稍后重试"},status_code=503)
 
@@ -298,7 +305,7 @@ def create_app(directory, root, legacy=None, profile="desktop"):
             kind=data.get("kind","input")
         else:
             try:
-                form=await request.form(max_files=8,max_fields=4,max_part_size=40*1024*1024)
+                form=await request.form(max_files=10,max_fields=4,max_part_size=40*1024*1024)
             except ClientDisconnect:
                 emit_timing("upload","failed",source="server",durationMs=(time.perf_counter()-upload_started)*1000,
                             receiveMs=(time.perf_counter()-upload_started)*1000)
@@ -312,8 +319,8 @@ def create_app(directory, root, legacy=None, profile="desktop"):
                 await uploaded.close()
                 items.append((uploaded.filename,uploaded.content_type,data))
         upload_received=time.perf_counter()
-        if not items or len(items)>8:
-            raise ValueError("请选择 1 到 8 个附件")
+        if not items or len(items)>(10 if kind=="input" else 8):
+            raise ValueError("请选择 1 到 10 张图片" if kind=="input" else "请选择 1 到 8 个附件")
         assets=[]
         for filename,mime,data in items:
             if len(data)>40*1024*1024:
@@ -357,7 +364,14 @@ def create_app(directory, root, legacy=None, profile="desktop"):
 
     @app.get("/api/assets/{identifier}/thumbnail")
     async def asset_thumbnail(identifier: str, request: Request):
-        path = await asyncio.to_thread(runtime(request).storage.thumbnail_path, identifier)
+        r = runtime(request)
+        asset = r.storage.asset(identifier)
+        if asset.get("remoteOnly"):
+            if cos_transfer is None:
+                return JSONResponse({"ok":False,"error":"图片云端传输未启用"},status_code=503)
+            url = cos_transfer.asset_url(r,identifier,thumbnail=True)
+            return RedirectResponse(url,status_code=307,headers={"Referrer-Policy":"no-referrer"})
+        path = await asyncio.to_thread(r.storage.thumbnail_path, identifier)
         return FileResponse(path, media_type="image/png",
                             headers={"Cache-Control": "private, max-age=31536000, immutable",
                                      "Cross-Origin-Resource-Policy": "same-origin",
@@ -375,7 +389,7 @@ def create_app(directory, root, legacy=None, profile="desktop"):
                 return JSONResponse({"ok":False,"error":"图片传输暂时失败，请稍后重试"},status_code=503)
             if url:
                 return RedirectResponse(url,status_code=307,
-                        headers={"X-Content-SHA256":asset["sha256"],"Referrer-Policy":"no-referrer"})
+                        headers={"Referrer-Policy":"no-referrer",**({"X-Content-SHA256":asset["sha256"]} if asset.get("sha256") else {})})
         inline=asset["mimeType"] in {"image/jpeg","image/png","image/webp","image/bmp"} and not download
         return FileResponse(r.storage.asset_path(identifier),media_type=asset["mimeType"],
                             filename=asset["filename"] if inline else r.storage.export_filename(asset),content_disposition_type="inline" if inline else "attachment",
@@ -535,9 +549,25 @@ def create_app(directory, root, legacy=None, profile="desktop"):
         runtime(request).retry(identifier)
         return result(request)
 
+    @app.post("/api/photo/jobs/batch")
+    async def create_photo_batch(request:Request):
+        r=runtime(request)
+        if cos_transfer is not None:r._web_cos_transfer=cos_transfer
+        return {"ok":True,**r.create_photo_batch(await object_body(request))}
+
+    @app.get("/api/photo/batches/{identifier}")
+    async def photo_batch_status(identifier:str,request:Request):
+        return {"ok":True,**runtime(request).photo_batch_status(identifier)}
+
+    @app.post("/api/photo/batches/{identifier}/cancel")
+    async def cancel_photo_batch(identifier:str,request:Request):
+        return {"ok":True,**await runtime(request).stop_photo_batch(identifier)}
+
     @app.post("/api/photo/jobs")
     async def photo_job(request:Request):
-        job=runtime(request).create_photo_job(await object_body(request))
+        r=runtime(request)
+        if cos_transfer is not None:r._web_cos_transfer=cos_transfer
+        job=r.create_photo_job(await object_body(request))
         return {"ok":True,"jobId":job["id"],**runtime(request).photo_status(job["id"])}
 
     @app.get("/api/photo/jobs/{identifier}")
@@ -581,8 +611,8 @@ def create_app(directory, root, legacy=None, profile="desktop"):
     async def settings(request:Request):
         r=runtime(request)
         data=await object_body(request)
-        allowed={"historyViewMode","homeInputAssetId","homeFeature","homeModel","homeOutputAssetId","avatarAssetId"}
-        photo_keys={"homeInputAssetId","homeFeature","homeModel","homeOutputAssetId"}
+        allowed={"historyViewMode","homeInputAssetId","homeFeature","homeModel","homeOutputAssetId","avatarAssetId","homeInputAssetIds","homePhotoBatchId"}
+        photo_keys={"homeInputAssetId","homeFeature","homeModel","homeOutputAssetId","homeInputAssetIds","homePhotoBatchId"}
         compact=request.query_params.get("compact")=="1"
         if compact:
             if not data or not set(data)<=photo_keys:raise ValueError("仅支持保存图片选择设置")
@@ -590,6 +620,16 @@ def create_app(directory, root, legacy=None, profile="desktop"):
                 if data.get(key):
                     asset=r.storage.asset(str(data[key]))
                     if not str(asset.get("mimeType","")).startswith("image/"):raise ValueError("请选择图片")
+        if "homeInputAssetIds" in data:
+            ids=data["homeInputAssetIds"]
+            if (not isinstance(ids,list) or len(ids)>10 or any(not isinstance(x,str) for x in ids)
+                    or len(set(ids))!=len(ids)):
+                raise ValueError("请选择最多 10 张不同的图片")
+            for identifier in ids:
+                if not r.storage.asset(identifier).get("mimeType","").startswith("image/"):
+                    raise ValueError("请选择图片")
+        if data.get("homePhotoBatchId") and not r.storage.get("photoBatches",str(data["homePhotoBatchId"])):
+            raise ValueError("批量任务不存在")
         current=r.storage.setting("settings",{"historyViewMode":"list"})
         if data.get("avatarAssetId"):
             avatar=r.storage.get("assets",str(data["avatarAssetId"]))

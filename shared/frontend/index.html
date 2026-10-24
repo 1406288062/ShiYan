@@ -9,8 +9,10 @@
   <script src="/platform.js"></script>
   <script src="/assets/platform.js?v=20261024-browser-repair-v1"></script>
   <script src="/assets/platform-voice.js?v=20261023-browser-1071"></script>
-  <script src="/assets/platform-cos.js?v=20261024-direct-transfer-66b1"></script>
+  <script src="/assets/platform-cos.js?v=20261024-photo-batch-c658"></script>
   <link rel="icon" type="image/png" href="/assets/site-icon.png?v=20261024-home-logo-v1">
+  <link rel="stylesheet" href="/assets/photo-batch.css?v=20261024-c658">
+  <script type="text/plain" data-account-src="/assets/photo-archive.js?v=20261024-c658" defer></script>
   <link rel="stylesheet" href="/styles.css?v=20261023-bottom-b184">
   <link rel="stylesheet" href="/assets/vendor/xterm.css">
   <link rel="stylesheet" href="/assets/workbench.css?v=20261014-contrast-f574d522">
@@ -34,13 +36,13 @@
   <script type="text/plain" data-account-src="/assets/upload-priority.js?v=20261024-upload-8b" defer></script>
   <script type="text/plain" data-account-src="/assets/workbench-dots.js?v=20261024-upload-priority-8b" defer></script>
   <script type="text/plain" data-account-src="/assets/enhancement-timing.js?v=20261024-seven-stages-da5d" defer></script>
-  <script type="text/plain" data-account-src="/assets/photo-status.js?v=20261024-light-photo-f3df" defer></script>
-  <script type="text/plain" data-account-src="/app.js?v=20261024-cos-upload-66b1" defer></script>
+  <script type="text/plain" data-account-src="/assets/photo-status.js?v=20261024-photo-batch-c658" defer></script>
+  <script type="text/plain" data-account-src="/app.js?v=20261024-photo-batch-c658" defer></script>
   <link rel="stylesheet" href="/assets/user-input.css?v=20261016-compact-0aac7b99">
   <script type="text/plain" data-account-src="/assets/user-input.js?v=20261024-desktop-reinstall-v1" defer></script>
   <link rel="stylesheet" href="/assets/memory.css?v=20261016-quota-auto-7e85e0ab">
   <script type="text/plain" data-account-src="/assets/memory.js?v=20261016-quota-auto-7e85e0ab" defer></script>
-  <script type="text/plain" data-account-src="/assets/workbench-v2.js?v=20261024-browser-repair-v1" defer></script>
+  <script type="text/plain" data-account-src="/assets/workbench-v2.js?v=20261024-photo-batch-c658" defer></script>
   <script type="text/plain" data-account-src="/assets/workbench-v22.js?v=20261023-fixed-timer-2fad" defer></script>
   <script type="text/plain" data-account-src="/assets/workbench-schedules.js?v=20261020-sidebar-92eaec4f" defer></script>
   <script type="text/plain" data-account-src="/assets/workbench.js?v=20261024-title-text-51db" defer></script>
@@ -97,7 +99,7 @@
         <span class="tool-head-caption">图片增强</span>
         <button id="historyButton" class="icon-button history-entry-button" type="button" aria-label="历史记录"><span class="symbol" data-symbol="clock.arrow.circlepath" aria-hidden="true"></span></button>
       </header>
-      <input id="homeFileInput" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" hidden>
+      <input id="homeFileInput" type="file" multiple accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" hidden>
       <section id="homeWorkspace" class="home-workspace" aria-label="图片编辑">
         <div id="imageDropZone" class="image-workspace" tabindex="0" role="button" aria-label="选择或拖入图片">
           <div id="imageEmptyState" class="image-empty-state"><span class="symbol" data-symbol="photo.badge.plus" aria-hidden="true"></span><strong>选择图片</strong><span>支持 JPG / PNG / HEIC</span></div>
@@ -119,6 +121,7 @@
           <div class="drop-indicator" aria-hidden="true"><span class="symbol" data-symbol="photo.badge.plus"></span></div>
         </div>
       </section>
+      <section id="photoBatchBar" class="photo-batch-bar" aria-label="批量增强图片" hidden><p id="photoBatchSummary"></p><div id="photoBatchItems" class="photo-batch-items"></div></section>
       <section id="toolPanel" class="tool-panel glass-surface" aria-label="图片工具">
         <div class="enhance-panel-heading"><h2>增强设置</h2><span>4×</span></div>
         <div class="tool-controls-body">
@@ -130,7 +133,7 @@
           </div>
           <div id="removeControls" class="tool-controls" hidden><div class="brush-controls glass-surface"><span class="symbol" data-symbol="scribble" aria-hidden="true"></span><input id="brushWidth" class="brush-range" type="range" min="0.025" max="0.12" step="0.001" value="0.055" aria-label="笔刷大小"><button id="undoStrokeButton" class="icon-button" type="button" aria-label="撤销涂抹" disabled><span class="symbol" data-symbol="arrow.uturn.backward" aria-hidden="true"></span></button><button id="clearStrokesButton" class="icon-button" type="button" aria-label="清除涂抹" disabled><span class="symbol" data-symbol="trash" aria-hidden="true"></span></button></div></div>
           <div id="colorizeControls" class="tool-controls" hidden></div>
-          <div class="photo-action-row"><button id="processButton" class="primary-action" type="button" disabled><span id="processIcon" class="symbol" data-symbol="wand.and.stars" aria-hidden="true"></span><span id="processLabel">开始增强</span></button><button id="saveResultButton" class="icon-button photo-save-button glass-surface" type="button" aria-label="保存结果" hidden><span class="symbol" data-symbol="square.and.arrow.down" aria-hidden="true"></span></button><button id="cancelProcessButton" class="icon-button photo-stop-button" type="button" aria-label="取消处理" hidden><span class="symbol" data-symbol="stop.circle.fill" aria-hidden="true"></span></button></div>
+          <div class="photo-action-row"><button id="processButton" class="primary-action" type="button" disabled><span id="processIcon" class="symbol" data-symbol="wand.and.stars" aria-hidden="true"></span><span id="processLabel">开始增强</span></button><button id="saveResultButton" class="icon-button photo-save-button glass-surface" type="button" aria-label="保存结果" hidden><span class="symbol" data-symbol="square.and.arrow.down" aria-hidden="true"></span></button><button id="saveBatchButton" class="photo-batch-download" type="button" hidden>下载 ZIP</button><button id="cancelProcessButton" class="icon-button photo-stop-button" type="button" aria-label="取消处理" hidden><span class="symbol" data-symbol="stop.circle.fill" aria-hidden="true"></span></button></div>
           <p id="photoError" class="inline-error" role="alert" hidden></p>
         </div>
       </section>

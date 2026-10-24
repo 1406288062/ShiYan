@@ -65,10 +65,11 @@
       try { xhr.send(file); } catch (_) { finish(fail('图片上传未能开始，请检查网络后重试')); }
     });
   }
-  async function upload(files, kind, api, onProgress) {
-    if (window.ShiYanPlatform?.mode !== 'web' || kind !== 'input') return null;
+  async function upload(files, kind, api, onProgress, purpose) {
+    if (window.ShiYanPlatform?.mode !== 'web' || kind !== 'input' || purpose !== 'enhance') return null;
     const items = Array.from(files);
-    const plan = await api('/api/assets/cos/upload', 'POST', {kind, files: items.map(file =>
+    if (!items.length || items.length > 10) throw fail('一次最多上传 10 张增强图片');
+    const plan = await api('/api/assets/cos/upload', 'POST', {kind, purpose, files: items.map(file =>
       ({name: file.name || 'image.png', size: file.size, type: file.type || ''}))});
     // Legacy upload is allowed only before any bytes went to COS and only when unconfigured.
     if (plan.available === false) return null;

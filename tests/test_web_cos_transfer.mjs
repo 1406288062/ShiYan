@@ -43,7 +43,7 @@ function setup({mode='web',available=true,uploads=[ticket()],initError,completeE
   vm.runInContext('let workspaceSaveQueue=Promise.resolve();\n'+['upload','saveWorkspace','chooseWebHomeImage'].map(extract).join('\n'),context);
   return {window,context,requests,calls,legacy,updates,timers,fields,timings,get active(){return count>0;},finishComplete:()=>completeResolve?.(),
     run:(items=[file()],kind='input')=>context.upload(items,kind),
-    direct:(items=[file()],kind='input')=>window.ShiYanCosTransfer.upload(items,kind,api,p=>updates.push(p))};
+    direct:(items=[file()],kind='input')=>window.ShiYanCosTransfer.upload(items,kind,api,p=>updates.push(p),'enhance')};
 }
 
 test('unconfigured COS falls back before any direct upload, under the existing priority scope',async()=>{
@@ -60,7 +60,7 @@ test('successful web upload sends raw bytes only to COS then finalizes compact a
   assert.equal(xhr.method,'PUT');assert.equal(xhr.body,original);assert.equal(xhr.withCredentials,false);
   assert.deepEqual(xhr.headers,{'content-type':'image/png','x-cos-acl':'private'});
   assert.equal(xhr.headers.authorization,undefined);assert.equal(xhr.headers.cookie,undefined);assert.equal(xhr.headers['x-shiyan-local'],undefined);
-  assert.deepEqual(JSON.parse(JSON.stringify(s.calls[0].body)),{kind:'input',files:[{name:'fixture.png',size:100,type:'image/png'}]});
+  assert.deepEqual(JSON.parse(JSON.stringify(s.calls[0].body)),{kind:'input',purpose:'enhance',files:[{name:'fixture.png',size:100,type:'image/png'}]});
   xhr.progress(50);assert.equal(s.context.ui.photoUploadLabel,'正在上传图片 50%');
   xhr.sent();assert.equal(s.context.ui.photoUploadLabel,'图片已发送，正在确认');await settle();assert.equal(resolved,false);
   xhr.respond(200);await settle();assert.equal(s.active,true);assert.equal(s.legacy.length,0);
@@ -148,4 +148,10 @@ test('progress resets inactivity timeout and completed transport removes the tim
   const s=setup();const pending=s.direct();await settle();const initial=[...s.timers.keys()][0];
   s.requests[0].progress(50);assert(!s.timers.has(initial));assert.equal(s.timers.size,1);
   s.requests[0].respond();await pending;assert.equal(s.timers.size,0);
+});
+
+test('non-enhancement input never starts COS and the image batch limit is checked before planning',async()=>{
+  const s=setup();s.context.ui.feature='remove';await s.run();assert.equal(s.requests.length,0);assert.equal(s.calls.length,0);assert.equal(s.legacy.length,1);
+  const limit=setup();await assert.rejects(limit.direct(Array.from({length:11},(_,n)=>file(n+'.png'))),/10/);
+  assert.equal(limit.calls.length,0);assert.equal(limit.requests.length,0);
 });

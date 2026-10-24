@@ -143,6 +143,22 @@ class MacComputeClient:
             "params": {"texts": texts, "operation": operation, "instruction": instruction},
         })["task"]
 
+    def submit_enhance_cos(self, owner, request_id, model, input_metadata, on_created=None):
+        """Submit references only: image bodies go directly between COS and Mac."""
+        task = self._request("POST", "/v1/tasks", owner, {
+            "kind": "enhance_cos", "request_id": request_id,
+            "params": {"model": model, "input": input_metadata},
+        })["task"]
+        if on_created is not None:
+            on_created(task["id"])
+        return task
+
+    def result_cos(self, owner, task_id):
+        result = self._request("GET", "/v1/tasks/" + self._task_id(task_id) + "/result", owner)
+        if result.get("kind") != "enhance_cos" or result.get("device") != "mps":
+            raise MacComputeError("Mac 图片结果信息无效", code="invalid_result")
+        return result
+
     def status(self, owner, task_id):
         return self._request("GET", "/v1/tasks/" + self._task_id(task_id), owner)["task"]
 
