@@ -11,6 +11,7 @@ import sqlite3
 import threading
 import uuid
 import warnings
+import zipfile
 from datetime import datetime, timezone
 
 from .upload_image import upload_image_copy
@@ -266,6 +267,42 @@ class Storage:
                 "downloadUrl":f"/api/assets/{identifier}/file?download=1","remoteId":remote_id}
         self.put("assets", item)
         return self.public_asset(item)
+
+    def save_archive(self, files, filename="拾燕图片.zip"):
+        """Save a generated ZIP on disk, independently of the upload byte limit."""
+        if not files:
+            raise ValueError("请先选择有效的图片记录")
+        identifier = new_id()
+        destination = self.media / (identifier + ".zip")
+        temporary = destination.with_suffix(".zip.tmp")
+        try:
+            with temporary.open("xb") as output:
+                os.chmod(temporary, 0o600)
+                with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                    for source, name in files:
+                        source = Path(source).resolve()
+                        if not source.is_relative_to(self.media) or not source.is_file():
+                            raise ValueError("本地文件不存在")
+                        archive.write(source, Path(name).name)
+                output.flush()
+                os.fsync(output.fileno())
+            size = temporary.stat().st_size
+            digest = hashlib.sha256()
+            with temporary.open("rb") as incoming:
+                while chunk := incoming.read(1024 * 1024):
+                    digest.update(chunk)
+            temporary.replace(destination)
+            item = {"id": identifier, "filename": Path(filename).stem + ".zip", "mimeType": "application/zip",
+                    "width": None, "height": None, "bytes": size, "createdAt": now(),
+                    "storedName": destination.name, "sha256": digest.hexdigest(),
+                    "url": f"/api/assets/{identifier}/file",
+                    "downloadUrl": f"/api/assets/{identifier}/file?download=1", "remoteId": None}
+            self.put("assets", item)
+            return self.public_asset(item)
+        except BaseException:
+            temporary.unlink(missing_ok=True)
+            destination.unlink(missing_ok=True)
+            raise
 
     def import_worker_output(self, source, filename, job_id, expected_size):
          

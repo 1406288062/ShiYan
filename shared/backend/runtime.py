@@ -3,14 +3,12 @@ from __future__ import annotations
 import math
 import asyncio
 import base64
-import io
 import json
 import os
 from pathlib import Path
 import sys
 import shutil
 import time
-import zipfile
 from datetime import datetime
 from .message_view import conversation_view
 from .file_changes import begin_changes,finish_changes
@@ -1294,24 +1292,23 @@ class Runtime:
         self.notify()
 
     def export_history(self,ids):
-        buffer=io.BytesIO()
         names=set()
         entries=[self.storage.get("history",identifier) for identifier in ids]
         if not entries or any(x is None for x in entries):
             raise ValueError("请先选择有效的图片记录")
-        with zipfile.ZipFile(buffer,"w",compression=zipfile.ZIP_DEFLATED) as archive:
-            for entry in entries:
-                asset=self.storage.asset(entry["assetId"])
-                path=self.storage.asset_path(asset["id"])
-                filename=self.storage.export_filename(asset,entry)
-                base,ext=Path(filename).stem,Path(filename).suffix
-                count=1
-                while filename.casefold() in names:
-                    count+=1
-                    filename=f"{base}_{count}{ext}"
-                names.add(filename.casefold())
-                archive.write(path,filename)
-        return self.storage.save_bytes(buffer.getvalue(),"拾燕图片.zip","application/zip")
+        files=[]
+        for entry in entries:
+            asset=self.storage.asset(entry["assetId"])
+            path=self.storage.asset_path(asset["id"])
+            filename=self.storage.export_filename(asset,entry)
+            base,ext=Path(filename).stem,Path(filename).suffix
+            count=1
+            while filename.casefold() in names:
+                count+=1
+                filename=f"{base}_{count}{ext}"
+            names.add(filename.casefold())
+            files.append((path,filename))
+        return self.storage.save_archive(files)
 
     async def close(self):
         self.closing=True

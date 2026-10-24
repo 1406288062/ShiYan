@@ -1010,7 +1010,9 @@
   async function saveAsset(a) {
     if(!a)return;
     const filename=exportFilename(a);
-    if(native('save',{url:new URL(assetUrl(a,true),location.href).href,filename}))return;
+    // ZIPs use WebKit's file download path instead of the size-limited preview fetch.
+    const archiveDownload=window.ShiYanPlatform?.mode==='desktop' && a.mimeType==='application/zip';
+    if(!archiveDownload && native('save',{url:new URL(assetUrl(a,true),location.href).href,filename}))return;
     const anchor=document.createElement('a');anchor.href=assetUrl(a,true);anchor.download=filename;document.body.appendChild(anchor);anchor.click();anchor.remove();
   }
   async function shareAssets(items) {
