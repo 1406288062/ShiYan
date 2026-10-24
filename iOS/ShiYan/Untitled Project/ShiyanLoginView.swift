@@ -14,6 +14,8 @@ struct ShiyanLoginView: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reducedMotion
     @State private var registering = false
+    @State private var resettingPassword = false
+    @State private var passwordResetComplete = false
     @State private var email = ""
     @State private var password = ""
     @State private var confirmedPassword = ""
@@ -28,9 +30,10 @@ struct ShiyanLoginView: View {
     @FocusState private var focused: Field?
     private enum Field { case name, email, password, confirmation, code }
     private var bootstrap: Bool { account.status?.bootstrapRequired == true && account.status?.canBootstrap == true }
-    private var creating: Bool { registering || bootstrap }
-    private var passwordMismatch: Bool { creating && confirmationChecked && !confirmedPassword.isEmpty && confirmedPassword != password }
-    private var valid: Bool { email.contains("@") && !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && password.count >= 8 && (!creating || (!displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && verificationCode.count == 6 && confirmedPassword == password)) }
+    private var creating: Bool { !resettingPassword && (registering || bootstrap) }
+    private var verifyingEmail: Bool { creating || resettingPassword }
+    private var passwordMismatch: Bool { verifyingEmail && confirmationChecked && !confirmedPassword.isEmpty && confirmedPassword != password }
+    private var valid: Bool { email.contains("@") && !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && password.count >= 8 && (!creating || !displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) && (!verifyingEmail || (verificationCode.count == 6 && confirmedPassword == password)) }
 
     var body: some View {
         GeometryReader { geometry in
@@ -81,14 +84,14 @@ struct ShiyanLoginView: View {
                                         .modifier(AuthField()).accessibilityIdentifier("auth-email")
                                 }
                                 labeledField("密码") {
-                                    passwordInput(creating ? "密码（至少 8 位）" : "密码", text: $password, visible: showsPassword)
-                                        .textContentType(creating ? .newPassword : .password)
-                                        .focused($focused, equals: .password).submitLabel(creating ? .next : .go).onSubmit { if creating { focused = .confirmation } else { submit() } }
+                                    passwordInput(resettingPassword ? "新密码（至少 8 位）" : creating ? "密码（至少 8 位）" : "密码", text: $password, visible: showsPassword)
+                                        .textContentType(verifyingEmail ? .newPassword : .password)
+                                        .focused($focused, equals: .password).submitLabel(verifyingEmail ? .next : .go).onSubmit { if verifyingEmail { focused = .confirmation } else { submit() } }
                                         .modifier(AuthField())
                                         .overlay(alignment: .trailing) { passwordEye($showsPassword, field: .password) }
                                         .accessibilityIdentifier("auth-password")
                                 }
-                                if creating {
+                                if verifyingEmail {
                                     labeledField("密码确认") {
                                         passwordInput("密码确认", text: $confirmedPassword, visible: showsConfirmation)
                                             .textContentType(.newPassword)
@@ -115,7 +118,7 @@ struct ShiyanLoginView: View {
                                         Button(codeSeconds > 0 ? "\(codeSeconds) 秒后重发" : "获取验证码") {
                                             guard checkConfirmationForAction() else { return }
                                             Task {
-                                                if let seconds = await account.requestRegistrationCode(email: email) {
+                                                if let seconds = await (resettingPassword ? account.requestPasswordResetCode(email: email) : account.requestRegistrationCode(email: email)) {
                                                     codeResendAt = Date().addingTimeInterval(TimeInterval(seconds))
                                                     codeSeconds = seconds; codeSent = true; focused = .code
                                                 }
@@ -130,10 +133,16 @@ struct ShiyanLoginView: View {
                                     .background(Color.primary.opacity(0.045), in: Capsule())
                                     .overlay { Capsule().stroke(Color.primary.opacity(0.1), lineWidth: 1) }
                                     if codeSent {
-                                        Text("验证码已发送，10 分钟内有效，请留意垃圾邮件。")
+                                        Text(resettingPassword ? "如邮箱已注册，验证码将发送到邮箱，10 分钟内有效，请留意垃圾邮件。" : "验证码已发送，10 分钟内有效，请留意垃圾邮件。")
                                             .font(.caption).foregroundStyle(.secondary)
                                             .frame(maxWidth: .infinity, alignment: .leading)
                                     }
+                                }
+                                if passwordResetComplete {
+                                    Text("密码已重置，请使用新密码登录。")
+                                        .font(.subheadline).foregroundStyle(.secondary)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .accessibilityIdentifier("auth-reset-success")
                                 }
                                 if let error = account.error {
                                     Text(error).font(.subheadline).foregroundStyle(.red)
@@ -143,7 +152,7 @@ struct ShiyanLoginView: View {
                                 Button(action: submit) {
                                     HStack {
                                         Spacer()
-                                        Text(account.checking ? "正在恢复登录…" : account.busy ? "处理中…" : creating ? "创建账户" : "登录").font(.system(size: 15, weight: .semibold))
+                                        Text(account.checking ? "正在恢复登录…" : account.busy ? "处理中…" : resettingPassword ? "重置密码" : creating ? "创建账户" : "登录").font(.system(size: 15, weight: .semibold))
                                         Spacer()
                                         if account.busy || account.checking { ProgressView().tint(.white) }
                                     }
@@ -154,15 +163,28 @@ struct ShiyanLoginView: View {
                                 .saturation(passwordMismatch ? 0 : 1)
                                 .accessibilityIdentifier("auth-submit")
                             }
-                            if !bootstrap && (account.status?.registrationEnabled != false || registering) {
+                            if resettingPassword || !bootstrap {
                                 HStack(spacing: 6) {
-                                    Text(registering ? "已有账户？" : "还没有账户？").foregroundStyle(.secondary)
-                                    Button(registering ? "返回登录" : "创建账户") {
+                                    if resettingPassword || registering || account.status?.registrationEnabled != false {
+                                    Text(resettingPassword ? "记起密码了？" : registering ? "已有账户？" : "还没有账户？").foregroundStyle(.secondary)
+                                    Button(resettingPassword || registering ? "返回登录" : "创建账户") {
                                         guard checkConfirmationForAction() else { return }
-                                        registering.toggle(); password = ""; verificationCode = ""; account.error = nil
+                                        if resettingPassword { resettingPassword = false; registering = false }
+                                        else { registering.toggle() }
+                                        clearAuthSecrets(); account.error = nil
                                     }
                                     .foregroundStyle(ShiyanAuthPalette.indigo).disabled(account.busy || account.checking || passwordMismatch)
                                     .saturation(passwordMismatch ? 0 : 1).opacity(passwordMismatch ? 0.45 : 1)
+                                    }
+                                    if !registering && !resettingPassword {
+                                        Spacer(minLength: 12)
+                                        Button("忘记密码？") {
+                                            clearAuthSecrets(); resettingPassword = true; account.error = nil; focused = .email
+                                        }
+                                        .foregroundStyle(ShiyanAuthPalette.indigo)
+                                        .disabled(account.busy || account.checking)
+                                        .accessibilityIdentifier("auth-forgot-password")
+                                    }
                                 }
                                 .font(.system(size: 14)).frame(maxWidth: .infinity)
                                 .padding(.top, 21)
@@ -186,7 +208,12 @@ struct ShiyanLoginView: View {
                 .scrollDismissesKeyboard(.interactively)
             }
         }
-        .onChange(of: creating) { _, _ in confirmedPassword = ""; confirmationChecked = false; showsPassword = false; showsConfirmation = false }
+        .onChange(of: creating) { _, _ in clearAuthSecrets() }
+        .onChange(of: resettingPassword) { _, resetting in
+            let completed = passwordResetComplete
+            clearAuthSecrets()
+            if !resetting && completed { passwordResetComplete = true }
+        }
         .onChange(of: focused) { previous, current in
             if previous == .confirmation && current != .confirmation { confirmationChecked = !confirmedPassword.isEmpty }
         }
@@ -231,17 +258,29 @@ struct ShiyanLoginView: View {
         Ellipse().fill(color).frame(width: 330, height: 380).position(x: x, y: y)
     }
     private func checkConfirmationForAction() -> Bool {
-        if creating && !confirmedPassword.isEmpty && (focused == .confirmation || confirmationChecked) {
+        if verifyingEmail && !confirmedPassword.isEmpty && (focused == .confirmation || confirmationChecked) {
             confirmationChecked = true
             focused = nil
             return confirmedPassword == password
         }
         return true
     }
+    private func clearAuthSecrets() {
+        password = ""; confirmedPassword = ""; verificationCode = ""; confirmationChecked = false
+        showsPassword = false; showsConfirmation = false; codeSent = false
+        codeResendAt = .distantPast; codeSeconds = 0; passwordResetComplete = false
+    }
     private func submit() {
         guard valid, !account.busy, !account.checking else { return }
         focused = nil
         Task {
+            if resettingPassword {
+                if await account.resetPassword(email: email, password: password, confirmation: confirmedPassword, verificationCode: verificationCode) {
+                    resettingPassword = false; registering = false
+                    clearAuthSecrets(); passwordResetComplete = true
+                }
+                return
+            }
             await account.authenticate(email: email, password: password, displayName: displayName.trimmingCharacters(in: .whitespacesAndNewlines), register: creating, bootstrap: bootstrap, verificationCode: verificationCode)
             if account.user != nil { password = ""; confirmedPassword = "" }
         }

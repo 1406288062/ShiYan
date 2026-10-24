@@ -145,15 +145,32 @@ final class ShiyanAccount: ObservableObject {
         }
     }
     func requestRegistrationCode(email: String) async -> Int? {
+        await requestEmailCode(email: email, resettingPassword: false)
+    }
+    func requestPasswordResetCode(email: String) async -> Int? {
+        await requestEmailCode(email: email, resettingPassword: true)
+    }
+    private func requestEmailCode(email: String, resettingPassword: Bool) async -> Int? {
         guard !busy else { return nil }
         busy = true; error = nil
         defer { busy = false }
         do {
-            let data = try await CodexClient.shared.authRequest(route: "auth/register-code", method: "POST",
+            let data = try await CodexClient.shared.authRequest(route: resettingPassword ? "auth/password-reset-code" : "auth/register-code", method: "POST",
                 object: ["email": email.trimmingCharacters(in: .whitespacesAndNewlines)])
             struct Result: Decodable { let resendAfter: Int }
             return try JSONDecoder().decode(Result.self, from: data).resendAfter
         } catch { self.error = error.localizedDescription; return nil }
+    }
+    func resetPassword(email: String, password: String, confirmation: String, verificationCode: String) async -> Bool {
+        guard !busy else { return false }
+        busy = true; error = nil
+        defer { busy = false }
+        do {
+            _ = try await CodexClient.shared.authRequest(route: "auth/password-reset", method: "POST",
+                object: ["email": email.trimmingCharacters(in: .whitespacesAndNewlines), "password": password,
+                         "confirmPassword": confirmation, "verificationCode": verificationCode])
+            return true
+        } catch { self.error = error.localizedDescription; return false }
     }
     func authenticate(email: String, password: String, displayName: String, register: Bool, bootstrap: Bool, verificationCode: String = "") async {
         guard !busy else { return }

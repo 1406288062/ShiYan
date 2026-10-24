@@ -407,3 +407,10 @@ body.account-light #accountGate .auth-qr-image img { filter: none; }
 /* Explicit desktop login spacing; shared web and native iOS layouts stay intact. */
 html[data-shiyan-platform="desktop"] #accountGate[data-auth-mode="login"] .auth-switch { top: -24px; }
 html[data-shiyan-platform="desktop"] #accountGate button.auth-qr-image { width: min(196px, 100%, calc(100dvh - 210px)); }
+
+/* Password recovery reuses the registration fields and the existing action row. */
+#accountGate[data-auth-mode="reset"] .auth-card { height:auto;max-height:calc(100dvh - 128px); }
+#accountGate[data-auth-mode="reset"] .auth-switch { justify-content:center; }
+#accountGate .auth-notice { margin:0;color:var(--workspace-muted);font-size:13px;line-height:1.5;text-align:center; }
+@media(max-width:480px) { #accountGate[data-auth-mode="reset"] .auth-card { max-height:calc(100dvh - 100px); } }
+@media(max-height:420px) { #accountGate[data-auth-mode="reset"] .auth-card { max-height:calc(100dvh - 80px); } }

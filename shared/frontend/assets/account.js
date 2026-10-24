@@ -7,7 +7,9 @@
   let user = null, mode = 'login', status = null, busy = false, loaded = false, expiring = false, applicationStarted = false;
   let rememberedMode = false, trustedMode = false, hasRemembered = false;
   let confirmationChecked = false;
-  let codeSending = false, codeResendAt = 0, codeTimer = null;
+  let codeSending = false, codeTimer = null;
+  const codeResendTimes = {register:0, reset:0};
+  const resendAt = () => codeResendTimes[mode] || 0;
   let statusLoad;
   let qrMode = false, qrVersion = 0, qrTimer = null, qrId = null, qrExpiry = 0;
   const startupTimings = window.__ShiYanAccountTimings = {};
@@ -80,7 +82,7 @@
   }
   function validateConfirmation() {
     const confirmation = $('accountConfirmPassword');
-    const mismatch = mode === 'register' && confirmation.value.length > 0 && confirmation.value !== $('accountPassword').value;
+    const mismatch = mode !== 'login' && confirmation.value.length > 0 && confirmation.value !== $('accountPassword').value;
     const blocked = confirmationChecked && mismatch;
     confirmation.setCustomValidity(blocked ? '两次输入的密码不一致' : '');
     $('accountGate').dataset.passwordMismatch = String(blocked);
@@ -90,36 +92,39 @@
   }
   function render() {
     if (expiring) return;
-    const register = mode === 'register';
+    const register = mode === 'register', resetting = mode === 'reset', verifying = register || resetting;
     const confirmationBlocked = validateConfirmation();
-    const nextAuthMode = register ? 'register' : 'login';
+    const nextAuthMode = mode;
     if ($('accountGate').dataset.authMode !== nextAuthMode) resetPasswordVisibility();
     $('accountGate').dataset.authMode = nextAuthMode;
-    if (register && qrMode) stopQR();
+    if (verifying && qrMode) stopQR();
     $('accountRemembered').hidden = !rememberedMode;
     document.querySelector('.auth-switch').hidden = false;
     $('accountForm').hidden = qrMode || rememberedMode;
     $('accountQRPanel').hidden = !qrMode || trustedMode;
-    $('accountPasswordMode').hidden = register;
+    $('accountPasswordMode').hidden = verifying;
+    $('accountForgotPassword').hidden = verifying;
+    $('accountForgotPassword').disabled = busy || codeSending;
     $('accountPasswordMode').textContent = rememberedMode || qrMode ? '密码登录' : '扫码登录';
     $('accountPasswordMode').disabled = busy || confirmationBlocked;
-    document.querySelector('.auth-card').setAttribute('aria-label', register ? '创建账号' : '登录');
-    $('accountConfirmPasswordField').hidden = !register;
-    $('accountConfirmPassword').required = register;
-    $('accountConfirmPassword').disabled = !register;
+    document.querySelector('.auth-card').setAttribute('aria-label', resetting ? '重置密码' : register ? '创建账号' : '登录');
+    $('accountConfirmPasswordField').hidden = !verifying;
+    $('accountConfirmPassword').required = verifying;
+    $('accountConfirmPassword').disabled = !verifying;
     $('accountNameField').hidden = !register;
     $('accountName').required = register;
     $('accountName').disabled = !register;
-    $('accountVerificationField').hidden = !register;
-    $('accountVerificationCode').required = register;
+    $('accountVerificationField').hidden = !verifying;
+    $('accountVerificationCode').required = verifying;
     $('accountEmail').readOnly = codeSending;
-    $('accountSendCode').disabled = busy || codeSending || confirmationBlocked || Date.now() < codeResendAt;
-    $('accountSendCode').textContent = codeSending ? '正在发送…' : Date.now() < codeResendAt ? Math.ceil((codeResendAt-Date.now())/1000) + ' 秒后重发' : '获取验证码';
-    $('accountPassword').autocomplete = register ? 'new-password' : 'current-password';
-    $('accountPassword').placeholder = register ? '密码（至少 8 位）' : '密码';
+    $('accountSendCode').disabled = busy || codeSending || confirmationBlocked || Date.now() < resendAt();
+    $('accountSendCode').textContent = codeSending ? '正在发送…' : Date.now() < resendAt() ? Math.ceil((resendAt()-Date.now())/1000) + ' 秒后重发' : '获取验证码';
+    $('accountPassword').autocomplete = verifying ? 'new-password' : 'current-password';
+    $('accountPassword').placeholder = resetting ? '新密码（至少 8 位）' : register ? '密码（至少 8 位）' : '密码';
+    $('accountPassword').setAttribute('aria-label', resetting ? '新密码' : '密码');
     document.querySelectorAll('[data-password-target]').forEach(button => { button.disabled = busy || codeSending || confirmationBlocked; });
-    $('accountSubmitLabel').textContent = busy ? (applicationStarted ? '正在打开会话…' : register ? '正在创建账号…' : '正在登录…') : register ? '创建账号' : '登录';
-    $('accountSwitchButton').textContent = register ? '返回登录' : '注册账号';
+    $('accountSubmitLabel').textContent = busy ? (applicationStarted ? '正在打开会话…' : resetting ? '正在重置密码…' : register ? '正在创建账号…' : '正在登录…') : resetting ? '重置密码' : register ? '创建账号' : '登录';
+    $('accountSwitchButton').textContent = verifying ? '返回登录' : '注册账号';
     $('accountSubmit').disabled = busy || codeSending || confirmationBlocked || (register && !$('accountName').value.trim());
     $('accountSwitchButton').disabled = busy || codeSending || confirmationBlocked;
     $('accountReconnect').disabled = busy || confirmationBlocked;
@@ -229,16 +234,26 @@
     if (mode === 'register' && !$('accountName').value.trim()) {
       showError('请填写用户名'); $('accountName').focus(); return;
     }
-    if (mode === 'register' && !$('accountConfirmPassword').value) {
+    if (mode !== 'login' && !$('accountConfirmPassword').value) {
       showError('请填写密码确认'); $('accountConfirmPassword').focus(); return;
     }
-    if (mode === 'register' && $('accountPassword').value !== $('accountConfirmPassword').value) {
+    if (mode !== 'login' && $('accountPassword').value !== $('accountConfirmPassword').value) {
       confirmationChecked = true; render();
       $('accountConfirmPassword').focus();
       return;
     }
     busy = true; showError(''); render();
     try {
+      if (mode === 'reset') {
+        await request('/auth/password-reset', 'POST', {
+          email:$('accountEmail').value.trim(), password:$('accountPassword').value,
+          confirmPassword:$('accountConfirmPassword').value, verificationCode:$('accountVerificationCode').value.trim()
+        });
+        clearAuthSecrets(); mode = 'login'; rememberedMode = false;
+        $('accountNotice').textContent = '密码已重置，请使用新密码登录。';
+        $('accountNotice').hidden = false;
+        return;
+      }
       if (mode === 'register' && !status) await loadStatus();
       const path = mode === 'login' ? 'login' : status?.bootstrapRequired && status?.canBootstrap ? 'bootstrap' : 'register';
       const result = await request('/auth/' + path, 'POST', {
@@ -457,15 +472,15 @@
   window.addEventListener('shiyan-settings-ready', mountSettingsEntry);
   $('app').inert = true;
   $('accountSendCode').onclick = async () => {
-    if (busy || codeSending || validateConfirmation() || Date.now() < codeResendAt || !$('accountEmail').reportValidity()) return;
+    if (busy || codeSending || validateConfirmation() || Date.now() < resendAt() || !$('accountEmail').reportValidity()) return;
     const email = $('accountEmail').value.trim();
     codeSending = true; showError(''); $('accountCodeStatus').textContent = ''; render();
     try {
-      const result = await request('/auth/register-code', 'POST', {email});
-      codeResendAt = Date.now() + result.resendAfter * 1000;
-      $('accountCodeStatus').textContent = '验证码已发送，10 分钟内有效，请留意垃圾邮件。';
+      const result = await request(mode === 'reset' ? '/auth/password-reset-code' : '/auth/register-code', 'POST', {email});
+      codeResendTimes[mode] = Date.now() + result.resendAfter * 1000;
+      $('accountCodeStatus').textContent = mode === 'reset' ? '如邮箱已注册，验证码将发送到邮箱，10 分钟内有效，请留意垃圾邮件。' : '验证码已发送，10 分钟内有效，请留意垃圾邮件。';
       clearInterval(codeTimer);
-      codeTimer = setInterval(() => { if (Date.now() >= codeResendAt) clearInterval(codeTimer); if (!loaded) render(); }, 1000);
+      codeTimer = setInterval(() => { if (Date.now() >= Math.max(...Object.values(codeResendTimes))) clearInterval(codeTimer); if (!loaded) render(); }, 1000);
       $('accountVerificationCode').focus();
     } catch (error) { showError(error.message); }
     finally { codeSending = false; if (!loaded) render(); }
@@ -507,7 +522,22 @@
   $('accountConfirmPassword').addEventListener('input', () => { if (!$('accountConfirmPassword').value) confirmationChecked = false; render(); });
   $('accountConfirmPassword').addEventListener('blur', () => { confirmationChecked = !!$('accountConfirmPassword').value; render(); });
   $('accountForm').addEventListener('submit', authenticate);
-  $('accountSwitchButton').onclick = () => { if (busy) return; const register = mode === 'login'; $('accountConfirmPassword').value = ''; confirmationChecked = false; stopQR(); rememberedMode = false; mode = register ? 'register' : 'login'; showError(''); if (register) render(); else if (hasRemembered) showAvatarLogin(); else render(); };
+  function clearAuthSecrets() {
+    $('accountPassword').value = ''; $('accountConfirmPassword').value = '';
+    $('accountVerificationCode').value = ''; $('accountCodeStatus').textContent = '';
+    $('accountNotice').hidden = true; confirmationChecked = false; resetPasswordVisibility();
+  }
+  $('accountForgotPassword').onclick = () => {
+    if (busy || codeSending) return;
+    stopQR(); rememberedMode = false; clearAuthSecrets(); mode = 'reset'; showError(''); render();
+    $('accountEmail').focus();
+  };
+  $('accountSwitchButton').onclick = () => {
+    if (busy || codeSending) return;
+    const register = mode === 'login'; stopQR(); rememberedMode = false; clearAuthSecrets();
+    mode = register ? 'register' : 'login'; showError('');
+    if (register) render(); else if (hasRemembered) showAvatarLogin(); else render();
+  };
   $('accountReconnect').onclick = () => applicationStarted ? location.reload() : bootstrap();
   document.addEventListener('visibilitychange',async () => {
     if (!loaded || document.hidden || expiring) return;

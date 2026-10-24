@@ -372,6 +372,14 @@ def register_accounts(app):
     async def register_code(request: Request):
         return await request.app.state.accounts.gateway.json("POST", "auth/register-code", await body(request), timeout=35)
 
+    @app.post("/api/auth/password-reset-code")
+    async def password_reset_code(request: Request):
+        return await request.app.state.accounts.gateway.json("POST", "auth/password-reset-code", await body(request), timeout=35)
+
+    @app.post("/api/auth/password-reset")
+    async def password_reset(request: Request):
+        return await request.app.state.accounts.gateway.json("POST", "auth/password-reset", await body(request), timeout=35)
+
     @app.post("/api/auth/{action}")
     async def action(action: str, request: Request):
         manager = request.app.state.accounts

@@ -106,7 +106,7 @@ class Gateway:
             headers["Authorization"] = "Bearer " + self.account_token
             headers["X-Shiyan-Account-Required"] = "1"
             return path, body, headers
-        if route in {"auth/status", "auth/login", "auth/register", "auth/register-code", "auth/qr/create", "auth/qr/poll", "auth/device/request", "auth/device/poll"}:
+        if route in {"auth/status", "auth/login", "auth/register", "auth/register-code", "auth/password-reset-code", "auth/password-reset", "auth/qr/create", "auth/qr/poll", "auth/device/request", "auth/device/poll"}:
             return path, body, headers
         if route not in {"auth/status", "auth/bootstrap", "enroll"}:
             raise GatewayError("请先登录", 401)

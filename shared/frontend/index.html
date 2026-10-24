@@ -53,8 +53,8 @@
 <script type="text/plain" data-account-src="/assets/workbench-space-files.js?v=20261018-accounts" defer></script>
   <link rel="stylesheet" href="/assets/knowledge.css?v=20261019-no-flash-4a54">
   <script type="text/plain" data-account-src="/assets/knowledge.js?v=20261019-no-flash-4a54" defer></script>
-  <link rel="stylesheet" href="/assets/account.css?v=20261024-auth-pure-black-v1">
-  <script src="/assets/account.js?v=20261023-qr-e6c3" defer></script>
+  <link rel="stylesheet" href="/assets/account.css?v=20261025-password-reset-ba">
+  <script src="/assets/account.js?v=20261025-password-reset-ba" defer></script>
 </head>
 <body>
 <main id="accountGate" class="auth-shell" hidden>
@@ -80,12 +80,13 @@
           <div class="auth-code-row"><label class="auth-field"><span class="sr-only">邮箱验证码</span><input id="accountVerificationCode" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="六位验证码"></label><button id="accountSendCode" type="button">获取验证码</button></div>
           <p id="accountCodeStatus" role="status"></p>
         </div>
+        <p id="accountNotice" class="auth-notice" role="status" hidden></p>
         <p id="accountError" class="form-error" role="alert" hidden></p>
         <button id="accountSubmit" class="auth-submit" type="submit"><span id="accountSubmitLabel">登录</span></button>
       </form>
       <p id="accountRetry" class="auth-retry" hidden><span>连接暂时中断</span><button id="accountReconnect" type="button">重新连接</button></p>
       </div>
-      <p class="auth-switch"><button id="accountPasswordMode" type="button">密码登录</button><button id="accountSwitchButton" type="button">注册账号</button></p>
+      <p class="auth-switch"><button id="accountPasswordMode" type="button">密码登录</button><button id="accountForgotPassword" type="button">忘记密码？</button><button id="accountSwitchButton" type="button">注册账号</button></p>
     </section>
   </div>
 </main>
