@@ -6,6 +6,7 @@ import math
 from pathlib import Path
 import sys
 import resource
+from shared.compute.timing import timed_stage
 from .limits import MAX_LOCAL_OUTPUT_PIXELS, normalized_size
 
 def report(**fields):
@@ -31,7 +32,8 @@ def main():
         raise ValueError("增强结果超过可处理尺寸")
     enhancer = ImageEnhancer("x4plus_anime" if args.model == "anime" else "x4plus", scale=4, tile_size=400)
     report(progress=0, label="加载增强模型")
-    enhancer._load_model()
+    with timed_stage("model_load",source="engine"):
+        enhancer._load_model()
     report(progress=0, label="正在增强", device=str(enhancer._device))
     count = math.ceil((width + (-width % 4)) / 400) * math.ceil((height + (-height % 4)) / 400)
     completed = 0
@@ -44,15 +46,20 @@ def main():
     output = None
     try:
         output = np.memmap(pixels_path, dtype=np.uint8, mode="w+", shape=(height * 4, width * 4, 3))
-        result = enhancer.enhance(image, output_buffer=output, timeout_seconds=1800)
+        with timed_stage("gpu_inference",source="engine",device=str(enhancer._device),width=width,height=height):
+            result = enhancer.enhance(image, output_buffer=output, timeout_seconds=1800)
+            if str(enhancer._device)=="mps":
+                import torch
+                torch.mps.synchronize()
         if result.shape[:2] != (height * 4, width * 4):
             raise ValueError("增强输出尺寸校验失败")
-        output.flush()
-        report(progress=0.99, label="正在保存图片")
-        if not cv2.imwrite(args.output, result, [cv2.IMWRITE_JPEG_QUALITY, 92]):
-            raise ValueError("无法保存增强结果")
-        if not Path(args.output).is_file() or Path(args.output).stat().st_size == 0:
-            raise ValueError("无法保存增强结果")
+        with timed_stage("result_encode",source="engine",device=str(enhancer._device)):
+            output.flush()
+            report(progress=0.99, label="正在保存图片")
+            if not cv2.imwrite(args.output, result, [cv2.IMWRITE_JPEG_QUALITY, 92]):
+                raise ValueError("无法保存增强结果")
+            if not Path(args.output).is_file() or Path(args.output).stat().st_size == 0:
+                raise ValueError("无法保存增强结果")
         report(progress=1, label="增强完成", output=args.output,
                width=result.shape[1], height=result.shape[0], inputWidth=width, inputHeight=height,
                peakRssBytes=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)

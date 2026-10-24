@@ -20,6 +20,7 @@ from .sync import SyncEngine
 from .mac_codex import MacCodex
 from .platforms import resolve_profile
 from shared.compute.client import MacComputeClient, MacComputeError
+from shared.compute.timing import emit_timing
 
 WORKING = {"submitting","queued","running","reconnecting"}
 TERMINAL = {"completed","failed","cancelled","interrupted"}
@@ -793,6 +794,7 @@ class Runtime:
         if feature=="enhance" and self.platform.mode=="web" and MacComputeClient.enabled_for(self.account.get("owner")):
             job["macCompute"]=True
         self.storage.put("photoJobs",job)
+        if feature=="enhance":emit_timing("task_link","linked",source="server",photoJobId=identifier,requestId=job["requestId"],assetId=asset["id"])
         self.notify()
         self.launch("photo:"+identifier,self.run_enhancement(identifier) if feature=="enhance" else self.run_remote_photo(identifier))
         return job
@@ -928,6 +930,7 @@ class Runtime:
                     if current:
                         current["remoteTaskId"]=task_id
                         self.storage.put("photoJobs",current)
+                        emit_timing("task_link","linked",source="server",photoJobId=identifier,requestId=current["requestId"],assetId=current["inputAssetId"],taskId=task_id)
                 async def submit():
                     while True:
                         attempt=asyncio.create_task(asyncio.to_thread(client.submit_enhance,owner,job["requestId"],job["model"],source,width,height,remember_task))
@@ -958,6 +961,7 @@ class Runtime:
                     raise
                 remote_id=remote["id"]
                 self.update_photo(identifier,remoteTaskId=remote_id)
+            emit_timing("task_link","linked",source="server",photoJobId=identifier,requestId=job["requestId"],assetId=job["inputAssetId"],taskId=remote_id)
             while not self.closing:
                 current=self.storage.get("photoJobs",identifier)
                 if current["state"]=="cancelled":return
@@ -999,6 +1003,7 @@ class Runtime:
                 saved.unlink(missing_ok=True)
                 raise
             self.storage.add_history(asset["id"],"动漫增强" if job["model"]=="anime" else "通用增强",job_id=identifier)
+            emit_timing("task_link","linked",source="server",photoJobId=identifier,requestId=job["requestId"],assetId=job["inputAssetId"],taskId=remote_id,outputAssetId=asset["id"])
             self.update_photo(identifier,state="completed",progress=1,label="增强完成",device="mps",
                               outputAssetId=asset["id"],outputAssets=[asset],error=None)
         except asyncio.CancelledError:

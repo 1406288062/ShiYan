@@ -21,6 +21,7 @@ from urllib.parse import quote, urlsplit
 
 from shared.compute.client import MacComputeError, private_config
 from shared.paths import APP_ROOT, REPOSITORY_ROOT
+from shared.compute.timing import timed_stage, emit_timing
 
 
 class WorkerHTTP:
@@ -157,6 +158,7 @@ class TaskRunner:
     def run_process(self, command, request=None):
         environment = dict(os.environ, PYTORCH_ENABLE_MPS_FALLBACK="0", PYTHONUNBUFFERED="1")
         environment["PYTHONPATH"] = os.pathsep.join((str(REPOSITORY_ROOT), str(APP_ROOT)))
+        if self.task["kind"]=="enhance":environment["SHIYAN_ENHANCEMENT_TASK_ID"]=str(self.task["id"])
         if self.lost.is_set():
             raise RuntimeError("Task lease lost")
         self.process = subprocess.Popen(command, cwd=APP_ROOT, env=environment,
@@ -194,7 +196,10 @@ class TaskRunner:
                 event = json.loads(line)
             except (ValueError, UnicodeError):
                 continue
-            if event.get("event") == "progress":
+            if event.get("event")=="enhancement_timing" and event.get("stage") in {"model_load","gpu_inference","result_encode"}:
+                fields={k:event[k] for k in ("durationMs","startedAtMs","endedAtMs","width","height","device","errorType") if k in event}
+                emit_timing(event["stage"],event.get("status"),taskId=str(self.task["id"]),source="mac",**fields)
+            elif event.get("event") == "progress":
                 if event.get("device") not in {None, "mps"}:
                     self.stop_process()
                     raise RuntimeError("GPU inference required")
@@ -223,7 +228,8 @@ class TaskRunner:
                         raise ValueError("Unsupported enhancement model")
                     source, output = directory / "input.img", directory / "result.jpg"
                     self.update(0, "Mac 正在接收图片")
-                    self.http.request("GET", self.route + "/input", self.lease, destination=source)
+                    with timed_stage("mac_download",taskId=str(self.task["id"]),source="mac"):
+                        self.http.request("GET", self.route + "/input", self.lease, destination=source)
                     from PIL import Image
                     with Image.open(source) as image:
                         if image.size != (params["width"], params["height"]) or max(image.size) > 3000:
@@ -236,7 +242,8 @@ class TaskRunner:
                         if image.format != "JPEG" or image.size != (params["width"] * 4, params["height"] * 4):
                             raise ValueError("Invalid enhancement result")
                     self.update(0.99, "Mac 正在回传图片")
-                    self.http.request("PUT", self.route + "/result", self.lease, source=output)
+                    with timed_stage("mac_upload",taskId=str(self.task["id"]),source="mac",bytes=output.stat().st_size):
+                        self.http.request("PUT", self.route + "/result", self.lease, source=output)
                 elif self.task["kind"] == "embed":
                     texts = params.get("texts")
                     if (not isinstance(texts, list) or not 1 <= len(texts) <= 8

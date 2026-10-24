@@ -79,8 +79,13 @@
     const form=new FormData();
     for(const file of files) form.append('files',file,file.name || 'image.png');
     form.append('kind',kind);
-    const data=await api('/api/assets','POST',form);
-    return (data.assets || []).map(remember);
+    let finishTiming;
+    try { if(kind==='input')finishTiming=window.ShiYanEnhancementTiming?.beginUpload(); }catch(_){}
+    try {
+      const data=await api('/api/assets','POST',form);
+      finishTiming?.('completed',data.assets?.[0]?.id,Array.from(files).reduce((n,f)=>n+(f.size||0),0));
+      return (data.assets || []).map(remember);
+    }catch(error){finishTiming?.('failed');throw error;}
   }
   async function resolveAsset(id) {
     if(!id) return null;

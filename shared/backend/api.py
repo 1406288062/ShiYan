@@ -5,6 +5,8 @@ import base64
 from contextlib import asynccontextmanager
 import io
 import json
+import hashlib
+from shared.compute.timing import browser_timing, emit_timing
 import mimetypes
 import os
 from pathlib import Path
@@ -209,6 +211,17 @@ def create_app(directory, root, legacy=None, profile="desktop"):
                 r.listeners.discard(queue)
         return StreamingResponse(stream(),media_type="text/event-stream",
                  headers={"Cache-Control":"no-cache, no-transform","X-Accel-Buffering":"no"})
+
+    @app.post("/api/photo/timings")
+    async def photo_timings(request:Request):
+        r=runtime(request)
+        if len(await request.body())>2048:raise ValueError("计时日志过大")
+        data=await object_body(request)
+        fields=browser_timing(data,r.storage)
+        # Browser measurements are explicitly attributed, not trusted server timings.
+        owner=str(getattr(r,"account",{}).get("owner", "local"))
+        emit_timing(data["stage"],data["status"],source="browser",scopeId=hashlib.sha256(owner.encode()).hexdigest()[:16],**fields)
+        return {"ok":True}
 
     @app.post("/api/assets")
     async def upload(request:Request):
