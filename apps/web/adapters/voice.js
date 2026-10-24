@@ -3,23 +3,28 @@
   'use strict';
   const platform = window.ShiYanPlatform;
   if (platform?.mode !== 'web') return;
-  const synthesis = window.speechSynthesis;
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
   const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  let callId = null, playback = null, capture = null;
+  let callId = null, playback = null, capture = null, audio = null;
   const emit = detail => window.dispatchEvent(new CustomEvent('shiyan-native', {detail}));
   const state = (record, value, message) => emit({type: 'voicePlaybackState', sessionId: record.id,
-    state: value, ...(message ? {message} : {}), provider: 'browser-speech-synthesis'});
-  const available = () => !!(synthesis && window.SpeechSynthesisUtterance && Recognition);
+    state: value, ...(message ? {message} : {}), provider: 'xiaoxiao-neural'});
+  const available = () => !!(AudioContext && Recognition);
   function unavailableReason() {
-    if (!synthesis || !window.SpeechSynthesisUtterance) return '当前浏览器不支持语音朗读，请更换浏览器后重试。';
+    if (!AudioContext) return '当前浏览器不支持语音播放，请更换浏览器后重试。';
     return '当前浏览器不支持语音输入，请使用支持浏览器语音输入的浏览器。';
   }
   function cancelPlayback(id) {
     const record = playback;
     if (!record || (id && record.id !== id)) return;
     playback = null;
-    record.clearVoiceWait?.();
-    try { synthesis.cancel(); } catch {}
+    record.controller.abort();
+    if (record.source) {
+      record.source.onended = null;
+      try { record.source.stop(); } catch {}
+      record.source.disconnect();
+    }
+    record.finishPart?.();
     emit({type: 'voicePlaybackLevel', sessionId: record.id, level: 0});
     state(record, 'cancelled');
   }
@@ -73,66 +78,102 @@
         message: '浏览器语音输入未能启动，请检查麦克风权限后重试。'}));
     }
   }
-  // Web Speech exposes no quality flag: use advertised voice names, never
-  // assume that a local or remote voice is inherently higher quality.
-  function preferredVoice() {
-    const chinese = synthesis.getVoices().filter(voice => /^zh(?:-|_|$)/i.test(voice.lang));
-    const score = voice => {
-      const name = voice.name || '';
-      const mandarin = !/^zh[-_](?:HK|MO|yue)(?:[-_]|$)/i.test(voice.lang);
-      const quality = /natural|neural|premium|enhanced|自然|神经|增[强強]|优质|優質/i.test(name);
-      return (mandarin ? 1000 : 0) + (quality ? 100 : 0)
-        + (/^zh[-_](?:CN|Hans)(?:[-_]|$)/i.test(voice.lang) ? 10 : 0)
-        + (voice.default ? 1 : 0);
+  function prepareAudio() {
+    // Called synchronously from the user's call/read gesture before any fetch.
+    if (!audio || audio.state === 'closed') audio = new AudioContext();
+    const context = audio;
+    return Promise.resolve(context.resume()).then(() => {
+      if (context.state !== 'running') throw Error('请允许浏览器播放语音后重试。');
+      return context;
+    });
+  }
+  function speechParts(text) {
+    const parts = [];
+    let pending = '';
+    const append = value => {
+      if (pending && Array.from(pending + value).length > 320) {
+        parts.push(pending); pending = '';
+      }
+      pending += value;
     };
-    return chinese.sort((a, b) => score(b) - score(a))[0];
+    for (const sentence of text.match(/[^。！？!?；;\n]+[。！？!?；;\n]*|[。！？!?；;\n]+/gu) || []) {
+      const characters = Array.from(sentence);
+      for (let offset = 0; offset < characters.length; offset += 320) {
+        append(characters.slice(offset, offset + 320).join(''));
+      }
+    }
+    if (pending) parts.push(pending);
+    return parts;
+  }
+  async function fetchAudio(record, text) {
+    const response = await fetch('/api/voice/synthesize', {
+      method: 'POST', credentials: 'same-origin', cache: 'no-store',
+      headers: {'Content-Type': 'application/json', 'X-Shiyan-Local': '1'},
+      body: JSON.stringify({text}), signal: record.controller.signal,
+    });
+    if (!response.ok || !/^audio\/mpeg(?:;|$)/i.test(response.headers.get('content-type') || '')) {
+      throw Error('自然语音暂时不可用，请稍后重试。');
+    }
+    const bytes = await response.arrayBuffer();
+    if (!bytes.byteLength) throw Error('自然语音暂时不可用，请稍后重试。');
+    return bytes;
+  }
+  async function play(record, text, ready) {
+    const context = await ready;
+    if (playback !== record) return;
+    const parts = speechParts(text);
+    let pending = fetchAudio(record, parts[0]);
+    for (let index = 0; index < parts.length; index++) {
+      const bytes = await pending;
+      if (playback !== record) return;
+      // At most one following segment is fetched while this segment plays.
+      pending = index + 1 < parts.length ? fetchAudio(record, parts[index + 1]) : null;
+      pending?.catch(() => {}); // A prefetch failure is handled on its next turn.
+      const buffer = await context.decodeAudioData(bytes);
+      if (playback !== record) return;
+      await new Promise((resolve, reject) => {
+        const source = context.createBufferSource();
+        record.source = source; record.finishPart = resolve;
+        source.buffer = buffer;
+        source.connect(context.destination);
+        source.onended = () => {
+          source.disconnect();
+          if (record.source === source) { record.source = null; record.finishPart = null; }
+          resolve();
+        };
+        try {
+          source.start();
+          if (!record.started) { record.started = true; state(record, 'speaking'); }
+        } catch (error) { source.disconnect(); reject(error); }
+      });
+      if (playback !== record) return;
+    }
+    playback = null;
+    emit({type: 'voicePlaybackLevel', sessionId: record.id, level: 0});
+    state(record, 'finished');
   }
   function speak(detail) {
     cancelPlayback();
-    const utterance = new SpeechSynthesisUtterance(String(detail.text || ''));
-    utterance.lang = 'zh-CN';
-    const record = {id: detail.sessionId, utterance};
-    playback = record; // Also guards delayed voice-list loading against cancellation.
-    utterance.onstart = () => { if (playback === record) state(record, 'speaking'); };
-    utterance.onend = () => {
+    const record = {id: detail.sessionId, controller: new AbortController(), source: null, finishPart: null, started: false};
+    playback = record;
+    const text = String(detail.text || '').trim();
+    let ready;
+    try {
+      if (!text || text.length > 20000) throw Error('朗读内容为空或过长。');
+      ready = prepareAudio();
+    } catch (error) { ready = Promise.reject(error); }
+    play(record, text, ready).catch(() => {
       if (playback !== record) return;
       playback = null;
+      record.controller.abort();
       emit({type: 'voicePlaybackLevel', sessionId: record.id, level: 0});
-      state(record, 'finished');
-    };
-    utterance.onerror = event => {
-      if (playback !== record) return;
-      playback = null;
-      state(record, ['canceled', 'interrupted'].includes(event.error) ? 'cancelled' : 'failed',
-        '浏览器朗读未能完成，请重新开启语音通话。');
-    };
-    const begin = () => {
-      if (playback !== record) return;
-      record.clearVoiceWait?.();
-      const selected = preferredVoice();
-      if (selected) { utterance.voice = selected; utterance.lang = selected.lang; }
-      try { synthesis.speak(utterance); }
-      catch {
-        playback = null;
-        queueMicrotask(() => state(record, 'failed', '浏览器朗读未能启动，请重试。'));
-      }
-    };
-    if (preferredVoice()) { begin(); return; }
-    // Some browsers populate voices asynchronously, especially on first use.
-    const onVoicesChanged = () => { if (preferredVoice()) begin(); };
-    const timer = setTimeout(begin, 800);
-    record.clearVoiceWait = () => {
-      clearTimeout(timer);
-      synthesis.removeEventListener('voiceschanged', onVoicesChanged);
-      record.clearVoiceWait = null;
-    };
-    synthesis.addEventListener('voiceschanged', onVoicesChanged);
-    onVoicesChanged();
+      state(record, 'failed', '自然语音暂时不可用，请稍后重试。');
+    });
   }
   function post(action, detail = {}) {
     if (action === 'prepareVoicePlayback') {
       cancelCapture(); cancelPlayback(); callId = detail.callId;
-      if (synthesis) synthesis.getVoices();
+      if (AudioContext) { try { prepareAudio().catch(() => {}); } catch {} }
       return true;
     }
     if (detail.callId && detail.callId !== callId) return true;
@@ -140,17 +181,20 @@
       callId = null; cancelCapture(); cancelPlayback(); return true;
     }
     if (action === 'cancelSpeech') { cancelCapture(detail.sessionId); return true; }
-    if (action === 'cancelVoicePlayback') { cancelPlayback(detail.sessionId); return true; }
+    if (action === 'cancelVoicePlayback' || action === 'stopMessageReading') { cancelPlayback(detail.sessionId); return true; }
     if (action === 'startSpeech') {
       if (!Recognition) return false;
       startCapture(detail); return true;
     }
-    if (action === 'speakVoice') {
-      if (!synthesis || !window.SpeechSynthesisUtterance) return false;
+    if (action === 'speakVoice' || action === 'readMessage') {
+      if (!AudioContext) return false;
       speak(detail); return true;
     }
     return ['updateDotsVoiceCall', 'dotsVoiceTrace'].includes(action);
   }
-  window.addEventListener('pagehide', () => {callId = null; cancelCapture(); cancelPlayback();});
+  window.addEventListener('pagehide', () => {
+    callId = null; cancelCapture(); cancelPlayback();
+    if (audio) { try { Promise.resolve(audio.close()).catch(() => {}); } catch {} audio = null; }
+  });
   platform.registerAdapter('voice', {available, unavailableReason, post}, 'web');
 })();

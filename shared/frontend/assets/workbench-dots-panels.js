@@ -336,7 +336,10 @@
   }
   function stopReading() {
     const session=readSession;readSession=null;readingIndex=-1;
-    if(session)window.webkit?.messageHandlers?.native?.postMessage({action:'stopMessageReading',sessionId:session});
+    if(session){
+      if(window.ShiYanPlatform?.mode==='web')window.ShiYanPlatform.adapter('voice')?.post('stopMessageReading',{sessionId:session});
+      else window.webkit?.messageHandlers?.native?.postMessage({action:'stopMessageReading',sessionId:session});
+    }
     if(readUtterance){window.speechSynthesis?.cancel();readUtterance=null;}
     syncReadButtons();
   }
@@ -353,6 +356,10 @@
     if(text.length>20000){readError(Error('这条消息过长，暂时无法完整朗读'));return;}
     stopReading();readSession=crypto.randomUUID();readingIndex=index;
     const label=conversationDialog?.querySelector('.dots-read-error');if(label)label.hidden=true;
+    if(window.ShiYanPlatform?.mode==='web'){
+      if(!window.ShiYanPlatform.adapter('voice')?.post('readMessage',{sessionId:readSession,text}))readError(Error('当前浏览器不支持语音播放，请更换浏览器后重试。'));
+      syncReadButtons();return;
+    }
     const bridge=window.webkit?.messageHandlers?.native;
     if(bridge){bridge.postMessage({action:'readMessage',sessionId:readSession,text});syncReadButtons();return;}
     if(!window.speechSynthesis || !window.SpeechSynthesisUtterance){readError(Error('当前环境不支持朗读，请使用拾燕桌面应用'));return;}
@@ -622,7 +629,7 @@
     reduced.addEventListener('change',()=>{const floating=$('dotsFloatingPet');if(floating){delete floating.dataset.petId;positionPet();}document.querySelectorAll('img[data-dots-pet]').forEach(img=>{const pet=petById(img.dataset.dotsPet);if(pet)img.src=imageURL(pet);});});
     window.addEventListener('shiyan-native',event=>{
       const d=event.detail || {};if(d.type!=='voicePlaybackState' || d.sessionId!==readSession)return;
-      if(d.state==='error'){readError(Error(d.message || '朗读未能完成，请重试'));return;}
+      if(d.state==='error'||d.state==='failed'){readError(Error(d.message || '朗读未能完成，请重试'));return;}
       if(['finished','cancelled'].includes(d.state)){readSession=null;readingIndex=-1;syncReadButtons();}
     });
     document.addEventListener('visibilitychange',()=>{if(document.hidden)stopReading();});

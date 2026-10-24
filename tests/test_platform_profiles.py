@@ -130,7 +130,10 @@ class ApplicationTests(unittest.IsolatedAsyncioTestCase):
             with self.subTest(legacy=legacy is not None):
                 desktop = create_app(Path(self.temporary.name) / "desktop-routes", self.root, legacy=legacy, profile="desktop")
                 web = create_app(Path(self.temporary.name) / "web-routes", self.root, legacy=legacy, profile="web")
-                self.assertEqual(routes(desktop), routes(web))
+                web_voice = ("/api/voice/synthesize", ("POST",))
+                self.assertNotIn(web_voice, routes(desktop))
+                self.assertIn(web_voice, routes(web))
+                self.assertEqual(routes(desktop), routes(web) - {web_voice})
                 self.assertEqual(any(route.path == "/{rest:path}" for route in web.routes), legacy is not None)
 
     async def test_platform_metadata_is_public_and_matches_bootstrap_script(self):

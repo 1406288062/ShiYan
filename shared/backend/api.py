@@ -51,6 +51,9 @@ def create_app(directory, root, legacy=None, profile="desktop"):
     register_accounts(app)
     register_account_avatar(app)
     register_knowledge(app)
+    if platform.mode == "web":
+        from apps.web.adapters.tts import register_web_voice
+        register_web_voice(app)
 
     @app.middleware("http")
     async def local_only(request,call_next):
