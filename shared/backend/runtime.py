@@ -789,22 +789,37 @@ class Runtime:
         identifier=new_id()
         job={"id":identifier,"feature":feature,"model":model,"state":"queued","progress":0,"label":"等待处理",
              "inputAssetId":asset["id"],"maskAssetId":payload.get("maskAssetId"),"outputAssetId":None,
-             "outputAssets":[],"error":None,"createdAt":now(),"updatedAt":now(),"requestId":new_id(),
+             "outputAssets":[],"error":None,"createdAt":now(),"updatedAt":now(),"photoRevision":1,"requestId":new_id(),
              "remoteConversationId":f"shiyan-{feature}-{new_id()}","remoteJobId":None,"lastEventId":0}
         if feature=="enhance" and self.platform.mode=="web" and MacComputeClient.enabled_for(self.account.get("owner")):
             job["macCompute"]=True
         self.storage.put("photoJobs",job)
         if feature=="enhance":emit_timing("task_link","linked",source="server",photoJobId=identifier,requestId=job["requestId"],assetId=asset["id"])
-        self.notify()
+        # Photo progress is consumed through the bounded per-task endpoint.
         self.launch("photo:"+identifier,self.run_enhancement(identifier) if feature=="enhance" else self.run_remote_photo(identifier))
         return job
+
+    def photo_status(self,identifier):
+        job=self.storage.get("photoJobs",identifier)
+        if job is None:raise ValueError("任务不存在")
+        assets=[]
+        if job.get("outputAssetId"):
+            item=self.storage.get("assets",job["outputAssetId"])
+            if item:assets.append(self.storage.public_asset(item))
+        history=[]
+        if job.get("state")=="completed":
+            for entry in self.storage.list("history"):
+                if entry.get("jobId")==identifier:
+                    asset=next((a for a in assets if a["id"]==entry.get("assetId")),None)
+                    history.append({**entry,"asset":asset})
+        return {"job":{**job,"outputAssets":assets},"assets":assets,"history":history}
 
     def update_photo(self,identifier,**changes):
         job=self.storage.get("photoJobs",identifier)
         if job:
-            job.update(changes,updatedAt=now())
+            if all(job.get(key)==value for key,value in changes.items()):return job
+            job.update(changes,updatedAt=now(),photoRevision=int(job.get("photoRevision",0))+1)
             self.storage.put("photoJobs",job)
-            self.notify()
         return job
 
     async def run_enhancement(self,identifier):

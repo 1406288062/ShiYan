@@ -149,6 +149,7 @@
     if(!next)return;
     if(state && Number(next.version)<Number(state.version))return;
     const previousId=state && state.selectedConversationId;
+    next=window.ShiYanPhotoStatus.mergeSnapshot(next,state);
     state=next;state.conversations=state.conversations || [];state.history=state.history || [];state.settings=state.settings || {};state.photoJobs=state.photoJobs || [];
     (state.assets || []).forEach(remember);
     state.history.forEach(h=>remember(h.asset));
@@ -632,6 +633,29 @@
     }catch(e){ui.photoError=e.message;setText('photoError',e.message);show('photoError');}
     finally {$('homeFileInput').disabled=false;$('homeFileInput').value='';}
   }
+  function applyPhotoStatus(data){
+    if(!state||!data?.job)return;
+    const job=data.job,prior=state.photoJobs.find(j=>j.id===job.id);
+    if(prior&&!window.ShiYanPhotoStatus.newer(job,prior))return;
+    state.photoJobs=[job,...state.photoJobs.filter(j=>j.id!==job.id)];
+    (data.assets||[]).forEach(remember);
+    const history=new Map((state.history||[]).map(h=>[h.id,h]));
+    for(const h of data.history||[]){history.set(h.id,h);remember(h.asset);}
+    state.history=[...history.values()];
+    renderPhoto();
+    if(data.history?.length)renderHistory();
+  }
+  const photoStatusPoll=window.ShiYanPhotoStatus.create({
+    request:async(id,signal)=>{
+      const response=await fetch('/api/photo/jobs/'+encodeURIComponent(id),{credentials:'same-origin',signal});
+      if(!response.ok)throw Error('增强状态暂不可用');
+      const data=await response.json();if(data.ok===false)throw Error('增强状态暂不可用');return data;
+    },apply:applyPhotoStatus,isVisible:()=>!document.hidden
+  });
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)photoStatusPoll.refresh();});
+  window.addEventListener('online',()=>photoStatusPoll.refresh());
+  window.addEventListener('pagehide',()=>photoStatusPoll.stop());
+  window.addEventListener('pageshow',()=>{const job=photoJob();if(job&&busyStates.has(job.state))photoStatusPoll.watch(job.id);});
   function photoJob(){return state && (state.photoJobs || []).find(j=>j.id===ui.photoJobId);}
   function photoBusy(){const j=photoJob();return ui.photoUploading || ui.photoSubmitting || !!(j && busyStates.has(j.state));}
   function setFeature(feature) {
@@ -644,6 +668,7 @@
   function renderPhoto() {
     if(!state)return;
     const job=photoJob(),busy=photoBusy();
+    photoStatusPoll.watch(job&&busyStates.has(job.state)?job.id:null);
     if(job && job.outputAssetId && assets.has(job.outputAssetId))ui.result=assets.get(job.outputAssetId);
     const image=ui.showOriginal || !ui.result?ui.input:ui.result;
     $('homeWorkspace').style.setProperty('--photo-aspect',String(image && image.width && image.height?image.width/image.height:1));
@@ -734,13 +759,13 @@
         const [mask]=await upload([await makeMask()],'mask');body.maskAssetId=mask.id;
       }
       const data=await api('/api/photo/jobs','POST',body);
-      ui.photoJobId=data.jobId;ui.result=null;ui.showOriginal=false;renderPhoto();
+      ui.photoJobId=data.jobId;ui.result=null;ui.showOriginal=false;applyPhotoStatus(data);renderPhoto();
     }catch(e){ui.photoError=e.message;setText('photoError',e.message);show('photoError');}
     finally {ui.photoSubmitting=false;renderPhoto();}
   }
   async function cancelPhoto() {
     if(!ui.photoJobId)return;
-    try{await api('/api/photo/jobs/'+encodeURIComponent(ui.photoJobId)+'/cancel','POST',{});}
+    try{applyPhotoStatus(await api('/api/photo/jobs/'+encodeURIComponent(ui.photoJobId)+'/cancel','POST',{}));}
     catch(e){ui.photoError='停止尚未确认：'+e.message;setText('photoError',ui.photoError);show('photoError');}
   }
   function historyHTML(item) {

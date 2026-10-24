@@ -460,12 +460,16 @@ def create_app(directory, root, legacy=None, profile="desktop"):
     @app.post("/api/photo/jobs")
     async def photo_job(request:Request):
         job=runtime(request).create_photo_job(await object_body(request))
-        return result(request,jobId=job["id"])
+        return {"ok":True,"jobId":job["id"],**runtime(request).photo_status(job["id"])}
+
+    @app.get("/api/photo/jobs/{identifier}")
+    async def photo_status(identifier:str,request:Request):
+        return {"ok":True,**runtime(request).photo_status(identifier)}
 
     @app.post("/api/photo/jobs/{identifier}/cancel")
     async def cancel_photo(identifier:str,request:Request):
         await runtime(request).stop_photo(identifier)
-        return result(request)
+        return {"ok":True,**runtime(request).photo_status(identifier)}
 
     @app.post("/api/photo/jobs/{identifier}/retry")
     async def retry_photo(identifier:str,request:Request):
