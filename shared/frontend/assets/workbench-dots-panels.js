@@ -588,8 +588,9 @@
     const alignToolbar=()=>{
       const toolbar=$('dotsToolbar'),header=$('desktopToolbar'),toggle=$('toggleRightWorkspace');if(!toolbar||!header||!toggle)return;
       const bounds=header.getBoundingClientRect(),button=toggle.getBoundingClientRect();
-      toolbar.style.right=Math.max(4,bounds.right-button.left+8)+'px';
-      toolbar.querySelector('.dots-toolbar-divider').style.visibility=toggle.getAttribute('aria-expanded')==='true'?'hidden':'visible';
+      const toggleVisible=toggle.getClientRects().length>0&&button.width>0;
+      toolbar.style.right=(toggleVisible?Math.max(4,bounds.right-button.left+8):12)+'px';
+      toolbar.querySelector('.dots-toolbar-divider').style.visibility=!toggleVisible||toggle.getAttribute('aria-expanded')==='true'?'hidden':'visible';
       positionPanel();
     };
     new ResizeObserver(alignToolbar).observe($('desktopToolbar'));
