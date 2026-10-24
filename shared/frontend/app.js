@@ -480,7 +480,7 @@
   async function newConversation(projectId) {
     cancelSpeech();const c=current();if(c)await flushDraft(c.id);
     ui.editing=null;notice('');
-    await api('/api/conversations','POST',{projectId:typeof projectId==='string'?projectId:(window.workbench?.selectedProjectId()||null)});
+    await api('/api/conversations','POST',{projectId:typeof projectId==='string'?projectId:null});
     setDrawer(false);setView('agent');$('messageInput').focus();
   }
   function setDrawer(open) {
