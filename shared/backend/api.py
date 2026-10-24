@@ -13,8 +13,8 @@ from pathlib import Path
 import tempfile
 import time
 from urllib.parse import urlsplit, quote
-from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from fastapi import BackgroundTasks, FastAPI, Request
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.requests import ClientDisconnect
 from .message_view import conversation_view
@@ -48,6 +48,17 @@ def create_app(directory, root, legacy=None, profile="desktop"):
     app=FastAPI(title="拾燕",docs_url=None,redoc_url=None,openapi_url=None,lifespan=lifespan)
 
     app.state.platform=platform
+    cos_transfer = None
+    cos_configuration_error = False
+    if platform.mode == "web":
+        from apps.web.adapters.cos_transfer import CosConfig, CosTransfer, CosUnavailable
+        try:
+            cos_config = CosConfig.from_environment()
+            if cos_config:
+                cos_transfer = CosTransfer(cos_config)
+        except CosUnavailable:
+            cos_configuration_error = True
+    app.state.cos_transfer = cos_transfer
 
     register_workbench(app)
     register_dots(app)
@@ -126,10 +137,45 @@ def create_app(directory, root, legacy=None, profile="desktop"):
             raise ValueError("请求应为 JSON 对象")
         return value
 
+    @app.post("/api/assets/cos/upload")
+    async def cos_upload(request:Request):
+        if cos_configuration_error:
+            return JSONResponse({"ok":False,"error":"图片传输配置不可用"},status_code=503)
+        transfer = cos_transfer
+        if transfer is None:
+            return {"ok":True,"available":False}
+        if len(await request.body()) > 8192:
+            raise ValueError("图片上传信息过大")
+        try:
+            return await asyncio.to_thread(transfer.initialize,runtime(request),await object_body(request))
+        except CosUnavailable:
+            return JSONResponse({"ok":False,"error":"图片传输暂时失败，请稍后重试"},status_code=503)
+
+    @app.post("/api/assets/cos/complete")
+    async def cos_complete(request:Request,background_tasks:BackgroundTasks):
+        transfer = cos_transfer
+        if transfer is None:
+            return JSONResponse({"ok":False,"error":"图片直传未启用"},status_code=503)
+        if len(await request.body()) > 8192:
+            raise ValueError("图片上传信息过大")
+        try:
+            r = runtime(request)
+            payload = await object_body(request)
+            result = await asyncio.to_thread(transfer.complete,r,payload)
+            background_tasks.add_task(transfer.cleanup_completed,r,payload["ticketIds"])
+        except CosUnavailable:
+            return JSONResponse({"ok":False,"error":"图片传输暂时失败，请稍后重试"},status_code=503)
+        return result
+
     @app.get("/")
     async def home():
+        origin = cos_transfer.config.origin if cos_transfer is not None else ""
+        extra = " " + origin if origin else ""
+        policy = ("default-src 'self' blob: data:; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+                  "img-src 'self' data: blob:" + extra + "; connect-src 'self'" + extra + "; "
+                  "frame-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
         return FileResponse(root/"web"/"index.html",media_type="text/html",
-              headers={"Cache-Control":"no-cache","Content-Security-Policy":"default-src 'self' blob: data:; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; frame-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"})
+              headers={"Cache-Control":"no-cache","Content-Security-Policy":policy})
 
     @app.get("/api/platform")
     async def platform_info():
@@ -142,6 +188,14 @@ def create_app(directory, root, legacy=None, profile="desktop"):
             adapter = Path(__file__).resolve().parents[2] / "apps/web/adapters/voice.js"
             source = adapter.read_text(encoding="utf-8")
         return Response(source, media_type="application/javascript", headers={"Cache-Control": "no-store"})
+
+    @app.get("/assets/platform-cos.js")
+    async def platform_cos_script():
+        source = ""
+        if platform.mode == "web":
+            adapter = Path(__file__).resolve().parents[2] / "apps/web/adapters/cos-transfer.js"
+            source = adapter.read_text(encoding="utf-8")
+        return Response(source,media_type="application/javascript",headers={"Cache-Control":"no-store"})
 
     @app.get("/assets/site-icon.png")
     async def site_icon():
@@ -313,6 +367,15 @@ def create_app(directory, root, legacy=None, profile="desktop"):
     async def asset_file(identifier:str,request:Request,download:int=0):
         r=runtime(request)
         asset=r.storage.asset(identifier)
+        transfer = cos_transfer
+        if transfer is not None:
+            try:
+                url = await asyncio.to_thread(transfer.asset_url,r,identifier,bool(download))
+            except CosUnavailable:
+                return JSONResponse({"ok":False,"error":"图片传输暂时失败，请稍后重试"},status_code=503)
+            if url:
+                return RedirectResponse(url,status_code=307,
+                        headers={"X-Content-SHA256":asset["sha256"],"Referrer-Policy":"no-referrer"})
         inline=asset["mimeType"] in {"image/jpeg","image/png","image/webp","image/bmp"} and not download
         return FileResponse(r.storage.asset_path(identifier),media_type=asset["mimeType"],
                             filename=asset["filename"] if inline else r.storage.export_filename(asset),content_disposition_type="inline" if inline else "attachment",

@@ -86,10 +86,14 @@
     const release=priority?.begin();
     try {
       const path='/api/assets'+(kind==='input'?'?compact=1':'');
-      const data=priority?await priority.upload(path,form,progress=>{
-        ui.photoUploadLabel=progress.sent?'图片已发送，正在确认':progress.percent===null?'正在上传图片':'正在上传图片 '+progress.percent+'%';
+      const progress=value=>{
+        ui.photoUploadLabel=value.sent?'图片已发送，正在确认':value.percent===null?'正在上传图片':'正在上传图片 '+value.percent+'%';
         renderPhoto();
-      }):await api(path,'POST',form);
+      };
+      let data=null;
+      if(kind==='input' && window.ShiYanPlatform?.mode==='web' && window.ShiYanCosTransfer)
+        data=await window.ShiYanCosTransfer.upload(files,kind,api,progress);
+      if(data===null)data=priority?await priority.upload(path,form,progress):await api(path,'POST',form);
       finishTiming?.('completed',data.assets?.[0]?.id,Array.from(files).reduce((n,f)=>n+(f.size||0),0));
       return (data.assets || []).map(remember);
     }catch(error){finishTiming?.('failed');throw error;}
@@ -696,6 +700,7 @@
     $('showOriginalButton').classList.toggle('is-selected',ui.showOriginal);
     setText('showResultButton',ui.feature==='remove'?'消除':ui.feature==='colorize'?'上色':'增强');
     setText('imageDimensions',image && image.width && image.height ? image.width+' × '+image.height:'');
+    if(window.ShiYanPlatform?.mode==='web')$('homeImage').crossOrigin='anonymous';
     if(image && $('homeImage').getAttribute('src')!==assetUrl(image))$('homeImage').src=assetUrl(image);
     if(!image)$('homeImage').removeAttribute('src');
     $('imageDropZone').classList.toggle('has-image',!!image);
@@ -858,6 +863,7 @@
     const image=(a.mimeType || '').startsWith('image/');
     if(!image && native('preview',{url:new URL(assetUrl(a,true),location.href).href,filename:a.filename || '文件'}))return;
     show('imagePreview');show('previewImage',image);show('filePreview',!image);show('previewControls');setText('previewCaption',a.filename || '');
+    if(window.ShiYanPlatform?.mode==='web')$('previewImage').crossOrigin='anonymous';
     if(image){$('previewImage').src=assetUrl(a);$('previewImage').alt=a.filename || '图片';}
     else{
       const iframe=$('filePreview');iframe.setAttribute('sandbox','');iframe.src=assetUrl(a);

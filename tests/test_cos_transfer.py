@@ -1,0 +1,274 @@
+"""Web COS transfer isolation, signing, bounded IO and API contracts."""
+import concurrent.futures
+from contextlib import closing
+import hashlib
+import io
+import json
+import os
+from pathlib import Path
+import sqlite3
+import sys
+import tempfile
+from types import SimpleNamespace
+import unittest
+from unittest.mock import AsyncMock, Mock, patch
+from urllib.parse import parse_qs, urlsplit
+
+import httpx
+from PIL import Image
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from shared.paths import APP_ROOT
+sys.path.insert(0, str(APP_ROOT))
+from desktop_backend.api import create_app
+from desktop_backend.storage import Storage
+from apps.web.adapters.cos_transfer import CosClient, CosConfig, CosTransfer, CosUnavailable, MAX_INPUT
+
+
+CONFIG = CosConfig("fixture-12345678", "ap-guangzhou", "fixture-id", "fixture-secret")
+
+
+class MemoryCOS(CosClient):
+    def __init__(self):
+        super().__init__(CONFIG)
+        self.objects = {}
+        self.downloads = 0
+        self.uploads = []
+        self.deletes = []
+
+    def download(self, key, size):
+        self.downloads += 1
+        return self.objects[key]
+
+    def delete(self, key):
+        self.deletes.append(key)
+        self.objects.pop(key, None)
+
+    def upload_file(self, key, path, mime):
+        self.uploads.append((key, mime))
+        self.objects[key] = Path(path).read_bytes()
+
+
+class TransferTests(unittest.TestCase):
+    def setUp(self):
+        self.folder = tempfile.TemporaryDirectory()
+        self.addCleanup(self.folder.cleanup)
+        self.runtimes = []
+        self.runtime = self.runtime_for("alice")
+        data = io.BytesIO()
+        Image.new("RGB", (80, 40), (12, 34, 56)).save(data, "PNG")
+        self.image = data.getvalue()
+        self.client = MemoryCOS()
+        self.clock = [1000.0]
+        self.transfer = CosTransfer(CONFIG, self.client, clock=lambda: self.clock[0])
+
+    def runtime_for(self, owner):
+        storage = Storage(Path(self.folder.name) / owner, APP_ROOT)
+        self.addCleanup(storage.db.close)
+        runtime = SimpleNamespace(account={"owner": owner}, storage=storage, server_access=True,
+                                  snapshot=Mock(), notify=Mock())
+        self.runtimes.append(runtime)
+        return runtime
+
+    def start(self, runtime=None, size=None):
+        return self.transfer.initialize(runtime or self.runtime, {"kind": "input", "files": [
+            {"name": "测试.png", "size": size or len(self.image), "type": "image/png"}]})["uploads"][0]
+
+    def staged(self, runtime=None):
+        upload = self.start(runtime)
+        self.client.objects[urlsplit(upload["url"]).path.lstrip("/")] = self.image
+        return upload
+
+    def test_upload_url_binds_private_acl_size_type_and_scoped_random_key(self):
+        first, second = self.start(), self.start()
+        url = urlsplit(first["url"])
+        self.assertEqual(url.hostname, CONFIG.host)
+        self.assertTrue(url.path.startswith("/shiyan-web/uploads/" + hashlib.sha256(b"alice").hexdigest() + "/"))
+        self.assertNotEqual(first["url"], second["url"])
+        self.assertEqual(first["headers"], {"Content-Type": "image/png", "Content-Length": str(len(self.image)), "x-cos-acl": "private"})
+        query = parse_qs(url.query)
+        self.assertEqual(query["q-header-list"], ["content-length;content-type;host;x-cos-acl"])
+        self.assertEqual(query["q-sign-time"], ["940;1900"])
+        self.assertNotIn(CONFIG.secret_key, first["url"])
+        changed = self.client.signed_url("PUT", url.path.lstrip("/"), headers={**first["headers"], "x-cos-acl": "public-read"}, now=1000, ttl=900)
+        self.assertNotEqual(parse_qs(urlsplit(changed).query)["q-signature"], query["q-signature"])
+
+    def test_cross_account_and_unknown_tickets_rejected_before_cos_access(self):
+        upload = self.staged()
+        bob = self.runtime_for("bob")
+        with self.assertRaises(ValueError):
+            self.transfer.complete(bob, {"ticketIds": [upload["ticketId"]]})
+        with self.assertRaises(ValueError):
+            self.transfer.complete(self.runtime, {"ticketIds": ["foreign"]})
+        self.assertEqual(self.client.downloads, 0)
+
+    def test_tickets_persist_and_double_completion_is_idempotent(self):
+        upload = self.staged()
+        restarted = CosTransfer(CONFIG, self.client, clock=lambda: self.clock[0])
+        payload = {"ticketIds": [upload["ticketId"]]}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(lambda _: restarted.complete(self.runtime, payload), range(2)))
+        self.assertEqual(results[0], results[1])
+        self.assertEqual(self.client.downloads, 1)
+        self.assertEqual(len(self.runtime.storage.list("assets")), 1)
+        asset = results[0]["assets"][0]
+        self.assertEqual((asset["width"], asset["height"], asset["mimeType"]), (80, 40, "image/jpeg"))
+        self.assertNotIn("storedName", asset)
+        self.assertTrue(self.client.objects)  # Cleanup is deliberately off the response path.
+        restarted.cleanup_completed(self.runtime, payload["ticketIds"])
+        self.assertFalse(self.client.objects)
+        self.runtime.notify.assert_not_called()
+        self.runtime.snapshot.assert_not_called()
+
+    def test_expired_ticket_and_untrusted_input_never_download(self):
+        upload = self.staged()
+        self.clock[0] += 1201
+        for payload in ({"ticketIds": [upload["ticketId"]]},
+                        {"ticketIds": [upload["ticketId"]], "url": "https://attacker/"},
+                        {"ticketIds": [upload["ticketId"], upload["ticketId"]]}):
+            with self.assertRaises(ValueError):
+                self.transfer.complete(self.runtime, payload)
+        self.assertEqual(self.client.downloads, 0)
+
+    def test_size_mismatch_and_fake_image_do_not_become_assets(self):
+        upload = self.start(size=len(self.image) + 1)
+        self.client.objects[urlsplit(upload["url"]).path.lstrip("/")] = self.image
+        with self.assertRaises(ValueError):
+            self.transfer.complete(self.runtime, {"ticketIds": [upload["ticketId"]]})
+        upload = self.start(size=5)
+        self.client.objects[urlsplit(upload["url"]).path.lstrip("/")] = b"hello"
+        with self.assertRaises(ValueError):
+            self.transfer.complete(self.runtime, {"ticketIds": [upload["ticketId"]]})
+        self.assertEqual(self.runtime.storage.list("assets"), [])
+
+    def test_limits_and_image_kind_prevent_unbounded_presigning(self):
+        good = {"name": "image.png", "size": len(self.image), "type": "image/png"}
+        for payload in ({"kind": "attachment", "files": [good]}, {"kind": "input", "files": [good] * 9},
+                        {"kind": "input", "files": [{**good, "size": MAX_INPUT + 1}]},
+                        {"kind": "input", "files": [{**good, "type": "text/html"}]},
+                        {"kind": "input", "files": [{**good, "key": "foreign"}]}):
+            with self.assertRaises(ValueError):
+                self.transfer.initialize(self.runtime, payload)
+        for _ in range(16):
+            self.start()
+        with self.assertRaises(ValueError):
+            self.start()
+
+    def test_mirror_authorizes_owner_and_uses_immutable_key_and_fresh_signed_url(self):
+        upload = self.staged()
+        asset = self.transfer.complete(self.runtime, {"ticketIds": [upload["ticketId"]]})["assets"][0]
+        url = self.transfer.asset_url(self.runtime, asset["id"], download=True)
+        second = self.transfer.asset_url(self.runtime, asset["id"], download=False)
+        self.assertEqual(len(self.client.uploads), 1)
+        self.assertIn("/shiyan-web/assets/", url)
+        self.assertNotEqual(urlsplit(url).path, urlsplit(upload["url"]).path)
+        params = parse_qs(urlsplit(url).query)
+        self.assertEqual(params["response-content-type"], ["image/jpeg"])
+        self.assertTrue(params["response-content-disposition"][0].startswith("attachment; filename*=UTF-8''"))
+        self.assertIn("no-store", params["response-cache-control"][0])
+        self.assertTrue(parse_qs(urlsplit(second).query)["response-content-disposition"][0].startswith("inline;"))
+        with self.assertRaises(ValueError):
+            self.transfer.asset_url(self.runtime_for("bob"), asset["id"])
+        with closing(sqlite3.connect(self.runtime.storage.root / "cos-transfer.sqlite3")) as db:
+            data = db.execute("SELECT data FROM mirrors").fetchone()[0]
+            self.assertNotIn("q-signature", data)
+            self.assertNotIn("q-ak", data)
+
+    def test_download_bounds_and_generic_upstream_errors(self):
+        response = Mock(status=200)
+        response.getheader.return_value = str(MAX_INPUT + 1)
+        connection = Mock()
+        connection.getresponse.return_value = response
+        with patch("http.client.HTTPSConnection", return_value=connection):
+            with self.assertRaises(CosUnavailable):
+                CosClient(CONFIG).download("safe-key", 4)
+        response.read.assert_not_called()
+        connection.close.assert_called_once()
+        connection.request.side_effect = RuntimeError("https://private/?secret=leak")
+        with patch("http.client.HTTPSConnection", return_value=connection):
+            with self.assertRaises(CosUnavailable) as caught:
+                CosClient(CONFIG).download("safe-key", 4)
+        self.assertNotIn("leak", str(caught.exception))
+
+
+class APITests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.storage = Storage(self.temp.name, APP_ROOT)
+        self.addCleanup(self.storage.db.close)
+        self.runtime = SimpleNamespace(storage=self.storage, account={"owner": "alice"}, server_access=True,
+                                       notify=Mock(), snapshot=Mock())
+
+    async def client(self, mode="web", config=None):
+        with patch.dict(os.environ, {"SHIYAN_COS_CONFIG": ""}), \
+             patch.object(CosConfig, "from_environment", return_value=config):
+            app = create_app(self.temp.name, APP_ROOT, profile=mode)
+        app.state.runtime = self.runtime
+        app.state.accounts = SimpleNamespace(protect=AsyncMock())
+        client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1:17861",
+                                  headers={"X-Shiyan-Local": "1"})
+        self.addAsyncCleanup(client.aclose)
+        return app, client
+
+    async def test_disabled_and_desktop_keep_original_file_endpoint(self):
+        image = io.BytesIO()
+        Image.new("RGB", (4, 4)).save(image, "PNG")
+        asset = self.storage.save_bytes(image.getvalue(), "fixture.png", "image/png")
+        for mode, config in (("web", None), ("desktop", CONFIG)):
+            app, client = await self.client(mode, config)
+            response = await client.post("/api/assets/cos/upload", json={"kind": "input", "files": []})
+            self.assertEqual(response.json(), {"ok": True, "available": False})
+            response = await client.get(asset["url"])
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.content, image.getvalue())
+            self.assertNotIn(CONFIG.host, (await client.get("/")).headers["content-security-policy"])
+
+    async def test_enabled_csp_only_allows_configured_host_and_errors_do_not_fallback(self):
+        app, client = await self.client(config=CONFIG)
+        policy = (await client.get("/")).headers["content-security-policy"]
+        self.assertEqual(policy.count(CONFIG.origin), 2)
+        self.assertNotIn("*", policy)
+        app.state.cos_transfer.initialize = Mock(side_effect=CosUnavailable("credential should not escape"))
+        response = await client.post("/api/assets/cos/upload", json={"kind": "input", "files": []})
+        self.assertEqual(response.status_code, 503)
+        self.assertNotIn("credential", response.text)
+        self.assertNotIn("available", response.json())
+
+    async def test_file_redirect_retains_authorization_and_file_metadata(self):
+        app, client = await self.client(config=CONFIG)
+        image = io.BytesIO()
+        Image.new("RGB", (4, 4)).save(image, "PNG")
+        asset = self.storage.save_bytes(image.getvalue(), "fixture.png", "image/png")
+        app.state.cos_transfer.client = MemoryCOS()
+        response = await client.get(asset["downloadUrl"])
+        self.assertEqual(response.status_code, 307)
+        self.assertEqual(response.headers["x-content-sha256"], asset["sha256"])
+        self.assertEqual(response.headers["cache-control"], "no-store")
+        self.assertEqual(urlsplit(response.headers["location"]).hostname, CONFIG.host)
+        self.assertEqual((await client.get("/api/assets/foreign/file")).status_code, 400)
+
+    async def test_account_resource_proxy_keeps_upload_complete_and_download_working(self):
+        app, client = await self.client(config=CONFIG)
+        async def protect(request):
+            request.scope["app"] = SimpleNamespace(state=SimpleNamespace(runtime=self.runtime))
+        app.state.accounts.protect = protect
+        upstream = MemoryCOS()
+        app.state.cos_transfer.client = upstream
+        image = io.BytesIO()
+        Image.new("RGB", (4, 4)).save(image, "PNG")
+        response = await client.post("/api/assets/cos/upload", json={"kind": "input", "files": [
+            {"name": "image.png", "size": len(image.getvalue()), "type": "image/png"}]})
+        self.assertEqual(response.status_code, 200, response.text)
+        ticket = response.json()["uploads"][0]
+        upstream.objects[urlsplit(ticket["url"]).path.lstrip("/")] = image.getvalue()
+        response = await client.post("/api/assets/cos/complete", json={"ticketIds": [ticket["ticketId"]]})
+        self.assertEqual(response.status_code, 200, response.text)
+        asset = response.json()["assets"][0]
+        self.assertNotIn("storedName", asset)
+        self.assertEqual((await client.get(asset["url"])).status_code, 307)
+        self.assertEqual((await client.get("/assets/platform-cos.js")).status_code, 200)
+
+
+if __name__ == "__main__":
+    unittest.main()
