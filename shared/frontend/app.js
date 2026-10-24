@@ -9,7 +9,7 @@
   const drafts = new Map(), assets = new Map(), stoppingConversations = new Set();
   const ui = {
     view:'agent', feature:'enhance', model:'general', input:null, result:null, showOriginal:false,
-    photoBatchEntries:[], photoBatchIndex:0, photoBatch:null, photoExporting:false, photoJobId:null, photoUploading:false, photoUploadFile:null, photoLocalURL:null, photoSubmitting:false, photoError:'', strokes:[], currentStroke:null, brush:.055, drawer:false, reasoning:false, reasoningDragging:false, reasoningPosition:0,
+    photoBatchEntries:[], photoBatchIndex:0, photoSelectionVersion:0, photoBatch:null, photoExporting:false, photoJobId:null, photoUploading:false, photoUploadFile:null, photoLocalURL:null, photoSubmitting:false, photoError:'', strokes:[], currentStroke:null, brush:.055, drawer:false, reasoning:false, reasoningDragging:false, reasoningPosition:0,
     editing:null, submitting:false, speech:false, speechFinishing:false, speechSessionId:null, speechPrefix:'', recordingConversation:null,
     selection:new Set(), selecting:false, sessionMenuId:null, deletingSessionId:null,
     preview:null, zoom:1, panX:0, panY:0, previewPointer:null, searchTerm:'', restoring:false, historyReturnView:'agent'
@@ -586,7 +586,7 @@
     ui.feature='enhance';  
     ui.model=state.settings.homeModel==='anime'?'anime':'general';
     const batchInputs=state.settings.homeInputAssetIds;
-    if(Array.isArray(batchInputs)&&batchInputs.length>1){
+    if(Array.isArray(batchInputs)&&batchInputs.length>0){
       await restorePhotoBatch(batchInputs.slice(0,10),state.settings.homePhotoBatchId);
       ui.restoring=false;renderPhoto();
       if(!state.conversations.length)await api('/api/conversations','POST',{});
@@ -603,7 +603,7 @@
   let workspaceSaveQueue=Promise.resolve();
   async function saveWorkspace() {
     if(ui.photoUploadFile)return;
-    const settings={homeInputAssetId:ui.input && ui.input.id,homeFeature:ui.feature,homeModel:ui.model,homeInputAssetIds:(ui.photoBatchEntries||[]).map(item=>item.input?.id).filter(id=>id&&!id.startsWith('local:')),homePhotoBatchId:ui.photoBatch?.id||null};
+    const settings={homeInputAssetId:ui.input&&!String(ui.input.id).startsWith('local:')?ui.input.id:null,homeFeature:ui.feature,homeModel:ui.model,homeInputAssetIds:(ui.photoBatchEntries||[]).map(item=>item.input?.id).filter(id=>id&&!id.startsWith('local:')),homePhotoBatchId:ui.photoBatch?.id||null};
     if(state)state.settings={...state.settings,...settings};
     // Persist selections in order, independently of upload readiness.
     const operation=workspaceSaveQueue.catch(()=>{}).then(()=>api('/api/settings?compact=1','PATCH',settings));
@@ -613,12 +613,12 @@
 
   function photoBatchEntries(){return ui.photoBatchEntries||[];}
   function clearPhotoBatch(){
-    photoBatchPoll.stop();
+    photoBatchPoll.stop();ui.photoSelectionVersion=(ui.photoSelectionVersion||0)+1;
     for(const entry of photoBatchEntries())if(entry.localURL)URL.revokeObjectURL(entry.localURL);
     ui.photoBatchEntries=[];ui.photoBatchIndex=0;ui.photoBatch=null;
   }
   function syncPhotoBatchSelection(){
-    const entries=photoBatchEntries();if(entries.length<2)return;
+    const entries=photoBatchEntries();if(!entries.length)return;
     for(const entry of entries){
       const verified=assets.get(entry.input?.id);
       if(verified)entry.input={...entry.input,...verified,...(verified.width&&verified.height?{}:{width:entry.input.width,height:entry.input.height}),...(entry.localURL?{url:entry.localURL}:{})};
@@ -644,26 +644,34 @@
     }
     return {total:entries.length,completed,failed,waiting};
   }
+  function photoSelection(){
+    const total=photoBatchEntries().length||(ui.input?1:0);
+    return {index:total?Math.min(ui.photoBatchIndex,total-1):0,total};
+  }
   function renderPhotoBatch(){
-    const entries=photoBatchEntries(),bar=$('photoBatchBar');if(!bar)return;
-    bar.hidden=entries.length<2;const summary=photoBatchSummary();
-    setText('photoBatchSummary','共 '+entries.length+' 张'+(ui.photoBatch?' · 已完成 '+summary.completed+' 张'+(summary.failed?' · 失败 '+summary.failed+' 张':''):' · 一次最多 10 张'));
-    const html=entries.map((entry,index)=>{
-      const job=(state?.photoJobs||[]).find(item=>item.id===entry.jobId);
-      const label=entry.uploading?'上传中':entry.file?(entry.error?'上传失败':'等待上传'):
-        job?.state==='completed'?'已完成':job?.state==='failed'?'增强失败':job?.state==='cancelled'?'已停止':
-        job&&busyStates.has(job.state)?window.ShiYanPhotoStatus.label(job):'待增强';
-      return '<button type="button" class="photo-batch-item'+(index===ui.photoBatchIndex?' is-selected':'')+'" data-photo-batch-index="'+index+'" aria-pressed="'+(index===ui.photoBatchIndex)+'" title="'+esc(window.ShiYanPhotoStatus.error(entry.error||job?.error)||entry.input?.filename||'')+'"><span class="photo-batch-number">'+(index+1)+'</span><img src="'+esc(entry.localURL||assetUrl(entry.input)||'')+'" alt="" loading="lazy"><span class="photo-batch-copy"><strong>'+esc(entry.input?.filename||entry.file?.name||'图片')+'</strong><span class="'+(entry.error||job?.state==='failed'?'is-error':'')+'">'+esc(label)+'</span></span></button>';
-    }).join('');
-    const list=$('photoBatchItems');if(list&&list._photoBatchHTML!==html){list._photoBatchHTML=html;list.innerHTML=html;}
-    const button=$('saveBatchButton');
-    if(button){button.hidden=entries.length<2;button.disabled=ui.photoExporting||photoBusy()||!summary.completed;
-      button.textContent=ui.photoExporting?(ui.photoExportLabel||'正在保存图片'):summary.completed===1?'保存图片':'下载 ZIP'+(summary.completed?'（'+summary.completed+'）':'');}
+    const selection=photoSelection(),counter=$('photoSelectionCount');
+    if(counter){counter.hidden=!selection.total;counter.textContent=(selection.index+1)+' / '+selection.total;counter.setAttribute?.('aria-label','第 '+(selection.index+1)+' 张，共 '+selection.total+' 张');}
+  }
+  function removeCurrentPhoto(){
+    if(!ui.input||photoBusy()||ui.photoExporting||ui.restoring)return;
+    photoBatchPoll.stop();photoStatusPoll.stop();ui.photoSelectionVersion=(ui.photoSelectionVersion||0)+1;
+    const entries=photoBatchEntries();
+    if(entries.length){
+      const [removed]=entries.splice(ui.photoBatchIndex,1);if(removed?.localURL)URL.revokeObjectURL(removed.localURL);
+      ui.photoBatchIndex=Math.max(0,Math.min(ui.photoBatchIndex,entries.length-1));
+    }
+    if(entries.length)syncPhotoBatchSelection();
+    else{
+      if(ui.photoLocalURL)URL.revokeObjectURL(ui.photoLocalURL);
+      ui.photoLocalURL=null;ui.photoUploadFile=null;ui.input=null;ui.result=null;ui.photoJobId=null;ui.photoBatch=null;ui.photoBatchIndex=0;
+    }
+    ui.photoError=entries[ui.photoBatchIndex]?.error||'';ui.showOriginal=false;ui.strokes=[];
+    renderPhoto();saveWorkspace().catch(error=>toast(error.message));
   }
   async function chooseHomeImages(files){
     const items=Array.from(files||[]);if(!items.length)return;
     if(items.length>10){toast('一次最多选择 10 张图片');$('homeFileInput').value='';return;}
-    if(photoBusy()||ui.photoExporting){toast('请先等待当前处理完成');return;}
+    if(photoBusy()||ui.photoExporting||ui.restoring){toast('请先等待当前处理完成');return;}
     if(items.some(file=>!(file.type||'').startsWith('image/')&&!/\.(?:jpe?g|png|webp|heic|heif)$/i.test(file.name||''))){toast('请选择 JPG、PNG、WebP 或 HEIC 图片');return;}
     clearPhotoBatch();
     if(items.length===1)return chooseHomeImage(items[0]);
@@ -694,17 +702,19 @@
     }finally{ui.photoUploading=false;$('homeFileInput').disabled=false;$('homeFileInput').value='';renderPhoto();}
   }
   async function restorePhotoBatch(ids,batchId){
-    const inputs=await Promise.all(ids.map(resolveAsset));
+    const version=ui.photoSelectionVersion||0;
+    const inputs=await Promise.all(ids.map(resolveAsset));if(version!==(ui.photoSelectionVersion||0))return;
     ui.photoBatchEntries=inputs.filter(Boolean).map(input=>{
       const job=(state.photoJobs||[]).filter(job=>job.inputAssetId===input.id).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))[0];
       return {input,jobId:job?.id||null,result:job?.outputAssetId?assets.get(job.outputAssetId):null,error:'',file:null,localURL:null};
     });
     ui.photoBatchIndex=Math.max(0,ui.photoBatchEntries.findIndex(entry=>entry.input.id===state.settings.homeInputAssetId));
-    if(batchId)try{applyPhotoBatchStatus(await api('/api/photo/batches/'+encodeURIComponent(batchId)));}catch(error){ui.photoError='恢复批量状态失败：'+error.message;}
+    if(batchId)try{applyPhotoBatchStatus({...await api('/api/photo/batches/'+encodeURIComponent(batchId)),photoSelectionVersion:version});}catch(error){ui.photoError='恢复批量状态失败：'+error.message;}
     syncPhotoBatchSelection();
   }
   function applyPhotoBatchStatus(data){
-    if(!state||!data?.batch)return;
+    if(!state||!data?.batch||!photoBatchEntries().length)return;
+    if(data.photoSelectionVersion!==undefined&&data.photoSelectionVersion!==(ui.photoSelectionVersion||0))return;
     if(ui.photoBatch?.id&&ui.photoBatch.id!==data.batch.id)return;
     if(ui.photoBatch?.updatedAt&&data.batch.updatedAt&&Date.parse(data.batch.updatedAt)<Date.parse(ui.photoBatch.updatedAt))return;
     ui.photoBatch=data.batch;
@@ -725,9 +735,11 @@
     if(photoBatchEntries().some(entry=>entry.file)){await uploadPhotoBatch();return;}
     const failed=photoBatchEntries().filter(entry=>['failed','cancelled'].includes((state.photoJobs||[]).find(job=>job.id===entry.jobId)?.state));
     const targets=failed.length?failed:photoBatchEntries();
+    const version=ui.photoSelectionVersion||0;
     ui.photoSubmitting=true;ui.photoError='';renderPhoto();
     try{
       const data=await api('/api/photo/jobs/batch','POST',{feature:'enhance',assetIds:targets.map(entry=>entry.input.id),model:ui.model});
+      if(version!==(ui.photoSelectionVersion||0))return;
       ui.photoBatch=null;
       for(const entry of targets){entry.result=null;entry.error='';}
       applyPhotoBatchStatus(data);saveWorkspace().catch(error=>toast(error.message));
@@ -735,7 +747,7 @@
     finally{ui.photoSubmitting=false;renderPhoto();}
   }
   async function savePhotoBatch(){
-    const results=photoBatchEntries().map(entry=>entry.result).filter(Boolean);
+    const results=photoBatchEntries().length?photoBatchEntries().map(entry=>entry.result).filter(Boolean):[ui.result].filter(Boolean);
     if(!results.length||ui.photoExporting||photoBusy())return;
     ui.photoExporting=true;ui.photoExportLabel=results.length===1?'正在保存图片':'正在打包…';renderPhoto();
     try{
@@ -819,10 +831,11 @@
   });
   const photoBatchPoll=window.ShiYanPhotoStatus.create({
     request:async(id,signal)=>{
+      const version=ui.photoSelectionVersion||0;
       const response=await fetch('/api/photo/batches/'+encodeURIComponent(id),{credentials:'same-origin',signal});
       if(!response.ok)throw Error('批量增强状态暂不可用');
       const data=await response.json();if(data.ok===false||data.batch?.id!==id)throw Error('批量增强状态暂不可用');
-      return {...data,job:data.batch};
+      return {...data,job:data.batch,photoSelectionVersion:version};
     },apply:applyPhotoBatchStatus,isVisible:()=>!document.hidden
   });
   document.addEventListener('visibilitychange',()=>{if(!document.hidden){photoStatusPoll.refresh();photoBatchPoll.refresh();}});
@@ -842,7 +855,7 @@
   function renderPhoto() {
     if(!state)return;
     syncPhotoBatchSelection();
-    const job=photoJob(),busy=photoBusy(),batch=photoBatchEntries().length>1;
+    const job=photoJob(),busy=photoBusy(),batch=photoBatchEntries().length>0;
     const jobLabel=ui.feature==='enhance'?window.ShiYanPhotoStatus.label(job):job?.label||'处理中';
     photoStatusPoll.watch(!batch&&job&&busyStates.has(job.state)?job.id:null);
     photoBatchPoll.watch(batch&&busyStates.has(ui.photoBatch?.state)?ui.photoBatch.id:null);
@@ -869,13 +882,15 @@
     show('maskCanvas',canDraw);$('maskCanvas').style.pointerEvents=canDraw?'auto':'none';
     const redo=ui.feature==='remove' && !!ui.result;
     let processLabel=ui.photoUploadFile?'重试上传':redo?'重新涂抹':ui.feature==='enhance'?'开始增强':ui.feature==='remove'?'开始消除':'开始上色';
-    if(batch){const summary=photoBatchSummary();processLabel=photoBatchEntries().some(entry=>entry.file)?'重试上传':summary.failed?'重试失败项 '+summary.failed+' 张':(summary.completed===summary.total?'重新增强 ':'开始增强 ')+summary.total+' 张';}
+    if(batch){const summary=photoBatchSummary();processLabel=photoBatchEntries().some(entry=>entry.file)?'重试上传':summary.failed?'重试失败项':summary.completed===summary.total?'重新增强':'开始增强';}
     $('processIcon').dataset.symbol=redo?'pencil.tip':ui.feature==='remove'?'eraser':ui.feature==='colorize'?'paintpalette':'wand.and.stars';
     $('homeView').style.setProperty('--image-accent',ui.feature==='enhance' && ui.model==='anime'?'var(--pink)':'var(--accent)');
     setText('processLabel',busy?(ui.photoUploading?(ui.photoUploadLabel||'正在上传图片'):ui.photoSubmitting?'正在准备':jobLabel):processLabel);
     $('processButton').disabled=!ui.input || busy || (ui.feature==='remove' && !ui.strokes.length && !redo);
-    $('saveResultButton').disabled=!ui.result || (job&&busyStates.has(job.state));
-    show('saveResultButton',!!ui.result);show('cancelProcessButton',busy && !ui.photoSubmitting && (!!job||!!ui.photoBatch));
+    const readyResults=batch?photoBatchSummary().completed:ui.result?1:0;
+    $('saveResultButton').disabled=!readyResults||busy||ui.photoExporting;
+    $('saveResultButton').setAttribute('aria-busy',String(!!ui.photoExporting));
+    show('saveResultButton',true);show('cancelProcessButton',busy && !ui.photoSubmitting && (!!job||!!ui.photoBatch));
     $('changeImageButton').disabled=busy;
     $('brushWidth').value=ui.brush;$('brushWidth').disabled=busy;
     $('undoStrokeButton').disabled=busy || !ui.strokes.length;$('clearStrokesButton').disabled=busy || !ui.strokes.length;
@@ -929,7 +944,7 @@
     return new File([blob],'mask.png',{type:'image/png'});
   }
   async function processPhoto() {
-    if(photoBatchEntries().length>1)return processPhotoBatch();
+    if(photoBatchEntries().length)return processPhotoBatch();
     if(!ui.input || photoBusy())return;
     if(ui.photoUploadFile){await chooseHomeImage(ui.photoUploadFile);return;}
     if(ui.feature==='remove' && ui.result){ui.result=null;ui.photoJobId=null;ui.strokes=[];ui.showOriginal=false;ui.photoError='';renderPhoto();return;}
@@ -946,7 +961,7 @@
     finally {ui.photoSubmitting=false;renderPhoto();}
   }
   async function cancelPhoto() {
-    if(ui.photoBatch?.id){try{applyPhotoBatchStatus(await api('/api/photo/batches/'+encodeURIComponent(ui.photoBatch.id)+'/cancel','POST',{}));}catch(error){ui.photoError='停止尚未确认：'+error.message;renderPhoto();}return;}
+    if(ui.photoBatch?.id){const version=ui.photoSelectionVersion||0;try{applyPhotoBatchStatus({...await api('/api/photo/batches/'+encodeURIComponent(ui.photoBatch.id)+'/cancel','POST',{}),photoSelectionVersion:version});}catch(error){ui.photoError='停止尚未确认：'+error.message;renderPhoto();}return;}
     if(!ui.photoJobId)return;
     try{applyPhotoStatus(await api('/api/photo/jobs/'+encodeURIComponent(ui.photoJobId)+'/cancel','POST',{}));}
     catch(e){ui.photoError='停止尚未确认：'+e.message;setText('photoError',ui.photoError);show('photoError');}
@@ -1317,9 +1332,7 @@
     bindClick('undoStrokeButton',()=>{ui.strokes.pop();renderPhoto();});
     bindClick('clearStrokesButton',()=>{ui.strokes=[];renderPhoto();});
     bindClick('processButton',processPhoto);
-    bindClick('saveResultButton',()=>saveAsset(ui.result));
-    bindClick('saveBatchButton',savePhotoBatch);
-    $('photoBatchItems')?.addEventListener('click',event=>{const target=event.target.closest('[data-photo-batch-index]');if(target)selectPhotoBatch(Number(target.dataset.photoBatchIndex));});
+    bindClick('saveResultButton',savePhotoBatch);
     bindClick('cancelProcessButton',cancelPhoto);
     const canvas=$('maskCanvas');
     canvas.addEventListener('pointerdown',event=>{
@@ -1466,8 +1479,9 @@
     getView:()=>ui.view,renderMessage:messageHTML,renderAttachment:attachmentItemHTML,
     uploadAttachments:(files,existing=[])=>{validateAttachmentFiles(files,existing);return upload(files,'attachment');},
     navigate:setView,toast,copyText,confirmAction,api,sessionHTML,sessionMenuIcon,openPreview,openGeneratedDocument,saveAsset,shareAssets,
-    getPhotoState:()=>({input:ui.input,result:ui.result,model:ui.model,busy:photoBusy(),uploading:ui.photoUploading,
-      batch:photoBatchEntries().length>1?photoBatchSummary():null,itemBusy:busyStates.has(photoJob()?.state),
+    previousPhoto:()=>selectPhotoBatch(ui.photoBatchIndex-1),nextPhoto:()=>selectPhotoBatch(ui.photoBatchIndex+1),removePhoto:removeCurrentPhoto,
+    getPhotoState:()=>({selection:photoSelection(),exporting:!!ui.photoExporting,restoring:!!ui.restoring,input:ui.input,result:ui.result,model:ui.model,busy:photoBusy(),uploading:ui.photoUploading,
+      batch:photoBatchEntries().length?photoBatchSummary():null,itemBusy:busyStates.has(photoJob()?.state),
       progress:photoJob()?.progress || 0,label:ui.photoUploading?(ui.photoUploadLabel||'正在上传图片'):ui.photoSubmitting?'正在准备':(ui.feature==='enhance'?window.ShiYanPhotoStatus.label(photoJob()):photoJob()?.label||''),error:ui.feature==='enhance'?window.ShiYanPhotoStatus.error(photoJob()?.error||ui.photoError):photoJob()?.error||ui.photoError}),
     addContext:async text=>{
       if(!current())await newConversation();
