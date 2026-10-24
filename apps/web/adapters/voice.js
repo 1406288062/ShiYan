@@ -42,6 +42,11 @@
     if (text) emit({type: 'speech', sessionId: record.id, text, isFinal: true});
     else emit({type: 'speechState', sessionId: record.id, active: false});
   }
+  function normalizeTranscript(text) {
+    // Chinese recognition can insert word separators between every Han character.
+    // Keep Latin words, numbers, mixed-language boundaries and line breaks intact.
+    return text.replace(/(\p{Script=Han})[ \t\u00a0\u3000]+(?=\p{Script=Han})/gu, '$1');
+  }
   function startCapture(detail) {
     cancelCapture();
     const recognition = new Recognition();
@@ -57,7 +62,7 @@
     };
     recognition.onresult = event => {
       if (capture !== record) return;
-      record.text = Array.from(event.results, result => result[0]?.transcript || '').join('');
+      record.text = normalizeTranscript(Array.from(event.results, result => result[0]?.transcript || '').join(''));
       emit({type: 'speech', sessionId: record.id, text: record.text, isFinal: false});
       schedule();
     };

@@ -11,7 +11,7 @@ function response({ok = true, type = 'audio/mpeg', size = 10} = {}) {
   return {ok, headers: {get: () => type}, arrayBuffer: async () => new ArrayBuffer(size)};
 }
 function browser({mode = 'web', recognition = true, webkit = false, withAudio = true, autoFetch = true, delayDecode = false} = {}) {
-  const events = [], requests = [], sources = [], contexts = [], listeners = {};
+  const events = [], requests = [], sources = [], contexts = [], recognitions = [], listeners = {};
   class Context {
     constructor() { this.state = 'suspended'; this.destination = {}; this.resumes = 0; this.decodes = []; contexts.push(this); }
     resume() { this.resumes++; this.state = 'running'; return Promise.resolve(); }
@@ -29,14 +29,14 @@ function browser({mode = 'web', recognition = true, webkit = false, withAudio = 
   const window = {ShiYanPlatform: {mode, registerAdapter: (name, value) => { assert.equal(name, 'voice'); adapter = value; }},
     addEventListener: (name, fn) => { listeners[name] = fn; }, dispatchEvent: event => { events.push(event.detail); }};
   if (withAudio) window[webkit ? 'webkitAudioContext' : 'AudioContext'] = Context;
-  if (recognition) window.SpeechRecognition = class { start() {} abort() {} };
+  if (recognition) window.SpeechRecognition = class { constructor() { recognitions.push(this); } start() {} abort() {} };
   const fetch = (url, options) => {
     const job = deferred(); requests.push({url, options, ...job});
     if (autoFetch) job.resolve(response());
     return job.promise;
   };
   vm.runInNewContext(source, {window, fetch, AbortController, ArrayBuffer, CustomEvent: class {constructor(type, {detail}) {this.type = type; this.detail = detail;}}, setTimeout, clearTimeout, queueMicrotask});
-  return {adapter, events, requests, sources, contexts, listeners, window};
+  return {adapter, events, requests, sources, contexts, recognitions, listeners, window};
 }
 const states = b => b.events.filter(event => event.type === 'voicePlaybackState').map(event => [event.sessionId, event.state]);
 
@@ -175,4 +175,34 @@ test('Desktop message reading retains its original native path', () => {
   const p = panel('desktop'); p.context.readMessage(0);
   assert.equal(p.native[0].action, 'readMessage'); assert.equal(p.calls.length, 0);
   p.context.stopReading(); assert.equal(p.native[1].action, 'stopMessageReading');
+});
+
+
+for (const {name, segments, expected} of [
+  {name: 'continuous Chinese', segments: ['你 的 声 音 为 什 么 这 么 难 听 呢'], expected: '你的声音为什么这么难听呢'},
+  {name: 'recognition result boundaries', segments: ['你 的 ', '声 音'], expected: '你的声音'},
+  {name: 'horizontal whitespace variants', segments: ['你\t好\u00a0你\u3000好'], expected: '你好你好'},
+  {name: 'Latin words and email', segments: ['请 打 开 Visual Studio Code 2026 并 搜 索 user@example.com'], expected: '请打开 Visual Studio Code 2026 并搜索 user@example.com'},
+  {name: 'separate numbers and units', segments: ['版 本 1 2 3 配 置 20 GB'], expected: '版本 1 2 3 配置 20 GB'},
+  {name: 'line breaks', segments: ['第 一 行\n第 二 行'], expected: '第一行\n第二行'},
+  {name: 'English sentences', segments: ['hello world and good morning'], expected: 'hello world and good morning'},
+  {name: 'supplementary Han characters', segments: ['𠮷 野 家'], expected: '𠮷野家'},
+]) {
+  test(`Recognition removes only Han word gaps in preview and final text: ${name}`, () => {
+    const b = browser();
+    b.adapter.post('startSpeech', {sessionId: 'capture'});
+    const recognition = b.recognitions[0];
+    recognition.onresult({results: segments.map(transcript => [{transcript}])});
+    recognition.onend();
+    const speech = b.events.filter(event => event.type === 'speech');
+    assert.deepEqual(speech.map(event => [event.text, event.isFinal]), [[expected, false], [expected, true]]);
+  });
+}
+
+test('Recognition normalization does not rewrite text passed to message reading', async () => {
+  const b = browser();
+  const text = '你 的 原 文 with spaces 1 2';
+  b.adapter.post('readMessage', {sessionId: 'read', text});
+  await flush();
+  assert.equal(JSON.parse(b.requests[0].options.body).text, text);
 });
