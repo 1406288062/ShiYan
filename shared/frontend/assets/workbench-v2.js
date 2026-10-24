@@ -328,9 +328,20 @@
   function zoomCompare(value){S.compare.zoom=Math.max(1,Math.min(6,value));if(S.compare.zoom===1)S.compare.x=S.compare.y=0;renderCompareTransform();}
   function renderCompareTransform(){for(const stage of document.querySelectorAll('.v2-compare-stage')){const img=stage.querySelector('img');if(!img)continue;img.style.transform=`translate(${S.compare.x*100}%,${S.compare.y*100}%) scale(${S.compare.zoom})`;stage.classList.toggle('can-pan',S.compare.zoom>1);}for(const b of document.querySelectorAll('.v2-compare-zoom [data-zoom-reset]'))b.textContent=Math.round(S.compare.zoom*100)+'%';}
   function closeCompare(){S.overlayCompare=false;$('comparePreview').hidden=true;C.scheduleNative();}
+  function renderCompareImage(card,asset){
+   const img=card.querySelector('img'),dimensions=card.querySelector('.v2-compare-dimensions');
+   img.hidden=!asset;card.querySelector('.v2-compare-empty').hidden=!!asset;
+   if(!asset){img.onload=null;img.removeAttribute('src');delete img.dataset.loadedUrl;dimensions.textContent='';return;}
+   const url=assetURL(asset);
+   const updateDimensions=()=>{const decoded=img.dataset.loadedUrl===url,width=asset.width||(decoded?img.naturalWidth:0),height=asset.height||(decoded?img.naturalHeight:0);dimensions.textContent=width&&height?width+' × '+height:'';};
+   img.onload=()=>{if(img.getAttribute('src')!==url)return;img.dataset.loadedUrl=url;updateDimensions();};
+   if(window.ShiYanPlatform?.mode==='web')img.crossOrigin='anonymous';
+   if(img.getAttribute('src')!==url){delete img.dataset.loadedUrl;img.src=url;}
+   updateDimensions();
+  }
   function renderCompare(){
    if(!$('compareWorkbench'))return;const p=window.shiyan?.getPhotoState?.();if(!p)return;const signature=(p.input?.id||'')+':'+(p.result?.id||'');if(signature!==S.photoSignature){S.photoSignature=signature;S.compare={zoom:1,x:0,y:0};}S.photoInput=p.input;S.photoOutput=p.result;
-   for(const card of document.querySelectorAll('[data-compare]')){const a=card.dataset.compare==='original'?p.input:p.result,img=card.querySelector('img'),empty=card.querySelector('.v2-compare-empty');img.hidden=!a;empty.hidden=!!a;if(a){const url=assetURL(a);if(window.ShiYanPlatform?.mode==='web')img.crossOrigin='anonymous';if(img.getAttribute('src')!==url)img.src=url;}else img.removeAttribute('src');card.querySelector('.v2-compare-dimensions').textContent=a?.width&&a?.height?`${a.width} × ${a.height}`:'';if(card.dataset.compare==='result')empty.querySelector('span').textContent=p.busy?(p.label||'正在增强…'):'增强结果显示在这里';card.classList.toggle('is-processing',(p.itemBusy??p.busy)&&card.dataset.compare==='result');}
+   for(const card of document.querySelectorAll('[data-compare]')){const a=card.dataset.compare==='original'?p.input:p.result,empty=card.querySelector('.v2-compare-empty');renderCompareImage(card,a);if(card.dataset.compare==='result')empty.querySelector('span').textContent=p.busy?(p.label||'正在增强…'):'增强结果显示在这里';card.classList.toggle('is-processing',(p.itemBusy??p.busy)&&card.dataset.compare==='result');}
    $('compareWorkbench').dataset.model=p.model||'general';$('chooseCompareImage').disabled=p.busy;$('saveResultButton').hidden=false;$('compareStatus').textContent=p.error||(p.batch&&!p.uploading?'共 '+p.batch.total+' 张 · 已完成 '+p.batch.completed+' 张'+(p.batch.failed?' · 失败 '+p.batch.failed+' 张':''):p.uploading?'正在上传图片…':p.busy?((p.label||'正在增强…')+' · '+Math.round((Number(p.progress)>1?Math.min(100,Number(p.progress)):Math.min(1,Math.max(0,Number(p.progress))))*(Number(p.progress)>1?1:100))+'%'):p.result?'处理完成':p.input?'准备就绪':'选择图片后即可开始处理');$('compareStatus').classList.toggle('is-error',!!p.error);renderCompareTransform();
   }
   function buildSpace(){

@@ -74,3 +74,15 @@ test('verified input dimensions replace preview hints while local preview URLs s
  s.assets.set('asset-0.png',{id:'asset-0.png',width:240,height:320,url:'/api/assets/verified/file'});
  s.context.syncPhotoBatchSelection();assert.equal(s.ui.input.width,240);assert.equal(s.ui.input.height,320);assert.equal(s.ui.input.url,localURL);
 });
+
+test('unknown server dimensions preserve local preview dimensions without updating server assets',async()=>{
+ const s=setup();await s.context.chooseHomeImages(files(2));
+ s.assets.set('asset-0.png',{id:'asset-0.png',width:null,height:null,url:'/api/assets/asset-0.png/file'});
+ s.context.syncPhotoBatchSelection();assert.equal(s.ui.input.width,32);assert.equal(s.ui.input.height,24);
+ assert.equal(s.assets.get('asset-0.png').width,null);assert(s.ui.input.url.startsWith('blob:'));
+});
+test('a local image decoded after batch upload still updates the selected preview dimensions',async()=>{
+ const s=setup(),pending=[];s.context.Image=class{naturalWidth=88;naturalHeight=99;set src(value){pending.push(()=>this.onload());}};
+ await s.context.chooseHomeImages(files(2));pending[0]();s.context.syncPhotoBatchSelection();
+ assert.equal(s.ui.input.width,88);assert.equal(s.ui.input.height,99);assert.equal(s.assets.get('asset-0.png').width,undefined);
+});

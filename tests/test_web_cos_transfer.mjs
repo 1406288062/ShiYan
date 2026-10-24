@@ -8,7 +8,7 @@ const extract=name=>appSource.match(new RegExp('  async function '+name+'\\([^\\
 const settle=async()=>{for(let i=0;i<16;i++)await Promise.resolve();};
 const file=(name='fixture.png',size=100)=>({name,size,type:'image/png'});
 const ticket=(id='ticket-a')=>({ticketId:id,method:'PUT',url:'https://photos-12345.cos.ap-guangzhou.myqcloud.com/private/'+id+'?q-signature=fixture',headers:{'Content-Type':'image/png','x-cos-acl':'private'},expiresAt:2000000000});
-function setup({mode='web',available=true,uploads=[ticket()],initError,completeError,deferComplete=false}={}){
+function setup({mode='web',available=true,uploads=[ticket()],initError,completeError,deferComplete=false,unknownDimensions=false}={}){
   const requests=[],calls=[],legacy=[],updates=[],timers=new Map(),fields=new Map(),timings=[];
   let count=0,clock=0,completeResolve;
   class XHR {
@@ -27,7 +27,7 @@ function setup({mode='web',available=true,uploads=[ticket()],initError,completeE
     if(path==='/api/assets/cos/upload'){if(initError)throw initError;return {ok:true,available,uploads};}
     if(path==='/api/assets/cos/complete'){
       if(completeError)throw completeError;
-      const result={ok:true,assets:body.ticketIds.map((id,index)=>({id:'asset-'+index,width:32,height:24}))};
+      const result={ok:true,assets:body.ticketIds.map((id,index)=>({id:'asset-'+index,width:unknownDimensions?null:32,height:unknownDimensions?null:24}))};
       return deferComplete?new Promise(resolve=>completeResolve=()=>resolve(result)):result;
     }
     if(path.startsWith('/api/assets')){legacy.push({path,method,body});return {ok:true,assets:[{id:'legacy-asset'}]};}
@@ -154,4 +154,16 @@ test('non-enhancement input never starts COS and the image batch limit is checke
   const s=setup();s.context.ui.feature='remove';await s.run();assert.equal(s.requests.length,0);assert.equal(s.calls.length,0);assert.equal(s.legacy.length,1);
   const limit=setup();await assert.rejects(limit.direct(Array.from({length:11},(_,n)=>file(n+'.png'))),/10/);
   assert.equal(limit.calls.length,0);assert.equal(limit.requests.length,0);
+});
+
+test('unknown remote original dimensions keep the decoded single-image preview size without metadata upload',async()=>{
+ const s=setup({unknownDimensions:true}),pending=s.context.chooseWebHomeImage(file());await settle();s.requests[0].respond();await pending;
+ assert.equal(s.context.ui.input.width,32);assert.equal(s.context.ui.input.height,24);assert.equal(s.context.ui.input.url,'blob:fixture');
+ assert(!('width' in s.calls[0].body.files[0]));assert(!('height' in s.calls[0].body.files[0]));
+});
+test('single-image preview remains local and gets dimensions when decode finishes after upload',async()=>{
+ const s=setup({unknownDimensions:true});let loaded;
+ s.context.Image=class{naturalWidth=0;naturalHeight=0;set src(value){loaded=()=>{this.naturalWidth=88;this.naturalHeight=99;this.onload();};}};
+ const pending=s.context.chooseWebHomeImage(file());await settle();s.requests[0].respond();await pending;
+ assert.equal(s.context.ui.input.url,'blob:fixture');loaded();assert.equal(s.context.ui.input.width,88);assert.equal(s.context.ui.input.height,99);
 });

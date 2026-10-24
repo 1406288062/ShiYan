@@ -621,7 +621,7 @@
     const entries=photoBatchEntries();if(entries.length<2)return;
     for(const entry of entries){
       const verified=assets.get(entry.input?.id);
-      if(verified)entry.input={...entry.input,...verified,...(entry.localURL?{url:entry.localURL}:{})};
+      if(verified)entry.input={...entry.input,...verified,...(verified.width&&verified.height?{}:{width:entry.input.width,height:entry.input.height}),...(entry.localURL?{url:entry.localURL}:{})};
       const job=(state?.photoJobs||[]).find(item=>item.id===entry.jobId);
       if(job?.outputAssetId)entry.result=assets.get(job.outputAssetId)||entry.result;
     }
@@ -671,8 +671,9 @@
     ui.photoUploadFile=null;ui.photoJobId=null;ui.result=null;ui.photoError='';
     ui.photoBatchEntries=items.map(file=>{
       const localURL=URL.createObjectURL(file),input={id:'local:'+localURL,url:localURL,filename:file.name,mimeType:file.type};
-      const image=new Image();image.onload=()=>{input.width=image.naturalWidth;input.height=image.naturalHeight;renderPhoto();};image.src=localURL;
-      return {file,localURL,input,result:null,jobId:null,error:''};
+      const entry={file,localURL,input,result:null,jobId:null,error:''};
+      const image=new Image();image.onload=()=>{entry.input={...entry.input,width:image.naturalWidth,height:image.naturalHeight};renderPhoto();};image.src=localURL;
+      return entry;
     });
     syncPhotoBatchSelection();renderPhoto();await uploadPhotoBatch();
   }
@@ -759,7 +760,7 @@
     $('homeFileInput').disabled=true;
     renderPhoto(); // Preview the selected file before waiting for the network.
     const image=new Image();
-    image.onload=()=>{if(ui.input===local){local.width=image.naturalWidth;local.height=image.naturalHeight;renderPhoto();}};
+    image.onload=()=>{if(ui.photoLocalURL===url&&ui.input?.url===url){ui.input={...ui.input,width:image.naturalWidth,height:image.naturalHeight};renderPhoto();}};
     image.src=url;
     let restored=false;
     try {
@@ -770,8 +771,7 @@
       }
       // Keep the decoded local original visible while using the server asset ID
       // for processing and persistence. Blob URLs are never saved to settings.
-      ui.input=image.naturalWidth?{...asset,url}:asset;ui.photoUploadFile=null;
-      if(!image.naturalWidth){URL.revokeObjectURL(url);ui.photoLocalURL=null;}
+      ui.input={...asset,url,...(image.naturalWidth?{width:image.naturalWidth,height:image.naturalHeight}:{})};ui.photoUploadFile=null;
       saveWorkspace().catch(error=>{if(ui.input?.id===asset.id)toast('图片已上传，但保存图片选择失败：'+error.message);});
     } catch(error) {
       const timeout=error.status===408 || /\b408\b/.test(error.message || '');
