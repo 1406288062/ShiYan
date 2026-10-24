@@ -1218,15 +1218,20 @@
     document.addEventListener('visibilitychange',()=>{if(document.hidden)cancelSpeech();});
     window.addEventListener('pagehide',()=>{saveReadingPosition();flushReadingPositions();cancelSpeech();if(eventSource)eventSource.close();});
   }
+  function connectStateEvents() {
+    if(window.ShiYanPlatform?.deferUntilLoaded?.(connectStateEvents))return;
+    if(eventSource)eventSource.close();
+    eventSource=new EventSource('/api/events');
+    eventSource.addEventListener('state',event=>{try {applyState(JSON.parse(event.data));}catch(e){console.error('Invalid state event',e);}});
+    eventSource.onopen=()=>{if(state)renderConnection();};
+    eventSource.onerror=()=>{setText('connectionText','本地连接已断开，正在重新连接');show('connectionBanner');};
+  }
   async function start() {
     if(new URLSearchParams(location.search).has('native') || (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.native)){document.body.classList.add('is-native');document.documentElement.classList.add('is-native');}
     initEvents();
     try {
       const data=await api('/api/state');if(!state)applyState(data.state);
-      eventSource=new EventSource('/api/events');
-      eventSource.addEventListener('state',event=>{try {applyState(JSON.parse(event.data));}catch(e){console.error('Invalid state event',e);}});
-      eventSource.onopen=()=>{if(state)renderConnection();};
-      eventSource.onerror=()=>{setText('connectionText','本地连接已断开，正在重新连接');show('connectionBanner');};
+      connectStateEvents();
       setView('agent');
       if(state.connection && !['ready','connecting','unauthorized'].includes(state.connection.status))connectAgent();
     }catch(e){show('connectionBanner');setText('connectionText',e.message);toast(e.message);}

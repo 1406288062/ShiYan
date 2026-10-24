@@ -170,6 +170,7 @@
 
   function connect() {
     if (!active() || document.hidden) return;
+    if (window.ShiYanPlatform?.deferUntilLoaded?.(connect)) return;
     if (stream && stream.readyState !== EventSource.CLOSED) return;
     disconnect();
     const source = stream = new EventSource('/api/account/avatar/events');

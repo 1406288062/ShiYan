@@ -136,6 +136,12 @@ def create_app(directory, root, legacy=None, profile="desktop"):
             source = adapter.read_text(encoding="utf-8")
         return Response(source, media_type="application/javascript", headers={"Cache-Control": "no-store"})
 
+    @app.get("/assets/site-icon.png")
+    async def site_icon():
+        name = "web-favicon.png" if platform.mode == "web" else "app-icon.png"
+        return FileResponse(root/"web"/"assets"/name, media_type="image/png",
+                            headers={"Cache-Control":"public, max-age=86400"})
+
     @app.get("/platform.js")
     async def platform_script():
         source="window.__SHIYAN_PLATFORM__="+json.dumps(platform.public(),ensure_ascii=True,separators=(",",":"))+";\n"
@@ -377,7 +383,16 @@ def create_app(directory, root, legacy=None, profile="desktop"):
         message=next((m for m in reversed(conversation.get("messages",[])) if m.get("role")=="assistant" and m.get("remoteJobId")),None)
         if message is None:
             return {"ok":True,"pendingQuestions":[]}
-        return await r.gateway.user_questions(message["remoteJobId"])
+        if platform.mode == "web" and message.get("state") in {"completed", "failed", "cancelled", "interrupted"}:
+            return {"ok":True,"pendingQuestions":[],"polling":False}
+        try:
+            return await r.gateway.user_questions(message["remoteJobId"])
+        except GatewayError as error:
+            # The conversation was authorized above. Missing remote mailboxes may
+            # belong to old/local jobs; never swallow authentication or service errors.
+            if platform.mode == "web" and error.status == 404:
+                return {"ok":True,"pendingQuestions":[],"unavailable":True,"pollAfterMs":30000}
+            raise
 
     @app.post("/api/conversations/{identifier}/questions/{question_id}/answer")
     async def answer_user_question(identifier:str,question_id:str,request:Request):

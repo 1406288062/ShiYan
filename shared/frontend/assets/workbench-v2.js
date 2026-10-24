@@ -213,6 +213,7 @@
     else b.onclick=()=>openFile(f,entry.path);
    }
    if(result.nextOffset!==null){const b=document.createElement('button');b.type='button';b.className='v2-load-more wb-text-button';b.textContent='继续显示（共 '+result.total+' 项）';b.onclick=()=>loadBranch(f,container,path,result.nextOffset).catch(handleError);container.appendChild(b);}
+   if(result.truncated&&result.nextOffset===null)container.insertAdjacentHTML('beforeend','<p class="v2-filter-note">目录内容较多，当前仅显示服务器已返回的部分。</p>');
    if(!result.total)container.innerHTML='<p class="wb-empty">空目录</p>';markSelectedFile(f);
   }
   function markSelectedFile(f){for(const row of f.pane.querySelectorAll('[data-file-path]'))row.classList.toggle('selected',row.dataset.filePath===f.tab.selectedPath&&row.dataset.directory!=='true');}

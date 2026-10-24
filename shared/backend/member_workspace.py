@@ -135,6 +135,22 @@ async def proxy_member_request(request):
         result.update(token=work.token, preferences=work.preferences(),
                       defaultDirectory="/workspace", terminalTransport="SSE", executionMode="isolated")
         return JSONResponse(result)
+    if (workspace and suffix == "directory-details" and request.method == "GET"
+            and getattr(getattr(runtime, "platform", None), "mode", None) == "web"):
+        try:
+            offset = max(0, int(request.query_params.get("offset", "0")))
+        except ValueError:
+            raise GatewayError("目录分页参数无效", 400)
+        result = await gateway.json("GET", "workspace/directory" +
+                                    ("?" + request.url.query if request.url.query else ""))
+        entries = result.get("entries", [])
+        if not isinstance(entries, list):
+            raise GatewayError("目录响应格式无效", 502)
+        entries = sorted(entries, key=lambda item: (not item.get("directory", False), str(item.get("name", "")).casefold()))
+        end = offset + 100
+        return JSONResponse({**result, "ok": True, "entries": entries[offset:end],
+                             "offset": offset, "total": len(entries),
+                             "nextOffset": end if end < len(entries) else None})
     if scheduled and suffix == "/models":
         caps = await gateway.connect()
         return JSONResponse({"ok": True, "local": {"available": False, "models": [], "error": None},

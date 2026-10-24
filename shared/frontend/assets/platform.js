@@ -4,6 +4,22 @@
   'use strict';
   const metadata=window.__SHIYAN_PLATFORM__ || {};
   const mode=metadata.mode==='web'?'web':'desktop';
+  if(typeof document!=='undefined')document.documentElement.dataset.shiyanPlatform=mode;
+  // Web streams start after the initial document load, not ahead of its assets.
+  const pendingLoadCallbacks=new Set();
+  let loadListenerInstalled=false;
+  function deferUntilLoaded(callback) {
+    if(mode!=='web'||typeof document==='undefined'||document.readyState==='complete')return false;
+    pendingLoadCallbacks.add(callback);
+    if(!loadListenerInstalled){
+      loadListenerInstalled=true;
+      window.addEventListener('load',()=>{
+        const callbacks=[...pendingLoadCallbacks];pendingLoadCallbacks.clear();
+        setTimeout(()=>callbacks.forEach(run=>run()),0);
+      },{once:true});
+    }
+    return true;
+  }
   const config=metadata.config && typeof metadata.config==='object' && !Array.isArray(metadata.config)?metadata.config:{};
   const adapters=new Map(['shared','desktop','web'].map(profile=>[profile,new Map()]));
   function get(path,fallback) {
@@ -40,5 +56,5 @@
     const native=adapter('native');
     return typeof native?.post==='function'?native.post(action,detail):false;
   }
-  window.ShiYanPlatform=Object.freeze({mode,config,get,registerAdapter,adapter,postNative});
+  window.ShiYanPlatform=Object.freeze({mode,config,get,registerAdapter,adapter,postNative,deferUntilLoaded});
 })();

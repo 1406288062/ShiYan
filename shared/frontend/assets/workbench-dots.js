@@ -592,6 +592,7 @@
  function reconnect(){source?.close();source=null;setConnection('连接中断，正在重连');clearTimeout(reconnectTimer);const epoch=streamEpoch;reconnectTimer=setTimeout(()=>{if(monitorAllowed()&&epoch===streamEpoch)connect();},Math.min(15000,1000*2**Math.min(4,reconnectAttempt++)));}
  function connect(){
   if(!monitorAllowed())return;
+  if(window.ShiYanPlatform?.deferUntilLoaded?.(connect))return;
   const epoch=++streamEpoch;source?.close();clearTimeout(eventFlushTimer);eventFlushTimer=0;eventPendingCursor=cursor;eventRefreshNeeded=false;
   source=new EventSource('/api/dots/events?after='+cursor);
   source.addEventListener('connected',()=>{if(epoch!==streamEpoch)return;reconnectAttempt=0;setConnection('已连接');});
