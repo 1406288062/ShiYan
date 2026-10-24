@@ -652,13 +652,13 @@
       const job=(state?.photoJobs||[]).find(item=>item.id===entry.jobId);
       const label=entry.uploading?'上传中':entry.file?(entry.error?'上传失败':'等待上传'):
         job?.state==='completed'?'已完成':job?.state==='failed'?'增强失败':job?.state==='cancelled'?'已停止':
-        job&&busyStates.has(job.state)?(job.state==='queued'?'等待增强':job.label||'增强中'):'待增强';
-      return '<button type="button" class="photo-batch-item'+(index===ui.photoBatchIndex?' is-selected':'')+'" data-photo-batch-index="'+index+'" aria-pressed="'+(index===ui.photoBatchIndex)+'" title="'+esc(entry.error||job?.error||entry.input?.filename||'')+'"><span class="photo-batch-number">'+(index+1)+'</span><img src="'+esc(entry.localURL||assetUrl(entry.input)||'')+'" alt="" loading="lazy"><span class="photo-batch-copy"><strong>'+esc(entry.input?.filename||entry.file?.name||'图片')+'</strong><span class="'+(entry.error||job?.state==='failed'?'is-error':'')+'">'+esc(label)+'</span></span></button>';
+        job&&busyStates.has(job.state)?window.ShiYanPhotoStatus.label(job):'待增强';
+      return '<button type="button" class="photo-batch-item'+(index===ui.photoBatchIndex?' is-selected':'')+'" data-photo-batch-index="'+index+'" aria-pressed="'+(index===ui.photoBatchIndex)+'" title="'+esc(window.ShiYanPhotoStatus.error(entry.error||job?.error)||entry.input?.filename||'')+'"><span class="photo-batch-number">'+(index+1)+'</span><img src="'+esc(entry.localURL||assetUrl(entry.input)||'')+'" alt="" loading="lazy"><span class="photo-batch-copy"><strong>'+esc(entry.input?.filename||entry.file?.name||'图片')+'</strong><span class="'+(entry.error||job?.state==='failed'?'is-error':'')+'">'+esc(label)+'</span></span></button>';
     }).join('');
     const list=$('photoBatchItems');if(list&&list._photoBatchHTML!==html){list._photoBatchHTML=html;list.innerHTML=html;}
     const button=$('saveBatchButton');
     if(button){button.hidden=entries.length<2;button.disabled=ui.photoExporting||photoBusy()||!summary.completed;
-      button.textContent=ui.photoExporting?(ui.photoExportLabel||'正在打包…'):'下载 ZIP'+(summary.completed?'（'+summary.completed+'）':'');}
+      button.textContent=ui.photoExporting?(ui.photoExportLabel||'正在保存图片'):summary.completed===1?'保存图片':'下载 ZIP'+(summary.completed?'（'+summary.completed+'）':'');}
   }
   async function chooseHomeImages(files){
     const items=Array.from(files||[]);if(!items.length)return;
@@ -737,9 +737,10 @@
   async function savePhotoBatch(){
     const results=photoBatchEntries().map(entry=>entry.result).filter(Boolean);
     if(!results.length||ui.photoExporting||photoBusy())return;
-    ui.photoExporting=true;ui.photoExportLabel='正在打包…';renderPhoto();
+    ui.photoExporting=true;ui.photoExportLabel=results.length===1?'正在保存图片':'正在打包…';renderPhoto();
     try{
-      if(window.ShiYanPlatform?.mode==='desktop'){
+      if(results.length===1){await saveAsset(results[0]);}
+      else if(window.ShiYanPlatform?.mode==='desktop'){
         const ids=results.map(asset=>(state.history||[]).find(item=>item.assetId===asset.id)?.id);
         if(ids.some(id=>!id))throw Error('部分增强结果尚未保存，请稍后重试');
         const data=await api('/api/history/export','POST',{ids});await saveAsset(data.asset);
@@ -842,6 +843,7 @@
     if(!state)return;
     syncPhotoBatchSelection();
     const job=photoJob(),busy=photoBusy(),batch=photoBatchEntries().length>1;
+    const jobLabel=ui.feature==='enhance'?window.ShiYanPhotoStatus.label(job):job?.label||'处理中';
     photoStatusPoll.watch(!batch&&job&&busyStates.has(job.state)?job.id:null);
     photoBatchPoll.watch(batch&&busyStates.has(ui.photoBatch?.state)?ui.photoBatch.id:null);
     if(job && job.outputAssetId && assets.has(job.outputAssetId))ui.result=assets.get(job.outputAssetId);
@@ -870,7 +872,7 @@
     if(batch){const summary=photoBatchSummary();processLabel=photoBatchEntries().some(entry=>entry.file)?'重试上传':summary.failed?'重试失败项 '+summary.failed+' 张':(summary.completed===summary.total?'重新增强 ':'开始增强 ')+summary.total+' 张';}
     $('processIcon').dataset.symbol=redo?'pencil.tip':ui.feature==='remove'?'eraser':ui.feature==='colorize'?'paintpalette':'wand.and.stars';
     $('homeView').style.setProperty('--image-accent',ui.feature==='enhance' && ui.model==='anime'?'var(--pink)':'var(--accent)');
-    setText('processLabel',busy?(ui.photoUploading?(ui.photoUploadLabel||'正在上传图片'):ui.photoSubmitting?'正在准备':job && job.label || '处理中'):processLabel);
+    setText('processLabel',busy?(ui.photoUploading?(ui.photoUploadLabel||'正在上传图片'):ui.photoSubmitting?'正在准备':jobLabel):processLabel);
     $('processButton').disabled=!ui.input || busy || (ui.feature==='remove' && !ui.strokes.length && !redo);
     $('saveResultButton').disabled=!ui.result || (job&&busyStates.has(job.state));
     show('saveResultButton',!!ui.result);show('cancelProcessButton',busy && !ui.photoSubmitting && (!!job||!!ui.photoBatch));
@@ -880,8 +882,9 @@
     show('processingOverlay',busy && !ui.photoUploading);$('processingOverlay').classList.toggle('is-indeterminate',busy && ui.feature!=='enhance');
     const raw=job && !ui.photoSubmitting?Number(job.progress)||0:0,progress=raw>1?Math.min(1,raw/100):Math.min(1,Math.max(0,raw));
     if($('progressRing'))$('progressRing').style.strokeDashoffset=String(175.929*(1-progress));
-    setText('progressValue',Math.round(progress*100)+'%');setText('processingStatus',ui.photoSubmitting?'正在准备':job && job.label || '处理中');
-    const error=!ui.photoSubmitting && ((job && job.error) || ui.photoError);
+    setText('progressValue',Math.round(progress*100)+'%');setText('processingStatus',ui.photoSubmitting?'正在准备':jobLabel);
+    const rawError=(job && job.error) || ui.photoError;
+    const error=!ui.photoSubmitting && (ui.feature==='enhance'?window.ShiYanPhotoStatus.error(rawError):rawError);
     if(error){setText('photoError',error);show('photoError');}else{show('photoError',false);}
     requestAnimationFrame(resizeMask);
     renderPhotoBatch();
@@ -1465,7 +1468,7 @@
     navigate:setView,toast,copyText,confirmAction,api,sessionHTML,sessionMenuIcon,openPreview,openGeneratedDocument,saveAsset,shareAssets,
     getPhotoState:()=>({input:ui.input,result:ui.result,model:ui.model,busy:photoBusy(),uploading:ui.photoUploading,
       batch:photoBatchEntries().length>1?photoBatchSummary():null,itemBusy:busyStates.has(photoJob()?.state),
-      progress:photoJob()?.progress || 0,label:ui.photoUploading?(ui.photoUploadLabel||'正在上传图片'):photoJob()?.label || (ui.photoSubmitting?'正在准备':''),error:photoJob()?.error || ui.photoError}),
+      progress:photoJob()?.progress || 0,label:ui.photoUploading?(ui.photoUploadLabel||'正在上传图片'):ui.photoSubmitting?'正在准备':(ui.feature==='enhance'?window.ShiYanPhotoStatus.label(photoJob()):photoJob()?.label||''),error:ui.feature==='enhance'?window.ShiYanPhotoStatus.error(photoJob()?.error||ui.photoError):photoJob()?.error||ui.photoError}),
     addContext:async text=>{
       if(!current())await newConversation();
       setView('agent');

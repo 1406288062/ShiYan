@@ -44,5 +44,21 @@
     function refresh(){if(active&&!flight){if(timer!==null)clearTimeout(timer);timer=null;tick(generation);}}
     return {watch,refresh,stop:()=>watch(null)};
   }
-  window.ShiYanPhotoStatus={newer,mergeSnapshot,create};
+  function label(job){
+    const state=job?.state;
+    const fixed={submitting:'正在准备',queued:'等待增强',reconnecting:'正在重新连接',cancelling:'正在停止',cancelled:'已停止',completed:'增强完成',failed:'增强失败'};
+    if(fixed[state])return fixed[state];
+    const raw=String(job?.label||'');
+    if(/加载|模型/.test(raw))return '加载增强模型';
+    if(/保存|回传|编码|上传.*结果/.test(raw))return '正在保存图片';
+    if(/接收|下载|准备/.test(raw))return '正在准备图片';
+    if(/等待|排队/.test(raw))return '等待增强';
+    if(/连接|离线/.test(raw))return '正在重新连接';
+    return state==='running'?'正在增强':'处理中';
+  }
+  function error(value){
+    const text=String(value||'');
+    return /\b(?:mac|cos|gpu|mps)\b|回传/i.test(text)?'图片增强暂时未完成，请重试':text;
+  }
+  window.ShiYanPhotoStatus={newer,mergeSnapshot,create,label,error};
 })();

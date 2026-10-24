@@ -16,10 +16,11 @@ function setup(){
       return {ok:true,batch,jobs:body.assetIds.map((id,index)=>({id:batch.id+'-'+index,inputAssetId:id,state:'queued',photoRevision:1})),assets:[],history:[]};
     }
     if(path.endsWith('/cancel'))return {batch:{...ui.photoBatch,state:'cancelled'},jobs:state.photoJobs.map(job=>({...job,state:'cancelled',photoRevision:job.photoRevision+1})),assets:[],history:[]};
+    if(path==='/api/history/export')return {ok:true,asset:{id:'archive',filename:'results.zip'}};
     return {ok:true};
   };
   class TestURL{static createObjectURL(){return 'blob:'+ ++sequence;}static revokeObjectURL(url){revoked.push(url);}}
-  const context={ui,state,assets,window:{ShiYanPlatform:{mode:'web'},ShiYanPhotoStatus:{newer:(a,b)=>!b||a.photoRevision>=b.photoRevision}},
+  const context={ui,state,assets,window:{ShiYanPlatform:{mode:'web'},ShiYanPhotoStatus:{newer:(a,b)=>!b||a.photoRevision>=b.photoRevision,label:job=>job?.label||'正在增强',error:value=>String(value||'')}},
     URL:TestURL,Image:class{naturalWidth=32;naturalHeight=24;set src(value){this.onload?.();}},photoBatchPoll:{stop(){}},
     busyStates:new Set(['queued','running','cancelling']),$:id=>{if(!fields.has(id))fields.set(id,{value:'',disabled:false});return fields.get(id);},
     setText:(id,text)=>context.$(id).textContent=text,esc:String,assetUrl:asset=>asset?.url,renderPhoto(){},renderHistory(){},
@@ -86,3 +87,20 @@ test('a local image decoded after batch upload still updates the selected previe
  await s.context.chooseHomeImages(files(2));pending[0]();s.context.syncPhotoBatchSelection();
  assert.equal(s.ui.input.width,88);assert.equal(s.ui.input.height,99);assert.equal(s.assets.get('asset-0.png').width,undefined);
 });
+
+for(const mode of ['web','desktop']){
+ test(mode+': one successful batch result saves the image and two results use ZIP',async()=>{
+  const s=setup(),saved=[],archives=[];s.context.window.ShiYanPlatform.mode=mode;
+  s.context.saveAsset=async asset=>saved.push(asset.id);
+  s.context.window.ShiYanPhotoArchive={download:async items=>archives.push(items.map(x=>x.id))};
+  s.ui.photoBatchEntries=[{result:{id:'only',filename:'only.jpg'}},{}];
+  await s.context.savePhotoBatch();assert.deepEqual(saved,['only']);assert.equal(archives.length,0);
+  assert(!s.calls.some(c=>c.path==='/api/history/export'));
+  s.ui.photoBatchEntries=[{result:{id:'a',filename:'a.jpg'}},{result:{id:'b',filename:'b.jpg'}}];
+  s.state.history=[{id:'h-a',assetId:'a'},{id:'h-b',assetId:'b'}];
+  await s.context.savePhotoBatch();
+  if(mode==='web'){assert.equal(archives.length,1);assert.deepEqual(Array.from(archives[0]),['a','b']);}
+  else {assert.deepEqual(Array.from(s.calls.find(c=>c.path==='/api/history/export').body.ids),['h-a','h-b']);assert.equal(saved.at(-1),'archive');}
+  assert.deepEqual(s.toasts,[]);
+ });
+}

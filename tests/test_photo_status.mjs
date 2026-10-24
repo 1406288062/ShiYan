@@ -29,3 +29,14 @@ test('cancelling batches keep polling until all jobs have settled',async()=>{
  poll.watch('batch-a');await settle();assert.deepEqual(seen,['cancelling']);s.run(1000);await settle();
  assert.deepEqual(seen,['cancelling','cancelled']);assert.equal(s.timers.size,0);
 });
+
+test('enhancement progress uses the same product wording for local and remote jobs',()=>{
+ const {api}=setup();
+ for(const [raw,expected] of [['Mac 正在接收图片','正在准备图片'],['正在准备图片','正在准备图片'],['Mac 正在回传图片','正在保存图片'],['正在保存图片','正在保存图片'],['加载增强模型','加载增强模型'],['Mac COS GPU 正在增强','正在增强']]){
+  const value=api.label({state:'running',label:raw});assert.equal(value,expected);assert(!/mac|cos|gpu|mps|回传/i.test(value));
+ }
+ assert.equal(api.label({state:'queued',label:'等待 Mac 处理'}),'等待增强');
+ assert.equal(api.label({state:'reconnecting',label:'等待恢复 Mac 连接'}),'正在重新连接');
+ assert.equal(api.error('Mac COS 图片回传失败'),'图片增强暂时未完成，请重试');
+ assert.equal(api.error('图片超过大小限制'),'图片超过大小限制');
+});
