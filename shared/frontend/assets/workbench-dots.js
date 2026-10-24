@@ -6,7 +6,8 @@
  const $=id=>document.getElementById(id);
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const key=window.ShiYanAccount.storageKey('shiyan.dots.v1');let saved={};try{saved=JSON.parse(localStorage.getItem(key)||'{}');}catch{}
- let C,view,active=false,monitorReady=false,hydration,saveChain=Promise.resolve(),refreshChain=Promise.resolve(),events=Promise.resolve();
+ let C,view,active=false,monitorReady=false,hydration,saveChain=Promise.resolve(),refreshFlight=null,refreshQueuedForce=false,events=Promise.resolve();
+ let persistedSnapshot=null,savingSnapshot=null,savingTask=null;
  let manager=saved.manager||null,messages=saved.messages||[],tasks=saved.tasks||[],goals=saved.goals||[],details=saved.details||{},drafts=saved.drafts||{},pending=saved.pending||{},cursor=Number(saved.cursor)||0;
   
  let readState=normalizeReadState(saved.readState,messages);
@@ -62,7 +63,7 @@
  const voice={active:false,phase:'idle',recognitionId:null,playbackId:null,text:'',acceptedId:0,epoch:0,waitTimer:0,pollTimer:0,clockTimer:0,playbackTimer:0,callId:null,startedAt:0,muted:false,paused:false,previousFocus:null,level:0,levelAt:0,consumedRecognitionIds:new Set(),errors:new Map(),replyQueue:[],replySeen:new Set(),replyProgress:new Map(),replySuppressed:new Set(),replyFloor:0,playbackMessageId:0,lastSpeechEnergyAt:0};
  // A native voice call outlives window visibility. Hidden windows keep only
  // the call's data/audio path alive; rendering and read receipts stay visual.
- function monitorAllowed(){return monitorReady&&(!document.hidden||voice.active);}
+ function monitorAllowed(){return monitorReady&&!window.ShiYanUploadPriority?.active&&(!document.hidden||voice.active);}
  const voiceGlyph='<svg class="dots-voice-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M4 10v4M8 6v12M12 3v18M16 6v12M20 10v4"/></svg>';
  function voiceNative(action,detail={}){if(window.ShiYanPlatform?.mode==='web')return window.ShiYanPlatform.adapter('voice')?.post(action,detail)??false;const bridge=window.webkit?.messageHandlers?.native;if(!bridge)return false;bridge.postMessage({action,...detail});return true;}
  function syncNativeVoiceCall(force=false){
@@ -380,9 +381,17 @@
  const markdown=s=>window.ShiYanOutput?.markdown(s,C.icon('copy'),{prose:true})||'<p>'+esc(s).replace(/\n/g,'<br>')+'</p>';
  const api=(path,method='GET',data)=>window.shiyan.api('/api/dots'+path,method,data);
  function persist(){
-  const snapshot=JSON.parse(JSON.stringify({manager,messages,tasks,goals,details,drafts,pending,cursor,readState}));
-  try{localStorage.setItem(key,JSON.stringify(snapshot));}catch{throw Error('无法保存 Dots 状态，请释放本机存储后重试');}
-  const task=saveChain.catch(()=>{}).then(()=>api('/local-state','PATCH',{state:snapshot}));saveChain=task;task.catch(showError);return task;
+  const snapshot=JSON.stringify({manager,messages,tasks,goals,details,drafts,pending,cursor,readState});
+  try{localStorage.setItem(key,snapshot);}catch{throw Error('无法保存 Dots 状态，请释放本机存储后重试');}
+  if(savingTask&&savingSnapshot===snapshot)return savingTask;
+  // Preserve write order and durability barriers, but do not resend unchanged history.
+  const task=saveChain.catch(()=>{}).then(async()=>{
+   if(snapshot===persistedSnapshot)return;
+   await api('/local-state','PATCH',{state:JSON.parse(snapshot)});persistedSnapshot=snapshot;
+  });
+  saveChain=task;savingTask=task;savingSnapshot=snapshot;
+  const clear=()=>{if(savingTask===task){savingTask=null;savingSnapshot=null;}};
+  task.then(clear,clear);task.catch(showError);return task;
  }
  async function hydrate(){const {dotsState:s={}}=await api('/local-state');if(Object.keys(s).length){manager=s.manager||null;messages=s.messages||[];tasks=s.tasks||[];goals=s.goals||[];details=s.details||{};drafts=s.drafts||{};pending=s.pending||{};cursor=Number(s.cursor)||0;readState=normalizeReadState(s.readState,messages);}}
  function showError(e){error=e?.message||String(e);if(error==='连接中断，请检查网络后重试')error='';if($('dotsError')){$('dotsError').textContent=error;$('dotsError').hidden=!error;}if(error.includes('解锁')||error.includes('设备授权')){disconnect();setConnection('等待设备解锁或授权');}renderDrawer();}
@@ -421,7 +430,20 @@
   }));
   renderApprovals();
  }
- function refresh(forceApprovals=false){const task=refreshChain.catch(()=>{}).then(async()=>{const observed=readState.observedThrough,data=await api('/manager');adopt(data);await reconcileUnreadGap(data,observed);await refreshApprovals(forceApprovals);if(active&&drawerOpen){const d=await api('/goals?limit=200');goals=d.goals||[];if(selected){const detail=await api('/goals/'+selected);details[String(selected)]=detail.goal;}}await persist();refreshContent();});refreshChain=task;return task;}
+ function refresh(forceApprovals=false){
+  if(refreshFlight){refreshQueuedForce=refreshQueuedForce||forceApprovals;return refreshFlight;}
+  const run=async()=>{
+   let force=forceApprovals;
+   do{
+    refreshQueuedForce=false;
+    const observed=readState.observedThrough,data=await api('/manager');adopt(data);
+    await reconcileUnreadGap(data,observed);await refreshApprovals(force);
+    if(active&&drawerOpen){const d=await api('/goals?limit=200');goals=d.goals||[];if(selected){const detail=await api('/goals/'+selected);details[String(selected)]=detail.goal;}}
+    await persist();refreshContent();force=refreshQueuedForce;
+   }while(force);
+  };
+  refreshFlight=run().finally(()=>{refreshFlight=null;});return refreshFlight;
+ }
  function managerTime(message){
   if(message.role!=='user'&&message.origin!=='proactive')return '';
   const value=Number(message.createdAt);if(!Number.isFinite(value)||value<=0)return '';
@@ -608,6 +630,11 @@
   source.addEventListener('connection-error',()=>{if(epoch===streamEpoch)reconnect();});source.onerror=()=>{if(epoch===streamEpoch)reconnect();};
   clearInterval(recoveryTimer);recoveryTimer=setInterval(()=>{if(monitorAllowed())refresh().catch(showError);},10000);
  }
+ function handleUploadPriorityChange(){
+  if(window.ShiYanUploadPriority?.active){disconnect();return;}
+  if(monitorAllowed()){connect();refresh().catch(showError);}
+ }
+ window.addEventListener('shiyan-upload-priority-change',handleUploadPriorityChange);
  function handleVisibilityChange(){
   // Visibility can toggle briefly during fullscreen transitions as well as
   // minimization. Neither is a hangup or a request to restart recognition.

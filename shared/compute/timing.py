@@ -9,7 +9,7 @@ import time
 
 STAGES = frozenset({'upload','mac_download','model_load','gpu_inference','result_encode','mac_upload','web_download','task_link'})
 IDENTIFIERS = ('taskId','photoJobId','requestId','assetId','outputAssetId','attemptId','scopeId')
-NUMBERS = ('durationMs','startedAtMs','endedAtMs','bytes','transferBytes','width','height')
+NUMBERS = ('durationMs','startedAtMs','endedAtMs','bytes','transferBytes','width','height','receiveMs','processMs')
 
 def timing_event(stage, status, **fields):
     """Allowlist values so errors, paths, image content and credentials cannot leak."""

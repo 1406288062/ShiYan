@@ -59,6 +59,7 @@
     return String(error);
   }
   async function api(path, method='GET', body) {
+    if(window.ShiYanPlatform?.mode==='web' && (path==='/api/state' || path==='/api/dots/local-state' || path==='/api/dots/manager'))await window.ShiYanUploadPriority?.wait();
     const options={method,credentials:'same-origin',headers:{}};
     if(method !== 'GET') options.headers['X-Shiyan-Local']='1';
     if(body instanceof FormData) options.body=body;
@@ -81,11 +82,18 @@
     form.append('kind',kind);
     let finishTiming;
     try { if(kind==='input')finishTiming=window.ShiYanEnhancementTiming?.beginUpload(); }catch(_){}
+    const priority=kind==='input' && window.ShiYanPlatform?.mode==='web'?window.ShiYanUploadPriority:null;
+    const release=priority?.begin();
     try {
-      const data=await api('/api/assets'+(kind==='input'?'?compact=1':''),'POST',form);
+      const path='/api/assets'+(kind==='input'?'?compact=1':'');
+      const data=priority?await priority.upload(path,form,progress=>{
+        ui.photoUploadLabel=progress.sent?'图片已发送，正在确认':progress.percent===null?'正在上传图片':'正在上传图片 '+progress.percent+'%';
+        renderPhoto();
+      }):await api(path,'POST',form);
       finishTiming?.('completed',data.assets?.[0]?.id,Array.from(files).reduce((n,f)=>n+(f.size||0),0));
       return (data.assets || []).map(remember);
     }catch(error){finishTiming?.('failed');throw error;}
+    finally{release?.();}
   }
   async function resolveAsset(id) {
     if(!id) return null;
@@ -597,7 +605,7 @@
     const url=URL.createObjectURL(file);
     const local={id:'local:'+url,url,filename:file.name,mimeType:file.type};
     ui.input=local;ui.result=null;ui.showOriginal=false;ui.photoJobId=null;ui.strokes=[];
-    ui.photoError='';ui.photoUploadFile=file;ui.photoLocalURL=url;ui.photoUploading=true;
+    ui.photoError='';ui.photoUploadFile=file;ui.photoLocalURL=url;ui.photoUploading=true;ui.photoUploadLabel='正在上传图片 0%';
     $('homeFileInput').disabled=true;
     renderPhoto(); // Preview the selected file before waiting for the network.
     const image=new Image();
@@ -699,7 +707,7 @@
     const processLabel=ui.photoUploadFile?'重试上传':redo?'重新涂抹':ui.feature==='enhance'?'开始增强':ui.feature==='remove'?'开始消除':'开始上色';
     $('processIcon').dataset.symbol=redo?'pencil.tip':ui.feature==='remove'?'eraser':ui.feature==='colorize'?'paintpalette':'wand.and.stars';
     $('homeView').style.setProperty('--image-accent',ui.feature==='enhance' && ui.model==='anime'?'var(--pink)':'var(--accent)');
-    setText('processLabel',busy?(ui.photoUploading?'正在上传图片':ui.photoSubmitting?'正在准备':job && job.label || '处理中'):processLabel);
+    setText('processLabel',busy?(ui.photoUploading?(ui.photoUploadLabel||'正在上传图片'):ui.photoSubmitting?'正在准备':job && job.label || '处理中'):processLabel);
     $('processButton').disabled=!ui.input || busy || (ui.feature==='remove' && !ui.strokes.length && !redo);
     $('saveResultButton').disabled=!ui.result || busy;
     show('saveResultButton',!!ui.result);show('cancelProcessButton',busy && !ui.photoSubmitting && !!job);
@@ -1255,6 +1263,7 @@
     window.addEventListener('pagehide',()=>{saveReadingPosition();flushReadingPositions();cancelSpeech();if(eventSource)eventSource.close();});
   }
   function connectStateEvents() {
+    if(window.ShiYanPlatform?.mode==='web' && window.ShiYanUploadPriority?.active)return;
     if(window.ShiYanPlatform?.deferUntilLoaded?.(connectStateEvents))return;
     if(eventSource)eventSource.close();
     eventSource=new EventSource('/api/events');
@@ -1262,6 +1271,11 @@
     eventSource.onopen=()=>{if(state)renderConnection();};
     eventSource.onerror=()=>{setText('connectionText','本地连接已断开，正在重新连接');show('connectionBanner');};
   }
+  window.addEventListener('shiyan-upload-priority-change',()=>{
+    if(window.ShiYanPlatform?.mode!=='web')return;
+    if(window.ShiYanUploadPriority?.active){eventSource?.close();eventSource=null;}
+    else if(state)connectStateEvents();
+  });
   async function start() {
     if(new URLSearchParams(location.search).has('native') || (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.native)){document.body.classList.add('is-native');document.documentElement.classList.add('is-native');}
     initEvents();
@@ -1280,7 +1294,7 @@
     uploadAttachments:(files,existing=[])=>{validateAttachmentFiles(files,existing);return upload(files,'attachment');},
     navigate:setView,toast,copyText,confirmAction,api,sessionHTML,sessionMenuIcon,openPreview,openGeneratedDocument,saveAsset,shareAssets,
     getPhotoState:()=>({input:ui.input,result:ui.result,model:ui.model,busy:photoBusy(),uploading:ui.photoUploading,
-      progress:photoJob()?.progress || 0,label:ui.photoUploading?'正在上传图片':photoJob()?.label || (ui.photoSubmitting?'正在准备':''),error:photoJob()?.error || ui.photoError}),
+      progress:photoJob()?.progress || 0,label:ui.photoUploading?(ui.photoUploadLabel||'正在上传图片'):photoJob()?.label || (ui.photoSubmitting?'正在准备':''),error:photoJob()?.error || ui.photoError}),
     addContext:async text=>{
       if(!current())await newConversation();
       setView('agent');

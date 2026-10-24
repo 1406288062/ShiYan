@@ -11,10 +11,12 @@ import mimetypes
 import os
 from pathlib import Path
 import tempfile
+import time
 from urllib.parse import urlsplit, quote
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.requests import ClientDisconnect
 from .message_view import conversation_view
 from .runtime import Runtime
 from .gateway import GatewayError
@@ -226,6 +228,7 @@ def create_app(directory, root, legacy=None, profile="desktop"):
     @app.post("/api/assets")
     async def upload(request:Request):
         r=runtime(request)
+        upload_started=time.perf_counter()
         items=[]
         if request.headers.get("content-type","").startswith("application/json"):
             data=await object_body(request)
@@ -240,7 +243,12 @@ def create_app(directory, root, legacy=None, profile="desktop"):
             items=[(data.get("filename","图片.png"),head[5:].split(";")[0],raw)]
             kind=data.get("kind","input")
         else:
-            form=await request.form(max_files=8,max_fields=4,max_part_size=40*1024*1024)
+            try:
+                form=await request.form(max_files=8,max_fields=4,max_part_size=40*1024*1024)
+            except ClientDisconnect:
+                emit_timing("upload","failed",source="server",durationMs=(time.perf_counter()-upload_started)*1000,
+                            receiveMs=(time.perf_counter()-upload_started)*1000)
+                raise
             kind=str(form.get("kind","input"))
             files=form.getlist("files") or form.getlist("file")
             for uploaded in files:
@@ -249,6 +257,7 @@ def create_app(directory, root, legacy=None, profile="desktop"):
                 data=await uploaded.read(40*1024*1024+1)
                 await uploaded.close()
                 items.append((uploaded.filename,uploaded.content_type,data))
+        upload_received=time.perf_counter()
         if not items or len(items)>8:
             raise ValueError("请选择 1 到 8 个附件")
         assets=[]
@@ -278,6 +287,10 @@ def create_app(directory, root, legacy=None, profile="desktop"):
                     raise ValueError("单个文档不能超过 10 MB")
             asset=await asyncio.to_thread(r.storage.save_bytes,data,filename,mime,normalize=kind!="mask",mask=kind=="mask")
             assets.append(asset)
+        if kind=="input":
+            emit_timing("upload","completed",source="server",assetId=assets[0]["id"],bytes=sum(len(item[2]) for item in items),
+                        durationMs=(time.perf_counter()-upload_started)*1000,
+                        receiveMs=(upload_received-upload_started)*1000,processMs=(time.perf_counter()-upload_received)*1000)
         if request.query_params.get("compact")=="1" and kind=="input":
             return {"ok":True,"assets":[r.storage.public_asset(a) for a in assets]}
         r.notify()
