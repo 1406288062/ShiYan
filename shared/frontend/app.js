@@ -82,7 +82,7 @@
     let finishTiming;
     try { if(kind==='input')finishTiming=window.ShiYanEnhancementTiming?.beginUpload(); }catch(_){}
     try {
-      const data=await api('/api/assets','POST',form);
+      const data=await api('/api/assets'+(kind==='input'?'?compact=1':''),'POST',form);
       finishTiming?.('completed',data.assets?.[0]?.id,Array.from(files).reduce((n,f)=>n+(f.size||0),0));
       return (data.assets || []).map(remember);
     }catch(error){finishTiming?.('failed');throw error;}
@@ -581,9 +581,15 @@
     ui.restoring=false;renderPhoto();
     if(!state.conversations.length)await api('/api/conversations','POST',{});
   }
+  let workspaceSaveQueue=Promise.resolve();
   async function saveWorkspace() {
     if(ui.photoUploadFile)return;
-    await api('/api/settings','PATCH',{homeInputAssetId:ui.input && ui.input.id,homeFeature:ui.feature,homeModel:ui.model});
+    const settings={homeInputAssetId:ui.input && ui.input.id,homeFeature:ui.feature,homeModel:ui.model};
+    if(state)state.settings={...state.settings,...settings};
+    // Persist selections in order, independently of upload readiness.
+    const operation=workspaceSaveQueue.catch(()=>{}).then(()=>api('/api/settings?compact=1','PATCH',settings));
+    workspaceSaveQueue=operation;
+    await operation;
   }
   async function chooseWebHomeImage(file) {
     const keys=['input','result','showOriginal','photoJobId','strokes','photoError','photoUploadFile','photoLocalURL'];
@@ -608,7 +614,7 @@
       // for processing and persistence. Blob URLs are never saved to settings.
       ui.input=image.naturalWidth?{...asset,url}:asset;ui.photoUploadFile=null;
       if(!image.naturalWidth){URL.revokeObjectURL(url);ui.photoLocalURL=null;}
-      try {await saveWorkspace();}catch(error){toast('图片已上传，但保存图片选择失败：'+error.message);}
+      saveWorkspace().catch(error=>{if(ui.input?.id===asset.id)toast('图片已上传，但保存图片选择失败：'+error.message);});
     } catch(error) {
       const timeout=error.status===408 || /\b408\b/.test(error.message || '');
       ui.photoError=timeout?'图片上传超时，原图已保留，请点击“重试上传”。'
@@ -629,7 +635,7 @@
       const result=await upload([file]);if(!result[0])throw new Error('没有读取到图片');
       if(Math.max(result[0].width || 0,result[0].height || 0)>2000 && !await confirmAction('图片较大','图片分辨率超过 2000px，处理时间可能较长且占用更多内存，是否继续？','继续'))return;
       ui.input=result[0];ui.result=null;ui.showOriginal=false;ui.photoJobId=null;ui.strokes=[];ui.photoError='';
-      setText('photoError','');show('photoError',false);renderPhoto();await saveWorkspace();
+      setText('photoError','');show('photoError',false);renderPhoto();saveWorkspace().catch(error=>toast('图片已上传，但保存图片选择失败：'+error.message));
     }catch(e){ui.photoError=e.message;setText('photoError',e.message);show('photoError');}
     finally {$('homeFileInput').disabled=false;$('homeFileInput').value='';}
   }

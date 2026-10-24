@@ -278,6 +278,8 @@ def create_app(directory, root, legacy=None, profile="desktop"):
                     raise ValueError("单个文档不能超过 10 MB")
             asset=await asyncio.to_thread(r.storage.save_bytes,data,filename,mime,normalize=kind!="mask",mask=kind=="mask")
             assets.append(asset)
+        if request.query_params.get("compact")=="1" and kind=="input":
+            return {"ok":True,"assets":[r.storage.public_asset(a) for a in assets]}
         r.notify()
         return result(request,assets=assets)
 
@@ -504,6 +506,14 @@ def create_app(directory, root, legacy=None, profile="desktop"):
         r=runtime(request)
         data=await object_body(request)
         allowed={"historyViewMode","homeInputAssetId","homeFeature","homeModel","homeOutputAssetId","avatarAssetId"}
+        photo_keys={"homeInputAssetId","homeFeature","homeModel","homeOutputAssetId"}
+        compact=request.query_params.get("compact")=="1"
+        if compact:
+            if not data or not set(data)<=photo_keys:raise ValueError("仅支持保存图片选择设置")
+            for key in ("homeInputAssetId","homeOutputAssetId"):
+                if data.get(key):
+                    asset=r.storage.asset(str(data[key]))
+                    if not str(asset.get("mimeType","")).startswith("image/"):raise ValueError("请选择图片")
         current=r.storage.setting("settings",{"historyViewMode":"list"})
         if data.get("avatarAssetId"):
             avatar=r.storage.get("assets",str(data["avatarAssetId"]))
@@ -513,6 +523,7 @@ def create_app(directory, root, legacy=None, profile="desktop"):
             if key in data:
                 current[key]=data[key]
         r.storage.set_setting("settings",current)
+        if compact:return {"ok":True,"settings":{key:current[key] for key in photo_keys if key in current}}
         r.notify()
         return result(request)
 
