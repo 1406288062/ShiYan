@@ -26,6 +26,7 @@ from .dots import register_dots
 from .schedules import DesktopSchedules, register_schedules
 from .account_sessions import AccountSessions, register_accounts
 from .account_avatar import register_account_avatar
+from .sponge import register_sponge
 from .knowledge import register_knowledge
 from .platforms import resolve_profile
 from .member_workspace import proxy_member_request
@@ -66,6 +67,7 @@ def create_app(directory, root, legacy=None, profile="desktop"):
     register_schedules(app)
     register_accounts(app)
     register_account_avatar(app)
+    register_sponge(app)
     register_knowledge(app)
     if platform.mode == "web":
         from apps.web.adapters.tts import register_web_voice
