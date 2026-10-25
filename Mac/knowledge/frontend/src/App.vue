@@ -637,4 +637,7 @@ body:not(.light-theme) .workspace-shell.shiyan-embedded :is(.sidebar-collapse-to
   .workspace-shell.shiyan-embedded.sidebar-collapsed .workspace-header { padding-left: 56px; }
   .workspace-shell.shiyan-embedded :is(.mobile-menu-button, .sidebar-mobile-close, .sidebar-scrim) { display: none; }
 }
+
+.workspace-shell.shiyan-embedded.sidebar-collapsed .workspace-header { height:48px; flex:0 0 48px; padding-left:51px; }
+.workspace-shell.shiyan-embedded.sidebar-collapsed .workspace-heading h1 { line-height:24px; }
 </style>

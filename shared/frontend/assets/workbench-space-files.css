@@ -29,6 +29,6 @@ body.workbench-v22 #spaceBatch #spaceExport:active:not(:disabled) {
  background:var(--soft-fill);
 }
 
-body.workbench-v22.workbench-v2 #desktopLayout[data-view="history"]:not(.v2-left-open) #spaceContent .v2-space-toolbar{padding-left:64px;}
-body.workbench-v22.workbench-v2 #desktopLayout[data-view="history"]:not(.v2-left-open) #toggleLeftSidebar{top:15px;}
+body.workbench-v22.workbench-v2 #desktopLayout[data-view="history"]:not(.v2-left-open) #spaceContent .v2-space-toolbar{height:48px;min-height:48px;padding:0 24px 0 51px;}
+body.workbench-v22.workbench-v2 #desktopLayout[data-view="history"]:not(.v2-left-open) #spaceCount{font-size:19px;line-height:24px;}
 body.workbench-v22 #spaceCount{flex-shrink:0;white-space:nowrap;}

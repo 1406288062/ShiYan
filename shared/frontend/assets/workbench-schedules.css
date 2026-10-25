@@ -91,3 +91,5 @@ body.desktop-workbench.workbench-v22.workbench-v2 .schedule-sidebar-header [data
 body.schedules-is-current-view.schedules-sidebar-collapsed #desktopLayout{grid-template-columns:50px 0 minmax(0,1fr) 0!important}
 body.schedules-is-current-view.schedules-sidebar-collapsed.schedules-tools-open #desktopLayout{grid-template-columns:50px 0 minmax(0,1fr) var(--schedule-tools-width,460px)!important}
 body.schedules-is-current-view.schedules-sidebar-collapsed #leftContainer{visibility:hidden!important;pointer-events:none!important}
+
+body.schedules-is-current-view.schedules-sidebar-collapsed .schedule-conversation-toolbar{height:48px;min-height:48px;padding:0 12px 0 51px;}
