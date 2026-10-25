@@ -885,7 +885,7 @@
     if(batch){const summary=photoBatchSummary();processLabel=photoBatchEntries().some(entry=>entry.file)?'重试上传':summary.failed?'重试失败项':summary.completed===summary.total?'重新增强':'开始增强';}
     $('processIcon').dataset.symbol=redo?'pencil.tip':ui.feature==='remove'?'eraser':ui.feature==='colorize'?'paintpalette':'wand.and.stars';
     $('homeView').style.setProperty('--image-accent',ui.feature==='enhance' && ui.model==='anime'?'var(--pink)':'var(--accent)');
-    setText('processLabel',busy?(ui.photoUploading?(ui.photoUploadLabel||'正在上传图片'):ui.photoSubmitting?'正在准备':jobLabel):processLabel);
+    setText('processLabel',busy?'处理中':processLabel);
     $('processButton').disabled=!ui.input || busy || (ui.feature==='remove' && !ui.strokes.length && !redo);
     const readyResults=batch?photoBatchSummary().completed:ui.result?1:0;
     $('saveResultButton').disabled=!readyResults||busy||ui.photoExporting;
@@ -1482,9 +1482,17 @@
     uploadAttachments:(files,existing=[])=>{validateAttachmentFiles(files,existing);return upload(files,'attachment');},
     navigate:setView,toast,copyText,confirmAction,api,sessionHTML,sessionMenuIcon,openPreview,openGeneratedDocument,saveAsset,shareAssets,
     previousPhoto:()=>selectPhotoBatch(ui.photoBatchIndex-1),nextPhoto:()=>selectPhotoBatch(ui.photoBatchIndex+1),removePhoto:removeCurrentPhoto,
-    getPhotoState:()=>({selection:photoSelection(),exporting:!!ui.photoExporting,restoring:!!ui.restoring,input:ui.input,result:ui.result,model:ui.model,busy:photoBusy(),uploading:ui.photoUploading,
-      batch:photoBatchEntries().length?photoBatchSummary():null,itemBusy:busyStates.has(photoJob()?.state),
-      progress:photoJob()?.progress || 0,label:ui.photoUploading?(ui.photoUploadLabel||'正在上传图片'):ui.photoSubmitting?'正在准备':(ui.feature==='enhance'?window.ShiYanPhotoStatus.label(photoJob()):photoJob()?.label||''),error:ui.feature==='enhance'?window.ShiYanPhotoStatus.error(photoJob()?.error||ui.photoError):photoJob()?.error||ui.photoError}),
+    getPhotoState:()=>{
+      const entries=photoBatchEntries(),entry=entries[ui.photoBatchIndex],job=photoJob();
+      const itemUploading=!!ui.photoUploading&&(!entries.length||!!entry?.uploading);
+      const label=entry?.error?'图片上传失败':itemUploading?(ui.photoUploadLabel||'正在上传图片')
+        :ui.photoUploading?(entry?.file?'等待上传':'等待开始增强'):ui.photoSubmitting?'正在准备'
+        :job?(ui.feature==='enhance'?window.ShiYanPhotoStatus.label(job):job.label||''):'';
+      return {selection:photoSelection(),exporting:!!ui.photoExporting,restoring:!!ui.restoring,input:ui.input,result:ui.result,model:ui.model,busy:photoBusy(),uploading:ui.photoUploading,
+        batch:entries.length?photoBatchSummary():null,itemBusy:itemUploading||busyStates.has(job?.state),
+        itemUploading,itemState:job?.state||'',submitting:!!ui.photoSubmitting,
+        progress:job?.progress||0,label,error:ui.feature==='enhance'?window.ShiYanPhotoStatus.error(job?.error||ui.photoError):job?.error||ui.photoError};
+    },
     addContext:async text=>{
       if(!current())await newConversation();
       setView('agent');

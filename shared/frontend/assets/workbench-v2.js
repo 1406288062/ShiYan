@@ -347,13 +347,24 @@
   }
   function renderCompare(){
    if(!$('compareWorkbench'))return;const p=window.shiyan?.getPhotoState?.();if(!p)return;const signature=(p.input?.id||'')+':'+(p.result?.id||'');if(signature!==S.photoSignature){S.photoSignature=signature;S.compare={zoom:1,x:0,y:0};}S.photoInput=p.input;S.photoOutput=p.result;
-   for(const card of document.querySelectorAll('[data-compare]')){const a=card.dataset.compare==='original'?p.input:p.result,empty=card.querySelector('.v2-compare-empty');renderCompareImage(card,a);if(card.dataset.compare==='result')empty.querySelector('span').textContent=p.busy?(p.label||'正在增强…'):'增强结果显示在这里';card.classList.toggle('is-processing',(p.itemBusy??p.busy)&&card.dataset.compare==='result');}
+   for(const card of document.querySelectorAll('[data-compare]')){
+    const result=card.dataset.compare==='result',a=result?p.result:p.input,empty=card.querySelector('.v2-compare-empty');renderCompareImage(card,a);
+    if(result){
+      let detail=p.label||'增强结果显示在这里';
+      if(p.itemState==='running'&&!p.itemUploading&&!p.submitting){
+        const raw=Number(p.progress);
+        if(Number.isFinite(raw))detail+=' · '+Math.round(Math.min(100,Math.max(0,raw>1?raw:raw*100)))+'%';
+      }
+      empty.querySelector('span').textContent=detail;
+    }
+    card.classList.toggle('is-processing',(p.itemBusy??p.busy)&&result);
+   }
    const selection=p.selection||{index:0,total:p.input?1:0};
    for(const button of document.querySelectorAll('[data-photo-previous]')){button.hidden=selection.total<2;button.disabled=selection.index===0||p.exporting||p.restoring;}
    for(const button of document.querySelectorAll('[data-photo-next]')){button.hidden=selection.total<2;button.disabled=selection.index>=selection.total-1||p.exporting||p.restoring;}
    for(const button of document.querySelectorAll('[data-photo-remove]')){button.hidden=!selection.total;button.disabled=p.busy||p.exporting||p.restoring;button.title=button.disabled?'处理完成后可移除':'移除当前图片';}
    if(!p.input&&S.overlayCompare)closeCompare();
-   $('compareWorkbench').dataset.model=p.model||'general';$('chooseCompareImage').disabled=p.busy;$('saveResultButton').hidden=false;$('compareStatus').textContent=p.error||(p.exporting?'正在保存结果…':p.uploading?'正在上传图片…':p.busy?((p.label||'正在增强…')+' · '+Math.round((Number(p.progress)>1?Math.min(100,Number(p.progress)):Math.min(1,Math.max(0,Number(p.progress))))*(Number(p.progress)>1?1:100))+'%'):p.result?'处理完成':p.input?'准备就绪':'选择图片后即可开始处理');$('compareStatus').classList.toggle('is-error',!!p.error);renderCompareTransform();
+   $('compareWorkbench').dataset.model=p.model||'general';$('chooseCompareImage').disabled=p.busy;$('saveResultButton').hidden=false;const summary=p.batch||{total:selection.total,completed:p.result?1:0,failed:p.error?1:0};$('compareStatus').textContent=p.error||(p.exporting?'正在保存结果…':summary.total?'已完成 '+summary.completed+' / '+summary.total+(summary.failed?' · 待重试 '+summary.failed:''):'');$('compareStatus').classList.toggle('is-error',!!p.error);renderCompareTransform();
   }
   function buildSpace(){
    const sidebar=document.createElement('aside');sidebar.id='spaceSidebar';sidebar.className='v2-space-sidebar';sidebar.hidden=true;sidebar.innerHTML=`<header><h2>空间</h2>${button('spaceSearchToggle','search','搜索图像')}</header><label id="spaceSearchField" hidden><input id="spaceSearchInput" type="search" aria-label="搜索空间图像" placeholder="搜索图像…"></label><button type="button" class="v2-space-category selected">${icon('image')}<span>图像</span></button>`;$('leftContainer').appendChild(sidebar);
