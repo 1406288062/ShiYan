@@ -421,6 +421,7 @@
   function showAccount() {
     $('accountDisplayName').textContent = user.displayName || user.username || user.email;
     $('accountEmailLabel').textContent = user.email;
+    $('accountRoleLabel').hidden = user.role !== 'admin';
     $('accountRoleLabel').textContent = (user.role === 'admin' ? '管理员' : '普通用户') + (user.serverAccess ? ' · 允许访问服务器' : ' · 仅可访问自己的资料');
     if ($('accountUsersSection')) $('accountUsersSection').hidden = user.role !== 'admin';
     $('accountSettingsError').hidden = true;
