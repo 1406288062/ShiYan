@@ -103,7 +103,7 @@
     $('accountForm').hidden = qrMode || rememberedMode;
     $('accountQRPanel').hidden = !qrMode || trustedMode;
     $('accountPasswordMode').hidden = verifying;
-    $('accountForgotPassword').hidden = verifying;
+    $('accountPasswordHelp').hidden = verifying || qrMode || rememberedMode;
     $('accountForgotPassword').disabled = busy || codeSending;
     $('accountPasswordMode').textContent = rememberedMode || qrMode ? '密码登录' : '扫码登录';
     $('accountPasswordMode').disabled = busy || confirmationBlocked;

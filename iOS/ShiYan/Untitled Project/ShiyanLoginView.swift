@@ -83,13 +83,25 @@ struct ShiyanLoginView: View {
                                         .focused($focused, equals: .email).submitLabel(.next).onSubmit { focused = .password }
                                         .modifier(AuthField()).accessibilityIdentifier("auth-email")
                                 }
-                                labeledField("密码") {
-                                    passwordInput(resettingPassword ? "新密码（至少 8 位）" : creating ? "密码（至少 8 位）" : "密码", text: $password, visible: showsPassword)
-                                        .textContentType(verifyingEmail ? .newPassword : .password)
-                                        .focused($focused, equals: .password).submitLabel(verifyingEmail ? .next : .go).onSubmit { if verifyingEmail { focused = .confirmation } else { submit() } }
-                                        .modifier(AuthField())
-                                        .overlay(alignment: .trailing) { passwordEye($showsPassword, field: .password) }
-                                        .accessibilityIdentifier("auth-password")
+                                VStack(alignment: .trailing, spacing: 8) {
+                                    labeledField("密码") {
+                                        passwordInput(resettingPassword ? "新密码（至少 8 位）" : creating ? "密码（至少 8 位）" : "密码", text: $password, visible: showsPassword)
+                                            .textContentType(verifyingEmail ? .newPassword : .password)
+                                            .focused($focused, equals: .password).submitLabel(verifyingEmail ? .next : .go).onSubmit { if verifyingEmail { focused = .confirmation } else { submit() } }
+                                            .modifier(AuthField())
+                                            .overlay(alignment: .trailing) { passwordEye($showsPassword, field: .password) }
+                                            .accessibilityIdentifier("auth-password")
+                                    }
+                                    if !verifyingEmail {
+                                        Button("忘记密码？") {
+                                            clearAuthSecrets(); resettingPassword = true; account.error = nil; focused = .email
+                                        }
+                                        .font(.system(size: 14))
+                                        .foregroundStyle(ShiyanAuthPalette.indigo)
+                                        .disabled(account.busy || account.checking)
+                                        .frame(maxWidth: .infinity, alignment: .trailing)
+                                        .accessibilityIdentifier("auth-forgot-password")
+                                    }
                                 }
                                 if verifyingEmail {
                                     labeledField("密码确认") {
@@ -163,7 +175,7 @@ struct ShiyanLoginView: View {
                                 .saturation(passwordMismatch ? 0 : 1)
                                 .accessibilityIdentifier("auth-submit")
                             }
-                            if resettingPassword || !bootstrap {
+                            if resettingPassword || (!bootstrap && (registering || account.status?.registrationEnabled != false)) {
                                 HStack(spacing: 6) {
                                     if resettingPassword || registering || account.status?.registrationEnabled != false {
                                     Text(resettingPassword ? "记起密码了？" : registering ? "已有账户？" : "还没有账户？").foregroundStyle(.secondary)
@@ -175,15 +187,6 @@ struct ShiyanLoginView: View {
                                     }
                                     .foregroundStyle(ShiyanAuthPalette.indigo).disabled(account.busy || account.checking || passwordMismatch)
                                     .saturation(passwordMismatch ? 0 : 1).opacity(passwordMismatch ? 0.45 : 1)
-                                    }
-                                    if !registering && !resettingPassword {
-                                        Spacer(minLength: 12)
-                                        Button("忘记密码？") {
-                                            clearAuthSecrets(); resettingPassword = true; account.error = nil; focused = .email
-                                        }
-                                        .foregroundStyle(ShiyanAuthPalette.indigo)
-                                        .disabled(account.busy || account.checking)
-                                        .accessibilityIdentifier("auth-forgot-password")
                                     }
                                 }
                                 .font(.system(size: 14)).frame(maxWidth: .infinity)

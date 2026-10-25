@@ -414,3 +414,10 @@ html[data-shiyan-platform="desktop"] #accountGate button.auth-qr-image { width: 
 #accountGate .auth-notice { margin:0;color:var(--workspace-muted);font-size:13px;line-height:1.5;text-align:center; }
 @media(max-width:480px) { #accountGate[data-auth-mode="reset"] .auth-card { max-height:calc(100dvh - 100px); } }
 @media(max-height:420px) { #accountGate[data-auth-mode="reset"] .auth-card { max-height:calc(100dvh - 80px); } }
+
+/* Keep password recovery beside the password field, above the login action. */
+#accountGate .auth-password-field { display:grid; gap:8px; min-width:0; }
+#accountGate .auth-password-help { display:flex; justify-content:flex-end; }
+#accountGate .auth-password-help button { padding:0; border:0; background:transparent; color:var(--workspace-text); font-weight:650; line-height:20px; cursor:pointer; }
+#accountGate .auth-password-help button:hover:not(:disabled) { color:var(--workspace-accent); }
+#accountGate .auth-password-help button:disabled { opacity:.5; cursor:default; }
