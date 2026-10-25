@@ -244,8 +244,9 @@ struct ShiyanLoginView: View {
             visible.wrappedValue.toggle()
             focused = field
         } label: {
-            Image(systemName: visible.wrappedValue ? "eye.slash" : "eye")
-                .font(.system(size: 18, weight: .regular)).foregroundStyle(.primary)
+            ShiyanAuthPasswordEye(showSlash: visible.wrappedValue)
+                .stroke(.primary, style: StrokeStyle(lineWidth: 1.6 * 20 / 24, lineCap: .round, lineJoin: .round))
+                .frame(width: 20, height: 20)
                 .frame(width: 44, height: 48).contentShape(Rectangle())
         }
         .buttonStyle(.plain).padding(.trailing, 4)
@@ -294,5 +295,27 @@ struct ShiyanLoginView: View {
                 .background(Color.primary.opacity(0.045), in: Capsule())
                 .overlay { Capsule().stroke(Color.primary.opacity(0.1), lineWidth: 1) }
         }
+    }
+}
+
+// Match the 24-unit SVG used by shared/frontend/index.html, rendered at 20 pt.
+private struct ShiyanAuthPasswordEye: Shape {
+    let showSlash: Bool
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: 2, y: 12))
+        path.addCurve(to: CGPoint(x: 12, y: 5), control1: CGPoint(x: 2, y: 12), control2: CGPoint(x: 5.5, y: 5))
+        path.addCurve(to: CGPoint(x: 22, y: 12), control1: CGPoint(x: 18.5, y: 5), control2: CGPoint(x: 22, y: 12))
+        path.addCurve(to: CGPoint(x: 12, y: 19), control1: CGPoint(x: 22, y: 12), control2: CGPoint(x: 18.5, y: 19))
+        path.addCurve(to: CGPoint(x: 2, y: 12), control1: CGPoint(x: 5.5, y: 19), control2: CGPoint(x: 2, y: 12))
+        path.closeSubpath()
+        path.addEllipse(in: CGRect(x: 9, y: 9, width: 6, height: 6))
+        if showSlash {
+            path.move(to: CGPoint(x: 4, y: 4))
+            path.addLine(to: CGPoint(x: 20, y: 20))
+        }
+        return path.applying(CGAffineTransform(scaleX: rect.width / 24, y: rect.height / 24)
+            .concatenating(CGAffineTransform(translationX: rect.minX, y: rect.minY)))
     }
 }
