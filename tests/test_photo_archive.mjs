@@ -5,14 +5,33 @@ import vm from 'node:vm';
 import {execFileSync} from 'node:child_process';
 const source=fs.readFileSync(new URL('../shared/frontend/assets/photo-archive.js',import.meta.url),'utf8');
 function setup(options={}){
-  const written=[],calls=[],anchors=[];let closed=false,aborted=false;
+  const written=[],calls=[],anchors=[],pickers=[];let closed=false,aborted=false;
   const writable={write:async bytes=>written.push(Buffer.from(bytes)),close:async()=>closed=true,abort:async()=>aborted=true};
-  const window=options.stream===false?{}:{showSaveFilePicker:async()=>({createWritable:async()=>writable})};
-  const context={window,TextEncoder,Uint8Array,Uint32Array,DataView,Blob,URL,AbortController,location:{href:'https://example.test/',origin:'https://example.test'},
+  const window=options.stream===false?{}:{showSaveFilePicker:async config=>{pickers.push(config);return {createWritable:async()=>writable};}};
+  const localTime=new Date(2026,9,25,22,55,0);
+  class Clock extends Date{constructor(...args){super(...(args.length?args:[localTime.getTime()]));}}
+  const context={window,TextEncoder,Uint8Array,Uint32Array,DataView,Blob,URL,AbortController,Date:Clock,location:{href:'https://example.test/',origin:'https://example.test'},
     document:{createElement:()=>({click(){anchors.push(this);},remove(){}}),body:{appendChild(){}}},setTimeout(){},
     fetch:async(url,config)=>{calls.push({url,config});return {ok:!(options.failSecond&&calls.length===2),body:new Blob([calls.length===1?'first':'second']).stream()};}};
   vm.runInNewContext(source,context);
-  return {api:window.ShiYanPhotoArchive,written,calls,anchors,get closed(){return closed;},get aborted(){return aborted;}};
+  return {api:window.ShiYanPhotoArchive,written,calls,anchors,pickers,get closed(){return closed;},get aborted(){return aborted;}};
+}
+test('archive filename reflects actual result types and local save time',()=>{
+  const s=setup(),when=new Date(2026,0,2,3,4,5);
+  assert.equal(s.api.archiveFilename([{enhancementModel:'general'},{modelName:'通用增强'}],when),'拾燕_通用增强_20260102_030405.zip');
+  assert.equal(s.api.archiveFilename([{modelName:'anime'},{enhancementModel:'x4anime'}],when),'拾燕_动漫增强_20260102_030405.zip');
+  assert.equal(s.api.archiveFilename([{modelName:'general'},{modelName:'动漫增强'}],when),'拾燕_混合增强_20260102_030405.zip');
+  assert.equal(s.api.archiveFilename([{modelName:'unknown'},{}],when),'拾燕_增强图片_20260102_030405.zip');
+  assert.equal(s.api.archiveFilename([],when),'拾燕_增强图片_20260102_030405.zip');
+  assert.equal(s.api.archiveFilename([{modelName:'general'},{}],when),'拾燕_混合增强_20260102_030405.zip');
+});
+for(const stream of [true,false]){
+  test((stream?'streaming picker':'memory download')+' uses a ZIP name with enhancement type and current local time',async()=>{
+    const s=setup({stream});
+    await s.api.download([{id:'a',filename:'a.jpg',enhancementModel:'anime'},{id:'b',filename:'b.jpg',modelName:'动漫增强'}]);
+    const name=stream?s.pickers[0].suggestedName:s.anchors[0].download;
+    assert.equal(name,'拾燕_动漫增强_20261025_225500.zip');
+  });
 }
 test('streamed ZIP is readable by Python with UTF-8 names, STORE data and deduplicated names',async()=>{
   const s=setup(),progress=[];

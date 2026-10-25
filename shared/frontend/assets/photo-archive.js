@@ -58,9 +58,18 @@
     end.view.setUint32(12, offset - centralStart, true); end.view.setUint32(16, centralStart, true);
     await write(end.bytes); return offset;
   }
+  function archiveFilename(assets, date = new Date()) {
+    const labels = new Map([['general','通用增强'], ['x4','通用增强'], ['通用增强','通用增强'], ['anime','动漫增强'], ['x4anime','动漫增强'], ['动漫增强','动漫增强']]);
+    const kinds = new Set(assets.map(asset => labels.get(asset.enhancementModel) || labels.get(asset.modelName) || '增强图片'));
+    const kind = kinds.size > 1 ? '混合增强' : kinds.values().next().value || '增强图片';
+    const pad = value => String(value).padStart(2, '0');
+    const day = String(date.getFullYear()) + pad(date.getMonth() + 1) + pad(date.getDate());
+    const time = pad(date.getHours()) + pad(date.getMinutes()) + pad(date.getSeconds());
+    return '拾燕_' + kind + '_' + day + '_' + time + '.zip';
+  }
   async function download(assets, {onProgress} = {}) {
     if (!assets.length || assets.length > 10) throw Error('一次最多下载 10 张增强图片');
-    const name = '拾燕增强图片.zip', controller = new AbortController(), chunks = [];
+    const name = archiveFilename(assets), controller = new AbortController(), chunks = [];
     let writable = null;
     if (typeof window.showSaveFilePicker === 'function') {
       const handle = await window.showSaveFilePicker({suggestedName: name, types: [{description:'ZIP 压缩包',accept:{'application/zip':['.zip']}}]});
@@ -98,5 +107,5 @@
       throw error;
     }
   }
-  window.ShiYanPhotoArchive = {download, writeZip};
+  window.ShiYanPhotoArchive = {download, writeZip, archiveFilename};
 })();

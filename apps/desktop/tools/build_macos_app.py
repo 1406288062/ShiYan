@@ -300,6 +300,8 @@ def copy_application(require_complete: bool) -> None:
     info = {
         "CFBundleName": "拾燕",
         "CFBundleDisplayName": "拾燕",
+        "CFBundleDevelopmentRegion": "zh_CN",
+        "CFBundleLocalizations": ["zh_CN", "en"],
         "CFBundleIdentifier": "com.shiyan.image-enhancer.desktop",
         "CFBundleExecutable": "ShiYan",
         "CFBundlePackageType": "APPL",

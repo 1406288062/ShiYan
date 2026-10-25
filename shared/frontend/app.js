@@ -673,22 +673,32 @@
     if(items.length>10){toast('一次最多选择 10 张图片');$('homeFileInput').value='';return;}
     if(photoBusy()||ui.photoExporting||ui.restoring){toast('请先等待当前处理完成');return;}
     if(items.some(file=>!(file.type||'').startsWith('image/')&&!/\.(?:jpe?g|png|webp|heic|heif)$/i.test(file.name||''))){toast('请选择 JPG、PNG、WebP 或 HEIC 图片');return;}
-    clearPhotoBatch();
-    if(items.length===1)return chooseHomeImage(items[0]);
+    const previous=photoBatchEntries(),jobs=new Map((state?.photoJobs||[]).map(job=>[job.id,job]));
+    const hasResults=!!ui.result||!!jobs.get(ui.photoJobId)?.outputAssetId||previous.some(entry=>entry.result||jobs.get(entry.jobId)?.outputAssetId);
+    const append=ui.feature==='enhance'&&!!ui.input&&!hasResults;
+    const retained=append?(previous.length?previous.slice():[{input:ui.input,file:ui.photoUploadFile||null,localURL:ui.photoLocalURL||null,result:null,jobId:ui.photoJobId||null,error:ui.photoError||''}]):[];
+    if(retained.length+items.length>10){toast('最多选择 10 张图片，当前已有 '+retained.length+' 张');$('homeFileInput').value='';return;}
+    if(append){
+      photoBatchPoll.stop();photoStatusPoll.stop();ui.photoSelectionVersion=(ui.photoSelectionVersion||0)+1;ui.photoBatch=null;
+      // The retained entry owns the original preview URL from now on.
+      ui.photoLocalURL=null;
+    }else clearPhotoBatch();
+    if(!retained.length&&items.length===1)return chooseHomeImage(items[0]);
     if(ui.photoLocalURL){URL.revokeObjectURL(ui.photoLocalURL);ui.photoLocalURL=null;}
-    ui.photoUploadFile=null;ui.photoJobId=null;ui.result=null;ui.photoError='';
-    ui.photoBatchEntries=items.map(file=>{
+    ui.photoUploadFile=null;ui.photoJobId=null;ui.result=null;ui.photoError='';ui.showOriginal=false;ui.strokes=[];
+    const added=items.map(file=>{
       const localURL=URL.createObjectURL(file),input={id:'local:'+localURL,url:localURL,filename:file.name,mimeType:file.type};
       const entry={file,localURL,input,result:null,jobId:null,error:''};
       const image=new Image();image.onload=()=>{entry.input={...entry.input,width:image.naturalWidth,height:image.naturalHeight};renderPhoto();};image.src=localURL;
       return entry;
     });
-    syncPhotoBatchSelection();renderPhoto();await uploadPhotoBatch();
+    ui.photoBatchEntries=[...retained,...added];ui.photoBatchIndex=retained.length;
+    syncPhotoBatchSelection();renderPhoto();await uploadPhotoBatch(added);
   }
-  async function uploadPhotoBatch(){
+  async function uploadPhotoBatch(entries=photoBatchEntries()){
     ui.photoUploading=true;$('homeFileInput').disabled=true;
     try{
-      for(const entry of photoBatchEntries()){
+      for(const entry of entries){
         if(!entry.file)continue;entry.uploading=true;entry.error='';ui.photoUploadLabel='正在上传图片 0%';renderPhoto();
         try{
           const [asset]=await upload([entry.file]);if(!asset)throw Error('没有读取到图片');
@@ -733,8 +743,11 @@
   async function processPhotoBatch(){
     if(photoBusy())return;
     if(photoBatchEntries().some(entry=>entry.file)){await uploadPhotoBatch();return;}
-    const failed=photoBatchEntries().filter(entry=>['failed','cancelled'].includes((state.photoJobs||[]).find(job=>job.id===entry.jobId)?.state));
-    const targets=failed.length?failed:photoBatchEntries();
+    const pending=photoBatchEntries().filter(entry=>{
+      const job=(state.photoJobs||[]).find(job=>job.id===entry.jobId);
+      return !entry.result&&(!job||['failed','cancelled'].includes(job.state));
+    });
+    const targets=pending.length?pending:photoBatchEntries();
     const version=ui.photoSelectionVersion||0;
     ui.photoSubmitting=true;ui.photoError='';renderPhoto();
     try{
@@ -746,6 +759,14 @@
     }catch(error){ui.photoError=error.message;}
     finally{ui.photoSubmitting=false;renderPhoto();}
   }
+  function photoArchiveAssets(items){
+    return items.map(asset=>{
+      const history=(state?.history||[]).find(item=>item.assetId===asset.id||item.asset?.id===asset.id);
+      const job=(state?.photoJobs||[]).find(item=>item.feature==='enhance'&&
+        (item.outputAssetId===asset.id||(item.outputAssets||[]).some(output=>output.id===asset.id)));
+      return {...asset,filename:exportFilename(asset),enhancementModel:job?.model||history?.modelName};
+    });
+  }
   async function savePhotoBatch(){
     const results=photoBatchEntries().length?photoBatchEntries().map(entry=>entry.result).filter(Boolean):[ui.result].filter(Boolean);
     if(!results.length||ui.photoExporting||photoBusy())return;
@@ -756,14 +777,14 @@
         const ids=results.map(asset=>(state.history||[]).find(item=>item.assetId===asset.id)?.id);
         if(ids.some(id=>!id))throw Error('部分增强结果尚未保存，请稍后重试');
         const data=await api('/api/history/export','POST',{ids});await saveAsset(data.asset);
-      }else await window.ShiYanPhotoArchive.download(results.map(asset=>({...asset,filename:exportFilename(asset)})),{
+      }else await window.ShiYanPhotoArchive.download(photoArchiveAssets(results),{
         onProgress:({completed,total})=>{ui.photoExportLabel='正在打包 '+completed+'/'+total;renderPhotoBatch();}
       });
     }catch(error){if(error.name!=='AbortError')toast(error.message);}
     finally{ui.photoExporting=false;renderPhoto();}
   }
 
-  async function chooseWebHomeImage(file) {
+  async function choosePreviewHomeImage(file) {
     const keys=['input','result','showOriginal','photoJobId','strokes','photoError','photoUploadFile','photoLocalURL'];
     const previous=Object.fromEntries(keys.map(key=>[key,ui[key]]));
     const url=URL.createObjectURL(file);
@@ -800,15 +821,7 @@
   async function chooseHomeImage(file) {
     if(!file)return;
     if(photoBusy()){toast('请先停止当前处理');return;}
-    if(window.ShiYanPlatform?.mode==='web')return chooseWebHomeImage(file);
-    $('homeFileInput').disabled=true;
-    try {
-      const result=await upload([file]);if(!result[0])throw new Error('没有读取到图片');
-      if(Math.max(result[0].width || 0,result[0].height || 0)>2000 && !await confirmAction('图片较大','图片分辨率超过 2000px，处理时间可能较长且占用更多内存，是否继续？','继续'))return;
-      ui.input=result[0];ui.result=null;ui.showOriginal=false;ui.photoJobId=null;ui.strokes=[];ui.photoError='';
-      setText('photoError','');show('photoError',false);renderPhoto();saveWorkspace().catch(error=>toast('图片已上传，但保存图片选择失败：'+error.message));
-    }catch(e){ui.photoError=e.message;setText('photoError',e.message);show('photoError');}
-    finally {$('homeFileInput').disabled=false;$('homeFileInput').value='';}
+    return choosePreviewHomeImage(file);
   }
   function applyPhotoStatus(data){
     if(!state||!data?.job)return;
@@ -890,7 +903,7 @@
     const readyResults=batch?photoBatchSummary().completed:ui.result?1:0;
     $('saveResultButton').disabled=!readyResults||busy||ui.photoExporting;
     $('saveResultButton').setAttribute('aria-busy',String(!!ui.photoExporting));
-    show('saveResultButton',true);show('cancelProcessButton',busy && !ui.photoSubmitting && (!!job||!!ui.photoBatch));
+    show('saveResultButton',readyResults>0 && !busy);show('cancelProcessButton',busy && !ui.photoSubmitting && (!!job||!!ui.photoBatch));
     $('changeImageButton').disabled=busy;
     $('brushWidth').value=ui.brush;$('brushWidth').disabled=busy;
     $('undoStrokeButton').disabled=busy || !ui.strokes.length;$('clearStrokesButton').disabled=busy || !ui.strokes.length;
@@ -1020,7 +1033,7 @@
     if(native('share',{assets:items.map(a=>({url:new URL(assetUrl(a,true),location.href).href,filename:exportFilename(a)}))}))return;
     if(items.length===1){await saveAsset(items[0]);return;}
     try {
-      if(window.ShiYanPlatform?.mode==='web'){await window.ShiYanPhotoArchive.download(items.map(asset=>({...asset,filename:exportFilename(asset)})));return;}
+      if(window.ShiYanPlatform?.mode==='web'){await window.ShiYanPhotoArchive.download(photoArchiveAssets(items));return;}
       const ids=state.history.filter(h=>items.some(a=>h.asset && h.asset.id===a.id)).map(h=>h.id);
       const data=await api('/api/history/export','POST',{ids});remember(data.asset);await saveAsset(data.asset);
     }catch(e){toast(e.message);}

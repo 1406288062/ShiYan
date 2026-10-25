@@ -460,10 +460,28 @@ class Runtime:
         self.pump_queue(identifier)
         return entry
 
+    @staticmethod
+    def reconcile_submission_state(item):
+        """A synced server job confirms submission even if its HTTP reply was lost."""
+        changed = False
+        messages = item.get("messages", [])
+        for message in messages:
+            if message.get("role") == "assistant" and message.get("remoteJobId") and message.get("submissionFailed"):
+                message["submissionFailed"] = False
+                changed = True
+        unconfirmed = any(m.get("role") == "assistant" and m.get("submissionFailed") for m in messages)
+        if (not unconfirmed and any(m.get("role") == "assistant" and m.get("remoteJobId") for m in messages)
+                and item.get("queueError") == "发送尚未确认，请先重试当前消息"):
+            item.update(queuePaused=False, queueError=None)
+            changed = True
+        return changed
+
     def pump_queue(self, identifier):
         if self.closing:return
         try:item=self.conversation(identifier)
         except ValueError:return
+        if self.reconcile_submission_state(item):
+            self.save_conversation(item)
         if self.is_busy(item) or not item.get("messageQueue") or item.get("queuePaused"):return
         if any(x.get("entityId")==identifier for x in self.storage.list("stops")):return
         self.launch("queue:"+identifier,self.dispatch_queue(identifier))
@@ -1308,7 +1326,13 @@ class Runtime:
                 filename=f"{base}_{count}{ext}"
             names.add(filename.casefold())
             files.append((path,filename))
-        return self.storage.save_archive(files)
+        model_names={"general":"通用增强","x4":"通用增强","通用增强":"通用增强",
+                     "anime":"动漫增强","x4anime":"动漫增强","动漫增强":"动漫增强"}
+        categories={model_names.get(str(entry.get("modelName") or "").strip().lower(),"增强图片")
+                    for entry in entries}
+        category=next(iter(categories)) if len(categories)==1 else "混合增强"
+        timestamp=datetime.now().strftime("%Y%m%d_%H%M%S")
+        return self.storage.save_archive(files,filename=f"拾燕_{category}_{timestamp}.zip")
 
     async def close(self):
         self.closing=True

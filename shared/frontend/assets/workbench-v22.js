@@ -22,8 +22,6 @@
   for(const summary of document.querySelectorAll('.sidebar-group>summary')){const disclosure=summary.querySelector(':scope>.wb-icon');if(disclosure)summary.querySelector(':scope>span')?.after(disclosure);}
   const groups=$('projectsGroup').querySelector('summary>span');groups.textContent='项目';
    
-  const area=$('compareWorkbench'),status=$('compareStatus'),zoom=area.querySelector('.v2-compare-zoom');
-  const line=document.createElement('div');line.className='v22-compare-info';line.append(status,zoom);area.querySelector('.v2-enhance-toolbar').append(line);
   const overlay=$('comparePreview'),oldZoom=overlay.querySelector('.v2-compare-zoom'),upperZoom=document.createElement('div');upperZoom.className='v2-compare-zoom';while(oldZoom.firstChild)upperZoom.appendChild(oldZoom.firstChild);overlay.querySelector('header').appendChild(upperZoom);oldZoom.remove();
    
   const noticePosition=()=>{const r=$('mainWorkspace').getBoundingClientRect();document.body.style.setProperty('--v23-notice-center',(r.width?r.x+r.width/2:innerWidth/2)+'px');};new ResizeObserver(noticePosition).observe($('mainWorkspace'));window.addEventListener('resize',noticePosition);window.addEventListener('shiyan-state',noticePosition);noticePosition();
