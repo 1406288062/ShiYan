@@ -159,9 +159,11 @@ function validateEmbeddings(value, count) {
 
 /** Returns a normal http.Server. Tests may inject authorization callbacks and a clock. */
 export function createComputeBroker(options = {}) {
-  const { clientToken, workerToken, deviceId } = options;
+  const { clientToken, workerToken } = options;
+  const workerId = options.workerId ?? 'shiyan-compute-worker';
+  const workerEnabled = options.workerEnabled ?? true;
   if (typeof clientToken !== 'string' || clientToken.length < 32 || typeof workerToken !== 'string' || workerToken.length < 32 ||
-      equalToken(clientToken, workerToken) || !strictText(deviceId, 256) || !Array.isArray(options.allowedOwners) ||
+      equalToken(clientToken, workerToken) || !strictText(workerId, 256) || typeof workerEnabled !== 'boolean' || !Array.isArray(options.allowedOwners) ||
       options.allowedOwners.length < 1 || options.allowedOwners.length > 32 || options.allowedOwners.some(owner => !validOwner(owner))) {
     throw new Error('Invalid private compute broker configuration');
   }
@@ -201,19 +203,9 @@ export function createComputeBroker(options = {}) {
   }
   const accountStatement = accounts?.prepare('SELECT status FROM account_users WHERE owner=?');
   const authorizeOwner = options.authorizeOwner || (owner => accountStatement.get(owner)?.status === 'active');
-  let cachedRegistry, cachedIdentity;
-  const authorizeDevice = options.authorizeDevice || (() => {
-    const stat = statSync(options.deviceRegistryPath);
-    if (!stat.isFile() || stat.size > 128 * MIB) return false;
-    const identity = `${stat.dev}:${stat.ino}:${stat.mtimeMs}:${stat.ctimeMs}:${stat.size}`;
-    if (identity !== cachedIdentity) {
-      cachedRegistry = JSON.parse(readFileSync(options.deviceRegistryPath, 'utf8'));
-      cachedIdentity = identity;
-    }
-    const device = cachedRegistry?.devices?.find(record => record.deviceId === deviceId);
-    return !!device && !device.revokedAt && device.platform === 'darwin' &&
-      (!options.deviceAccountId || device.accountId === options.deviceAccountId);
-  });
+  // This fixed compute service authenticates with its own client/worker credentials.
+  // Sponge pairing and revocation must not control enhancement availability.
+  const authorizeWorker = options.authorizeWorker || (() => true);
   const find = id => db.prepare('SELECT * FROM compute_tasks WHERE id=?').get(id);
   const file = (id, suffix) => path.join(fileDir, `${id}.${suffix}`);
   let lastHeartbeat = -Infinity;
@@ -221,7 +213,10 @@ export function createComputeBroker(options = {}) {
     if (!owners.has(owner)) return false;
     try { return await authorizeOwner(owner) === true; } catch { return false; }
   }
-  async function deviceAllowed() { try { return await authorizeDevice(deviceId) === true; } catch { return false; } }
+  async function workerAllowed() {
+    if (!workerEnabled) return false;
+    try { return await authorizeWorker(workerId) === true; } catch { return false; }
+  }
   function invalidate(row, code, message, state = 'cancelled') {
     if (TERMINAL.has(row.state)) return;
     db.prepare(`UPDATE compute_tasks SET state=?,lease_token=NULL,lease_expires_at=NULL,error=?,error_code=?,updated_at=? WHERE id=? AND state NOT IN ('completed','failed','cancelled')`)
@@ -230,15 +225,15 @@ export function createComputeBroker(options = {}) {
   async function requireOwner(owner) {
     if (!await ownerAllowed(owner)) throw fail(403, 'OWNER_FORBIDDEN', '账号未授权或已停用');
   }
-  async function requireDevice() {
-    if (!await deviceAllowed()) {
+  async function requireWorker() {
+    if (!await workerAllowed()) {
       lastHeartbeat = -Infinity;
-      db.prepare(`UPDATE compute_tasks SET state='cancelled',lease_token=NULL,lease_expires_at=NULL,error='Mac 设备授权已撤销',error_code='DEVICE_REVOKED',updated_at=? WHERE state NOT IN ('completed','failed','cancelled')`).run(now());
-      throw fail(403, 'DEVICE_REVOKED', 'Mac 设备未授权或授权已撤销');
+      db.prepare(`UPDATE compute_tasks SET state='cancelled',lease_token=NULL,lease_expires_at=NULL,error='计算服务已停用',error_code='WORKER_DISABLED',updated_at=? WHERE state NOT IN ('completed','failed','cancelled')`).run(now());
+      throw fail(403, 'WORKER_DISABLED', '计算服务已停用');
     }
   }
   async function requireTaskOwner(owner, id) {
-    await requireOwner(owner); await requireDevice();
+    await requireOwner(owner); await requireWorker();
     const row = find(id);
     if (!row || row.owner_id !== owner) throw fail(404, 'TASK_NOT_FOUND', '任务不存在');
     return expireTask(row);
@@ -250,7 +245,7 @@ export function createComputeBroker(options = {}) {
     return row;
   }
   async function requireLease(id, token) {
-    await requireDevice();
+    await requireWorker();
     const row = find(id);
     if (!row) throw fail(404, 'TASK_NOT_FOUND', '任务不存在');
     if (!await ownerAllowed(row.owner_id)) {
@@ -307,10 +302,10 @@ export function createComputeBroker(options = {}) {
       if (workerRoute && !isWorker || !workerRoute && url.pathname !== '/v1/health' && !isClient) throw fail(403, 'WRONG_CREDENTIAL', '计算凭据类型不匹配');
       const owner = req.headers['x-shiyan-owner'];
       if (!workerRoute && url.pathname !== '/v1/health') await requireOwner(owner);
-      await requireDevice();
+      await requireWorker();
       if (req.method === 'GET' && url.pathname === '/v1/health') {
         if (isClient && owner !== undefined) await requireOwner(owner);
-        sendJson(res, 200, { ok: true, workerOnline: online(), deviceId,
+        sendJson(res, 200, { ok: true, workerOnline: online(), workerId,
           queued: db.prepare("SELECT COUNT(*) AS count FROM compute_tasks WHERE state='queued'").get().count }); return;
       }
       if (req.method === 'POST' && url.pathname === '/v1/tasks') {
@@ -319,7 +314,7 @@ export function createComputeBroker(options = {}) {
         const params = validateParams(input.kind, input.params, owner);
         if (input.kind === 'enhance_cos' && !cos) throw fail(503,'COS_UNAVAILABLE','COS 计算传输未启用');
         const fingerprint = createHash('sha256').update(JSON.stringify([input.kind, params])).digest('hex');
-        await requireOwner(owner); await requireDevice();
+        await requireOwner(owner); await requireWorker();
         let row = db.prepare('SELECT * FROM compute_tasks WHERE owner_id=? AND request_id=?').get(owner, input.request_id);
         if (row && row.fingerprint !== fingerprint) throw fail(409, 'REQUEST_CONFLICT', '同一请求编号的内容不一致');
         if (!row) {
@@ -328,7 +323,7 @@ export function createComputeBroker(options = {}) {
             try { head = await cos.head(params.input.key, params.input.etag); }
             catch { throw fail(422,'COS_INPUT_UNAVAILABLE','COS 原图不可用或已变化'); }
             if (head.bytes !== params.input.bytes || head.etag !== params.input.etag) throw fail(422,'COS_INPUT_MISMATCH','COS 原图信息不符');
-            await requireOwner(owner); await requireDevice();
+            await requireOwner(owner); await requireWorker();
           }
           row = db.prepare('SELECT * FROM compute_tasks WHERE owner_id=? AND request_id=?').get(owner,input.request_id);
           if (row && row.fingerprint !== fingerprint) throw fail(409,'REQUEST_CONFLICT','同一请求编号的内容不一致');
@@ -347,7 +342,7 @@ export function createComputeBroker(options = {}) {
             (!Array.isArray(input.capabilities) || input.capabilities.length > 1 || input.capabilities.some(v => v !== 'enhance_cos')))
           throw fail(400, 'INVALID_CLAIM', '领取参数无效');
         const supportsCos = input.capabilities?.includes('enhance_cos');
-        await requireDevice();
+        await requireWorker();
         lastHeartbeat = now();
         const rows = db.prepare("SELECT * FROM compute_tasks WHERE state IN ('running','queued') ORDER BY created_at,id").all();
         for (const row of rows) {
@@ -365,7 +360,7 @@ export function createComputeBroker(options = {}) {
         for (const candidate of ready) {
           if (candidate.kind === 'enhance_cos' && (!supportsCos || !cos)) continue;
           if (!await ownerAllowed(candidate.owner_id)) continue;
-          await requireDevice();
+          await requireWorker();
           if (db.prepare("SELECT id FROM compute_tasks WHERE state='running' AND lease_expires_at>? LIMIT 1").get(now())) break;
           const token = randomBytes(32).toString('hex');
           const changed = db.prepare("UPDATE compute_tasks SET state='running',lease_token=?,lease_expires_at=?,first_started_at=COALESCE(first_started_at,?),label='Mac 正在处理',updated_at=? WHERE id=? AND state='queued'")

@@ -9,7 +9,7 @@ import { createComputeBroker } from '../apps/compute/broker.mjs';
 
 const clientToken = 'test-client-' + 'c'.repeat(40);
 const workerToken = 'test-worker-' + 'w'.repeat(40);
-const deviceId = 'device-test-mac';
+const workerId = 'worker-test-mac';
 const ownerA = 'account:a', ownerB = 'account:b';
 const sha = data => createHash('sha256').update(data).digest('hex');
 const vector = () => Array.from({ length: 1024 }, (_, index) => index === 0 ? 1 : 0);
@@ -25,10 +25,10 @@ function jpeg(width = 8, height = 12) {
 }
 async function fixture(t, overrides = {}) {
   const root = await mkdtemp(path.join(tmpdir(), 'shiyan-compute-test-'));
-  const active = new Set([ownerA, ownerB]); let authorizedDevice = true, clock = 1000000;
-  const config = { dataDir: path.join(root, 'data'), clientToken, workerToken, deviceId,
+  const active = new Set([ownerA, ownerB]); let authorizedWorker = true, clock = 1000000;
+  const config = { dataDir: path.join(root, 'data'), clientToken, workerToken, workerId,
     allowedOwners: [ownerA, ownerB], now: () => clock, authorizeOwner: owner => active.has(owner),
-    authorizeDevice: () => authorizedDevice, ...overrides };
+    authorizeWorker: () => authorizedWorker, ...overrides };
   let server, base;
   async function start() {
     server = createComputeBroker(config);
@@ -63,7 +63,7 @@ async function fixture(t, overrides = {}) {
       method: 'PUT', body: { embeddings, device: 'mps', dimensions: 1024 } });
   }
   return { root, config, active, call, submitEmbed, claim, complete, stop, start,
-    advance: ms => { clock += ms; }, revokeDevice: () => { authorizedDevice = false; } };
+    advance: ms => { clock += ms; }, disableWorker: () => { authorizedWorker = false; } };
 }
 
 test('credentials and trusted owner binding guard every task route', async t => {
@@ -160,11 +160,11 @@ test('disabled owner fails closed for existing tasks and worker access', async t
   assert.equal((await f.call(`/v1/tasks/${task.id}`)).data.task.state, 'cancelled');
 });
 
-test('device authorization removal cancels pending work and blocks every result', async t => {
+test('independent compute worker disablement cancels pending work and blocks every result', async t => {
   const f = await fixture(t); await f.submitEmbed(); const task = (await f.claim()).data.task;
-  f.revokeDevice();
+  f.disableWorker();
   for (const result of [await f.call('/v1/health'), await f.call(`/v1/tasks/${task.id}`), await f.complete(task), await f.claim()]) {
-    assert.equal(result.status, 403); assert.equal(result.data.code, 'DEVICE_REVOKED');
+    assert.equal(result.status, 403); assert.equal(result.data.code, 'WORKER_DISABLED');
   }
 });
 
@@ -239,7 +239,7 @@ test('optional execution deadline marks work failed, without expiring offline qu
   assert.equal((await f.complete(task)).status, 409);
 });
 
-test('production authorization reads current account and device state, including device ownership', async t => {
+test('production compute auth permits enhancement without Sponge pairing and after revocation', async t => {
   const root = await mkdtemp(path.join(tmpdir(), 'shiyan-auth-test-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const accountsDb = path.join(root, 'accounts.sqlite3'), deviceRegistryPath = path.join(root, 'relay-state.json');
@@ -247,23 +247,45 @@ test('production authorization reads current account and device state, including
   accounts.exec('CREATE TABLE account_users(owner TEXT PRIMARY KEY,status TEXT);');
   accounts.prepare('INSERT INTO account_users VALUES(?,?)').run(ownerA, 'active');
   t.after(() => accounts.close());
-  const writeRegistry = async overrides => writeFile(deviceRegistryPath, JSON.stringify({ version: 2, devices: [
-    { deviceId, accountId: 'paired-owner', platform: 'darwin', revokedAt: null, ...overrides },
-  ], calls: [] }), { mode: 0o600 });
-  await writeRegistry({});
-  const f = await fixture(t, { authorizeOwner: undefined, authorizeDevice: undefined, accountsDb, deviceRegistryPath, deviceAccountId: 'paired-owner' });
-  assert.equal((await f.submitEmbed()).status, 200);
+  const cos = fakeCos();
+  const f = await fixture(t, { authorizeOwner: undefined, authorizeWorker: undefined, workerId: undefined,
+    accountsDb, cosStore: cos, deviceRegistryPath, deviceId: 'legacy-sponge-device', deviceAccountId: 'paired-owner' });
+  assert.equal((await f.call('/v1/health')).data.workerId, 'shiyan-compute-worker');
+  // The legacy pairing file does not exist when the first enhancement is submitted.
+  const first = await cosTask(f, cos, 'no-pairing');
+  const registries = [
+    JSON.stringify({ devices: [] }),
+    JSON.stringify({ devices: [{ deviceId: 'legacy-sponge-device', platform: 'darwin',
+      accountId: 'different-owner', revokedAt: new Date().toISOString() }] }),
+    '{broken',
+  ];
+  for (const [index, registry] of registries.entries()) {
+    await writeFile(deviceRegistryPath, registry, { mode: 0o600 });
+    const health = await f.call('/v1/health');
+    assert.equal(health.status, 200);
+    const task = (await cosClaim(f)).data.task;
+    assert.ok(task);
+    if (index === 0) assert.equal(task.id, first.id);
+    await prepareCosResult(f, cos, task, 'output');
+    await prepareCosResult(f, cos, task, 'thumbnail');
+    const completed = await f.call(`/v1/worker/tasks/${task.id}/result`, { token: workerToken,
+      lease: task.lease_token, method: 'PUT', body: { transport: 'cos' } });
+    assert.equal(completed.status, 200);
+    assert.equal((await f.call(`/v1/tasks/${task.id}`)).data.task.state, 'completed');
+    assert.equal((await f.call(`/v1/tasks/${task.id}/result`)).status, 200);
+    if (index < registries.length - 1) await cosTask(f, cos, 'after-pairing-change-' + index);
+  }
   accounts.prepare('UPDATE account_users SET status=? WHERE owner=?').run('disabled', ownerA);
   assert.equal((await f.submitEmbed('disabled')).status, 403);
-  accounts.prepare('UPDATE account_users SET status=? WHERE owner=?').run('active', ownerA);
-  await writeRegistry({ accountId: 'different-owner' });
   assert.equal((await f.call('/v1/health')).status, 403);
-  await writeRegistry({ revokedAt: new Date().toISOString() });
-  assert.equal((await f.call('/v1/health')).status, 403);
-  await writeRegistry({ platform: 'linux' });
-  assert.equal((await f.call('/v1/health')).status, 403);
-  await writeFile(deviceRegistryPath, '{broken');
-  assert.equal((await f.call('/v1/health')).status, 403);
+});
+
+test('an explicitly disabled compute service refuses valid credentials without pairing checks', async t => {
+  const f = await fixture(t, { workerEnabled: false });
+  for (const result of [await f.call('/v1/health'), await f.submitEmbed(), await f.claim()]) {
+    assert.equal(result.status, 403);
+    assert.equal(result.data.code, 'WORKER_DISABLED');
+  }
 });
 
 
