@@ -308,11 +308,14 @@ class RuntimeBatchTests(unittest.IsolatedAsyncioTestCase):
                 self.runtime.create_photo_batch({"feature": "enhance", "assetIds": invalid})
         self.assertEqual(len(self.runtime.storage.list("photoJobs")), before)
 
-    async def test_cos_job_registers_remote_output_without_image_io(self):
+    async def test_legacy_web_job_resumes_on_cos_without_local_image_io(self):
         asset = self.asset()
         job = self.runtime.create_photo_job({"feature": "enhance", "assetId": asset["id"], "model": "anime"})
         task_id = str(uuid.uuid4())
         result = result_fixture("alice", task_id)
+        job.pop("macCompute")
+        job.pop("cosCompute")
+        self.runtime.storage.put("photoJobs", job)
         class Compute:
             @staticmethod
             def enabled_for(owner): return owner == "alice"
@@ -322,10 +325,11 @@ class RuntimeBatchTests(unittest.IsolatedAsyncioTestCase):
             def status(inner, owner, identifier):
                 return {"id": identifier, "state": "completed", "result": result}
         with patch("desktop_backend.runtime.MacComputeClient", Compute), \
+             patch("asyncio.create_subprocess_exec", side_effect=AssertionError("local inference")), \
              patch.object(self.runtime.storage, "asset_path", side_effect=AssertionError("local image IO")), \
              patch.object(self.runtime.storage, "save_bytes", side_effect=AssertionError("server decoding")), \
              patch.object(self.runtime.storage, "import_worker_output", side_effect=AssertionError("server output download")):
-            await self.runtime.run_cos_enhancement(job["id"])
+            await self.runtime.run_enhancement(job["id"])
         status = self.runtime.photo_status(job["id"])
         self.assertEqual(status["job"]["state"], "completed", status["job"].get("error"))
         output = status["assets"][0]
@@ -393,13 +397,13 @@ class APITests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(response.content, image.getvalue())
             self.assertNotIn(CONFIG.host, (await client.get("/")).headers["content-security-policy"])
 
-    async def test_unapproved_mac_owner_keeps_legacy_upload_path(self):
+    async def test_unavailable_compute_rejects_upload_without_legacy_fallback(self):
         app, client = await self.client(config=CONFIG)
         app.state.cos_transfer.initialize = Mock(side_effect=AssertionError("must not presign"))
         with patch("desktop_backend.api.MacComputeClient.enabled_for", return_value=False):
             response = await client.post("/api/assets/cos/upload", json={"kind": "input", "purpose": "enhance", "files": []})
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"ok": True, "available": False})
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json(), {"ok": False, "error": "图片增强服务暂不可用，请稍后重试"})
         app.state.cos_transfer.initialize.assert_not_called()
 
     async def test_enabled_csp_only_allows_configured_host_and_errors_do_not_fallback(self):

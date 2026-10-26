@@ -39,11 +39,19 @@ class MacComputeClient:
     def configured(config_path=None):
         return bool(config_path or os.environ.get("SHIYAN_MAC_COMPUTE_CONFIG"))
 
+    @staticmethod
+    def _valid_owner(owner):
+        return (isinstance(owner, str) and 0 < len(owner) <= 256 and owner != "*"
+                and not any(char in owner for char in "\0\r\n"))
+
     @classmethod
     def enabled_for(cls, owner, config_path=None):
-        if not cls.configured(config_path):
+        if not cls._valid_owner(owner) or not cls.configured(config_path):
             return False
-        return str(owner or "") in cls(config_path).owners
+        cls(config_path)
+        # Every signed-in account uses the shared compute service. The broker
+        # checks the live account database; a stale local list is not authority.
+        return True
 
     def __init__(self, config_path=None):
         value = private_config(config_path or os.environ.get("SHIYAN_MAC_COMPUTE_CONFIG", ""))
@@ -54,14 +62,13 @@ class MacComputeClient:
         self.host, self.port = parsed.hostname, parsed.port or 80
         self.prefix = parsed.path.rstrip("/")
         self.token = str(value.get("token") or "")
-        owners = value.get("owners")
-        if not self.token or "\n" in self.token or "\r" in self.token or not isinstance(owners, list):
+        if not self.token or "\n" in self.token or "\r" in self.token:
             raise MacComputeError("Mac 计算配置不可用", code="configuration")
-        self.owners = frozenset(str(x) for x in owners if isinstance(x, str) and x)
 
     def _request(self, method, route, owner=None, payload=None, source=None, destination=None):
-        if owner is not None and owner not in self.owners:
-            raise MacComputeError("此账户未授权使用 Mac 计算", 403, "owner_forbidden")
+        if ((owner is not None and not self._valid_owner(owner))
+                or (owner is None and route != "/v1/health")):
+            raise MacComputeError("账号信息无效", 403, "owner_forbidden")
         headers = {"Authorization": "Bearer " + self.token}
         if owner is not None:
             headers["X-Shiyan-Owner"] = owner

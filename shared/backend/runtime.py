@@ -804,6 +804,8 @@ class Runtime:
                 or any(not isinstance(value, str) for value in identifiers)
                 or len(set(identifiers)) != len(identifiers)):
             raise ValueError("请选择 1 到 10 张不同的图片")
+        if self.platform.mode == "web" and not MacComputeClient.enabled_for(self.account.get("owner")):
+            raise ValueError("图片增强服务暂不可用，请稍后重试")
         # Validate every member before creating or launching any of the jobs.
         for identifier in identifiers:
             asset = self.storage.asset(identifier)
@@ -811,7 +813,7 @@ class Runtime:
                 raise ValueError("请选择图片")
             if asset.get("remoteOnly"):
                 if not MacComputeClient.enabled_for(self.account.get("owner")):
-                    raise ValueError("此账户的 Mac 计算授权不可用")
+                    raise ValueError("图片增强服务暂不可用，请稍后重试")
                 self.web_cos_transfer().descriptor(self, asset)
             else:
                 self.storage.asset_path(identifier)
@@ -866,7 +868,7 @@ class Runtime:
         remote_id = None
         try:
             if self.platform.mode != "web" or not MacComputeClient.enabled_for(owner):
-                raise ValueError("此账户的 Mac 计算授权不可用")
+                raise ValueError("图片增强服务暂不可用，请稍后重试")
             transfer, client = self.web_cos_transfer(), MacComputeClient()
             job = self.storage.get("photoJobs", identifier)
             if not job or job["state"] == "cancelled":
@@ -955,12 +957,14 @@ class Runtime:
         feature=payload.get("feature")
         if feature != "enhance":
             raise ValueError("此图片工具已下线")
+        if self.platform.mode == "web" and not MacComputeClient.enabled_for(self.account.get("owner")):
+            raise ValueError("图片增强服务暂不可用，请稍后重试")
         asset=self.storage.asset(payload.get("assetId"))
         if not asset["mimeType"].startswith("image/"):
             raise ValueError("请选择图片")
         if asset.get("remoteOnly"):
             if self.platform.mode != "web" or not MacComputeClient.enabled_for(self.account.get("owner")):
-                raise ValueError("此账户的 Mac 计算授权不可用")
+                raise ValueError("图片增强服务暂不可用，请稍后重试")
             self.web_cos_transfer().descriptor(self, asset)
         else:
             self.storage.asset_path(asset["id"])
@@ -978,7 +982,7 @@ class Runtime:
              "inputAssetId":asset["id"],"maskAssetId":payload.get("maskAssetId"),"outputAssetId":None,
              "outputAssets":[],"error":None,"createdAt":now(),"updatedAt":now(),"photoRevision":1,"requestId":new_id(),
              "remoteConversationId":f"shiyan-{feature}-{new_id()}","remoteJobId":None,"lastEventId":0}
-        if feature=="enhance" and self.platform.mode=="web" and MacComputeClient.enabled_for(self.account.get("owner")):
+        if feature=="enhance" and self.platform.mode=="web":
             job["macCompute"]=True
             if asset.get("remoteOnly") or os.environ.get("SHIYAN_COS_CONFIG"):
                 job["cosCompute"] = True
@@ -1012,9 +1016,19 @@ class Runtime:
         return job
 
     async def run_enhancement(self,identifier):
-        if self.storage.get("photoJobs",identifier).get("cosCompute"):
+        job=self.storage.get("photoJobs",identifier)
+        # Restored web jobs may predate remote-compute flags. Route them before
+        # the desktop-only subprocess branch, even if compute is unavailable.
+        if self.platform.mode=="web" and not job.get("macCompute"):
+            changes={"macCompute":True}
+            if not job.get("remoteTaskId") and (job.get("cosCompute")
+                    or self.storage.asset(job["inputAssetId"]).get("remoteOnly")
+                    or os.environ.get("SHIYAN_COS_CONFIG")):
+                changes["cosCompute"]=True
+            job=self.update_photo(identifier,**changes)
+        if job.get("cosCompute"):
             return await self.run_cos_enhancement(identifier)
-        if self.storage.get("photoJobs",identifier).get("macCompute"):
+        if job.get("macCompute"):
             return await self.run_mac_enhancement(identifier)
         task_directory=self.storage.transfers/("enhance-"+identifier)
         temporary=task_directory/"result.jpg"
@@ -1104,7 +1118,7 @@ class Runtime:
         remote_id=None
         try:
             if self.platform.mode!="web" or not MacComputeClient.enabled_for(owner):
-                raise ValueError("此账户的 Mac 计算授权不可用")
+                raise ValueError("图片增强服务暂不可用，请稍后重试")
             client=MacComputeClient()
             job=self.storage.get("photoJobs",identifier)
             if job["state"]=="cancelled":return

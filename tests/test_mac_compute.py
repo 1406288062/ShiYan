@@ -75,10 +75,11 @@ class ClientTests(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=True):
             self.assertFalse(MacComputeClient.enabled_for("owner-A"))
 
-    def test_owner_is_checked_before_network_and_image_is_streamed(self):
+    def test_invalid_owner_is_checked_before_network_and_image_is_streamed(self):
         client = MacComputeClient(self.config)
-        with self.assertRaises(MacComputeError):
-            client.status("owner-B", "fixed-id")
+        for owner in (None, "", "*", "owner\r\nX-Test: forged", "x" * 257):
+            with self.subTest(owner=owner), self.assertRaises(MacComputeError):
+                client.status(owner, "fixed-id")
         self.assertEqual(self.seen, [])
         source = self.root / "fixture.png"
         Image.new("RGB", (3, 5), "red").save(source)
@@ -92,6 +93,20 @@ class ClientTests(unittest.TestCase):
         del self.uploaded
         client.submit_enhance("owner-A", "request-1", "anime", source, 3, 5)
         self.assertFalse(hasattr(self, "uploaded"))
+
+    def test_legacy_owner_lists_do_not_exclude_other_accounts(self):
+        original = json.loads(self.config.read_text())
+        for legacy in (None, [], ["owner-A"]):
+            config = {key: value for key, value in original.items() if key != "owners"}
+            if legacy is not None:
+                config["owners"] = legacy
+            self.config.write_text(json.dumps(config))
+            for owner in ("owner-A", "owner-B", "newly-registered-owner"):
+                self.assertTrue(MacComputeClient.enabled_for(owner, self.config))
+            source = self.root / "fixture.png"
+            Image.new("RGB", (3, 5), "red").save(source)
+            MacComputeClient(self.config).submit_enhance("owner-B", "unlisted-request", "general", source, 3, 5)
+            self.assertEqual(self.seen[-1][1], "owner-B")
 
     def test_worker_requires_https(self):
         for url in ("http://example.com", "https://user:pass@example.com", "https://example.com?token=secret"):
@@ -118,15 +133,22 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.asset = self.runtime.storage.save_bytes(image.getvalue(), "fixture.png", "image/png")
         self.payload = {"feature": "enhance", "assetId": self.asset["id"], "model": "anime"}
 
-    def test_only_bound_web_owner_is_routed(self):
-        with patch("desktop_backend.runtime.MacComputeClient.enabled_for", return_value=True):
-            job = self.runtime.create_photo_job(self.payload)
-            self.assertTrue(job["macCompute"])
+    def test_all_web_accounts_use_compute_and_desktop_keeps_its_local_route(self):
+        config = self.runtime.storage.root / "client.json"
+        config.write_text(json.dumps({"url": "http://127.0.0.1:1", "token": "fixture", "owners": ["owner-A"]}))
+        config.chmod(0o600)
+        with patch.dict(os.environ, {"SHIYAN_MAC_COMPUTE_CONFIG": str(config), "SHIYAN_COS_CONFIG": ""}):
+            for owner in ("owner-A", "owner-B", "newly-registered-owner"):
+                self.runtime.account = {"owner": owner}
+                self.assertTrue(self.runtime.create_photo_job(self.payload)["macCompute"])
             self.runtime.platform.mode = "desktop"
             self.assertNotIn("macCompute", self.runtime.create_photo_job(self.payload))
-        self.runtime.platform.mode = "web"
-        with patch("desktop_backend.runtime.MacComputeClient.enabled_for", return_value=False):
-            self.assertNotIn("macCompute", self.runtime.create_photo_job(self.payload))
+
+    def test_missing_compute_rejects_new_web_work_without_creating_jobs(self):
+        before = len(self.runtime.storage.list("photoJobs"))
+        with patch.dict(os.environ, {"SHIYAN_MAC_COMPUTE_CONFIG": ""}), self.assertRaisesRegex(ValueError, "图片增强服务暂不可用"):
+            self.runtime.create_photo_job(self.payload)
+        self.assertEqual(len(self.runtime.storage.list("photoJobs")), before)
 
     async def test_existing_remote_task_resumes_without_resubmission(self):
         with patch("desktop_backend.runtime.MacComputeClient.enabled_for", return_value=True):
@@ -202,6 +224,38 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
             await self.runtime.run_enhancement(job["id"])
             spawn.assert_not_called()
         self.assertEqual(self.runtime.storage.get("photoJobs", job["id"])["state"], "failed")
+
+    async def test_legacy_web_job_without_compute_flags_cannot_spawn_locally(self):
+        with patch.dict(os.environ, {"SHIYAN_COS_CONFIG": ""}), patch("desktop_backend.runtime.MacComputeClient.enabled_for", return_value=True):
+            job = self.runtime.create_photo_job(self.payload)
+        job.pop("macCompute")
+        self.runtime.storage.put("photoJobs", job)
+        with patch("desktop_backend.runtime.MacComputeClient.enabled_for", return_value=False), patch("asyncio.create_subprocess_exec") as spawn:
+            await self.runtime.run_enhancement(job["id"])
+        spawn.assert_not_called()
+        result = self.runtime.storage.get("photoJobs", job["id"])
+        self.assertTrue(result["macCompute"])
+        self.assertEqual(result["state"], "failed")
+        self.assertIn("图片增强服务暂不可用", result["error"])
+
+    async def test_worker_offline_keeps_task_queued_without_local_fallback(self):
+        with patch.dict(os.environ, {"SHIYAN_COS_CONFIG": ""}), patch("desktop_backend.runtime.MacComputeClient.enabled_for", return_value=True):
+            job = self.runtime.create_photo_job(self.payload)
+        class Client:
+            def submit_enhance(inner, owner, request_id, model, source, width, height, remember):
+                remember("offline-task")
+                return {"id": "offline-task", "state": "queued"}
+            def status(inner, owner, task_id):
+                return {"id": task_id, "state": "queued", "label": "等待 Mac 上线"}
+        async def stop_polling(delay):
+            self.runtime.closing = True
+        with patch("desktop_backend.runtime.MacComputeClient", return_value=Client()) as constructor, \
+             patch("asyncio.create_subprocess_exec") as spawn, patch("asyncio.sleep", side_effect=stop_polling):
+            constructor.enabled_for.return_value = True
+            await self.runtime.run_enhancement(job["id"])
+        spawn.assert_not_called()
+        result = self.runtime.storage.get("photoJobs", job["id"])
+        self.assertEqual((result["state"], result["label"], result["remoteTaskId"]), ("queued", "等待 Mac 上线", "offline-task"))
 
     async def test_stop_forwards_owner_and_task_and_keeps_cancelled_state(self):
         with patch("desktop_backend.runtime.MacComputeClient.enabled_for", return_value=True):

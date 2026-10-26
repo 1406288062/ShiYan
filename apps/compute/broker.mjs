@@ -163,11 +163,9 @@ export function createComputeBroker(options = {}) {
   const workerId = options.workerId ?? 'shiyan-compute-worker';
   const workerEnabled = options.workerEnabled ?? true;
   if (typeof clientToken !== 'string' || clientToken.length < 32 || typeof workerToken !== 'string' || workerToken.length < 32 ||
-      equalToken(clientToken, workerToken) || !strictText(workerId, 256) || typeof workerEnabled !== 'boolean' || !Array.isArray(options.allowedOwners) ||
-      options.allowedOwners.length < 1 || options.allowedOwners.length > 32 || options.allowedOwners.some(owner => !validOwner(owner))) {
+      equalToken(clientToken, workerToken) || !strictText(workerId, 256) || typeof workerEnabled !== 'boolean') {
     throw new Error('Invalid private compute broker configuration');
   }
-  const owners = new Set(options.allowedOwners);
   const cos = options.cosStore || CosStore.fromFile(options.cosConfigPath || process.env.SHIYAN_COS_CONFIG);
   const now = options.now || Date.now;
   const leaseMs = options.leaseMs ?? 120000;
@@ -210,7 +208,9 @@ export function createComputeBroker(options = {}) {
   const file = (id, suffix) => path.join(fileDir, `${id}.${suffix}`);
   let lastHeartbeat = -Infinity;
   async function ownerAllowed(owner) {
-    if (!owners.has(owner)) return false;
+    // Availability follows current account status, including newly registered
+    // accounts. Legacy allowedOwners configuration must not restrict routing.
+    if (!validOwner(owner)) return false;
     try { return await authorizeOwner(owner) === true; } catch { return false; }
   }
   async function workerAllowed() {

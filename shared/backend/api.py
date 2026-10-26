@@ -152,9 +152,9 @@ def create_app(directory, root, legacy=None, profile="desktop"):
         r = runtime(request)
         try:
             if not MacComputeClient.enabled_for(getattr(r,"account",{}).get("owner")):
-                return {"ok":True,"available":False}
+                return JSONResponse({"ok":False,"error":"图片增强服务暂不可用，请稍后重试"},status_code=503)
         except MacComputeError:
-            return JSONResponse({"ok":False,"error":"Mac 计算配置暂时不可用"},status_code=503)
+            return JSONResponse({"ok":False,"error":"图片增强服务暂不可用，请稍后重试"},status_code=503)
         try:
             return await asyncio.to_thread(transfer.initialize,r,await object_body(request))
         except CosUnavailable:

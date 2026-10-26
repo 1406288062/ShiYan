@@ -280,6 +280,46 @@ test('production compute auth permits enhancement without Sponge pairing and aft
   assert.equal((await f.call('/v1/health')).status, 403);
 });
 
+test('every active account can enhance, including new accounts outside legacy lists', async t => {
+  const root = await mkdtemp(path.join(tmpdir(), 'shiyan-all-accounts-test-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const accountsDb = path.join(root, 'accounts.sqlite3');
+  const accounts = new DatabaseSync(accountsDb);
+  accounts.exec('CREATE TABLE account_users(owner TEXT PRIMARY KEY,status TEXT);');
+  for (const owner of [ownerA, ownerB]) accounts.prepare('INSERT INTO account_users VALUES(?,?)').run(owner, 'active');
+  t.after(() => accounts.close());
+  const cos = fakeCos();
+  const f = await fixture(t, { accountsDb, cosStore: cos, authorizeOwner: undefined,
+    authorizeWorker: undefined, allowedOwners: [ownerA, 'account:unknown'] });
+  for (const [owner, model] of [[ownerB, 'general'], ['account:new-member', 'anime']]) {
+    if (owner !== ownerB) accounts.prepare('INSERT INTO account_users VALUES(?,?)').run(owner, 'active');
+    const input = cosInput(owner);
+    cos.objects.set(input.key, { bytes: input.bytes, etag: input.etag, mime: input.mime });
+    const created = await f.call('/v1/tasks', { method: 'POST', owner,
+      body: { kind: 'enhance_cos', request_id: 'shared-request', params: { model, input } } });
+    assert.equal(created.status, 200);
+    const id = created.data.task.id;
+    assert.equal((await f.call(`/v1/tasks/${id}`, { owner: ownerA })).status, 404);
+    const task = (await cosClaim(f)).data.task;
+    assert.equal(task.owner_id, owner);
+    await prepareCosResult(f, cos, task, 'output');
+    await prepareCosResult(f, cos, task, 'thumbnail');
+    assert.equal((await f.call(`/v1/worker/tasks/${id}/result`, { token: workerToken,
+      owner: null, lease: task.lease_token, method: 'PUT', body: { transport: 'cos' } })).status, 200);
+    const result = await f.call(`/v1/tasks/${id}/result`, { owner });
+    assert.equal(result.status, 200);
+    assert.equal(result.data.device, 'mps');
+    accounts.prepare('UPDATE account_users SET status=? WHERE owner=?').run('disabled', owner);
+    assert.equal((await f.call(`/v1/tasks/${id}`, { owner })).status, 403);
+    accounts.prepare('UPDATE account_users SET status=? WHERE owner=?').run('active', owner);
+    await f.stop();
+    delete f.config.allowedOwners;
+    await f.start();
+    assert.equal((await f.call(`/v1/tasks/${id}/result`, { owner })).status, 200);
+  }
+  assert.equal((await f.submitEmbed('unknown', 'account:unknown')).status, 403);
+});
+
 test('an explicitly disabled compute service refuses valid credentials without pairing checks', async t => {
   const f = await fixture(t, { workerEnabled: false });
   for (const result of [await f.call('/v1/health'), await f.submitEmbed(), await f.claim()]) {
