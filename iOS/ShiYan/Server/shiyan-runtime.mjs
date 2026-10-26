@@ -143,7 +143,7 @@ async function runJob(job){
      
     const thread=conv.threadId?codex.resumeThread(conv.threadId,options):codex.startThread(options);
     if(conv.threadId){job.threadId=conv.threadId;stopWatch=await monitorGenerated(job);}
-    emit(job,'phase',{phase:'processing',label:'Codex 处理中',reasoning:job.reasoning});
+    emit(job,'phase',{phase:'processing',label:'拾燕 处理中',reasoning:job.reasoning});
     const input=inputs.length===1&&inputs[0].type==='text'?inputs[0].text:inputs;
     const {events}=await thread.runStreamed(input,{signal:abort.signal});
     const messages=new Map();
@@ -154,7 +154,7 @@ async function runJob(job){
         emit(job,'thread',{threadId:event.thread_id,reasoning:job.reasoning});
         await stopWatch();stopWatch=await monitorGenerated(job);
       }else if(event.type==='turn.failed'||event.type==='error'){
-        throw new Error(event.error?.message||event.message||'Codex 处理失败');
+        throw new Error(event.error?.message||event.message||'拾燕 处理失败');
       }else if(event.type==='turn.completed'){
         job.usage=event.usage;
       }else if(event.item){

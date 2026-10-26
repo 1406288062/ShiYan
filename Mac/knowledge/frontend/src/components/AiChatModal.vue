@@ -67,7 +67,6 @@
                   </ol>
                 </section>
 
-                <div v-if="msg.mode" class="answer-meta"><span class="meta-dot"></span>{{ modeLabel(msg.mode) }}</div>
               </div>
             </article>
 
@@ -232,12 +231,6 @@ function renderContent(text) {
   return sanitizeHtml(html)
 }
 
-function modeLabel(mode) {
-  if (mode === 'codex_gateway') return 'Codex Gateway 生成'
-  if (mode === 'codex_sdk') return 'Codex SDK 生成'
-  if (mode === 'deepseek') return 'DeepSeek 远程生成'
-  return '生成模式 · ' + mode
-}
 </script>
 
 <style scoped>

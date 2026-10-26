@@ -58,7 +58,7 @@
     frame.referrerPolicy = 'no-referrer';
     frame.setAttribute('allow', 'clipboard-read; clipboard-write');
     syncAppearance();
-    frame.src = '/assets/knowledge-ui/index.html?v=20261026-sidebar-bc9399fb';
+    frame.src = '/assets/knowledge-ui/index.html?v=20261026-task-copy-19049585';
     root.append(frame);
     document.body.append(root);
   }
