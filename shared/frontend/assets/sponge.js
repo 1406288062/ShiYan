@@ -55,8 +55,8 @@
       ? '已连接 · ' + devices.length + ' 台设备' + (devices.length ? ' · ' + online + ' 台在线' : '，请先绑定设备')
       : pending ? '连接中…' : loading && !status ? '正在读取连接状态…' : '未连接';
     find('[data-sponge-description]').textContent = connected
-      ? 'AI 可以访问你在海绵宝宝中绑定的设备。'
-      : '使用当前拾燕账号登录海绵宝宝并绑定设备，即可交给 AI 使用。';
+      ? '仅连接你授权绑定的设备，你可以随时管理设备或断开连接。'
+      : '使用当前拾燕账号登录海绵宝宝，由你选择并绑定设备。';
     const connect = find('[data-sponge-connect]');
     connect.hidden = connected;
     connect.textContent = pending ? '重新连接' : '连接';
