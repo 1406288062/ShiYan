@@ -67,7 +67,7 @@ body.workbench-v22 .v22-message-tools .symbol { width:14px;height:14px; }
 body.workbench-v22 .is-user>.v22-message-tools { justify-content:flex-end;opacity:0; }
 body.workbench-v22 .is-user:is(:hover,:focus-within)>.v22-message-tools { opacity:1; }
 body.workbench-v22 .is-assistant>.v22-message-tools { margin-top:7px; }
-body.workbench-v22 .v22-elapsed { display:flex;align-items:center;gap:10px;color:var(--muted);font-size:11px;line-height:18px;margin-top:10px; }
+body.workbench-v22 .v22-elapsed { display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px;line-height:20px;margin-top:10px; }
 body.workbench-v22 .v22-elapsed::before { content:'';width:38px;height:1px;background:var(--line); }
 body.workbench-v22 .message.is-user .message-content>.message-body { background:var(--soft-fill); }
  

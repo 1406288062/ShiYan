@@ -47,7 +47,7 @@
   const toolbarButtonIds=new Set(['sidebarSearch','toggleLeftSidebar','toggleRightWorkspace','addWorkspaceTab']);
   const button = (id, name, title, extra='') => `<button id="${id}" class="wb-icon-button ${extra}" type="button" title="${esc(title)}" aria-label="${esc(title)}">${toolbarButtonIds.has(id)?toolbarIcon(name):icon(name)}</button>`;
   const uuid = () => crypto.randomUUID();
-  let token = '', projects = [], prefs = {leftOpen:true,rightOpen:true,leftWidth:262,rightWidth:460,groups:{pinned:true,projects:true,recent:true}}, tabs = [], activeTab = '', defaultDirectory = '', lastSelected = '';
+  let token = '', projects = [], prefs = {leftOpen:true,rightOpen:true,leftWidth:window.ShiYanPlatform?.mode==='web'?248:262,rightWidth:460,groups:{pinned:true,projects:true,recent:true}}, tabs = [], activeTab = '', defaultDirectory = '', lastSelected = '';
   let browserState = {tabs:[],history:[],bookmarks:[],downloads:[],searchEngine:'bing'};
   let ready = false, saveTimer, resizeRAF, loading = true;
    
@@ -579,6 +579,8 @@
     try{
       const data=await api('/bootstrap','POST',{});token=data.token;projects=data.projects||[];defaultDirectory=data.defaultDirectory;
       prefs={...prefs,...data.preferences,groups:{...prefs.groups,...data.preferences?.groups}};
+      // Apply the web sidebar width before rendering restored tabs or layout.
+      if(window.ShiYanPlatform?.mode==='web')prefs.leftWidth=248;
        
       if(Number(data.preferences?.rightWidth)===590){prefs.rightWidth=460;persist();}
       tabs=(data.preferences?.tabs||[]).filter(t=>t.id&&t.type&&t.type!=='temporary').map(t=>({...t}));

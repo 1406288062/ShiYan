@@ -397,6 +397,11 @@ body.account-light .auth-field input {
 #accountGate .auth-qr-image img { display: block; filter: invert(1); }
 body.account-light #accountGate .auth-qr-image img { filter: none; }
 #accountGate .auth-qr p { margin: 12px 0 0; line-height: 1.5; }
+/* Centre the avatar independently of the phone-confirmation status below it. */
+#accountGate .auth-stage:has(> #accountRemembered:not([hidden])) { grid-template-rows: minmax(0, 1fr); }
+#accountRemembered { display: grid; min-height: 0; grid-template-rows: minmax(0, 1fr) auto minmax(0, 1fr); }
+#accountRememberedLogin { grid-row: 2; transform: translateY(-6px); }
+#accountRememberedStatus { grid-row: 3; min-height: 0; margin-bottom: 0; overflow-y: auto; }
 #accountRememberedStatus:empty { display: none; }
 
 #accountGate[data-auth-mode="login"] .auth-card { padding-block: 12px; }

@@ -115,6 +115,11 @@ def create_app(directory, root, legacy=None, profile="desktop"):
             response.headers["Cache-Control"]="no-store"
         return response
 
+    @app.exception_handler(ClientDisconnect)
+    async def client_disconnected(request, exc):
+        # The client left before its request body finished; do not treat it as a server error.
+        return Response(status_code=499)
+
     @app.exception_handler(ValueError)
     async def invalid(request,exc):
         return JSONResponse({"ok":False,"error":str(exc)},status_code=400)

@@ -18,6 +18,21 @@
   const count=(value,sign)=>Number.isInteger(value)&&value>=0?value:diff&&f.diffTruncated!==true?lines.filter(l=>l.startsWith(sign)&&!l.startsWith(sign.repeat(3))).length:null;
   return {...f,path,available:f.available===true||f.available!==false&&!!diff,diff,added:count(f.added,'+'),removed:count(f.removed,'-')};
  }
+
+ function isImageOutput(file,message){
+  const kind=String(file.kind||'').toLowerCase();
+  if(!['','add','create'].includes(kind)||file.beforeSha256||!kind&&file.diff)return false;
+  const name=String(file.path||'').replace(/\\/g,'/').split('/').pop();
+  if(!/\.(?:png|jpe?g|webp|gif|bmp|tiff?|heic|heif|avif|svg)$/i.test(name))return false;
+  return (Array.isArray(message?.assets)?message.assets:[]).some(asset=>{
+   if(!String(asset?.mimeType||'').toLowerCase().startsWith('image/'))return false;
+   const output=String(asset.filename||'').replace(/\\/g,'/').split('/').pop();
+   if(output===name)return true;
+   // The cloud may deliver a JPEG display copy of the generated original.
+   return /\.(?:png|jpe?g|webp|bmp)$/i.test(name)&&/\.jpe?g$/i.test(output)&&
+    name.replace(/\.[^.]+$/,'')===output.replace(/\.[^.]+$/,'');
+  });
+ }
  function filesFor(m){
   const files=new Map();
   function add(values){
@@ -44,7 +59,7 @@
    const legacy=Array.isArray(raw)?raw:Array.isArray(raw?.items)?raw.items:[];
    for(const item of legacy)if(item?.type==='file_change'&&(!item.status||item.status==='completed'))add(item.changes);
   }
-  return [...files.values()];
+  return [...files.values()].filter(file=>!isImageOutput(file,m));
  }
  function relativePath(file,message){
   const raw=String(file.relativePath||file.path||file.name||'').replace(/\\/g,'/');
@@ -106,7 +121,7 @@
   const messages=new Map((currentState()?.conversations||[]).flatMap(c=>(c.messages||[]).map(m=>[m.id,m])));
   for(const article of document.querySelectorAll('#messages>article[data-message-id]')){
    const message=messages.get(article.dataset.messageId);if(!message||message.role!=='assistant'||['submitting','queued','running','reconnecting'].includes(message.state))continue;
-   const signature=JSON.stringify([message.fileChanges||null,message.rawResult||'',message.displayItems||[],message.executionStats||null]);
+   const signature=JSON.stringify([message.assets||[],message.fileChanges||null,message.rawResult||'',message.displayItems||[],message.executionStats||null]);
    if(article.__changeCardSignature===signature){
     const expected=filesFor(message).map(f=>relativePath(f,message));
     const visible=[...article.querySelectorAll('.v24-change-files>button>span:first-child')].map(e=>e.textContent);
@@ -127,7 +142,7 @@
  }
  function install(context){
   C=context;window.addEventListener('shiyan-state',refreshVisibleCards);refreshVisibleCards();document.addEventListener('click',e=>{const b=e.target.closest('[data-show-message-changes]');if(b)openMessage(b.dataset.showMessageChanges,b.dataset.changeIndex);});
-  window.addEventListener('shiyan-state',()=>{for(const tab of C.tabs)if(tab.type==='changes'&&tab.conversationId){const m=findMessage(tab),signature=JSON.stringify([m?.detailsToken,m?.fileChanges||null,m?.displayItems||[],m?.rawResult||null]);if(tab.changeSignature!==signature){tab.changeSignature=signature;renderPane(tab,C.panes.get(tab.id));}}});
+  window.addEventListener('shiyan-state',()=>{for(const tab of C.tabs)if(tab.type==='changes'&&tab.conversationId){const m=findMessage(tab),signature=JSON.stringify([m?.detailsToken,m?.assets||[],m?.fileChanges||null,m?.displayItems||[],m?.rawResult||null]);if(tab.changeSignature!==signature){tab.changeSignature=signature;renderPane(tab,C.panes.get(tab.id));}}});
   const rail=document.getElementById('activityRail'),avatar=document.createElement('button');
   avatar.id='railAvatar';avatar.type='button';avatar.className='wb-icon-button';avatar.title='头像与额度';avatar.setAttribute('aria-label','头像与剩余额度');avatar.setAttribute('aria-haspopup','dialog');avatar.setAttribute('aria-expanded','false');avatar.innerHTML='<svg class="v24-avatar-placeholder" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="12" r="5"/><path d="M6 29v-4a10 10 0 0 1 20 0v4Z"/></svg><img alt="用户头像" hidden>';
   rail.append(avatar);

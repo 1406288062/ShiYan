@@ -105,3 +105,78 @@ test('the raw-result guard measures UTF-8 bytes rather than character count', ()
   assert.ok(Buffer.byteLength(raw) > 262144);
   assert.equal(changeCards().filesFor({ rawResult: raw }).length, 0);
 });
+
+
+const image = (filename = 'portrait_photo.jpg') => ({
+  id: 'generated-photo', remoteId: 'cloud-photo', filename, mimeType: 'image/jpeg',
+});
+const outputFile = (path = '/workspace/portrait_photo.jpg', extra = {}) => ({
+  path, kind: 'add', available: false, diff: '', added: null, removed: null,
+  source: '二进制文件不生成文本差异', ...extra,
+});
+
+test('a delivered image has no code-change card and its attachment remains intact', () => {
+  const cards = changeCards();
+  const message = { id: 'portrait', role: 'assistant', assets: [image()], fileChanges: [outputFile()] };
+  const before = JSON.stringify(message);
+  assert.equal(cards.filesFor(message).length, 0);
+  assert.equal(cards.summary(message), '');
+  assert.equal(JSON.stringify(message), before);
+});
+
+test('mixed image output and source edits count only the source edit and its real diff', () => {
+  const cards = changeCards();
+  const message = { id: 'mixed', assets: [image()], fileChanges: [outputFile(), { ...file(0), diff: '+code\n-old' }] };
+  const files = cards.filesFor(message);
+  assert.deepEqual(Array.from(files, f => f.path), ['/project/file-0.swift']);
+  const html = cards.summary(message);
+  assert.match(html, /已编辑 1 个文件/);
+  assert.match(html, /class="v24-added">\+1<\/span>/);
+  assert.match(html, /class="v24-removed">-2<\/span>/);
+  assert.doesNotMatch(html, /portrait_photo|历史记录缺少 diff/);
+});
+
+test('completed SDK records and historical raw records use the same image-output classification', () => {
+  const cards = changeCards();
+  const items = [change([outputFile('C:\\workspace\\portrait_photo.jpg', { kind: 'create' }), file(1)])];
+  for (const history of [{ displayItems: items }, { rawResult: JSON.stringify(items) }, { rawResult: JSON.stringify({ items }) }]) {
+    const files = cards.filesFor({ assets: [image()], ...history });
+    assert.deepEqual(Array.from(files, f => f.path), ['/project/file-1.swift']);
+  }
+});
+
+test('JPEG display copies still identify the original image output', () => {
+  const cards = changeCards();
+  for (const suffix of ['png', 'webp', 'jpeg']) {
+    const message = { assets: [image('landscape.jpg')], fileChanges: [outputFile('/workspace/landscape.' + suffix)] };
+    assert.equal(cards.filesFor(message).length, 0);
+  }
+});
+
+test('existing project images and unrelated image files retain their change records', () => {
+  const cards = changeCards();
+  const changes = [
+    outputFile('/project/portrait_photo.jpg', { kind: 'update' }),
+    outputFile('/project/removed/portrait_photo.jpg', { kind: 'delete' }),
+    outputFile('/project/unrelated.png'),
+    outputFile('/project/old/portrait_photo.jpg', { beforeSha256: 'previous-file' }),
+  ];
+  const files = cards.filesFor({ assets: [image()], fileChanges: changes });
+  assert.equal(files.length, changes.length);
+});
+
+test('missing attachments and ambiguous legacy text edits are not silently discarded', () => {
+  const cards = changeCards();
+  assert.equal(cards.filesFor({ fileChanges: [outputFile()] }).length, 1);
+  assert.equal(cards.filesFor({ assets: [{ ...image(), mimeType: 'text/plain' }], fileChanges: [outputFile()] }).length, 1);
+  const sourceEdit = outputFile('/project/icon.svg', { kind: '', diff: '+<svg/>', added: 1, removed: 0 });
+  assert.equal(cards.filesFor({ assets: [{ ...image('icon.svg'), mimeType: 'image/svg+xml' }], fileChanges: [sourceEdit] }).length, 1);
+});
+
+test('a completed reply is reclassified when its image attachment arrives', () => {
+  const cards = changeCards();
+  const message = { id: 'late-image', fileChanges: [outputFile()], assets: [] };
+  assert.match(cards.summary(message), /已编辑 1 个文件/);
+  message.assets.push(image());
+  assert.equal(cards.summary(message), '');
+});

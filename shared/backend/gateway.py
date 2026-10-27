@@ -99,7 +99,9 @@ class Gateway:
             raise GatewayError("上传内容超过 40 MB，请减少图片", 413)
         digest = hashlib.sha256(body).hexdigest()
         headers = {"Content-Type":"application/json", "Content-Length":str(len(body)),
-                   "X-Shiyan-Body-Sha":digest, "X-Shiyan-Platform":"macos", "Connection":"close"}
+                   "X-Shiyan-Body-Sha":digest, "X-Shiyan-Platform":(
+                       "web" if route.startswith("auth/") and getattr(getattr(self, "platform", None), "mode", None) == "web" else "macos"),
+                   "Connection":"close"}
         if route == "sync" or route.startswith("sync?"):
             headers["X-Shiyan-Sync-Profile"] = "compact"
         if self.account_token:

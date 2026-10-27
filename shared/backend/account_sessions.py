@@ -339,7 +339,9 @@ def register_accounts(app):
             if result.get("state") != "approved": return {"ok": True, "state": result.get("state")}
             cookie = await manager.activate(result)
             response = JSONResponse({"ok": True, "state": "approved", "user": result["user"]})
-            response.set_cookie(COOKIE, cookie, path="/", httponly=True, secure=request.url.scheme == "https", samesite="strict")
+            response.set_cookie(COOKIE, cookie,
+                                max_age=max(1, int((result["expiresAt"]-time.time()*1000)/1000)) if manager.platform.mode == "web" else None,
+                                path="/", httponly=True, secure=request.url.scheme == "https", samesite="strict")
             return response
 
     @app.post("/api/auth/qr/create")

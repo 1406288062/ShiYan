@@ -7,6 +7,7 @@ enum AgentExecutionPresentation {
         var id: String { path }
         var path: String; var kind: String; var diff: String
         var added: Int?; var removed: Int?
+        var beforeSha256: String? = nil
     }
     struct Item: Identifiable, Equatable {
         var id: String; var type: String; var title: String; var subtitle: String
@@ -78,7 +79,8 @@ enum AgentExecutionPresentation {
             let object = value.object, path = clipped(object["path"], 1000)
             guard !path.isEmpty, seen.insert(path).inserted else { return nil }
             return File(path: path, kind: clipped(object["kind"], 80), diff: clipped(object["diff"], 12000),
-                        added: integer(object["added"]), removed: integer(object["removed"]))
+                        added: integer(object["added"]), removed: integer(object["removed"]),
+                        beforeSha256: object["beforeSha256"]?.string)
         }
     }
      
@@ -102,13 +104,31 @@ enum AgentExecutionPresentation {
                     if result[index].added == nil { result[index].added = file.added }
                     if result[index].removed == nil { result[index].removed = file.removed }
                     if result[index].kind.isEmpty { result[index].kind = file.kind }
+                    if result[index].beforeSha256 == nil { result[index].beforeSha256 = file.beforeSha256 }
                 } else {
                     indices[file.path] = result.count
                     result.append(file)
                 }
             }
         }
-        return result
+        return result.filter { !isImageOutput($0, in: message) }
+    }
+    private static func isImageOutput(_ file: File, in message: AgentMessage) -> Bool {
+        let kind = file.kind.lowercased()
+        guard ["", "add", "create"].contains(kind), file.beforeSha256 == nil,
+              !kind.isEmpty || file.diff.isEmpty else { return false }
+        let name = file.path.replacingOccurrences(of: "\\", with: "/").components(separatedBy: "/").last ?? ""
+        let ext = (name as NSString).pathExtension.lowercased()
+        guard ["png", "jpg", "jpeg", "webp", "gif", "bmp", "tif", "tiff", "heic", "heif", "avif", "svg"].contains(ext) else { return false }
+        return message.assets.contains { asset in
+            guard asset.isImage else { return false }
+            let output = asset.filename.replacingOccurrences(of: "\\", with: "/").components(separatedBy: "/").last ?? ""
+            if output == name { return true }
+            // The cloud may deliver a JPEG display copy of the generated original.
+            return ["png", "jpg", "jpeg", "webp", "bmp"].contains(ext)
+                && ["jpg", "jpeg"].contains((output as NSString).pathExtension.lowercased())
+                && (name as NSString).deletingPathExtension == (output as NSString).deletingPathExtension
+        }
     }
     static func usage(_ value: [String: AgentSyncValue]?) -> [(label: String, count: Int)] {
         [("input_tokens", "输入"), ("cached_input_tokens", "缓存"), ("output_tokens", "输出")].compactMap { key, label in

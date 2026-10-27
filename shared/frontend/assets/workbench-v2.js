@@ -37,7 +37,7 @@
    function prepare(list){return list.map(e=>{if(e.separator)return {separator:true};const key=crypto.randomUUID();if(e.run)handlers.set(key,e.run);return {id:key,label:e.label,enabled:e.disabled!==true,checked:!!e.checked,children:e.children?prepare(e.children):undefined};});}
    const data=prepare(items);S.menuCallbacks.set(id,handlers);const r=anchor?.getBoundingClientRect()||{left:innerWidth/2,right:innerWidth/2,bottom:100};
    if(!html&&C.nativeAvailable()){C.native('menu',{menuId:id,x:Math.min(r.left,innerWidth-width-8),y:r.bottom+5,items:data});return;}
-   const box=$('v2Popup');box.hidden=false;box.style.width=width+'px';
+   const box=$('v2Popup');box.classList.toggle('v2-project-options',!!anchor?.matches('[data-project-more]'));box.hidden=false;box.style.width=width+'px';
    for(const item of items){if(item.separator){box.appendChild(document.createElement('hr'));continue;}const b=document.createElement('button');b.type='button';b.disabled=item.disabled===true;b.className=item.danger?'danger':'';b.innerHTML=(item.icon?icon(item.icon):'')+`<span>${esc(item.label)}</span>`+(item.checked?icon('check'):item.children?C.icon('forward'):'');
     b.onclick=async e=>{e.stopPropagation();if(item.children){menu(b,item.children,{width,html:true});return;}closePopup();try{await item.run?.();}catch(err){handleError(err);}};box.appendChild(b);}
    positionPopup(box,r,width);box.querySelector('button:not(:disabled)')?.focus({preventScroll:true});C.scheduleNative();
@@ -101,7 +101,7 @@
     return `<section class="project-group" data-project-group="${esc(p.id)}"><div data-project-fold="${esc(p.id)}" class="v2-project-header ${p.id===C.prefs.selectedProjectId?'selected':''}">
      <button type="button" class="v21-project-folder" data-project-fold="${esc(p.id)}" aria-expanded="${!closed}" aria-label="${closed?'展开':'收起'} ${esc(p.name)}" title="${closed?'展开项目会话':'收起项目会话'}">${icon(closed?'folder':'folderOpen')}</button>
      <button type="button" class="project-row" data-project="${esc(p.id)}" aria-expanded="${!closed}" title="${closed?'展开项目会话':'收起项目会话'} · ${esc(p.path)}"><span>${esc(p.name)}</span></button>
-     <span class="v2-project-actions"><button type="button" data-project-more="${esc(p.id)}" aria-label="${esc(p.name)} 项目选项" title="项目选项">${C.icon('more')}</button><button type="button" data-project-new="${esc(p.id)}" aria-label="在 ${esc(p.name)} 下新建会话" title="新建会话">${C.icon('plus')}</button></span></div>
+     <span class="v2-project-actions"><button type="button" data-project-more="${esc(p.id)}" aria-label="${esc(p.name)} 项目选项" title="项目选项">${C.toolbarIcon('more')}</button><button type="button" data-project-new="${esc(p.id)}" aria-label="在 ${esc(p.name)} 下新建会话" title="新建会话">${C.icon('plus')}</button></span></div>
      <div class="v2-project-chats" ${closed?'hidden':''}>${chats.map(c=>window.shiyan.sessionHTML(c)).join('')}</div></section>`;
    }).join('');
    if(list.innerHTML!==html)list.innerHTML=html;
@@ -170,8 +170,7 @@
   function makeFileTool(tab,pane){
    const previous=S.files.get(tab.id);if(previous){previous.disposed=true;S.files.delete(tab.id);}tab.type='files';
    const f={tab,pane,projectId:tab.projectId||C.prefs.selectedProjectId||null,selected:null,baselines:new Map(),readRevision:0,filterRevision:0,expanded:new Set(),disposed:false,dirOpen:tab.directoryOpen!==false,browsePath:tab.directoryPath||''};S.files.set(tab.id,f);pane.classList.add('v2-file-pane');
-   pane.innerHTML=`<header class="v2-file-header"><nav class="v2-breadcrumb" aria-label="文件目录层级"></nav><span class="toolbar-spacer"></span><div class="v2-file-actions"><button type="button" class="v23-view-changes" disabled>查看变更</button>${button('','more','文件操作','v2-file-more')}${button('','folders','显示或隐藏文件目录','v2-directory-toggle')}<button type="button" class="v2-open-editor" aria-label="选择打开方式">打开${C.icon('down')}</button></div></header><div class="v2-file-body"><section class="v2-file-preview"><div class="v2-file-empty">${icon('folders')}<strong>打开文件</strong><span>从工作区目录树中选择文件</span></div></section><aside class="v2-file-directory" aria-label="文件目录"><label class="v2-file-filter">${C.icon('search')}<input type="search" placeholder="筛选文件…" aria-label="筛选文件" autocomplete="off" spellcheck="false"></label><div class="v2-tree-root"></div><div class="v2-file-matches" hidden></div></aside></div>`;
-   pane.querySelector('.v23-view-changes').onclick=()=>window.ShiYanV22.showChanges({...fileReference(f),baselineText:f.baselines.get(f.selected?.path)});
+   pane.innerHTML=`<header class="v2-file-header"><nav class="v2-breadcrumb" aria-label="文件目录层级"></nav><span class="toolbar-spacer"></span><div class="v2-file-actions">${button('','more','文件操作','v2-file-more')}${button('','folders','显示或隐藏文件目录','v2-directory-toggle')}<button type="button" class="v2-open-editor" aria-label="选择打开方式">打开${C.icon('down')}</button></div></header><div class="v2-file-body"><section class="v2-file-preview"><div class="v2-file-empty">${icon('folders')}<strong>打开文件</strong><span>从工作区目录树中选择文件</span></div></section><aside class="v2-file-directory" aria-label="文件目录"><label class="v2-file-filter">${C.icon('search')}<input type="search" placeholder="筛选文件…" aria-label="筛选文件" autocomplete="off" spellcheck="false"></label><div class="v2-tree-root"></div><div class="v2-file-matches" hidden></div></aside></div>`;
    f.preview=pane.querySelector('.v2-file-preview');f.tree=pane.querySelector('.v2-tree-root');f.matches=pane.querySelector('.v2-file-matches');f.breadcrumb=pane.querySelector('.v2-breadcrumb');
    pane.querySelector('.v2-file-more').onclick=e=>menu(e.currentTarget,[{...action('复制',()=>window.shiyan.copyText(f.selected.text),'copy'),disabled:f.selected?.kind!=='text'},{...action('加入对话',()=>addFileContext(f),'newChat'),disabled:f.selected?.kind!=='text'||!!f.selected?.sensitive}]);
    pane.querySelector('.v2-directory-toggle').onclick=()=>{f.dirOpen=!f.dirOpen;f.tab.directoryOpen=f.dirOpen;applyDirectoryVisibility(f);persist();};
@@ -227,6 +226,7 @@
   }
   async function openFile(f,path,fileId){
    const rev=++f.readRevision;
+   if(window.ShiYanPlatform?.mode==='web')f.preview.innerHTML=`<div class="v2-file-empty" role="status" aria-live="polite"><strong>${esc((path||f.tab.assetName||f.tab.title||'文件').split('/').pop())}</strong><span>正在读取文件内容…</span></div>`;
    try{const result=await C.api('/files/read','POST',fileId?{fileId}:{projectId:f.projectId,path});if(f.disposed||rev!==f.readRevision)return;if(f.tab.assetName)result.file.name=f.tab.assetName;f.selected=result.file;f.tab.file=result.file;f.tab.selectedPath=path||null;f.tab.fileId=fileId||undefined;f.tab.title=result.file.name;f.tab.path=path||undefined;f.preview.innerHTML='';f.preview.__shiyanFile={file:result.file,reference:fileReference(f),reload:()=>openFile(f,f.tab.selectedPath,f.tab.fileId)};const file=result.file;if(file.kind==='text'&&!f.baselines.has(file.path))f.baselines.set(file.path,file.text);
     if(file.kind==='text'){const lines=file.text.split('\n'),limited=lines.slice(0,4000),code=document.createElement('div');code.className='code-reader';code.innerHTML=`<pre class="line-numbers" aria-hidden="true">${limited.map((_,i)=>i+1).join('\n')}</pre><pre class="source-code"><code>${C.highlight(limited.join('\n'))}</code></pre>`;f.preview.appendChild(code);if(lines.length>4000)f.preview.insertAdjacentHTML('beforeend','<p class="file-preview-note">当前预览前 4000 行；复制保留全部已读取文本。</p>');}
     else if(file.kind==='pdf'){
@@ -253,7 +253,7 @@
     parts.forEach((part,i)=>{if(i){const sep=document.createElement('span');sep.className='v2-crumb-separator';sep.textContent='›';f.breadcrumb.appendChild(sep);}const label=document.createElement(i===parts.length-1?'strong':'span');label.textContent=i===parts.length-1?(f.selected.name||part):part;f.breadcrumb.appendChild(label);});
     requestAnimationFrame(()=>{f.breadcrumb.scrollLeft=f.breadcrumb.scrollWidth;});
    }
-   f.pane.querySelector('.v23-view-changes').disabled=f.selected?.kind!=='text';f.pane.querySelector('.v2-file-more').disabled=!f.selected;f.pane.querySelector('.v2-open-editor').disabled=!f.selected;
+   f.pane.querySelector('.v2-file-more').disabled=!f.selected;f.pane.querySelector('.v2-open-editor').disabled=!f.selected;
   }
   async function directoryPopup(f,path,anchor){
    try{
