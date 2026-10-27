@@ -3,7 +3,7 @@
   "desktop": {},
   "web": {
     "ui": {
-      "rightWorkspace": true
+      "rightWorkspace": false
     }
   }
 }
