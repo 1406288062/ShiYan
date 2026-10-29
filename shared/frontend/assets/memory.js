@@ -123,10 +123,61 @@
     activatePage('settings', 'settingsGeneralTitle');
     elements.memoryEntry.focus();
   }
+  // 记忆条目：查看、搜索、修改、删除。普通对话和 Dots 共用。
+  let entriesSection = null, entries = [], entriesQuery = '', editingId = '', entriesTimer = null;
+  const escHTML = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const categoryName = {preference:'偏好', profile:'个人信息', project:'项目', fact:'事实', instruction:'习惯'};
+  function ensureEntries() {
+    if (entriesSection?.isConnected) return entriesSection;
+    entriesSection = document.createElement('section');
+    entriesSection.className = 'memory-entries';
+    entriesSection.innerHTML = '<header><h3>记住的内容</h3><input type="search" placeholder="搜索" aria-label="搜索记忆" data-memory-search></header><p class="settings-note">普通对话和 Dots 共用这些记忆。也可以直接在对话里说“记住……”或“忘掉……”。</p><ul class="memory-entry-list" data-memory-list></ul><p class="memory-entry-status" role="status" data-memory-status></p>';
+    elements.topicsSection.before(entriesSection);
+    entriesSection.querySelector('[data-memory-search]').addEventListener('input', event => {
+      clearTimeout(entriesTimer); entriesTimer = setTimeout(() => { entriesQuery = event.target.value.trim(); loadEntries(); }, 250);
+    });
+    entriesSection.addEventListener('click', async event => {
+      const item = event.target.closest('[data-memory-id]'); if (!item) return;
+      const id = item.dataset.memoryId, entry = entries.find(e => e.id === id); if (!entry) return;
+      const status = entriesSection.querySelector('[data-memory-status]');
+      try {
+        if (event.target.closest('[data-memory-edit]')) { editingId = id; drawEntries(); item.isConnected && entriesSection.querySelector('[data-memory-id="'+CSS.escape(id)+'"] textarea')?.focus(); return; }
+        if (event.target.closest('[data-memory-cancel]')) { editingId = ''; drawEntries(); return; }
+        if (event.target.closest('[data-memory-save]')) {
+          const content = entriesSection.querySelector('[data-memory-id="'+CSS.escape(id)+'"] textarea').value.trim();
+          await api('/api/memory/'+encodeURIComponent(id), 'PATCH', {content, revision: entry.revision});
+          editingId = ''; status.textContent = '已保存。'; await loadEntries(); return;
+        }
+        if (event.target.closest('[data-memory-delete]')) {
+          if (window.shiyan?.confirmAction && !await window.shiyan.confirmAction('删除这条记忆？', entry.content.slice(0, 80), '删除')) return;
+          await api('/api/memory/'+encodeURIComponent(id), 'DELETE', {});
+          item.classList.add('is-removing'); status.textContent = '已删除。普通对话和 Dots 都不会再用到它。';
+          setTimeout(() => loadEntries(), 180);
+        }
+      } catch (cause) { status.textContent = cause.message || '操作失败，请重试。'; }
+    });
+    return entriesSection;
+  }
+  function drawEntries() {
+    const list = entriesSection.querySelector('[data-memory-list]');
+    list.innerHTML = entries.length ? entries.map(e => '<li data-memory-id="'+escHTML(e.id)+'">'+(editingId === e.id
+      ? '<textarea rows="3" maxlength="1200">'+escHTML(e.content)+'</textarea><div class="memory-entry-actions"><button type="button" class="wb-secondary" data-memory-cancel>取消</button><button type="button" class="wb-primary" data-memory-save>保存</button></div>'
+      : '<div class="memory-entry-text"><span>'+escHTML(e.content)+'</span><small>'+escHTML(categoryName[e.category] || '记忆')+(e.scope === 'project' ? ' · 项目' : '')+' · '+new Date(e.updatedAt).toLocaleDateString('zh-CN')+'</small></div><div class="memory-entry-actions"><button type="button" class="wb-text-button" data-memory-edit>修改</button><button type="button" class="wb-text-button is-destructive" data-memory-delete>删除</button></div>')+'</li>').join('')
+      : '<li class="memory-entry-empty">'+(entriesQuery ? '没有找到相关记忆。' : '还没有记住任何内容。')+'</li>';
+  }
+  async function loadEntries() {
+    ensureEntries();
+    try {
+      const result = await api('/api/memory'+(entriesQuery ? '?query='+encodeURIComponent(entriesQuery) : ''));
+      entries = Array.isArray(result?.memories) ? result.memories : [];
+      drawEntries();
+    } catch (cause) { entriesSection.querySelector('[data-memory-status]').textContent = cause.message || '记忆暂时不可用。'; }
+  }
   function showMemory() {
     activatePage('memory', 'memoryTitle');
     elements.title.focus();
     load();
+    if (elements.topicsSection) loadEntries();
   }
   function topicsStatus(text = '', error = false) {
     elements.topicsNotice.textContent = text;

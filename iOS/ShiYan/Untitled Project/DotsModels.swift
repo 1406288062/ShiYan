@@ -340,6 +340,8 @@ struct DotsManagerMessage: Codable, Identifiable {
     var proactiveReason: String?
     /// 对话订阅卡片：Dots 在对话里请用户补充凭据或确认取消。
     var card: DotsSubscriptionCard?
+    /// useful / not_useful — 用户对主动消息的反馈。
+    var feedback: String?
     var isStreaming: Bool { deliveryState == "streaming" }
     var isProactive: Bool { role == "assistant" && origin == "proactive" }
 

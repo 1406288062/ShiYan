@@ -222,6 +222,25 @@ final class CodexClient {
         let bytes = try await send(request(method: "GET", route: "memory/settings"))
         return try JSONDecoder().decode(ShiyanMemorySettings.self, from: bytes)
     }
+    func memories(query: String = "") async throws -> [ShiyanMemoryEntry] {
+        try await prepareConnection()
+        let bytes = try await send(request(method: "GET", route: "memory"))
+        let all = try JSONDecoder().decode(ShiyanMemoryList.self, from: bytes).memories
+        let needle = query.trimmingCharacters(in: .whitespaces).lowercased()
+        return needle.isEmpty ? all : all.filter { ($0.content + " " + ($0.category ?? "")).lowercased().contains(needle) }
+    }
+    func updateMemory(_ id: String, content: String, revision: Int) async throws {
+        try await prepareConnection()
+        _ = try await send(request(method: "PATCH", route: "memory/" + id, object: ["content": content, "revision": revision]))
+    }
+    func deleteMemory(_ id: String) async throws {
+        try await prepareConnection()
+        _ = try await send(request(method: "DELETE", route: "memory/" + id, object: [String: Any]()))
+    }
+    func dotsMessageFeedback(_ messageId: Int, value: String) async throws {
+        try await prepareConnection()
+        _ = try await response(request(method: "POST", route: "dots/manager/messages/\(messageId)/feedback", object: ["value": value]), rejectDotsErrors: true)
+    }
     func setMemoryEnabled(_ enabled: Bool) async throws -> ShiyanMemorySettings {
         try await prepareConnection()
         let bytes = try await send(request(method: "PATCH", route: "memory/settings", object: ["enabled": enabled]))
@@ -628,12 +647,23 @@ extension CodexClient: DotsTransport {
     }
     func dotsSubscriptions(_ provider: String? = nil, method: String = "GET", fields: [String: Any]? = nil) async throws -> DotsSubscriptionsResponse {
         try await prepareConnection()
-        guard provider == nil || ["github", "email", "google-calendar"].contains(provider!) else {
+        guard provider == nil || ["github", "email", "google-calendar", "rss"].contains(provider!) else {
             throw AgentClientError.message("不支持的订阅类型")
         }
         let route = "dots/subscriptions" + (provider.map { "/" + $0 } ?? "")
         let bytes = try await response(request(method: method, route: route, object: fields), rejectDotsErrors: true).body
         return try JSONDecoder().decode(DotsSubscriptionsResponse.self, from: bytes)
+    }
+    func dotsConnectors() async throws -> DotsConnectorsResponse {
+        try await prepareConnection()
+        let bytes = try await response(request(method: "GET", route: "dots/connectors"), rejectDotsErrors: true).body
+        return try JSONDecoder().decode(DotsConnectorsResponse.self, from: bytes)
+    }
+    func dotsSettings(update: [String: Any]? = nil) async throws -> DotsSettingsResponse {
+        try await prepareConnection()
+        let bytes = try await response(request(method: update == nil ? "GET" : "PATCH", route: "dots/settings", object: update),
+                                       rejectDotsErrors: true).body
+        return try JSONDecoder().decode(DotsSettingsResponse.self, from: bytes)
     }
     func dotsRelationship(_ change: DotsRelationshipChange) async throws -> DotsRelationshipResponse {
         try await prepareConnection()

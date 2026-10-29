@@ -39,6 +39,8 @@ struct DotsView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showTasks = false
     @State private var showSubscriptions = false
+    @State private var showConnectors = false
+    @State private var showSettings = false
     @State private var showFiles = false
     @State private var attachmentPreview: URL?
     @State private var approval: DotsApprovalContext?
@@ -256,6 +258,15 @@ struct DotsView: View {
         .quickLookPreview($attachmentPreview)
         .sheet(isPresented: $showTasks) { taskSheet }
         .sheet(isPresented: $showSubscriptions) { DotsSubscriptionsView() }
+        .sheet(isPresented: $showConnectors) {
+            DotsConnectorsView { prompt in
+                // Hand the connection to Dots: it replies in chat with the credential card.
+                store.setDraft(prompt)
+                withAnimation(.spring(response: 0.34, dampingFraction: 0.8)) { sentAfterId = store.messages.map(\.id).max() ?? 0 }
+                Task { await store.submit() }
+            }
+        }
+        .sheet(isPresented: $showSettings) { DotsSettingsView() }
         .sheet(item: $selectingText) { DotsSelectTextSheet(text: $0.text) }
         .onChange(of: showTasks) { _, visible in
             onTaskSheetPresented(visible)
@@ -314,8 +325,14 @@ struct DotsView: View {
     }
     private var assistantMenu: some View {
         ShiyanMoreMenu {
+            Button("连接器", systemImage: "point.3.connected.trianglepath.dotted") {
+                inputFocused = false; showConnectors = true
+            }
             Button("事件订阅", systemImage: "bell.badge") {
                 inputFocused = false; showSubscriptions = true
+            }
+            Button("Dots 设置", systemImage: "gearshape") {
+                inputFocused = false; showSettings = true
             }
             Button("任务", systemImage: "list.bullet.rectangle") {
                 inputFocused = false; showTasks = true
@@ -460,8 +477,32 @@ struct DotsView: View {
                 Button("选择文本", systemImage: "selection.pin.in.out") {
                     selectingText = DotsSelectionText(text: item.role == "user" ? DotsQuote.split(item.content).body : item.content)
                 }
+                if item.isProactive {
+                    Divider()
+                    Button(item.feedback == "useful" ? "已标记有用" : "有用", systemImage: item.feedback == "useful" ? "hand.thumbsup.fill" : "hand.thumbsup") {
+                        sendFeedback(item, item.feedback == "useful" ? "clear" : "useful")
+                    }
+                    Button(item.feedback == "not_useful" ? "已标记没用" : "没用，以后少推这类", systemImage: item.feedback == "not_useful" ? "hand.thumbsdown.fill" : "hand.thumbsdown") {
+                        sendFeedback(item, item.feedback == "not_useful" ? "clear" : "not_useful")
+                    }
+                }
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if item.isProactive, let feedback = item.feedback {
+                    Image(systemName: feedback == "useful" ? "hand.thumbsup.fill" : "hand.thumbsdown.fill")
+                        .font(.system(size: 10, weight: .semibold)).foregroundStyle(.white)
+                        .frame(width: 20, height: 20).background(Color.accentColor, in: Circle())
+                        .offset(x: 6, y: 6).transition(.scale.combined(with: .opacity))
+                }
             }
             if item.role == "user" { EmptyView() } else { Spacer(minLength: 28) }
+        }
+    }
+    private func sendFeedback(_ item: DotsManagerMessage, _ value: String) {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        Task {
+            do { try await CodexClient.shared.dotsMessageFeedback(item.id, value: value); await store.refresh() }
+            catch { store.notice = error.localizedDescription }
         }
     }
     private func isBlankReply(_ item: DotsManagerMessage) -> Bool {
@@ -1039,7 +1080,7 @@ private struct DotsSubscriptionsView: View {
     @State private var loading = true
     @State private var removing: DotsSubscription?
     @State private var client = CodexClient()
-    private let titles = ["github": "GitHub", "email": "QQ 邮箱", "google-calendar": "Google 日历"]
+    private let titles = ["github": "GitHub", "email": "邮箱", "google-calendar": "Google 日历", "rss": "RSS"]
     private func statusText(_ item: DotsSubscription) -> String {
         if !item.enabled { return "已暂停" }
         switch item.status ?? "" {
@@ -1102,7 +1143,7 @@ private struct DotsSubscriptionCardView: View {
     @State private var done = false
     @State private var error: String?
     @State private var client = CodexClient()
-    private var name: String { ["github": "GitHub", "email": "QQ 邮箱", "google-calendar": "Google 日历"][card.provider] ?? card.provider }
+    private var name: String { ["github": "GitHub", "email": "邮箱", "google-calendar": "Google 日历", "rss": "RSS"][card.provider] ?? card.provider }
     var body: some View {
         if card.state != "open" || done {
             Text(card.action == "unsubscribe" ? "已取消订阅 \(name)" : "已订阅 \(name)")
@@ -1389,4 +1430,297 @@ struct DotsSelectTextSheet: View {
 struct DotsSelectionText: Identifiable {
     let id = UUID()
     let text: String
+}
+
+// MARK: - Connectors
+
+struct DotsConnectorsResponse: Decodable {
+    var categories: [DotsConnectorCategory]
+    var connectors: [DotsConnector]
+    var summary: DotsConnectorSummary
+}
+struct DotsConnectorCategory: Decodable, Identifiable, Hashable { var id: String; var name: String }
+struct DotsConnectorSummary: Decodable { var connected: Int; var total: Int }
+struct DotsConnectorDevice: Decodable, Hashable { var name: String; var platform: String?; var online: Bool? }
+struct DotsConnector: Decodable, Identifiable {
+    var id: String
+    var provider: String?
+    var kind: String
+    var category: String
+    var name: String
+    var icon: String?
+    var summary: String?
+    var detail: String?
+    var capabilities: [String]?
+    var prompt: String?
+    var state: String
+    var status: String
+    var account: String?
+    var devices: [DotsConnectorDevice]?
+    var actions: [String]?
+}
+struct DotsSettings: Decodable, Equatable {
+    var approvalMode: String
+    var dailyBrief: Bool
+    var dailyBriefTime: String
+}
+struct DotsSettingsResponse: Decodable { var settings: DotsSettings }
+
+struct DotsConnectorsView: View {
+    var onConnect: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var data: DotsConnectorsResponse?
+    @State private var filter = "all"
+    @State private var expanded: String?
+    @State private var error: String?
+    @State private var working: String?
+    @State private var showSpongeHelp = false
+    @State private var confirmDisconnect: DotsConnector?
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    if let data {
+                        filters(data)
+                        ForEach(groups(data), id: \.0) { title, items in
+                            if let title { Text(title).font(.footnote.weight(.semibold)).foregroundStyle(.secondary).padding(.top, 6) }
+                            ForEach(items) { item in row(item) }
+                        }
+                    } else if error == nil {
+                        ForEach(0..<5, id: \.self) { _ in
+                            RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.primary.opacity(0.05)).frame(height: 70)
+                        }
+                    }
+                    if let error { Text(error).font(.footnote).foregroundStyle(.red) }
+                }.padding(.horizontal, 20).padding(.vertical, 12)
+                    .animation(.spring(response: 0.34, dampingFraction: 0.86), value: expanded)
+                    .animation(.easeInOut(duration: 0.2), value: filter)
+            }
+            .navigationTitle("连接器").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    VStack(spacing: 1) {
+                        Text("连接器").font(.headline)
+                        if let data { Text("已连接 \(data.summary.connected) 个 · 共 \(data.connectors.count) 项").font(.caption2).foregroundStyle(.secondary) }
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) { ShiyanCloseButton(action: { dismiss() }, inToolbar: true) }
+            }
+            .refreshable { await load() }
+            .task { await load() }
+            .alert("连接海绵宝宝设备", isPresented: $showSpongeHelp) {
+                Button("好") {}
+            } message: {
+                Text("在电脑上打开海绵宝宝客户端，用当前拾燕账号登录并完成配对；也可以在拾燕桌面版或网页版的 设置 → 海绵宝宝 里连接。配对后的设备会显示在这里。")
+            }
+            .confirmationDialog("断开\(confirmDisconnect?.name ?? "")？", isPresented: Binding(get: { confirmDisconnect != nil }, set: { if !$0 { confirmDisconnect = nil } }), titleVisibility: .visible) {
+                Button("断开", role: .destructive) { if let item = confirmDisconnect { Task { await act(item, "disconnect") } } }
+            } message: { Text("只影响当前账号，之后可以随时重新连接。") }
+        }
+        .presentationDragIndicator(.visible)
+    }
+
+    private func filters(_ data: DotsConnectorsResponse) -> some View {
+        let used = data.categories.filter { cat in data.connectors.contains { $0.category == cat.id } }
+        let all = [DotsConnectorCategory(id: "all", name: "全部"), DotsConnectorCategory(id: "connected", name: "已连接")] + used
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(all) { cat in
+                    Button { UISelectionFeedbackGenerator().selectionChanged(); filter = cat.id } label: {
+                        Text(cat.name).font(.subheadline).padding(.horizontal, 13).padding(.vertical, 7)
+                            .foregroundStyle(filter == cat.id ? Color.white : Color.primary)
+                            .background(filter == cat.id ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color.primary.opacity(0.06)), in: Capsule())
+                    }.buttonStyle(.plain)
+                }
+            }
+        }
+    }
+    private func groups(_ data: DotsConnectorsResponse) -> [(String?, [DotsConnector])] {
+        let visible = data.connectors.filter { c in
+            filter == "all" || (filter == "connected" ? ["connected", "paused", "error"].contains(c.state) : c.category == filter)
+        }
+        guard filter == "all" else { return [(nil, visible)] }
+        return data.categories.compactMap { cat in
+            let items = visible.filter { $0.category == cat.id }
+            return items.isEmpty ? nil : (cat.name, items)
+        }
+    }
+    private func stateColor(_ state: String) -> Color {
+        switch state {
+        case "connected": return .green
+        case "error": return .orange
+        case "paused": return .yellow
+        default: return .secondary
+        }
+    }
+    private func row(_ item: DotsConnector) -> some View {
+        let open = expanded == item.id
+        return VStack(alignment: .leading, spacing: 10) {
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                expanded = open ? nil : item.id
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: item.icon ?? "puzzlepiece")
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(item.state == "connected" ? Color.green : Color.accentColor)
+                        .frame(width: 38, height: 38)
+                        .background((item.state == "connected" ? Color.green : Color.accentColor).opacity(0.12),
+                                    in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(item.name).font(.body.weight(.semibold)).foregroundStyle(.primary)
+                        if let summary = item.summary {
+                            Text(summary).font(.caption).foregroundStyle(.secondary).lineLimit(open ? nil : 2)
+                                .multilineTextAlignment(.leading)
+                        }
+                    }
+                    Spacer(minLength: 6)
+                    HStack(spacing: 5) {
+                        Circle().fill(stateColor(item.state)).frame(width: 7, height: 7)
+                            .opacity(item.state == "planned" || item.state == "available" ? 0.45 : 1)
+                        Text(item.status).font(.caption).foregroundStyle(item.state == "connected" ? Color.green : .secondary)
+                    }.fixedSize()
+                }.contentShape(Rectangle())
+            }.buttonStyle(.plain)
+            if open { details(item).transition(.opacity.combined(with: .move(edge: .top))) }
+        }
+        .padding(14)
+        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .opacity(item.state == "planned" ? 0.75 : 1)
+        .accessibilityIdentifier("dots-connector-\(item.id)")
+    }
+    @ViewBuilder private func details(_ item: DotsConnector) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let account = item.account, !account.isEmpty {
+                Text(account).font(.caption).padding(.horizontal, 9).padding(.vertical, 4)
+                    .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 7))
+            }
+            if let detail = item.detail { Text(detail).font(.footnote).foregroundStyle(.secondary) }
+            if let caps = item.capabilities, !caps.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(caps, id: \.self) { cap in
+                            Text(cap).font(.caption2).foregroundStyle(.secondary).padding(.horizontal, 8).padding(.vertical, 4)
+                                .overlay(Capsule().strokeBorder(Color.primary.opacity(0.15)))
+                        }
+                    }
+                }
+            }
+            ForEach(item.devices ?? [], id: \.self) { device in
+                HStack(spacing: 8) {
+                    Circle().fill(device.online == true ? Color.green : Color.gray).frame(width: 7, height: 7)
+                    Text(device.name).font(.footnote)
+                    if let platform = device.platform, !platform.isEmpty { Text(platform).font(.caption).foregroundStyle(.secondary) }
+                }
+            }
+            if item.state == "planned" {
+                Text("还在开发中。想优先用上，可以在对话里告诉 Dots。").font(.caption).foregroundStyle(.secondary)
+            }
+            if let actions = item.actions, !actions.isEmpty {
+                HStack(spacing: 8) {
+                    ForEach(actions, id: \.self) { action in actionButton(item, action) }
+                    if working == item.id { ProgressView().controlSize(.small) }
+                }
+            }
+        }.padding(.leading, 50)
+    }
+    @ViewBuilder private func actionButton(_ item: DotsConnector, _ action: String) -> some View {
+        let label = ["connect": "连接", "configure": "修改", "pause": "暂停", "resume": "恢复", "disconnect": "断开", "manage": "管理设备"][action] ?? action
+        if action == "connect" {
+            Button(label) { Task { await act(item, action) } }.buttonStyle(.borderedProminent).controlSize(.small)
+        } else {
+            Button(label, role: action == "disconnect" ? .destructive : nil) {
+                if action == "disconnect" { confirmDisconnect = item } else { Task { await act(item, action) } }
+            }.buttonStyle(.bordered).controlSize(.small).disabled(working != nil)
+        }
+    }
+    private func act(_ item: DotsConnector, _ action: String) async {
+        if item.kind == "sponge" { showSpongeHelp = true; return }
+        if action == "connect" || action == "configure" {
+            dismiss(); onConnect(item.prompt ?? "我想连接\(item.name)"); return
+        }
+        guard let provider = item.provider else { return }
+        working = item.id; error = nil
+        defer { working = nil }
+        do {
+            switch action {
+            case "disconnect": _ = try await CodexClient.shared.dotsSubscriptions(provider, method: "DELETE")
+            case "pause", "resume": _ = try await CodexClient.shared.dotsSubscriptions(provider, method: "PATCH", fields: ["enabled": action == "resume"])
+            default: break
+            }
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            await load()
+        } catch { self.error = error.localizedDescription }
+    }
+    private func load() async {
+        do { data = try await CodexClient.shared.dotsConnectors(); error = nil }
+        catch { self.error = error.localizedDescription }
+    }
+}
+
+struct DotsSettingsView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var settings: DotsSettings?
+    @State private var error: String?
+    private let modes: [(String, String, String, String)] = [
+        ("smart", "智能审批", "只有删除、提权、重启、推送代码等高风险操作才需要你批准，其余自动执行。", "shield.lefthalf.filled"),
+        ("auto", "全部自动", "除提权和灾难性命令外全部自动执行，最少打扰。", "bolt.fill"),
+        ("ask", "每次都问", "每个需要审批的操作都等你确认。", "hand.raised.fill"),
+    ]
+    var body: some View {
+        NavigationStack {
+            Form {
+                if let settings {
+                    Section("审批方式") {
+                        ForEach(modes, id: \.0) { mode in
+                            Button { save(["approvalMode": mode.0]) { $0.approvalMode = mode.0 } } label: {
+                                HStack(alignment: .top, spacing: 12) {
+                                    Image(systemName: mode.3).foregroundStyle(Color.accentColor).frame(width: 24)
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(mode.1).foregroundStyle(.primary)
+                                        Text(mode.2).font(.caption).foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    if settings.approvalMode == mode.0 {
+                                        Image(systemName: "checkmark").foregroundStyle(Color.accentColor).fontWeight(.semibold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Section {
+                        Toggle("每天推送一份简报", isOn: Binding(get: { settings.dailyBrief }, set: { value in save(["dailyBrief": value]) { $0.dailyBrief = value } }))
+                        DatePicker("推送时间", selection: Binding(get: { time(settings.dailyBriefTime) }, set: { date in
+                            let text = Self.formatter.string(from: date); save(["dailyBriefTime": text]) { $0.dailyBriefTime = text }
+                        }), displayedComponents: .hourAndMinute).disabled(!settings.dailyBrief)
+                    } header: { Text("每日简报") } footer: { Text("汇总当天日程、进行中的任务和订阅动态。") }
+                } else if error == nil {
+                    ProgressView().frame(maxWidth: .infinity)
+                }
+                if let error { Text(error).foregroundStyle(.red).font(.footnote) }
+            }
+            .navigationTitle("Dots 设置").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { ShiyanCloseButton(action: { dismiss() }, inToolbar: true) } }
+            .task {
+                do { settings = try await CodexClient.shared.dotsSettings().settings }
+                catch { self.error = error.localizedDescription }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+    private static let formatter: DateFormatter = { let f = DateFormatter(); f.dateFormat = "HH:mm"; f.locale = Locale(identifier: "en_US_POSIX"); return f }()
+    private func time(_ text: String) -> Date { Self.formatter.date(from: text) ?? Self.formatter.date(from: "09:00")! }
+    private func save(_ patch: [String: Any], apply: (inout DotsSettings) -> Void) {
+        guard var next = settings else { return }
+        let before = settings
+        apply(&next)
+        guard next != settings else { return }
+        settings = next
+        UISelectionFeedbackGenerator().selectionChanged()
+        Task {
+            do { settings = try await CodexClient.shared.dotsSettings(update: patch).settings; error = nil }
+            catch { settings = before; self.error = error.localizedDescription }
+        }
+    }
 }

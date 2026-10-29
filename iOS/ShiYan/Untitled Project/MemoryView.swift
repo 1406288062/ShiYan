@@ -104,6 +104,9 @@ struct MemoryView: View {
                         .background(cardBackground, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                         .accessibilityIdentifier("memory-error")
                     }
+                    if store.isLoaded && store.enabled {
+                        ShiyanMemoryEntriesSection(cardBackground: cardBackground)
+                    }
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, topInset + 98)
@@ -210,5 +213,132 @@ private struct DotsRelationshipTopicEditor: View {
             }
         }
         .accessibilityIdentifier("dots-relationship-topic-editor")
+    }
+}
+
+// MARK: - Memory entries (shared by normal chat and Dots)
+
+struct ShiyanMemoryList: Decodable { var memories: [ShiyanMemoryEntry] }
+struct ShiyanMemoryEntry: Decodable, Identifiable, Equatable {
+    var id: String
+    var category: String?
+    var content: String
+    var scope: String?
+    var updatedAt: Double?
+    var revision: Int
+}
+
+struct ShiyanMemoryEntriesSection: View {
+    var cardBackground: Color
+    @State private var entries: [ShiyanMemoryEntry] = []
+    @State private var query = ""
+    @State private var loaded = false
+    @State private var editing: ShiyanMemoryEntry?
+    @State private var deleting: ShiyanMemoryEntry?
+    @State private var notice: String?
+    private let categories = ["preference": "偏好", "profile": "个人信息", "project": "项目", "fact": "事实", "instruction": "习惯"]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("记住的内容").font(.headline)
+                Spacer()
+                if loaded { Text("\(entries.count) 条").font(.footnote).foregroundStyle(.secondary) }
+            }
+            Text("普通对话和 Dots 共用这些记忆。也可以直接在对话里说“记住……”或“忘掉……”。")
+                .font(.footnote).foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                TextField("搜索记忆", text: $query).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    .onSubmit { Task { await load() } }
+            }
+            .padding(.horizontal, 12).padding(.vertical, 9)
+            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+            if !loaded {
+                ProgressView().frame(maxWidth: .infinity)
+            } else if entries.isEmpty {
+                Text(query.isEmpty ? "还没有记住任何内容。" : "没有找到相关记忆。")
+                    .font(.subheadline).foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.vertical, 8)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(entries) { entry in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(entry.content).font(.subheadline).fixedSize(horizontal: false, vertical: true)
+                            Text([categories[entry.category ?? ""] ?? "记忆", entry.scope == "project" ? "项目" : nil].compactMap { $0 }.joined(separator: " · "))
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 10)
+                        .contentShape(Rectangle())
+                        .contextMenu {
+                            Button("修改", systemImage: "pencil") { editing = entry }
+                            Button("复制", systemImage: "doc.on.doc") { UIPasteboard.general.string = entry.content }
+                            Button("删除", systemImage: "trash", role: .destructive) { deleting = entry }
+                        }
+                        .transition(.asymmetric(insertion: .opacity, removal: .move(edge: .trailing).combined(with: .opacity)))
+                        if entry.id != entries.last?.id { Divider() }
+                    }
+                }
+                .animation(.spring(response: 0.3, dampingFraction: 0.85), value: entries)
+                Text("长按一条记忆可以修改或删除。").font(.caption2).foregroundStyle(.tertiary)
+            }
+            if let notice { Text(notice).font(.footnote).foregroundStyle(.secondary) }
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(cardBackground, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .task { await load() }
+        .onChange(of: query) { _, value in if value.isEmpty { Task { await load() } } }
+        .confirmationDialog("删除这条记忆？", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible) {
+            Button("删除", role: .destructive) { if let entry = deleting { Task { await remove(entry) } } }
+        } message: { Text(deleting?.content ?? "") }
+        .sheet(item: $editing) { entry in ShiyanMemoryEditor(entry: entry) { content in await save(entry, content) } }
+        .accessibilityIdentifier("memory-entries")
+    }
+    private func load() async {
+        do { entries = try await CodexClient.shared.memories(query: query.trimmingCharacters(in: .whitespaces)); notice = nil }
+        catch { notice = error.localizedDescription }
+        loaded = true
+    }
+    private func remove(_ entry: ShiyanMemoryEntry) async {
+        do {
+            try await CodexClient.shared.deleteMemory(entry.id)
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            withAnimation { entries.removeAll { $0.id == entry.id } }
+            notice = "已删除。普通对话和 Dots 都不会再用到它。"
+        } catch { notice = error.localizedDescription }
+    }
+    private func save(_ entry: ShiyanMemoryEntry, _ content: String) async -> String? {
+        do { try await CodexClient.shared.updateMemory(entry.id, content: content, revision: entry.revision); await load(); return nil }
+        catch { return error.localizedDescription }
+    }
+}
+
+private struct ShiyanMemoryEditor: View {
+    let entry: ShiyanMemoryEntry
+    let onSave: (String) async -> String?
+    @Environment(\.dismiss) private var dismiss
+    @State private var text = ""
+    @State private var error: String?
+    @State private var saving = false
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section { TextEditor(text: $text).frame(minHeight: 120) } footer: { Text("\(text.count) / 1200") }
+                if let error { Text(error).foregroundStyle(.red).font(.footnote) }
+            }
+            .navigationTitle("修改记忆").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("保存") {
+                        saving = true
+                        Task { error = await onSave(text.trimmingCharacters(in: .whitespacesAndNewlines)); saving = false; if error == nil { dismiss() } }
+                    }.disabled(saving || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || text.count > 1200)
+                }
+            }
+            .onAppear { text = entry.content }
+        }
+        .presentationDetents([.medium])
     }
 }
