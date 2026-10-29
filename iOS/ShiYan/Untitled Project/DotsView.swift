@@ -1,3 +1,4 @@
+import CoreImage
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
@@ -1475,6 +1476,7 @@ struct DotsConnectorsView: View {
     @State private var error: String?
     @State private var working: String?
     @State private var showSpongeHelp = false
+    @State private var showWeixin = false
     @State private var confirmDisconnect: DotsConnector?
 
     var body: some View {
@@ -1509,6 +1511,7 @@ struct DotsConnectorsView: View {
             }
             .refreshable { await load() }
             .task { await load() }
+            .sheet(isPresented: $showWeixin, onDismiss: { Task { await load() } }) { DotsWeixinLoginView { Task { await load() } } }
             .alert("连接海绵宝宝设备", isPresented: $showSpongeHelp) {
                 Button("好") {}
             } message: {
@@ -1626,7 +1629,8 @@ struct DotsConnectorsView: View {
         }.padding(.leading, 50)
     }
     @ViewBuilder private func actionButton(_ item: DotsConnector, _ action: String) -> some View {
-        let label = ["connect": "连接", "configure": "修改", "pause": "暂停", "resume": "恢复", "disconnect": "断开", "manage": "管理设备"][action] ?? action
+        let label = ["connect": "连接", "configure": "修改", "pause": "暂停", "resume": "恢复", "disconnect": item.kind == "weixin" ? "解绑" : "断开", "manage": "管理设备",
+                     "push_on": "提醒同步到微信", "push_off": "不再同步提醒"][action] ?? action
         if action == "connect" {
             Button(label) { Task { await act(item, action) } }.buttonStyle(.borderedProminent).controlSize(.small)
         } else {
@@ -1637,6 +1641,18 @@ struct DotsConnectorsView: View {
     }
     private func act(_ item: DotsConnector, _ action: String) async {
         if item.kind == "sponge" { showSpongeHelp = true; return }
+        if item.kind == "weixin" {
+            if action == "connect" { showWeixin = true; return }
+            working = item.id; error = nil
+            defer { working = nil }
+            do {
+                if action == "disconnect" { _ = try await CodexClient.shared.dotsWeixin("unbind") }
+                else { _ = try await CodexClient.shared.dotsWeixin("push", fields: ["enabled": action == "push_on"]) }
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                await load()
+            } catch { self.error = error.localizedDescription }
+            return
+        }
         if action == "connect" || action == "configure" {
             dismiss(); onConnect(item.prompt ?? "我想连接\(item.name)"); return
         }
@@ -1721,6 +1737,153 @@ struct DotsSettingsView: View {
         Task {
             do { settings = try await CodexClient.shared.dotsSettings(update: patch).settings; error = nil }
             catch { settings = before; self.error = error.localizedDescription }
+        }
+    }
+}
+
+// MARK: - WeChat binding
+
+struct DotsWeixinStatus: Decodable {
+    var state: String
+    var loginStatus: String?
+    var message: String?
+    var qrUrl: String?
+    var needsVerifyCode: Bool?
+    var pushProactive: Bool?
+}
+
+/// 扫码绑定个人微信。在手机上无法扫自己屏幕：提供“复制二维码图片 / 复制链接”，在微信里识别即可。
+struct DotsWeixinLoginView: View {
+    var onConnected: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var status: DotsWeixinStatus?
+    @State private var error: String?
+    @State private var code = ""
+    @State private var copied: String?
+    @State private var pollTask: Task<Void, Never>?
+
+    private var connected: Bool { status?.state == "connected" }
+    private var expired: Bool { status?.state == "login_expired" }
+    private var scanned: Bool { ["scaned", "scaned_but_redirect"].contains(status?.loginStatus ?? "") }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 18) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color.white)
+                            .shadow(color: .black.opacity(connected ? 0 : 0.08), radius: 14, y: 6)
+                        if connected {
+                            Image(systemName: "checkmark").font(.system(size: 40, weight: .bold)).foregroundStyle(.white)
+                                .frame(width: 88, height: 88).background(Color(red: 0.03, green: 0.76, blue: 0.38), in: Circle())
+                                .transition(.scale.combined(with: .opacity))
+                        } else if let url = status?.qrUrl, let image = Self.qrImage(url) {
+                            Image(uiImage: image).interpolation(.none).resizable().scaledToFit().padding(14)
+                                .blur(radius: scanned || expired ? 4 : 0).opacity(scanned || expired ? 0.35 : 1)
+                            if expired { Button("刷新二维码") { Task { await start() } }.buttonStyle(.borderedProminent) }
+                            if scanned { Image(systemName: "iphone.gen3.radiowaves.left.and.right").font(.system(size: 34)).foregroundStyle(.green) }
+                        } else { ProgressView() }
+                    }
+                    .frame(width: 220, height: 220)
+                    .animation(.spring(response: 0.4, dampingFraction: 0.8), value: connected)
+
+                    VStack(spacing: 4) {
+                        Text(headline).font(.headline)
+                        if let message = status?.message, !message.isEmpty, !connected { Text(message).font(.footnote).foregroundStyle(.orange) }
+                    }.multilineTextAlignment(.center)
+
+                    if status?.needsVerifyCode == true {
+                        HStack {
+                            TextField("手机上显示的数字", text: $code).keyboardType(.numberPad).textContentType(.oneTimeCode)
+                                .multilineTextAlignment(.center).font(.title3.monospacedDigit())
+                                .padding(10).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 12))
+                            Button("确定") { Task { await verify() } }.buttonStyle(.borderedProminent).disabled(code.count < 2)
+                        }.frame(maxWidth: 280)
+                    }
+
+                    if connected {
+                        Text("现在可以在微信里直接给 Dots 发消息了。简报和提醒也会同步到微信，可以在连接器里关闭。")
+                            .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                        Button("完成") { dismiss() }.buttonStyle(.borderedProminent)
+                    } else if let url = status?.qrUrl, !expired {
+                        VStack(spacing: 10) {
+                            HStack(spacing: 10) {
+                                Button { copyImage(url) } label: { Label("复制二维码图片", systemImage: "qrcode") }
+                                Button { UIPasteboard.general.string = url; flash("已复制链接") } label: { Label("复制链接", systemImage: "link") }
+                            }.buttonStyle(.bordered).controlSize(.small)
+                            if let copied { Text(copied).font(.caption).foregroundStyle(.green).transition(.opacity) }
+                        }
+                        VStack(alignment: .leading, spacing: 8) {
+                            step(1, "用另一台设备显示这个二维码，或点“复制二维码图片”")
+                            step(2, "在微信里扫码；或把图片发给“文件传输助手”，长按选“识别图中二维码”")
+                            step(3, "在手机微信上点“确认”，绑定完成")
+                        }.frame(maxWidth: 320, alignment: .leading)
+                        Text("需要微信 8.0.70 及以上版本。只有你本人能和它对话，不能拉进群。")
+                            .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    }
+                    if let error { Text(error).font(.footnote).foregroundStyle(.red) }
+                }
+                .padding(24).frame(maxWidth: .infinity)
+            }
+            .navigationTitle("连接微信").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { ShiyanCloseButton(action: { dismiss() }, inToolbar: true) } }
+        }
+        .task { await start() }
+        .onDisappear { pollTask?.cancel() }
+    }
+    private var headline: String {
+        if connected { return "绑定成功" }
+        if expired { return "二维码已过期" }
+        if scanned { return "已扫码，请在手机微信上点“确认”" }
+        if status?.needsVerifyCode == true { return "请输入手机微信上显示的数字" }
+        return "用微信扫一扫"
+    }
+    private func step(_ n: Int, _ text: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text("\(n)").font(.caption2.weight(.bold)).foregroundStyle(Color(red: 0.03, green: 0.65, blue: 0.33))
+                .frame(width: 18, height: 18).background(Color.green.opacity(0.14), in: Circle())
+            Text(text).font(.footnote).foregroundStyle(.secondary)
+        }
+    }
+    private func flash(_ text: String) {
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        withAnimation { copied = text }
+        Task { try? await Task.sleep(nanoseconds: 2_000_000_000); withAnimation { copied = nil } }
+    }
+    private func copyImage(_ url: String) {
+        guard let image = Self.qrImage(url, scale: 12) else { return }
+        UIPasteboard.general.image = image; flash("已复制二维码，去微信粘贴给“文件传输助手”")
+    }
+    static func qrImage(_ text: String, scale: CGFloat = 10) -> UIImage? {
+        guard let filter = CIFilter(name: "CIQRCodeGenerator") else { return nil }
+        filter.setValue(Data(text.utf8), forKey: "inputMessage"); filter.setValue("M", forKey: "inputCorrectionLevel")
+        guard let output = filter.outputImage?.transformed(by: CGAffineTransform(scaleX: scale, y: scale)),
+              let cg = CIContext().createCGImage(output, from: output.extent) else { return nil }
+        return UIImage(cgImage: cg)
+    }
+    private func start() async {
+        error = nil
+        do { withAnimation { status = nil }; status = try await CodexClient.shared.dotsWeixin("login"); poll() }
+        catch { self.error = error.localizedDescription }
+    }
+    private func verify() async {
+        do { status = try await CodexClient.shared.dotsWeixin("verify", fields: ["code": code]); code = "" }
+        catch { self.error = error.localizedDescription }
+    }
+    private func poll() {
+        pollTask?.cancel()
+        pollTask = Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                guard !Task.isCancelled, let next = try? await CodexClient.shared.dotsWeixin("status") else { continue }
+                await MainActor.run {
+                    let wasScanned = scanned
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { status = next }
+                    if scanned && !wasScanned { UIImpactFeedbackGenerator(style: .medium).impactOccurred() }
+                    if next.state == "connected" { UINotificationFeedbackGenerator().notificationOccurred(.success); onConnected() }
+                }
+                if next.state == "connected" || next.state == "login_expired" { return }
+            }
         }
     }
 }

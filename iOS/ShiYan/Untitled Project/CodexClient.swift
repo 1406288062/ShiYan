@@ -659,6 +659,20 @@ extension CodexClient: DotsTransport {
         let bytes = try await response(request(method: "GET", route: "dots/connectors"), rejectDotsErrors: true).body
         return try JSONDecoder().decode(DotsConnectorsResponse.self, from: bytes)
     }
+    /// action: status / login / verify / push / unbind
+    func dotsWeixin(_ action: String, fields: [String: Any]? = nil) async throws -> DotsWeixinStatus {
+        try await prepareConnection()
+        let (method, route): (String, String) = switch action {
+        case "login": ("POST", "dots/weixin/login")
+        case "verify": ("POST", "dots/weixin/verify")
+        case "push": ("PATCH", "dots/weixin")
+        case "unbind": ("DELETE", "dots/weixin")
+        default: ("GET", "dots/weixin")
+        }
+        let bytes = try await response(request(method: method, route: route, object: fields ?? (method == "GET" ? nil : [String: Any]())),
+                                       rejectDotsErrors: true).body
+        return try JSONDecoder().decode(DotsWeixinStatus.self, from: bytes)
+    }
     func dotsSettings(update: [String: Any]? = nil) async throws -> DotsSettingsResponse {
         try await prepareConnection()
         let bytes = try await response(request(method: update == nil ? "GET" : "PATCH", route: "dots/settings", object: update),

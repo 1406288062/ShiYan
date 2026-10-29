@@ -267,7 +267,7 @@
       const open = expanded === c.id, account = c.account ? '<span class="dots-connector-account">'+esc(c.account)+'</span>' : '';
       const caps = (c.capabilities||[]).map(x=>'<li>'+esc(x)+'</li>').join('');
       const devices = (c.devices||[]).length ? '<ul class="dots-connector-devices">'+c.devices.map(d=>'<li><i class="'+(d.online?'is-online':'')+'"></i>'+esc(d.name)+(d.platform?'<small>'+esc(d.platform)+'</small>':'')+'</li>').join('')+'</ul>' : '';
-      const act = a => ({connect:'<button type="button" class="dots-white-button" data-connector-act="connect">连接</button>',configure:'<button type="button" data-connector-act="connect">修改</button>',pause:'<button type="button" data-connector-act="pause">暂停</button>',resume:'<button type="button" data-connector-act="resume">恢复</button>',disconnect:'<button type="button" class="is-destructive" data-connector-act="disconnect">断开</button>',manage:'<button type="button" data-connector-act="manage">管理设备</button>'})[a]||'';
+      const act = a => ({connect:'<button type="button" class="dots-white-button" data-connector-act="connect">连接</button>',configure:'<button type="button" data-connector-act="connect">修改</button>',pause:'<button type="button" data-connector-act="pause">暂停</button>',resume:'<button type="button" data-connector-act="resume">恢复</button>',disconnect:'<button type="button" class="is-destructive" data-connector-act="disconnect">断开</button>',push_on:'<button type="button" data-connector-act="push_on">提醒同步到微信</button>',push_off:'<button type="button" data-connector-act="push_off">不再同步提醒</button>',manage:'<button type="button" data-connector-act="manage">管理设备</button>'})[a]||'';
       return '<article class="dots-connector '+(stateClass[c.state]||'')+(open?' is-open':'')+'" data-connector="'+esc(c.id)+'"><button type="button" class="dots-connector-head" data-connector-toggle aria-expanded="'+open+'"><span class="dots-connector-icon">'+glyph(c.category)+'</span><span class="dots-connector-text"><strong>'+esc(c.name)+'</strong><span>'+esc(c.summary||'')+'</span></span><span class="dots-connector-state"><i></i>'+esc(c.status)+'</span></button><div class="dots-connector-more"'+(open?'':' hidden')+'>'+account+(c.detail?'<p>'+esc(c.detail)+'</p>':'')+(caps?'<ul class="dots-connector-caps">'+caps+'</ul>':'')+devices+((c.actions||[]).length?'<div class="dots-connector-actions">'+c.actions.map(act).join('')+'</div>':'')+(c.state==='planned'?'<p class="dots-connector-note">还在开发中。想优先用上，可以在对话里告诉 Dots。</p>':'')+'</div></article>';
     };
     const draw = () => {
@@ -288,6 +288,12 @@
       const action = event.target.closest('[data-connector-act]')?.dataset.connectorAct; if (!action) return;
       errorBox.hidden = true;
       try {
+        if (c.kind === 'weixin') {
+          if (action === 'connect') { closeDialog(); await openWeixinLogin(() => {}); return; }
+          if (action === 'disconnect') { if (!await window.shiyan.confirmAction('解绑微信？','解绑后微信里将收不到 Dots 的回复，之后可以重新扫码绑定。','解绑')) return; await api('/weixin','DELETE'); }
+          if (action === 'push_on' || action === 'push_off') await api('/weixin','PATCH',{enabled:action==='push_on'});
+          await load(); return;
+        }
         if (action === 'connect' && c.kind === 'sponge' || action === 'manage') { closeDialog(); window.ShiYanAccount?.openSettings?.(); return; }
         if (action === 'connect') { closeDialog(); await C.sendText?.(c.prompt || ('我想连接'+c.name)); return; }
         if (action === 'disconnect') { if (!await window.shiyan.confirmAction('断开'+c.name+'？','只影响当前账号，之后可以随时重新连接。','断开')) return; await api('/subscriptions/'+c.provider,'DELETE'); }
@@ -296,6 +302,46 @@
       } catch (cause) { fail(cause); }
     });
     try { await load(); } catch (cause) { fail(cause); dialog.querySelector('[data-connector-body]').innerHTML=''; }
+  }
+  // 微信扫码绑定：二维码由服务器生成，状态每 2 秒轮询一次。
+  async function openWeixinLogin(onDone) {
+    const dialog = makeDialog('dotsWeixinDialog','dots-conversation-overlay');
+    let timer = null, closed = false, last = '';
+    const stop = () => { closed = true; clearTimeout(timer); };
+    const text = s => s.state === 'connected' ? '绑定成功' : s.state === 'login_expired' ? (s.message || '二维码已过期') :
+      s.loginStatus === 'scaned' || s.loginStatus === 'scaned_but_redirect' ? '已扫码，请在手机微信上点“确认”' :
+      s.needsVerifyCode ? '请输入手机微信上显示的数字' : '用手机微信扫一扫';
+    const draw = s => {
+      const key = JSON.stringify([s.state, s.loginStatus, s.needsVerifyCode, s.message, (s.qrSvg || '').length]); if (key === last) return; last = key;
+      const done = s.state === 'connected', expired = s.state === 'login_expired';
+      dialog.innerHTML = '<section class="dots-conversation-card dots-weixin-card"><header><h2>连接微信</h2><button type="button" class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button></header>'
+        + '<div class="dots-weixin-qr'+(done?' is-done':expired?' is-expired':s.loginStatus==='scaned'?' is-scanned':'')+'">'
+        + (done ? '<div class="dots-weixin-ok"><svg viewBox="0 0 24 24"><path d="M5.5 12.5l4 4 9-9"/></svg></div>' : (s.qrSvg || ''))
+        + (expired ? '<button type="button" class="dots-white-button" data-weixin-refresh>刷新二维码</button>' : '') + '</div>'
+        + '<p class="dots-weixin-status" role="status">'+esc(text(s))+(s.message && !expired && !done ? '<small>'+esc(s.message)+'</small>' : '')+'</p>'
+        + (s.needsVerifyCode ? '<form class="dots-weixin-verify" data-weixin-verify><input inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="one-time-code" aria-label="验证数字" placeholder="手机上显示的数字" required><button type="submit" class="dots-white-button">确定</button></form>' : '')
+        + (done ? '<p class="dots-weixin-tip">现在可以在微信里直接给 Dots 发消息了。简报和提醒也会同步到微信，可以在连接器里关闭。</p>'
+                : '<ol class="dots-weixin-steps"><li>打开手机微信，扫描上方二维码</li><li>在手机上点“确认”授权</li><li>绑定后在微信里直接和 Dots 对话</li></ol><p class="dots-weixin-tip">需要微信 8.0.70 及以上版本。只有你本人能和它对话，不能拉进群。</p>')
+        + '</section>';
+      dialog.querySelector('[data-weixin-verify] input')?.focus();
+    };
+    const poll = async () => {
+      if (closed || dialog.hidden || !dialog.isConnected) return stop();
+      try { const s = await api('/weixin'); draw(s); if (s.state === 'connected') { stop(); onDone?.(); return; } if (s.state === 'login_expired') return; }
+      catch {}
+      timer = setTimeout(poll, 2000);
+    };
+    const start = async () => { last = ''; draw({state:'login',loginStatus:'wait',qrSvg:'<div class="dots-weixin-loading"></div>'}); draw(await api('/weixin/login','POST',{})); clearTimeout(timer); timer = setTimeout(poll, 1500); };
+    dialog.addEventListener('click', async event => {
+      if (event.target.closest('[data-dots-close-dialog]')) stop();
+      if (event.target.closest('[data-weixin-refresh]')) { closed = false; try { await start(); } catch (cause) { C.showError(cause); } }
+    });
+    dialog.addEventListener('submit', async event => {
+      if (!event.target.matches('[data-weixin-verify]')) return; event.preventDefault();
+      try { draw(await api('/weixin/verify','POST',{code:event.target.querySelector('input').value.trim()})); } catch (cause) { C.showError(cause); }
+    });
+    showDialog(dialog, dialog);
+    try { await start(); } catch (cause) { stop(); C.showError(cause); }
   }
   // Dots 设置：审批方式与每日简报。
   async function openDotsSettings() {

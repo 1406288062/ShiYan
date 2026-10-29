@@ -332,3 +332,255 @@ struct AgentExecutionHistoryView: View {
         .presentationDetents([.large])
     }
 }
+
+// MARK: - 执行过程时间线 + 思考链（聊天气泡内）
+
+/// 进行中：展开，显示当前步骤和实时思考；完成后：收起为一行摘要，可展开查看完整时间线。
+struct AgentProcessTimeline: View {
+    let message: AgentMessage
+    var onSelectionChanged: ((Bool) -> Void)?
+    @State private var expanded = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private var items: [AgentExecutionPresentation.Item] {
+        AgentExecutionPresentation.items(displayItems: message.displayItems, rawResult: nil)
+    }
+
+    var body: some View {
+        let steps = items
+        if message.isWorking {
+            VStack(alignment: .leading, spacing: 10) {
+                liveHeader(steps)
+                if !steps.isEmpty { timeline(Array(steps.suffix(6)), live: true) }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityIdentifier("agent-process-live")
+        } else if !steps.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    withAnimation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.86)) { expanded.toggle() }
+                } label: { summary(steps) }
+                .buttonStyle(.plain)
+                if expanded {
+                    timeline(steps, live: false)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityIdentifier("agent-process-\(message.id.uuidString)")
+        }
+    }
+
+    // —— 头部 ——
+    private func liveLabel(_ steps: [AgentExecutionPresentation.Item]) -> String {
+        switch steps.last?.type {
+        case nil, "reasoning": return "正在思考"
+        case "command_execution": return "正在运行命令"
+        case "web_search": return "正在搜索网页"
+        case "mcp_tool_call": return "正在使用工具"
+        case "todo_list": return "正在规划"
+        case "file_change": return "正在修改文件"
+        case "image_generation": return "正在生成图片"
+        default: return "正在处理"
+        }
+    }
+    private func liveHeader(_ steps: [AgentExecutionPresentation.Item]) -> some View {
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion)) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            let pulse = reduceMotion ? 0 : (t.truncatingRemainder(dividingBy: 1.6)) / 1.6
+            let sweep = reduceMotion ? 0.5 : (t.truncatingRemainder(dividingBy: 2.4)) / 2.4
+            HStack(spacing: 9) {
+                ZStack {
+                    Circle().fill(Color.accentColor.opacity(0.35 * (1 - pulse))).frame(width: 8 + 12 * pulse, height: 8 + 12 * pulse)
+                    Circle().fill(Color.accentColor).frame(width: 8, height: 8)
+                }.frame(width: 18, height: 18)
+                Text(liveLabel(steps))
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(LinearGradient(colors: [.secondary, .primary, .secondary],
+                        startPoint: UnitPoint(x: sweep * 2.4 - 1.2, y: 0.5), endPoint: UnitPoint(x: sweep * 2.4 - 0.2, y: 0.5)))
+                let count = steps.filter { $0.type != "reasoning" }.count
+                if count > 0 { Text("\(count) 步").font(.caption).foregroundStyle(.tertiary).monospacedDigit() }
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(liveLabel(steps))
+    }
+    private func summary(_ steps: [AgentExecutionPresentation.Item]) -> some View {
+        let thoughts = steps.contains { $0.type == "reasoning" }
+        let count = steps.filter { !["reasoning", "todo_list"].contains($0.type) }.count
+        let failed = steps.filter { $0.status == "failed" }.count
+        return HStack(spacing: 7) {
+            Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)).foregroundStyle(.green)
+                .frame(width: 17, height: 17).background(Color.green.opacity(0.14), in: Circle())
+            Text([thoughts ? "已思考" : nil, count > 0 ? "执行 \(count) 步" : nil].compactMap { $0 }.joined(separator: " · ").ifEmpty("处理过程"))
+                .foregroundStyle(.secondary)
+            if failed > 0 { Text("· \(failed) 步失败").foregroundStyle(.red) }
+            Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.tertiary)
+                .rotationEffect(.degrees(expanded ? 90 : 0))
+        }
+        .font(.footnote)
+        .padding(.vertical, 4).padding(.leading, 2).padding(.trailing, 8)
+        .contentShape(Rectangle())
+        .accessibilityLabel("执行过程，" + (expanded ? "已展开" : "已收起"))
+    }
+
+    // —— 时间线 ——
+    private func timeline(_ steps: [AgentExecutionPresentation.Item], live: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(steps.enumerated()), id: \.element.id) { index, step in
+                let isLast = index == steps.count - 1
+                let state = step.status == "failed" ? "failed" : (live && isLast) || ["in_progress", "running"].contains(step.status) ? "running" : "done"
+                HStack(alignment: .top, spacing: 10) {
+                    VStack(spacing: 0) {
+                        node(step.type, state: state)
+                        if !isLast { Rectangle().fill(Color.primary.opacity(0.09)).frame(width: 1).frame(maxHeight: .infinity).padding(.vertical, 3) }
+                    }.frame(width: 24)
+                    VStack(alignment: .leading, spacing: 5) {
+                        HStack(spacing: 6) {
+                            Text(title(step)).font(.footnote.weight(.medium))
+                            if state == "failed" { Text("失败").font(.caption2).foregroundStyle(.red) }
+                        }.padding(.top, 3)
+                        if !live || isLast || state == "failed" { stepBody(step, live: live && isLast) }
+                    }
+                    .padding(.bottom, isLast ? 0 : 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+    }
+    private func node(_ type: String, state: String) -> some View {
+        let tint: Color = state == "failed" ? .red : state == "running" ? .accentColor : type == "reasoning" ? Color(red: 0.55, green: 0.42, blue: 0.94) : .secondary
+        return Image(systemName: symbol(type))
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(tint)
+            .frame(width: 24, height: 24)
+            .background(tint.opacity(state == "done" && type != "reasoning" ? 0.08 : 0.13), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+    private func symbol(_ type: String) -> String {
+        switch type {
+        case "reasoning": return "sparkles"
+        case "command_execution": return "terminal"
+        case "web_search": return "magnifyingglass"
+        case "mcp_tool_call": return "powerplug"
+        case "todo_list": return "checklist"
+        case "file_change": return "doc.text"
+        case "collab_tool_call": return "person.2"
+        case "image_generation": return "photo"
+        case "error": return "exclamationmark.triangle"
+        default: return "circle"
+        }
+    }
+    private func title(_ step: AgentExecutionPresentation.Item) -> String {
+        switch step.type {
+        case "reasoning": return "思考"
+        case "command_execution": return "运行命令"
+        case "web_search": return "搜索网页"
+        case "mcp_tool_call": return step.subtitle.isEmpty ? "使用工具" : "使用工具 · " + step.subtitle.replacingOccurrences(of: "shiyan-input.", with: "向你确认 / ")
+        case "todo_list": return "制定计划"
+        case "file_change": return step.files.isEmpty ? "修改文件" : "修改 \(step.files.count) 个文件"
+        case "collab_tool_call": return "分派协作任务"
+        case "image_generation": return "生成图片"
+        case "error": return "遇到问题"
+        default: return step.title
+        }
+    }
+    @ViewBuilder private func stepBody(_ step: AgentExecutionPresentation.Item, live: Bool) -> some View {
+        switch step.type {
+        case "reasoning":
+            AgentThoughtText(text: step.body, live: live)
+        case "command_execution":
+            Text(step.subtitle).font(.system(.caption, design: .monospaced))
+                .lineLimit(3).padding(.horizontal, 9).padding(.vertical, 6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            if !step.body.isEmpty { AgentFoldText(label: "输出", text: step.body, monospaced: true) }
+        case "web_search":
+            if !step.subtitle.isEmpty { Text("“\(step.subtitle)”").font(.caption).foregroundStyle(.secondary) }
+        case "mcp_tool_call":
+            if !step.body.isEmpty {
+                if step.status == "failed" { Text(step.body).font(.caption).foregroundStyle(.red).lineLimit(4) }
+                else { AgentFoldText(label: "结果", text: step.body, monospaced: false) }
+            }
+        case "todo_list":
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(Array(step.tasks.enumerated()), id: \.offset) { _, task in
+                    HStack(alignment: .firstTextBaseline, spacing: 7) {
+                        Image(systemName: task.completed ? "checkmark.circle.fill" : "circle")
+                            .font(.system(size: 11)).foregroundStyle(task.completed ? Color.green : Color.secondary.opacity(0.6))
+                        Text(task.text).font(.caption).foregroundStyle(task.completed ? .secondary : .primary)
+                            .strikethrough(task.completed, color: .secondary.opacity(0.5))
+                    }
+                }
+            }
+        case "file_change":
+            VStack(alignment: .leading, spacing: 3) {
+                ForEach(step.files.prefix(12)) { file in
+                    HStack {
+                        Text(file.path.split(separator: "/").suffix(2).joined(separator: "/"))
+                            .font(.system(.caption2, design: .monospaced)).lineLimit(1).truncationMode(.head)
+                        Spacer(minLength: 8)
+                        Text(["add": "新增", "delete": "删除"][file.kind] ?? "修改").font(.caption2)
+                            .foregroundStyle(file.kind == "add" ? Color.green : file.kind == "delete" ? Color.red : Color.secondary)
+                    }
+                }
+            }
+        case "error":
+            Text(step.body).font(.caption).foregroundStyle(.red)
+        default:
+            if !step.subtitle.isEmpty { Text(step.subtitle).font(.caption).foregroundStyle(.secondary) }
+        }
+    }
+}
+
+/// 思考文字：完成后默认三行，点按展开；进行中显示最新的几行。
+private struct AgentThoughtText: View {
+    let text: String
+    let live: Bool
+    @State private var expanded = false
+    var body: some View {
+        let shown = live && text.count > 360 ? "…" + String(text.suffix(360)) : text
+        Text(shown)
+            .font(.caption).foregroundStyle(.secondary).lineSpacing(3)
+            .lineLimit(live ? 4 : (expanded ? nil : 3))
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.leading, 10)
+            .overlay(alignment: .leading) {
+                Capsule().fill(Color(red: 0.55, green: 0.42, blue: 0.94).opacity(0.35)).frame(width: 2)
+            }
+            .mask(LinearGradient(stops: live ? [.init(color: .black.opacity(0.25), location: 0), .init(color: .black, location: 0.3)]
+                                 : [.init(color: .black, location: 0), .init(color: .black, location: 1)], startPoint: .top, endPoint: .bottom))
+            .contentShape(Rectangle())
+            .onTapGesture { if !live { withAnimation(.easeInOut(duration: 0.22)) { expanded.toggle() } } }
+            .contextMenu { Button("复制思考内容", systemImage: "doc.on.doc") { UIPasteboard.general.string = text } }
+            .accessibilityLabel("思考内容：" + text)
+    }
+}
+
+private struct AgentFoldText: View {
+    let label: String
+    let text: String
+    let monospaced: Bool
+    @State private var open = false
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Button { withAnimation(.easeInOut(duration: 0.2)) { open.toggle() } } label: {
+                HStack(spacing: 3) {
+                    Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold)).rotationEffect(.degrees(open ? 90 : 0))
+                    Text(label)
+                }.font(.caption2).foregroundStyle(.secondary)
+            }.buttonStyle(.plain)
+            if open {
+                ScrollView {
+                    Text(text).font(monospaced ? .system(.caption2, design: .monospaced) : .caption2)
+                        .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: 180)
+                .padding(8).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+        }
+    }
+}
+
+private extension String {
+    func ifEmpty(_ fallback: String) -> String { isEmpty ? fallback : self }
+}

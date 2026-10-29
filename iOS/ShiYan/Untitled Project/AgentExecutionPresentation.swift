@@ -28,6 +28,9 @@ enum AgentExecutionPresentation {
             var item = Item(id: object["id"]?.string ?? "\(index)-\(type)", type: type,
                             title: "", subtitle: "", status: clipped(object["status"], 80), body: "")
             switch type {
+            case "reasoning":
+                item.title = "思考"; item.body = clipped(object["text"], 8000)
+                guard !item.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
             case "command_execution":
                 item.title = "执行命令"; item.subtitle = clipped(object["command"], 1000)
                 item.body = clipped(object["aggregated_output"], 4000)
