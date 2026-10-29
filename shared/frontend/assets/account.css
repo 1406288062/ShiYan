@@ -65,16 +65,15 @@ body.account-light #accountGate { --workspace-text:#181b23; --workspace-muted:#6
 body:not(.account-light) .auth-shell::after { background: none; }
 body.account-light .auth-shell {
   background:
-    radial-gradient(circle at 78% 18%, rgba(94, 96, 237, 0.08), transparent 27%),
-    radial-gradient(circle at 14% 82%, rgba(78, 175, 234, 0.04), transparent 29%),
+    radial-gradient(circle at 78% 18%, rgba(94, 96, 237, 0.03), transparent 27%),
+    radial-gradient(circle at 14% 82%, rgba(78, 175, 234, 0.015), transparent 29%),
     #f4f6fa;
 }
 body.account-light .auth-shell::before {
   background:
-    radial-gradient(ellipse 46% 31% at 74% 16%, rgba(94, 96, 237, 0.42) 0%, rgba(94, 96, 237, 0.2) 36%, transparent 72%),
-    radial-gradient(ellipse 49% 34% at 24% 80%, rgba(78, 175, 234, 0.35) 0%, rgba(78, 175, 234, 0.15) 37%, transparent 74%),
-    radial-gradient(ellipse 44% 29% at 48% 52%, rgba(243, 129, 134, 0.1) 0%, rgba(243, 129, 134, 0.05) 38%, transparent 74%),
-    linear-gradient(118deg, rgba(78, 175, 234, 0.08) 5%, transparent 28%, rgba(243, 129, 134, 0.06) 46%, transparent 62%, rgba(94, 96, 237, 0.09) 90%);
+    radial-gradient(ellipse 46% 31% at 74% 16%, rgba(94, 96, 237, 0.13) 0%, rgba(94, 96, 237, 0.06) 36%, transparent 72%),
+    radial-gradient(ellipse 49% 34% at 24% 80%, rgba(78, 175, 234, 0.11) 0%, rgba(78, 175, 234, 0.045) 37%, transparent 74%),
+    linear-gradient(118deg, rgba(78, 175, 234, 0.025) 5%, transparent 28%, transparent 46%, transparent 62%, rgba(94, 96, 237, 0.03) 90%);
   filter: blur(38px) saturate(110%);
   opacity: 0.72;
   mix-blend-mode: multiply;

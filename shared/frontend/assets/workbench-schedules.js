@@ -203,6 +203,11 @@
     const local=runLocally ?? $('scheduleRunLocally')?.checked ?? catalog.defaults?.runLocally ?? true;
     return (catalog[local?'local':'cloud']?.models || []).filter(m=>m.id);
   }
+  // 多个模型提供方（GPT、Claude…）同时可用时，在名称前标出提供方。
+  function modelLabel(m,choices) {
+    const name=m.displayName || m.name || m.id;
+    return new Set(choices.map(x=>x.provider||'')).size>1&&m.providerLabel?m.providerLabel+' · '+name:name;
+  }
   function replySettings(task) {
     return replyOptions[String(task.id)] || {model:task.model,reasoning:task.reasoning || 'medium'};
   }
@@ -210,9 +215,9 @@
     const task=activeTask();if(!task)return;
     const settings=replySettings(task),choices=models(task.runLocally),model=choices.find(m=>m.id===settings.model) || choices[0];
     const efforts=model?.reasoningEfforts || ['medium'];
-    openPopup(anchor,'<h3>模型</h3>'+choices.map(m=>'<button type="button" data-schedule-reply-model="'+esc(m.id)+'"><span>'+esc(m.displayName || m.id)+'</span>'+(m.id===settings.model?icon('check'):'')+'</button>').join('')+'<hr><h3>强度</h3>'+efforts.map(e=>'<button type="button" data-schedule-reply-effort="'+esc(e)+'"><span>'+esc(effortLabel(e))+'</span>'+(e===settings.reasoning?icon('check'):'')+'</button>').join(''),'reply-model',218);
+    openPopup(anchor,'<h3>模型</h3>'+choices.map(m=>'<button type="button" data-schedule-reply-model="'+esc(m.id)+'"><span>'+esc(modelLabel(m,choices))+'</span>'+(m.id===settings.model?icon('check'):'')+'</button>').join('')+'<hr><h3>强度</h3>'+efforts.map(e=>'<button type="button" data-schedule-reply-effort="'+esc(e)+'"><span>'+esc(effortLabel(e))+'</span>'+(e===settings.reasoning?icon('check'):'')+'</button>').join(''),'reply-model',218);
   }
-  const effortLabel = effort => ({none:'关闭',minimal:'极轻',low:'轻度',medium:'中',high:'高',xhigh:'极高',max:'最高',ultra:'最高'}[effort] || effort);
+  const effortLabel = effort => ({none:'关闭',minimal:'极轻',low:'轻度',medium:'中',high:'高',xhigh:'极高',max:'最高',ultra:'最高',default:'默认'}[effort] || effort);
   function today() {const d=new Date();return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);}
   function option(value,label,selected) {return '<option value="'+esc(value)+'"'+(value===selected?' selected':'')+'>'+esc(label)+'</option>';}
   function selectField(id,label,choices,current) {return '<label class="schedule-setting-row"><span>'+label+'</span><span class="schedule-select-wrap"><select id="'+id+'" aria-label="'+label+'">'+choices.map(([value,text])=>option(value,text,current)).join('')+'</select>'+icon('down')+'</span></label>';}
@@ -230,7 +235,7 @@
       '<div class="schedule-setting-group">'+selectField('scheduleTaskRepeat','重复',[['once','不重复'],['daily','每天'],['weekdays','工作日'],['weekly','每周'],['monthly','每月'],['hourly','每小时']],values.repeat)+
       '<div class="schedule-setting-row"><span>时间</span><div class="schedule-time-field"><select id="scheduleTaskTimezone" aria-label="时区">'+Array.from(new Set(['Asia/Shanghai','Asia/Singapore','UTC',values.timezone])).map(tz=>option(tz,{'Asia/Shanghai':'中国时间','Asia/Singapore':'新加坡时间',UTC:'UTC'}[tz]||tz,values.timezone)).join('')+'</select><input id="scheduleTaskTime" type="time" aria-label="运行时间" value="'+esc(values.time)+'" required>'+icon('down')+'</div></div><label class="schedule-setting-row" id="scheduleOnceRow"'+(values.repeat!=='once'?' hidden':'')+'><span>日期</span><input id="scheduleStartDate" type="date" value="'+esc(values.startDate || today())+'" aria-label="执行日期" required></label></div>'+
       '<details class="schedule-advanced"><summary><span class="schedule-advanced-label">高级</span> '+icon('down')+'</summary><div class="schedule-advanced-options">'+(window.ShiYanAccount.user.serverAccess?toggleField('scheduleRunLocally','在此电脑上运行',values.runLocally):'<p>运行位置：独立工作区</p><input id="scheduleRunLocally" type="checkbox" hidden>')+selectField('scheduleNotification','通知',[['important','重要更新'],['all','每次更新'],['none','不通知']],values.notificationMode)+toggleField('scheduleNewChat','每次运行时都开启新聊天',values.newChatEachRun)+
-      selectField('scheduleTaskModel','模型',(models(values.runLocally).length?models(values.runLocally).map(m=>[m.id,m.displayName || m.name || m.id]):[['','正在读取模型…']]),values.model)+selectField('scheduleTaskReasoning','强度',[],values.reasoning)+
+      selectField('scheduleTaskModel','模型',(models(values.runLocally).length?models(values.runLocally).map((m,i,all)=>[m.id,modelLabel(m,all)]):[['','正在读取模型…']]),values.model)+selectField('scheduleTaskReasoning','强度',[],values.reasoning)+
       '<p class="schedule-advanced-note">定时任务需要拾燕保持运行；重新打开后补跑一次。</p></div></details><input id="scheduleEndDate" type="hidden" value="'+esc(values.endDate || '')+'">'+
       '<p id="scheduleEditorError" class="schedule-inline-error" role="alert" hidden></p><footer>'+(task?'<button type="button" class="schedule-secondary" data-schedule-action="editor-pause">'+(values.enabled?'暂停':'继续')+'</button>':'')+'<button type="button" class="schedule-secondary" data-schedule-action="close-editor">取消</button><button type="submit" id="scheduleSave" class="schedule-primary">'+(waiting?'重试保存':task?'保存':'创建')+'</button></footer></form>';
     dialog.dataset.title=values.title || '';dialog.hidden=false;
@@ -246,7 +251,7 @@
   function updateModelOptions(current,reasoning) {
     const select=$('scheduleTaskModel');if(!select)return;
     const choices=models(),wanted=current || select.value,selected=choices.find(m=>m.id===wanted) || choices[0];
-    select.innerHTML=choices.length?choices.map(m=>option(m.id,m.displayName || m.id,selected?.id)).join(''):option('','暂无可用模型','');
+    select.innerHTML=choices.length?choices.map(m=>option(m.id,modelLabel(m,choices),selected?.id)).join(''):option('','暂无可用模型','');
     const error=$('scheduleEditorError'),branch=catalog[$('scheduleRunLocally').checked?'local':'cloud'];
     if(!choices.length){error.textContent=branch?.error || '当前执行方式暂无可用模型';error.hidden=false;}
     else if(!pending[dialogPendingKey])error.hidden=true;

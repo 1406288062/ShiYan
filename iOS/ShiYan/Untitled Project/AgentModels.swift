@@ -109,6 +109,10 @@ struct AgentModelOption: Codable, Identifiable, Equatable, Sendable {
     var displayName: String
     var reasoningEfforts: [String]
     var defaultReasoning: String
+    // 服务端模型提供方（openai = GPT，anthropic = Claude …）；旧服务不返回时为 nil，按 GPT 处理。
+    var provider: String? = nil
+    var providerLabel: String? = nil
+    var isPrimaryProvider: Bool { (provider ?? "openai") == "openai" }
 }
 
  
@@ -231,6 +235,7 @@ func reasoningTitle(_ value: String) -> String {
     case "xhigh": return "超高"
     case "max": return "最高"
     case "ultra": return "极致"
+    case "default": return "默认"
     default: return value
     }
 }

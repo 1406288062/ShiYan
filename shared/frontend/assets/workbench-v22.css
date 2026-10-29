@@ -802,3 +802,37 @@ body.workbench-v22 .v22-elapsed-decimal { width: 4ch; }
     background: #141414;
   }
 }
+
+/* The vertical model menu shares the horizontal card's bottom anchor. */
+#reasoningModelMenu {
+  position:fixed;z-index:300;box-sizing:border-box;width:max-content;
+  min-width:min(180px,calc(100vw - 16px));max-width:calc(100vw - 16px);
+  padding:5px;overflow-y:auto;border:1px solid var(--glass-border,var(--line));
+  border-radius:14px;background:var(--popover);color:var(--text);
+  box-shadow:0 8px 24px #0002;
+}
+#reasoningModelMenu[hidden] { display:none!important; }
+#reasoningModelMenu [role="option"] {
+  display:flex;align-items:center;gap:7px;width:100%;min-height:30px;
+  padding:5px 9px;border:0;border-radius:8px;background:transparent;
+  color:inherit;font:inherit;font-size:14px;line-height:20px;text-align:left;
+}
+#reasoningModelMenu .model-menu-check { flex:0 0 15px;text-align:center; }
+#reasoningModelMenu [role="option"] > span:last-child { min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+#reasoningModelMenu [role="option"]:is(:hover,:focus-visible) { background:var(--soft-fill);outline:none; }
+#reasoningModelMenu [role="option"][aria-selected="true"] { background:var(--accent);color:#fff; }
+#reasoningModelMenu [role="option"]:disabled { opacity:.45;cursor:default; }
+/* Provider groups collapse into one header each; models appear only when a group is opened. */
+#reasoningModelMenu > .model-menu-group-panel:not(:first-child) { margin-top:4px;border-top:1px solid var(--line);padding-top:4px; }
+#reasoningModelMenu .model-menu-group {
+  display:flex;align-items:center;gap:6px;width:100%;min-height:30px;
+  padding:5px 9px;border:0;border-radius:8px;background:transparent;
+  color:var(--muted,var(--text));font:inherit;font-size:12px;line-height:16px;font-weight:600;text-align:left;cursor:pointer;
+}
+#reasoningModelMenu .model-menu-group:is(:hover,:focus-visible) { background:var(--soft-fill);outline:none; }
+#reasoningModelMenu .model-menu-group > span:first-child { flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+#reasoningModelMenu .model-menu-count { opacity:.6;font-weight:500; }
+#reasoningModelMenu .model-menu-chevron { flex:0 0 auto;display:inline-block;font-size:14px;line-height:1;transition:transform .15s ease; }
+#reasoningModelMenu .model-menu-group[aria-expanded="true"] .model-menu-chevron { transform:rotate(90deg); }
+#reasoningModelMenu .model-menu-group-items { padding-left:6px; }
+#reasoningModelMenu .model-menu-group-items[hidden] { display:none!important; }

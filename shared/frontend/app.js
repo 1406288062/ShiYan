@@ -4,7 +4,7 @@
   const $ = id => document.getElementById(id);
   const $$ = query => [...document.querySelectorAll(query)];
   const busyStates = new Set(['submitting', 'queued', 'running', 'reconnecting', 'cancelling']);
-  const reasoningNames = {minimal:'最低',low:'低',medium:'中',high:'高',xhigh:'极高',max:'最高',ultra:'极致',none:'关闭'};
+  const reasoningNames = {minimal:'最低',low:'低',medium:'中',high:'高',xhigh:'极高',max:'最高',ultra:'极致',none:'关闭',default:'默认'};
   let state = null, eventSource = null, initialized = false, toastTimer = 0, draftTimer = 0;
   const drafts = new Map(), assets = new Map(), stoppingConversations = new Set();
   const ui = {
@@ -425,6 +425,12 @@
     const caps=state.capabilities || {};
     return caps.models?.length?caps.models:[{id:caps.model,displayName:caps.model,reasoningEfforts:caps.reasoningEfforts || [],defaultReasoning:caps.defaultReasoning}];
   }
+  // 服务端按模型提供方（GPT、Claude…）标注 provider；多于一个提供方时分组展示。
+  function modelGroups(choices){
+    const groups=[];
+    for(const m of choices){const key=m.provider||'';let group=groups.find(g=>g.key===key);if(!group)groups.push(group={key,label:m.providerLabel||m.provider||'模型',models:[]});group.models.push(m);}
+    return groups;
+  }
   function modelCapability(){const choices=modelChoices(),d=draftFor();return choices.find(m=>m.id===d.model)||choices.find(m=>m.id===state?.capabilities?.model)||choices[0];}
   function efforts(){return modelCapability()?.reasoningEfforts || [];}
   function slideReasoningText(node,text,index) {
@@ -459,6 +465,7 @@
   }
 
   function renderReasoning() {
+    if(!ui.reasoning)$('reasoningPanel').style.opacity='';
     const values=efforts(),d=draftFor(),index=Math.max(0,values.indexOf(d.reasoning));
     const range=$('reasoningRange'),available=values.length>0;
     range.min=0;range.max=Math.max(0,values.length-1);range.step='0.001';range.disabled=!available;
@@ -472,7 +479,8 @@
     $('reasoningButton').setAttribute('aria-expanded',String(ui.reasoning));show('reasoningPanel',ui.reasoning);show('reasoningBackdrop',ui.reasoning);
     const selected=modelCapability(),choices=modelChoices(),modelSelect=$('reasoningModel');
     if(modelSelect){
-      const html=choices.map(m=>'<option value="'+esc(m.id)+'">'+esc(m.displayName || m.id)+'</option>').join('') || '<option value="">云端能力暂不可用</option>';
+      const groups=modelGroups(choices),optionHTML=m=>'<option value="'+esc(m.id)+'">'+esc(m.displayName || m.id)+'</option>';
+      const html=(groups.length>1?groups.map(g=>'<optgroup label="'+esc(g.label)+'">'+g.models.map(optionHTML).join('')+'</optgroup>').join(''):choices.map(optionHTML).join('')) || '<option value="">云端能力暂不可用</option>';
       if(modelSelect.innerHTML!==html)modelSelect.innerHTML=html;
       modelSelect.value=selected?.id || '';modelSelect.disabled=!choices.length;const measure=document.createElement('canvas').getContext('2d');if(measure){measure.font=getComputedStyle(modelSelect).font;modelSelect.style.width=Math.ceil(measure.measureText(modelSelect.selectedOptions[0]?.textContent||'').width+24)+'px';}
       $('reasoningReset').disabled=!available;
@@ -1306,7 +1314,7 @@
     bindClick('cancelEditButton',cancelEdit);
     bindClick('addImageButton',()=>$('attachmentInput').click());
     $('attachmentInput').addEventListener('change',event=>addAttachments([...event.target.files]));
-    bindClick('reasoningButton',()=>{ui.reasoning=!ui.reasoning;renderComposer();});
+    bindClick('reasoningButton',()=>{const panel=$('reasoningPanel'),modelMenuWasOpen=panel.style.opacity==='0';panel.style.opacity='';ui.reasoning=modelMenuWasOpen||!ui.reasoning;renderComposer();});
     bindClick('reasoningBackdrop',()=>{ui.reasoning=false;renderComposer();});
     const reasoningRange=$('reasoningRange');
     reasoningRange.addEventListener('pointerdown',()=>{ui.reasoningDragging=true;ui.reasoningPosition=Number(reasoningRange.value);});
@@ -1314,7 +1322,89 @@
     const finishReasoning=()=>{if(!ui.reasoningDragging)return;ui.reasoningDragging=false;renderReasoning();if(current())flushDraft(current().id).catch(e=>notice(e.message));};
     window.addEventListener('pointerup',finishReasoning);window.addEventListener('pointercancel',finishReasoning);window.addEventListener('blur',finishReasoning);
     reasoningRange.addEventListener('keydown',event=>{const keys=['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'];if(!keys.includes(event.key))return;event.preventDefault();const values=efforts(),index=Math.max(0,values.indexOf(draftFor().reasoning));const target=event.key==='Home'?0:event.key==='End'?values.length-1:Math.max(0,Math.min(values.length-1,index+(['ArrowLeft','ArrowDown'].includes(event.key)?-1:1)));if(values[target])changeDraft(d=>{d.reasoning=values[target];});});
-    $('reasoningModel')?.addEventListener('change',event=>{const model=modelChoices().find(m=>m.id===event.target.value);if(model)changeDraft(d=>{d.model=model.id;if(!model.reasoningEfforts.includes(d.reasoning))d.reasoning=model.defaultReasoning;});});
+    const reasoningModel=$('reasoningModel');
+    const modelMenu=document.createElement('div');
+    modelMenu.id='reasoningModelMenu';modelMenu.hidden=true;
+    modelMenu.setAttribute('role','listbox');modelMenu.setAttribute('aria-label','选择模型');
+    document.body.appendChild(modelMenu);
+    reasoningModel?.setAttribute('aria-controls',modelMenu.id);
+    reasoningModel?.setAttribute('aria-expanded','false');
+    const positionModelMenu=()=>{
+      if(modelMenu.hidden)return;
+      const card=$('reasoningPanel').getBoundingClientRect(),anchor=reasoningModel.getBoundingClientRect();
+      modelMenu.style.bottom=Math.max(0,innerHeight-card.bottom)+'px';
+      modelMenu.style.maxHeight=Math.max(0,card.bottom-8)+'px';
+      const width=modelMenu.getBoundingClientRect().width;
+      modelMenu.style.left=Math.max(8,Math.min(innerWidth-width-8,anchor.left+anchor.width/2-width/2))+'px';
+    };
+    const closeModelMenu=()=>{
+      modelMenu.hidden=true;reasoningModel?.setAttribute('aria-expanded','false');
+      ui.reasoning=false;renderComposer();
+    };
+    const openModelMenu=()=>{
+      if(!ui.reasoning||!reasoningModel||reasoningModel.disabled)return;
+      modelMenu.replaceChildren();
+      const selectedValue=reasoningModel.value;
+      const sections=[];
+      for(const option of reasoningModel.options){
+        const group=option.parentElement?.tagName==='OPTGROUP'?option.parentElement:null;
+        let section=group?sections.find(s=>s.group===group):null;
+        if(!section){section={group,items:[]};sections.push(section);}
+        section.items.push(option);
+      }
+      const makeOption=option=>{
+        const button=document.createElement('button');button.type='button';button.setAttribute('role','option');
+        const selected=option.value===selectedValue;
+        button.setAttribute('aria-selected',String(selected));button.disabled=option.disabled;
+        const check=document.createElement('span');check.className='model-menu-check';check.setAttribute('aria-hidden','true');check.textContent=selected?'✓':'';
+        const label=document.createElement('span');label.textContent=option.textContent;
+        button.append(check,label);button.onclick=()=>{
+          closeModelMenu();reasoningModel.value=option.value;
+          reasoningModel.dispatchEvent(new Event('change',{bubbles:true}));$('reasoningButton').focus({preventScroll:true});
+        };
+        return button;
+      };
+      for(const section of sections){
+        if(!section.group){section.items.forEach(option=>modelMenu.appendChild(makeOption(option)));continue;}
+        const panel=document.createElement('div');panel.className='model-menu-group-panel';
+        const expanded=section.items.some(option=>option.value===selectedValue);
+        const toggle=document.createElement('button');toggle.type='button';toggle.className='model-menu-group';
+        toggle.setAttribute('aria-expanded',String(expanded));
+        const title=document.createElement('span');title.textContent=section.group.label;
+        const count=document.createElement('span');count.className='model-menu-count';count.textContent=String(section.items.length);
+        const chevron=document.createElement('span');chevron.className='model-menu-chevron';chevron.setAttribute('aria-hidden','true');chevron.textContent='›';
+        toggle.append(title,count,chevron);
+        const list=document.createElement('div');list.className='model-menu-group-items';list.hidden=!expanded;
+        section.items.forEach(option=>list.appendChild(makeOption(option)));
+        toggle.onclick=()=>{const open=list.hidden;list.hidden=!open;toggle.setAttribute('aria-expanded',String(open));positionModelMenu();};
+        panel.append(toggle,list);modelMenu.appendChild(panel);
+      }
+      $('reasoningPanel').style.opacity='0';modelMenu.hidden=false;
+      reasoningModel.setAttribute('aria-expanded','true');positionModelMenu();
+      modelMenu.querySelector('[aria-selected="true"]:not(:disabled)')?.focus({preventScroll:true});
+    };
+    reasoningModel?.addEventListener('pointerdown',event=>{if(event.button!==0)return;event.preventDefault();openModelMenu();});
+    reasoningModel?.addEventListener('keydown',event=>{
+      if(['Enter',' ','F4','ArrowDown','ArrowUp'].includes(event.key)){event.preventDefault();openModelMenu();}
+    });
+    modelMenu.addEventListener('keydown',event=>{
+      if(event.key==='Escape'){event.preventDefault();event.stopPropagation();closeModelMenu();$('reasoningButton').focus({preventScroll:true});return;}
+      if(event.key==='Tab'){closeModelMenu();$('reasoningButton').focus({preventScroll:true});return;}
+      if(!['ArrowDown','ArrowUp','Home','End'].includes(event.key))return;
+      event.preventDefault();const options=[...modelMenu.querySelectorAll('[role="option"]:not(:disabled)')].filter(b=>!b.closest('[hidden]'));
+      const index=options.indexOf(document.activeElement);
+      const next=event.key==='Home'?0:event.key==='End'?options.length-1:(index+(event.key==='ArrowDown'?1:-1)+options.length)%options.length;
+      options[next]?.focus();
+    });
+    document.addEventListener('pointerdown',event=>{
+      if(!modelMenu.hidden&&!modelMenu.contains(event.target)&&!reasoningModel?.contains(event.target))closeModelMenu();
+    },true);
+    window.addEventListener('resize',positionModelMenu);
+    window.addEventListener('shiyan-reasoning',()=>{
+      if(!ui.reasoning){modelMenu.hidden=true;reasoningModel?.setAttribute('aria-expanded','false');}
+      else positionModelMenu();
+    });
+    reasoningModel?.addEventListener('change',event=>{ui.reasoning=false;const model=modelChoices().find(m=>m.id===event.target.value);if(model)changeDraft(d=>{d.model=model.id;if(!model.reasoningEfforts.includes(d.reasoning))d.reasoning=model.defaultReasoning;});});
     bindClick('reasoningReset',()=>{const model=modelCapability();if(model)changeDraft(d=>{d.reasoning=model.defaultReasoning;});});
     bindClick('speechButton',startSpeech);
     bindClick('latestButton',scrollToLatest);

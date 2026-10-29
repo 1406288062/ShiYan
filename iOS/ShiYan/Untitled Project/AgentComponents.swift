@@ -596,6 +596,11 @@ struct AgentReasoningControl: View {
     private var modelTitle: String {
         guard let option = previewModel else { return "" }
         let name = AgentComposerLayout.shortModelName(id: option.id, displayName: option.displayName)
+        // 其它提供方（如 Claude）不参与 GPT 强度排序：标出提供方名，不标“未分级”。
+        if !option.isPrimaryProvider {
+            let label = option.providerLabel ?? ""
+            return label.isEmpty || name.localizedCaseInsensitiveContains(label) ? name : label + " " + name
+        }
         return name + (AgentModelPowerOrder.isRanked(option.id) ? "" : " · 未分级")
     }
     private var title: String {
