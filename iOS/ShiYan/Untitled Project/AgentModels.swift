@@ -117,18 +117,23 @@ struct AgentModelOption: Codable, Identifiable, Equatable, Sendable {
 
  
 enum AgentIOSModelPolicy {
+    // iOS 只显示 5 个模型，兼顾性能与性价比：GPT 2 个（最强 + 轻量），Claude 3 个（最强 / 均衡 / 快速便宜）。
+    static let allowed = ["gpt-6.1-sol", "gpt-6-luna", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"]
     static func isHidden(_ id: String) -> Bool {
-        let normalized = id.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-         
-        return normalized != "gpt-5.6-sol"
-            && (normalized == "gpt-5.6" || normalized.hasPrefix("gpt-5.6-"))
+        let n = id.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        // 只筛选 GPT / Claude 模型；其他名称（如兜底的 "Codex"）不隐藏，避免兜底列表为空。
+        guard n.hasPrefix("gpt-") || n.hasPrefix("claude-") else { return false }
+        return !allowed.contains(n)
     }
+    // 旧会话里已不显示的模型，换成同档次的可见模型。
     static func replacement(for id: String) -> [String]? {
-        switch id.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) {
-        case "gpt-5.6-luna": return ["gpt-6-luna"]
-        case "gpt-5.6-sol": return ["gpt-6-sol", "gpt-6.1-sol"]
-        default: return nil
-        }
+        let n = id.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        if n.hasPrefix("claude-haiku") { return ["claude-haiku-5-5"] }
+        if n.hasPrefix("claude-sonnet") { return ["claude-sonnet-5-5"] }
+        if n.hasPrefix("claude-") { return ["claude-opus-5-5"] }
+        if n.contains("luna") || n.contains("terra") || n == "gpt-5.5" { return ["gpt-6-luna"] }
+        if n.hasPrefix("gpt-") { return ["gpt-6.1-sol"] }
+        return nil
     }
 }
 

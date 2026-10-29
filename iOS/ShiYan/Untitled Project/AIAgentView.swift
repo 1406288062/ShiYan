@@ -1469,7 +1469,9 @@ struct AIAgentView: View {
                 }
                 let attachments = conversation.draftAssets
                 let hasMessageToSend = !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty
-                let waitingForMessage = !conversation.isBusy &&
+                // 发送后到服务器确认之间，同步可能短暂把“处理中”覆盖成旧值；有待回复的消息就继续显示停止按钮，避免图标来回闪。
+                let showStop = conversation.isBusy || conversation.pendingMessageID != nil
+                let waitingForMessage = !showStop &&
                     inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
                     attachments.isEmpty
                 let expanded = inputFocused || speech.isRecording || !attachments.isEmpty
@@ -1562,8 +1564,13 @@ struct AIAgentView: View {
                                  
                                 reasoningPresentation.open()
                             } label: {
-                                AgentGauge(value: Double(store.reasoningEfforts.firstIndex(of: conversation.reasoning) ?? 0) / Double(max(store.reasoningEfforts.count - 1, 1)))
-                                    .frame(width: 32, height: 40).contentShape(Rectangle())
+                                // 直接显示当前模型名和推理强度，点开可切换。
+                                Text(store.selectedModel.displayName.replacingOccurrences(of: "Claude ", with: "") + " · " + reasoningTitle(conversation.reasoning))
+                                    .font(.system(size: 12, weight: .medium)).lineLimit(1).fixedSize()
+                                    .foregroundStyle(Color.accentColor)
+                                    .padding(.horizontal, 10).frame(height: 28)
+                                    .background(Color.accentColor.opacity(0.12), in: Capsule())
+                                    .frame(height: 40).contentShape(Rectangle())
                             }.buttonStyle(.plain)
                                 .accessibilityLabel("模型与推理：\(store.selectedModel.displayName)，\(reasoningTitle(conversation.reasoning))")
                                 .accessibilityIdentifier("agent-animated-small-gauge")
@@ -1577,7 +1584,7 @@ struct AIAgentView: View {
                         }.buttonStyle(.plain).accessibilityLabel(speech.isRecording ? "结束语音输入" : "语音转文字")
                         Button {
                             guard let latest = store.current else { return }
-                            if latest.isBusy && !hasMessageToSend { Task { await store.stop(latest.id) } }
+                            if (latest.isBusy || latest.pendingMessageID != nil) && !hasMessageToSend { Task { await store.stop(latest.id) } }
                             else {
                                 let text = inputText
                                 let assets = latest.draftAssets
@@ -1604,13 +1611,15 @@ struct AIAgentView: View {
                                 }
                             }
                         } label: {
-                            Image(systemName: conversation.isBusy && !hasMessageToSend ? "stop.fill" : "arrow.up")
-                                .font(.system(size: conversation.isBusy && !hasMessageToSend ? 16 : 19, weight: .bold))
+                            Image(systemName: showStop && !hasMessageToSend ? "stop.fill" : "arrow.up")
+                                .font(.system(size: showStop && !hasMessageToSend ? 16 : 19, weight: .bold))
+                                .contentTransition(.identity)
                                 .foregroundStyle(.white)
                                 .frame(width: 36, height: 36)
                                 .background(Color.accentColor, in: Circle())
                         }.buttonStyle(.plain)
-                        .disabled(editInFlight || loadingPhotos || (!conversation.isBusy && !hasMessageToSend))
+                        .disabled(editInFlight || loadingPhotos || (!showStop && !hasMessageToSend))
+                        .animation(nil, value: showStop)
                          
                         .overlay {
                             if waitingForMessage {
@@ -1627,7 +1636,7 @@ struct AIAgentView: View {
                                 .accessibilityHidden(true)
                             }
                         }
-                        .accessibilityLabel(conversation.isBusy ? (hasMessageToSend ? "追加问题" : "停止处理") : "发送")
+                        .accessibilityLabel(showStop ? (hasMessageToSend ? "追加问题" : "停止处理") : "发送")
                     }.padding(.horizontal, 5).padding(.bottom, 2)
                         .modifier(AgentReasoningVisibility(presentation: reasoningPresentation))
                 }
