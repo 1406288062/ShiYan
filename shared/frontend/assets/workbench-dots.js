@@ -380,6 +380,25 @@
  const date=n=>n?new Date(Number(n)*1000).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
  const markdown=s=>window.ShiYanOutput?.markdown(s,C.icon('copy'),{prose:true})||'<p>'+esc(s).replace(/\n/g,'<br>')+'</p>';
  const api=(path,method='GET',data)=>window.shiyan.api('/api/dots'+path,method,data);
+ // 对话订阅卡片：Dots 在对话里请用户补充凭据或确认取消。凭据直接提交到订阅接口，不进模型、不进聊天记录。
+ const SUB_LABEL={github:'GitHub',email:'QQ 邮箱','google-calendar':'Google 日历'};
+ function subscriptionCard(m){
+  const c=m.card;if(!c||c.type!=='subscription')return '';
+  const name=SUB_LABEL[c.provider]||c.provider;
+  if(c.state!=='open')return '<div class="dots-sub-card is-'+esc(c.state)+'">'+(c.state==='done'?(c.action==='unsubscribe'?'已取消订阅 '+esc(name):'已订阅 '+esc(name)):'已关闭')+'</div>';
+  if(c.action==='unsubscribe')return '<form class="dots-sub-card" data-dots-sub-card="'+esc(m.id)+'"><div><button type="submit" class="dots-white-button">确认取消订阅</button></div><small role="alert" data-sub-error hidden></small></form>';
+  return '<form class="dots-sub-card" data-dots-sub-card="'+esc(m.id)+'" autocomplete="off">'+(c.fields||[]).map(f=>'<label><span>'+esc(f.label)+(f.optional?'（可选）':'')+'</span><input name="'+esc(f.key)+'" type="'+(f.secret?'password':'text')+'" value="'+(f.secret?'':esc(f.value||''))+'"'+(f.optional?'':' required')+' autocomplete="off" spellcheck="false"></label>').join('')+'<div><button type="submit" class="dots-white-button">订阅 '+esc(name)+'</button></div><small>只保存在服务器上，不会发给模型，也不会留在聊天记录里。</small><small role="alert" data-sub-error hidden></small></form>';
+ }
+ document.addEventListener('submit',async event=>{
+  const form=event.target?.closest?.('[data-dots-sub-card]');if(!form)return;event.preventDefault();
+  const m=messages.find(x=>String(x.id)===form.dataset.dotsSubCard),c=m?.card;if(!c||c.state!=='open')return;
+  const error=form.querySelector('[data-sub-error]');error.hidden=true;form.querySelectorAll('button,input').forEach(n=>n.disabled=true);
+  try{
+   if(c.action==='unsubscribe')await api('/subscriptions/'+c.provider,'DELETE');
+   else{const value={enabled:true};for(const f of c.fields||[]){const v=(form.elements[f.key]?.value||'').trim();if(v||!f.secret)value[f.key]=v;}await api('/subscriptions/'+c.provider,'PATCH',value);}
+   m.card={...c,state:'done',fields:(c.fields||[]).map(f=>f.secret?{...f,value:''}:f)};renderMessages();
+  }catch(cause){error.textContent=cause?.message||'订阅没有成功';error.hidden=false;form.querySelectorAll('button,input').forEach(n=>n.disabled=false);}
+ });
  function persist(){
   const snapshot=JSON.stringify({manager,messages,tasks,goals,details,drafts,pending,cursor,readState});
   try{localStorage.setItem(key,snapshot);}catch{throw Error('无法保存 Dots 状态，请释放本机存储后重试');}
@@ -454,7 +473,14 @@
   const label=prefix+' '+time.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',hour12:false});
   return '<div class="dots-message-time"><time datetime="'+esc(time.toISOString())+'">'+esc(label)+'</time></div>';
  }
- function renderMessages(){const records=$('dotsRecords');if(!records)return;records.innerHTML=(hasMoreMessages&&messages.length?'<button type="button" class="dots-history-more" data-dots-earlier'+(historyLoading?' disabled':'')+'>'+(historyLoading?'正在读取…':'查看更早消息')+'</button>':'')+(messages.length?messages.map(m=>managerTime(m)+'<article class="dots-manager-message '+(m.role==='user'?'is-user':'is-assistant')+'" data-dots-message="'+esc(m.id)+'">'+(m.role==='system'?'<header>状态</header>':'')+'<div class="message-body">'+markdown(m.content||'')+'</div>'+((m.attachments||[]).length?'<div class="dots-files">'+m.attachments.map(a=>fileChip(a)).join('')+'</div>':'')+'</article>').join(''):'');}
+ function renderMessagesRaw(records){records.innerHTML=(hasMoreMessages&&messages.length?'<button type="button" class="dots-history-more" data-dots-earlier'+(historyLoading?' disabled':'')+'>'+(historyLoading?'正在读取…':'查看更早消息')+'</button>':'')+(messages.length?messages.map(m=>managerTime(m)+'<article class="dots-manager-message '+(m.role==='user'?'is-user':'is-assistant')+'" data-dots-message="'+esc(m.id)+'">'+(m.role==='system'?'<header>状态</header>':'')+'<div class="message-body">'+markdown(m.content||'')+'</div>'+subscriptionCard(m)+((m.attachments||[]).length?'<div class="dots-files">'+m.attachments.map(a=>fileChip(a)).join('')+'</div>':'')+'</article>').join(''):'');}
+ // 重新渲染时保留卡片里已经输入的内容和焦点（轮询刷新不会清空用户正在填写的值）。
+ function renderMessages(){const records=$('dotsRecords');if(!records)return;
+  const kept={},active=document.activeElement,focusKey=active?.closest?.('[data-dots-sub-card]')&&active.name?active.closest('[data-dots-sub-card]').dataset.dotsSubCard+':'+active.name:'';
+  records.querySelectorAll('[data-dots-sub-card] input').forEach(i=>{kept[i.closest('[data-dots-sub-card]').dataset.dotsSubCard+':'+i.name]=i.value;});
+  renderMessagesRaw(records);
+  records.querySelectorAll('[data-dots-sub-card] input').forEach(i=>{const k=i.closest('[data-dots-sub-card]').dataset.dotsSubCard+':'+i.name;if(k in kept)i.value=kept[k];if(k===focusKey)i.focus({preventScroll:true});});
+ }
  function renderApprovals(){
   const box=$('dotsApprovals');if(!box)return;
   const waiting=tasks.filter(needsApproval),cards=waiting.map(task=>{

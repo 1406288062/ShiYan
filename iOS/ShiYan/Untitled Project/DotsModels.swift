@@ -309,6 +309,21 @@ struct DotsManager: Codable, Identifiable {
     var oldestMessageId: Int?
     var activityCursor: Int?
 }
+struct DotsSubscriptionCard: Codable, Equatable {
+    struct Field: Codable, Equatable {
+        let key: String
+        let label: String
+        var value: String?
+        var secret: Bool?
+        var optional: Bool?
+    }
+    let type: String
+    let provider: String
+    let action: String
+    var fields: [Field]?
+    var state: String
+    var note: String?
+}
 struct DotsManagerMessage: Codable, Identifiable {
     let id: Int
     var role: String
@@ -323,6 +338,8 @@ struct DotsManagerMessage: Codable, Identifiable {
     var origin: String?
     var topicId: String?
     var proactiveReason: String?
+    /// 对话订阅卡片：Dots 在对话里请用户补充凭据或确认取消。
+    var card: DotsSubscriptionCard?
     var isStreaming: Bool { deliveryState == "streaming" }
     var isProactive: Bool { role == "assistant" && origin == "proactive" }
 

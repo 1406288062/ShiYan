@@ -226,33 +226,27 @@
     C.scheduleNative?.();const target=returnFocus?.isConnected&&returnFocus.getClientRects().length?returnFocus:$('dotsTasksButton');target?.focus({preventScroll:true});
     positionPet();
   }
+  // 事件订阅页只展示已经订阅成功的来源。新增订阅在 Dots 对话里完成（Dots 会在对话里请你补充凭据）。
   async function openSubscriptions() {
     try {
       const result = await api('/subscriptions');
-      const labels = {github:'GitHub',email:'邮件','google-calendar':'Google 日历'};
-      const fields = {
-        github:[['repository','仓库（owner/repository）'],['token','访问令牌','password']],
-        email:[['address','QQ / Foxmail 邮箱'],['authorizationCode','邮箱授权码','password']],
-        'google-calendar':[['calendarId','日历 ID'],['accountKey','账户标识'],['clientId','Client ID'],['clientSecret','Client Secret','password'],['refreshToken','Refresh Token','password']]
-      };
+      const labels = {github:'GitHub',email:'QQ 邮箱','google-calendar':'Google 日历'};
+      const statusText = s => !s.enabled ? '已暂停' : ({pending:'等待首次检查',listening:'正在接收通知',ok:'正在接收通知',active:'正在接收通知',connecting:'正在连接',reconnecting:'正在重新连接',waiting_configuration:'等待配置',waiting_authorization:'等待授权'})[s.status] || ('需要处理：' + s.status);
+      const detail = s => s.repository || s.address || (s.calendarId && s.calendarId !== 'primary' ? s.calendarId : '');
       const dialog = makeDialog('dotsSubscriptionsDialog','dots-conversation-overlay');
-      dialog.innerHTML = '<section class="dots-conversation-card dots-subscriptions-card"><header><h2>事件订阅</h2><button type="button" class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button></header><p>配置你自己的事件来源，通知只发送给当前账号。</p><div data-subscription-list></div><p role="alert" class="dots-dialog-error" data-subscription-error hidden></p></section>';
+      dialog.innerHTML = '<section class="dots-conversation-card dots-subscriptions-card"><header><h2>事件订阅</h2><button type="button" class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button></header><p>想订阅什么，直接在对话里告诉 Dots，例如“订阅 openai/codex 仓库的更新”“有新邮件时通知我”。订阅成功后会显示在这里。</p><div data-subscription-list></div><p role="alert" class="dots-dialog-error" data-subscription-error hidden></p></section>';
       showDialog(dialog, dialog);
       let subscriptions = result.subscriptions || [];
       const draw = () => {
-        dialog.querySelector('[data-subscription-list]').innerHTML = Object.entries(labels).map(([provider,label]) => {
-          const item = subscriptions.find(s => s.provider === provider) || {};
-          return '<form class="dots-subscription-form" data-provider="'+provider+'"><h3>'+label+'</h3><label><input type="checkbox" name="enabled"'+(item.enabled?' checked':'')+'> 启用通知</label>'+fields[provider].map(([key,title,type])=>'<label><span>'+title+'</span><input name="'+key+'" type="'+(type||'text')+'" value="'+(type==='password'?'':esc(item[key]||''))+'" autocomplete="off" placeholder="'+(type==='password'&&item.credentialsConfigured?'已保存；留空保留原值':'')+'"></label>').join('')+'<small>'+esc(item.status||'尚未配置')+'</small><div><button class="dots-white-button" type="submit">保存</button><button type="button" data-remove-subscription'+(!item.configured?' disabled':'')+'>取消订阅</button></div></form>';
-        }).join('');
-        dialog.querySelectorAll('form').forEach(form => {
-          const perform = async (method, payload) => {
-            const error=dialog.querySelector('[data-subscription-error]');error.hidden=true;
-            form.querySelectorAll('button').forEach(b=>b.disabled=true);
-            try { const value=await api('/subscriptions/'+form.dataset.provider,method,payload);subscriptions=value.subscriptions||[];draw(); }
-            catch(cause){error.textContent=cause.message;error.hidden=false;form.querySelectorAll('button').forEach(b=>b.disabled=false);}
+        const list = dialog.querySelector('[data-subscription-list]'), active = subscriptions.filter(s => s.configured);
+        list.innerHTML = active.length ? '<ul class="dots-subscription-list">'+active.map(s => '<li><div><strong>'+esc(labels[s.provider]||s.provider)+'</strong>'+(detail(s)?'<span>'+esc(detail(s))+'</span>':'')+'<small>'+esc(statusText(s))+'</small></div><button type="button" data-remove-subscription="'+esc(s.provider)+'">取消订阅</button></li>').join('')+'</ul>' : '<p class="dots-subscription-empty">还没有订阅任何事件。</p>';
+        list.querySelectorAll('[data-remove-subscription]').forEach(button => {
+          button.onclick = async () => {
+            if (!await window.shiyan.confirmAction('取消这项订阅？','只取消当前账号的订阅，不影响其他用户。','取消订阅')) return;
+            const error = dialog.querySelector('[data-subscription-error]'); error.hidden = true; button.disabled = true;
+            try { subscriptions = (await api('/subscriptions/'+button.dataset.removeSubscription,'DELETE')).subscriptions || []; draw(); }
+            catch (cause) { error.textContent = cause.message; error.hidden = false; button.disabled = false; }
           };
-          form.onsubmit=e=>{e.preventDefault();const value={enabled:form.elements.enabled.checked};fields[form.dataset.provider].forEach(([key,,type])=>{const text=form.elements[key].value.trim();if(text||type!=='password')value[key]=text;});perform('PATCH',value);};
-          form.querySelector('[data-remove-subscription]').onclick=async()=>{if(await window.shiyan.confirmAction('取消这项订阅？','只取消当前账号的订阅，不影响其他用户。','取消订阅'))perform('DELETE');};
         });
       };
       draw();

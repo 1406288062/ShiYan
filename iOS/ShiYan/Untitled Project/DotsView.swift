@@ -87,6 +87,9 @@ struct DotsView: View {
                                             .accessibilityIdentifier("dots-message-time-\(item.id)")
                                     }
                                     managerMessage(item)
+                                    if let card = item.card, card.type == "subscription" {
+                                        DotsSubscriptionCardView(card: card, messageId: item.id)
+                                    }
                                 }.id(item.id)
                             }
                             ForEach(pendingApprovals) { context in
@@ -917,26 +920,59 @@ struct DotsSubscription: Decodable, Identifiable {
     var id: String { provider }
 }
 
+/// 事件订阅页：只展示已经订阅成功的来源。新增订阅在 Dots 对话里完成。
 private struct DotsSubscriptionsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var subscriptions: [DotsSubscription] = []
     @State private var error: String?
     @State private var loading = true
+    @State private var removing: DotsSubscription?
     @State private var client = CodexClient()
+    private let titles = ["github": "GitHub", "email": "QQ 邮箱", "google-calendar": "Google 日历"]
+    private func statusText(_ item: DotsSubscription) -> String {
+        if !item.enabled { return "已暂停" }
+        switch item.status ?? "" {
+        case "pending": return "等待首次检查"
+        case "listening", "ok", "active": return "正在接收通知"
+        case "connecting", "reconnecting": return "正在连接"
+        case "waiting_configuration": return "等待配置"
+        case "waiting_authorization": return "等待授权"
+        default: return "需要处理：" + (item.status ?? "未知")
+        }
+    }
     var body: some View {
         NavigationStack {
-            Form {
-                Section { Text("配置你自己的事件来源，通知只发送给当前账号。").foregroundStyle(.secondary) }
+            List {
+                Section { Text("想订阅什么，直接在对话里告诉 Dots，例如“订阅 openai/codex 仓库的更新”“有新邮件时通知我”。订阅成功后会显示在这里。").foregroundStyle(.secondary) }
                 if loading { ProgressView() }
                 if let error { Text(error).foregroundStyle(.red) }
-                ForEach(["github", "email", "google-calendar"], id: \.self) { provider in
-                    DotsSubscriptionEditor(provider: provider,
-                        item: subscriptions.first { $0.provider == provider }, client: client,
-                        changed: { subscriptions = $0 })
+                let active = subscriptions.filter { $0.configured }
+                if !loading && active.isEmpty { Text("还没有订阅任何事件。").foregroundStyle(.secondary) }
+                ForEach(active) { item in
+                    HStack(alignment: .center, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(titles[item.provider] ?? item.provider).font(.body.weight(.semibold))
+                            if let detail = item.repository ?? item.address ?? (item.calendarId == "primary" ? nil : item.calendarId) {
+                                Text(detail).font(.footnote).foregroundStyle(.secondary).lineLimit(2)
+                            }
+                            Text(statusText(item)).font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 8)
+                        Button("取消订阅", role: .destructive) { removing = item }.buttonStyle(.borderless)
+                    }
                 }
             }
             .navigationTitle("事件订阅")
             .toolbar { ToolbarItem(placement: .confirmationAction) { ShiyanCloseButton(action: { dismiss() }, inToolbar: true) } }
+            .confirmationDialog("取消当前账号的这项订阅？", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }), titleVisibility: .visible) {
+                Button("取消订阅", role: .destructive) {
+                    guard let item = removing else { return }
+                    Task { @MainActor in
+                        do { subscriptions = try await client.dotsSubscriptions(item.provider, method: "DELETE").subscriptions }
+                        catch { self.error = error.localizedDescription }
+                    }
+                }
+            } message: { Text("不会影响其他用户。") }
             .task {
                 defer { loading = false }
                 do { subscriptions = try await client.dotsSubscriptions().subscriptions }
@@ -946,64 +982,63 @@ private struct DotsSubscriptionsView: View {
     }
 }
 
-private struct DotsSubscriptionEditor: View {
-    let provider: String
-    let item: DotsSubscription?
-    let client: CodexClient
-    let changed: ([DotsSubscription]) -> Void
-    @State private var enabled = false
-    @State private var fields: [String: String] = [:]
+/// Dots 对话里的订阅卡片。凭据直接提交到订阅接口，不进模型、不进聊天记录。
+private struct DotsSubscriptionCardView: View {
+    let card: DotsSubscriptionCard
+    let messageId: Int
+    @State private var values: [String: String] = [:]
     @State private var busy = false
+    @State private var done = false
     @State private var error: String?
-    @State private var confirmRemoval = false
-    private var title: String { ["github":"GitHub", "email":"邮件", "google-calendar":"Google 日历"][provider] ?? provider }
-    private var definitions: [(key: String, title: String, secret: Bool)] {
-        switch provider {
-        case "github": return [("repository", "仓库（owner/repository）", false), ("token", "访问令牌", true)]
-        case "email": return [("address", "QQ / Foxmail 邮箱", false), ("authorizationCode", "邮箱授权码", true)]
-        default: return [("calendarId", "日历 ID", false), ("accountKey", "账户标识", false), ("clientId", "Client ID", false), ("clientSecret", "Client Secret", true), ("refreshToken", "Refresh Token", true)]
+    @State private var client = CodexClient()
+    private var name: String { ["github": "GitHub", "email": "QQ 邮箱", "google-calendar": "Google 日历"][card.provider] ?? card.provider }
+    var body: some View {
+        if card.state != "open" || done {
+            Text(card.action == "unsubscribe" ? "已取消订阅 \(name)" : "已订阅 \(name)")
+                .font(.footnote).foregroundStyle(.secondary)
+                .padding(.horizontal, 12).padding(.vertical, 6)
+                .background(.quaternary.opacity(0.5), in: Capsule())
+        } else {
+            VStack(alignment: .leading, spacing: 10) {
+                if card.action == "subscribe" {
+                    ForEach(card.fields ?? [], id: \.key) { field in
+                        let binding = Binding(get: { values[field.key] ?? "" }, set: { values[field.key] = $0 })
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(field.label + (field.optional == true ? "（可选）" : "")).font(.footnote).foregroundStyle(.secondary)
+                            Group {
+                                if field.secret == true { SecureField("", text: binding) }
+                                else { TextField("", text: binding).textInputAutocapitalization(.never).autocorrectionDisabled() }
+                            }
+                            .padding(.horizontal, 10).frame(height: 36)
+                            .overlay(RoundedRectangle(cornerRadius: 9).stroke(.secondary.opacity(0.35)))
+                        }
+                    }
+                    Text("只保存在服务器上，不会发给模型，也不会留在聊天记录里。").font(.caption).foregroundStyle(.secondary)
+                }
+                if let error { Text(error).font(.footnote).foregroundStyle(.red) }
+                Button(card.action == "unsubscribe" ? "确认取消订阅" : "订阅 \(name)") { submit() }
+                    .buttonStyle(.borderedProminent).disabled(busy || !ready)
+            }
+            .padding(14)
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(.secondary.opacity(0.3)))
+            .onAppear { for field in card.fields ?? [] where field.secret != true { values[field.key] = values[field.key] ?? (field.value ?? "") } }
         }
     }
-    var body: some View {
-        Section {
-            Toggle("启用通知", isOn: $enabled)
-            ForEach(definitions, id: \.key) { field in
-                let value = Binding(get: { fields[field.key] ?? "" }, set: { fields[field.key] = $0 })
-                if field.secret {
-                    SecureField(item?.credentialsConfigured == true ? field.title + "（留空保留）" : field.title, text: value)
-                } else {
-                    TextField(field.title, text: value).textInputAutocapitalization(.never).autocorrectionDisabled()
-                }
-            }
-            if let status = item?.status { Text(status).font(.footnote).foregroundStyle(.secondary) }
-            if let error { Text(error).foregroundStyle(.red) }
-            Button("保存") { mutate(remove: false) }.disabled(busy)
-            if item?.configured == true {
-                Button("取消订阅", role: .destructive) { confirmRemoval = true }.disabled(busy)
-            }
-        } header: { Text(title) }
-        .onAppear { restore() }
-        .onChange(of: item?.enabled) { _, _ in restore() }
-        .confirmationDialog("取消当前账号的这项订阅？", isPresented: $confirmRemoval, titleVisibility: .visible) {
-            Button("取消订阅", role: .destructive) { mutate(remove: true) }
-        } message: { Text("不会影响其他用户。") }
+    private var ready: Bool {
+        card.action == "unsubscribe" || (card.fields ?? []).allSatisfy { $0.optional == true || !(values[$0.key] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
-    private func restore() {
-        enabled = item?.enabled ?? false
-        fields = ["repository":item?.repository ?? "", "address":item?.address ?? "", "calendarId":item?.calendarId ?? "", "accountKey":item?.accountKey ?? ""]
-    }
-    private func mutate(remove: Bool) {
+    private func submit() {
         busy = true; error = nil
-        let value: [String: Any] = fields.reduce(into: ["enabled": enabled] as [String: Any]) { result, entry in
-            let text = entry.value.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !text.isEmpty { result[entry.key] = text }
+        var payload: [String: Any] = ["enabled": true]
+        for field in card.fields ?? [] {
+            let text = (values[field.key] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !text.isEmpty || field.secret != true { payload[field.key] = text }
         }
         Task { @MainActor in
             defer { busy = false }
             do {
-                let response = try await client.dotsSubscriptions(provider, method: remove ? "DELETE" : "PATCH", fields: remove ? nil : value)
-                fields = fields.filter { entry in !definitions.contains { $0.key == entry.key && $0.secret } }
-                changed(response.subscriptions)
+                _ = try await client.dotsSubscriptions(card.provider, method: card.action == "unsubscribe" ? "DELETE" : "PATCH", fields: card.action == "unsubscribe" ? nil : payload)
+                values = [:]; done = true
             } catch { self.error = error.localizedDescription }
         }
     }
