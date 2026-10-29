@@ -53,6 +53,11 @@ struct DotsView: View {
     @State private var composerHeight: CGFloat = 80
     @State private var headerHeight: CGFloat = 0
     @State private var needsApprovalReveal = false
+    @State private var replyTarget: DotsManagerMessage?
+    @State private var selectingText: DotsSelectionText?
+    /// Highest message id at the moment of sending; the thinking state stays
+    /// until an assistant message after it carries text.
+    @State private var sentAfterId: Int?
     @FocusState private var inputFocused: Bool
 
     var body: some View {
@@ -86,11 +91,33 @@ struct DotsView: View {
                                             .frame(maxWidth: .infinity, alignment: .center)
                                             .accessibilityIdentifier("dots-message-time-\(item.id)")
                                     }
-                                    managerMessage(item)
+                                    if !isBlankReply(item) {
+                                        managerMessage(item)
+                                            .modifier(DotsSwipeToReply(enabled: item.role != "system" && !item.isStreaming) {
+                                                beginReply(item)
+                                            })
+                                            .transition(.opacity.combined(with: .offset(y: 6)))
+                                    }
                                     if let card = item.card, card.type == "subscription" {
                                         DotsSubscriptionCardView(card: card, messageId: item.id)
                                     }
                                 }.id(item.id)
+                            }
+                            if let operation = store.state.pending, store.sending,
+                               operation.route == "manager/messages", let text = operation.text,
+                               !store.messages.contains(where: { $0.requestId == operation.requestId }) {
+                                // The sent message shows on the tap frame; the server copy replaces it.
+                                managerMessage(DotsManagerMessage(id: -1, role: "user", content: text,
+                                    attachments: operation.attachments, requestId: operation.requestId))
+                                    .opacity(0.72)
+                                    .id("dots-optimistic-\(operation.requestId)")
+                                    .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .bottomTrailing)))
+                            }
+                            if awaitingReply {
+                                DotsThinkingIndicator()
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .id("dots-thinking")
+                                    .transition(.asymmetric(insertion: .identity, removal: .opacity))
                             }
                             ForEach(pendingApprovals) { context in
                                 approvalCard(context.approval, goalId: context.goalId, title: context.title)
@@ -157,9 +184,22 @@ struct DotsView: View {
                         }
                     }
                     .onChange(of: store.messages.map(\.content)) { _, _ in
+                        if let base = sentAfterId, store.messages.contains(where: {
+                            $0.id > base && $0.role == "assistant" && !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        }) { withAnimation(.easeOut(duration: 0.22)) { sentAfterId = nil } }
                         if atBottom && !voicePresentation.immersive {
                             proxy.scrollTo("dots-bottom", anchor: .bottom)
                         }
+                    }
+                    .onChange(of: awaitingReply) { _, waiting in
+                        if waiting && !voicePresentation.immersive {
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) {
+                                proxy.scrollTo("dots-bottom", anchor: .bottom)
+                            }
+                        }
+                    }
+                    .onChange(of: store.notice) { _, notice in
+                        if notice != nil { withAnimation(.easeOut(duration: 0.2)) { sentAfterId = nil } }
                     }
                     .onChange(of: pendingApprovals.map(\.id)) { before, after in
                         if !Set(after).subtracting(before).isEmpty { scheduleApprovalReveal() }
@@ -216,6 +256,7 @@ struct DotsView: View {
         .quickLookPreview($attachmentPreview)
         .sheet(isPresented: $showTasks) { taskSheet }
         .sheet(isPresented: $showSubscriptions) { DotsSubscriptionsView() }
+        .sheet(item: $selectingText) { DotsSelectTextSheet(text: $0.text) }
         .onChange(of: showTasks) { _, visible in
             onTaskSheetPresented(visible)
             if !visible { store.select(nil) }
@@ -384,9 +425,10 @@ struct DotsView: View {
                     Text("状态").font(.caption).foregroundStyle(.secondary)
                 }
                 if item.role == "user" {
-                    Text(item.content).font(.body).lineSpacing(5)
+                    let parts = DotsQuote.split(item.content)
+                    if let quote = parts.quote { DotsQuoteBlock(text: quote) }
+                    Text(parts.body).font(.body).lineSpacing(5)
                         .fixedSize(horizontal: false, vertical: true)
-                        .textSelection(.enabled)
                         .accessibilityIdentifier("dots-user-bubble-\(item.id)")
                 } else {
                     AgentMarkdown(text: item.content, identifier: "dots-manager-message-\(item.id)")
@@ -404,11 +446,46 @@ struct DotsView: View {
                     }.buttonStyle(.plain).foregroundStyle(.primary)
                 }
             }
-            .padding(item.role == "user" ? 14 : 0)
-            .background(item.role == "user" ? Color.primary.opacity(0.045) : Color.clear,
-                        in: RoundedRectangle(cornerRadius: 20))
-            if item.role != "user" { Spacer(minLength: 0) }
+            .padding(item.role == "system" ? 0 : 14)
+            .background { if item.role != "system" { DotsBubbleBackground(isUser: item.role == "user") } }
+            .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .contextMenu {
+                if item.role != "system" {
+                    Button("回复", systemImage: "arrowshape.turn.up.left") { beginReply(item) }
+                }
+                Button("复制", systemImage: "doc.on.doc") {
+                    UIPasteboard.general.string = item.role == "user" ? DotsQuote.split(item.content).body : item.content
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                }
+                Button("选择文本", systemImage: "selection.pin.in.out") {
+                    selectingText = DotsSelectionText(text: item.role == "user" ? DotsQuote.split(item.content).body : item.content)
+                }
+            }
+            if item.role == "user" { EmptyView() } else { Spacer(minLength: 28) }
         }
+    }
+    private func isBlankReply(_ item: DotsManagerMessage) -> Bool {
+        item.role == "assistant" && (item.attachments ?? []).isEmpty && item.card == nil &&
+            item.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+    private func beginReply(_ item: DotsManagerMessage) {
+        withAnimation(.spring(response: 0.34, dampingFraction: 0.82)) { replyTarget = item }
+        inputFocused = true
+    }
+    /// True from the tap on send until the first words of the reply arrive.
+    private var awaitingReply: Bool {
+        if voice.active { return false }
+        if store.hasPending && !store.sending { return false }
+        if let base = sentAfterId {
+            return !store.messages.contains { $0.id > base && $0.role == "assistant" && !isBlankReply($0) }
+        }
+        if store.sending { return true }
+        guard let last = store.messages.last else { return false }
+        if last.role == "assistant" { return last.isStreaming && isBlankReply(last) }
+        guard last.role == "user", !["paused", "cancelled"].contains(store.manager?.status ?? ""),
+              let created = last.createdAt else { return false }
+        let seconds = created > 1e12 ? created / 1000 : created
+        return Date().timeIntervalSince1970 - seconds < 300
     }
     private func composer(bottomGap: CGFloat) -> some View {
         // Use the arriving glass's progress for the native editor and controls.
@@ -428,6 +505,31 @@ struct DotsView: View {
             sendBase.mix(with: Color(red: 129/255, green: 98/255, blue: 185/255), by: amount, in: .device)
         ], startPoint: .topLeading, endPoint: .bottomTrailing)
         return VStack(alignment: .leading, spacing: 8) {
+            if let reply = replyTarget {
+                HStack(spacing: 10) {
+                    Capsule().fill(Color.accentColor).frame(width: 3)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Label(reply.role == "user" ? "回复自己" : "回复 \(store.displayName)",
+                              systemImage: "arrowshape.turn.up.left.fill")
+                            .font(.caption.weight(.semibold)).foregroundStyle(Color.accentColor)
+                            .labelStyle(.titleAndIcon)
+                        Text(DotsQuote.excerpt(reply.content)).font(.caption).foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                    Spacer(minLength: 4)
+                    Button {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { replyTarget = nil }
+                    } label: {
+                        Image(systemName: "xmark.circle.fill").font(.system(size: 18))
+                            .foregroundStyle(.secondary).frame(width: 30, height: 30).contentShape(Rectangle())
+                    }.buttonStyle(.plain).accessibilityLabel("取消回复")
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.leading, 10).padding(.trailing, 4).padding(.vertical, 6)
+                .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .accessibilityIdentifier("dots-reply-preview")
+            }
             if !store.attachments.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
@@ -462,7 +564,16 @@ struct DotsView: View {
             Button {
                 inputFocused = false
                 if voiceButtonMode { Task { await voice.toggle() } }
-                else { Task { await store.submit() } }
+                else {
+                    // Show the thinking state on the same frame as the tap.
+                    let quote = replyTarget.map { DotsQuote.excerpt($0.content) }
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    withAnimation(.spring(response: 0.34, dampingFraction: 0.8)) {
+                        sentAfterId = store.messages.map(\.id).max() ?? 0
+                        replyTarget = nil
+                    }
+                    Task { await store.submit(quote: quote) }
+                }
             } label: {
                 Group {
                     if store.sending && !voiceButtonMode { ProgressView() }
@@ -487,7 +598,7 @@ struct DotsView: View {
                                     travel: max(175, UIScreen.main.bounds.height * 0.38))
                     .offset(y: -12)
             }
-            .frame(maxWidth: inputFocused || !store.draft.isEmpty || !store.attachments.isEmpty ? .infinity : 325)
+            .frame(maxWidth: inputFocused || replyTarget != nil || !store.draft.isEmpty || !store.attachments.isEmpty ? .infinity : 325)
             .frame(maxWidth: .infinity)
             .padding(.horizontal, 16).padding(.bottom, bottomGap).padding(.top, 8)
     }
@@ -1042,4 +1153,240 @@ private struct DotsSubscriptionCardView: View {
             } catch { self.error = error.localizedDescription }
         }
     }
+}
+
+// MARK: - Reply, thinking and selection
+
+/// A reply is carried in the message text as a Markdown quote, so every
+/// client and the model see the same thing without a protocol change.
+enum DotsQuote {
+    static func compose(quote: String, body: String) -> String {
+        let lines = quote.split(separator: "\n", omittingEmptySubsequences: true).prefix(4)
+            .map { "> " + $0.trimmingCharacters(in: .whitespaces) }
+        return lines.joined(separator: "\n") + "\n\n" + body
+    }
+    static func excerpt(_ content: String) -> String {
+        let plain = content.split(separator: "\n").map { line -> String in
+            var value = String(line).trimmingCharacters(in: .whitespaces)
+            while value.hasPrefix(">") { value = String(value.dropFirst()).trimmingCharacters(in: .whitespaces) }
+            return value.trimmingCharacters(in: CharacterSet(charactersIn: "#*-` "))
+        }.filter { !$0.isEmpty }.joined(separator: " ")
+        return plain.count > 160 ? String(plain.prefix(160)) + "…" : plain
+    }
+    /// Splits a leading quote block from the rest of a user message.
+    static func split(_ content: String) -> (quote: String?, body: String) {
+        let lines = content.components(separatedBy: "\n")
+        var quoted: [String] = []
+        var index = 0
+        while index < lines.count, lines[index].hasPrefix(">") {
+            quoted.append(String(lines[index].dropFirst()).trimmingCharacters(in: .whitespaces)); index += 1
+        }
+        guard !quoted.isEmpty else { return (nil, content) }
+        let rest = lines[index...].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        return (quoted.joined(separator: "\n"), rest)
+    }
+}
+
+struct DotsQuoteBlock: View {
+    let text: String
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Capsule().fill(Color.accentColor.opacity(0.7)).frame(width: 3)
+            Text(text).font(.footnote).foregroundStyle(.secondary).lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityLabel("引用：" + text)
+    }
+}
+
+/// Shown the instant a message is sent, until the first words of the reply arrive.
+struct DotsThinkingIndicator: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var scheme
+    @State private var appeared = false
+    private let start = Date()
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1 / 60, paused: reduceMotion)) { context in
+            let t = context.date.timeIntervalSince(start)
+            HStack(spacing: 10) {
+                HStack(spacing: 5) {
+                    ForEach(0..<3, id: \.self) { index in
+                        let wave = reduceMotion ? 0.6 : (sin(t * 5.4 - Double(index) * 0.8) + 1) / 2
+                        Circle()
+                            .fill(LinearGradient(colors: [Color(red: 0.43, green: 0.47, blue: 0.96),
+                                                          Color(red: 0.67, green: 0.44, blue: 0.93)],
+                                                 startPoint: .topLeading, endPoint: .bottomTrailing))
+                            .frame(width: 7, height: 7)
+                            .scaleEffect(0.72 + 0.4 * wave)
+                            .opacity(0.38 + 0.62 * wave)
+                            .offset(y: -3.5 * wave)
+                    }
+                }
+                let sweep = reduceMotion ? 0.5 : (t * 0.55).truncatingRemainder(dividingBy: 1.6) - 0.3
+                Text(t > 8 ? "正在整理回复" : "正在思考")
+                    .font(.subheadline)
+                    .foregroundStyle(LinearGradient(stops: [
+                        .init(color: .secondary, location: 0),
+                        .init(color: .primary.opacity(scheme == .dark ? 0.95 : 0.8), location: 0.5),
+                        .init(color: .secondary, location: 1)
+                    ], startPoint: UnitPoint(x: sweep - 0.45, y: 0.5), endPoint: UnitPoint(x: sweep + 0.45, y: 0.5)))
+                    .contentTransition(.opacity)
+                    .animation(.easeInOut(duration: 0.3), value: t > 8)
+            }
+            .padding(.horizontal, 15).padding(.vertical, 12)
+            .background(DotsBubbleBackground(isUser: false))
+        }
+        .scaleEffect(appeared || reduceMotion ? 1 : 0.82, anchor: .bottomLeading)
+        .opacity(appeared ? 1 : 0)
+        .onAppear { withAnimation(.spring(response: 0.34, dampingFraction: 0.74)) { appeared = true } }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Dots 正在思考")
+        .accessibilityIdentifier("dots-thinking")
+    }
+}
+
+/// Shared bubble surface so model replies, the thinking state and user
+/// messages read as one family.
+struct DotsBubbleBackground: View {
+    let isUser: Bool
+    @Environment(\.colorScheme) private var scheme
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
+        if isUser {
+            shape.fill(Color.primary.opacity(0.045))
+        } else {
+            shape.fill(scheme == .dark ? Color.white.opacity(0.06) : Color(red: 0.965, green: 0.968, blue: 0.985))
+                .overlay(shape.strokeBorder(Color.primary.opacity(scheme == .dark ? 0.07 : 0.05), lineWidth: 0.5))
+        }
+    }
+}
+
+/// Right-swipe to reply. A UIKit pan that only begins for a clearly
+/// horizontal, rightward drag, so vertical scrolling and the screen-edge
+/// sidebar gesture keep working.
+private struct DotsReplyPan: UIGestureRecognizerRepresentable {
+    var enabled: Bool
+    var onChange: (CGFloat) -> Void
+    var onEnd: (CGFloat, CGFloat) -> Void
+
+    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator { Coordinator() }
+    func makeUIGestureRecognizer(context: Context) -> UIPanGestureRecognizer {
+        let pan = UIPanGestureRecognizer()
+        pan.delegate = context.coordinator
+        pan.maximumNumberOfTouches = 1
+        return pan
+    }
+    func updateUIGestureRecognizer(_ recognizer: UIPanGestureRecognizer, context: Context) {
+        recognizer.isEnabled = enabled
+    }
+    func handleUIGestureRecognizerAction(_ recognizer: UIPanGestureRecognizer, context: Context) {
+        let x = recognizer.translation(in: recognizer.view).x
+        switch recognizer.state {
+        case .began, .changed: onChange(x)
+        case .ended: onEnd(x, recognizer.velocity(in: recognizer.view).x)
+        case .cancelled, .failed: onEnd(0, 0)
+        default: break
+        }
+    }
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        func gestureRecognizerShouldBegin(_ recognizer: UIGestureRecognizer) -> Bool {
+            guard let pan = recognizer as? UIPanGestureRecognizer else { return false }
+            let velocity = pan.velocity(in: pan.view)
+            let start = pan.location(in: pan.view?.window)
+            return start.x > 30 && velocity.x > 0 && abs(velocity.x) > abs(velocity.y) * 1.5
+        }
+    }
+}
+
+struct DotsSwipeToReply: ViewModifier {
+    let enabled: Bool
+    let onReply: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var offset: CGFloat = 0
+    @State private var armed = false
+    private let threshold: CGFloat = 62
+
+    func body(content: Content) -> some View {
+        let progress = min(offset / threshold, 1)
+        content
+            .offset(x: offset)
+            .background(alignment: .leading) {
+                Image(systemName: "arrowshape.turn.up.left.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(armed ? Color.white : Color.secondary)
+                    .frame(width: 30, height: 30)
+                    .background(armed ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.regularMaterial), in: Circle())
+                    .scaleEffect(armed ? 1.06 : 0.55 + 0.45 * progress)
+                    .opacity(Double(progress))
+                    .offset(x: -22 + min(offset, threshold + 12) * 0.5)
+                    .animation(.spring(response: 0.22, dampingFraction: 0.6), value: armed)
+                    .accessibilityHidden(true)
+            }
+            .gesture(DotsReplyPan(enabled: enabled, onChange: { x in
+                // Follow the finger, then resist past the threshold.
+                let raw = max(0, x)
+                let next = raw <= threshold ? raw : threshold + (raw - threshold) * 0.28
+                offset = min(next, threshold + 34)
+                let nowArmed = raw >= threshold
+                if nowArmed != armed {
+                    armed = nowArmed
+                    if nowArmed { UIImpactFeedbackGenerator(style: .medium).impactOccurred(intensity: 0.85) }
+                    else { UISelectionFeedbackGenerator().selectionChanged() }
+                }
+            }, onEnd: { x, velocity in
+                let fire = armed || (x > threshold * 0.7 && velocity > 650)
+                if fire && !armed { UIImpactFeedbackGenerator(style: .medium).impactOccurred(intensity: 0.85) }
+                withAnimation(reduceMotion ? .easeOut(duration: 0.18) : .spring(response: 0.36, dampingFraction: 0.78)) {
+                    offset = 0
+                }
+                armed = false
+                if fire { onReply() }
+            }))
+    }
+}
+
+/// Free range selection of a message, opened from the long-press menu.
+private struct DotsSelectableTextView: UIViewRepresentable {
+    let text: String
+    func makeUIView(context: Context) -> UITextView {
+        let view = UITextView()
+        view.isEditable = false
+        view.isSelectable = true
+        view.backgroundColor = .clear
+        view.font = .preferredFont(forTextStyle: .body)
+        view.adjustsFontForContentSizeCategory = true
+        view.textContainerInset = UIEdgeInsets(top: 8, left: 20, bottom: 24, right: 20)
+        view.dataDetectorTypes = [.link]
+        return view
+    }
+    func updateUIView(_ view: UITextView, context: Context) {
+        if view.text != text {
+            view.text = text
+            DispatchQueue.main.async { view.selectAll(nil) }
+        }
+    }
+}
+
+struct DotsSelectTextSheet: View {
+    let text: String
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        NavigationStack {
+            DotsSelectableTextView(text: text)
+                .navigationTitle("选择文本")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } }
+                }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+}
+
+struct DotsSelectionText: Identifiable {
+    let id = UUID()
+    let text: String
 }

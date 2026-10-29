@@ -387,10 +387,12 @@ final class DotsStore: ObservableObject {
             await self?.refresh(); self?.refreshTask = nil
         }
     }
-    func submit() async {
+    func submit(quote: String? = nil) async {
         guard canSend else { return }
+        let body = draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "请处理这些附件。" : draft
+        let text = quote.map { DotsQuote.compose(quote: $0, body: body) } ?? body
         let operation = DotsPendingOperation(requestId: UUID().uuidString,
-            route: "manager/messages", text: draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "请处理这些附件。" : draft, draftKey: draftKey, attachments: attachments)
+            route: "manager/messages", text: text, draftKey: draftKey, attachments: attachments)
         await perform(operation)
     }
     /// Voice uses the same durable request and transport as typed messages.

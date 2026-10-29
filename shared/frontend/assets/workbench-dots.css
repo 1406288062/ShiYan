@@ -193,3 +193,34 @@ body.workbench-v22 :is(.message-body,.dots-manager-message) a.message-reference:
 .dots-subscription-list li small{font-size:12px;opacity:.6}
 .dots-subscription-list li button{flex:0 0 auto}
 .dots-subscription-empty{opacity:.65}
+
+/* 2026-10-30: reply bubbles, thinking state, reply/copy actions */
+.dots-manager-message { position:relative; }
+.dots-manager-message.is-assistant { width:fit-content;max-width:min(760px,92%);margin-left:0;padding:14px 18px;border-radius:20px;background:var(--dots-reply-fill,#f6f7fb);border:.5px solid color-mix(in srgb,currentColor 6%,transparent); }
+@media (prefers-color-scheme:dark) { .dots-manager-message.is-assistant { --dots-reply-fill:rgba(255,255,255,.06); } }
+:root[data-theme="dark"] .dots-manager-message.is-assistant { --dots-reply-fill:rgba(255,255,255,.06); }
+.dots-manager-message.is-optimistic { opacity:.72;animation:dots-pop-in .28s cubic-bezier(.2,.9,.3,1.15) both; }
+.dots-msg-actions { position:absolute;bottom:-26px;left:6px;display:flex;gap:2px;opacity:0;transform:translateY(-3px);transition:opacity .16s ease,transform .16s ease;pointer-events:none; }
+.dots-manager-message.is-user .dots-msg-actions { left:auto;right:6px; }
+.dots-manager-message:hover .dots-msg-actions,.dots-msg-actions:focus-within { opacity:1;transform:none;pointer-events:auto; }
+.dots-msg-actions button { width:26px;height:24px;display:grid;place-items:center;border:0;border-radius:7px;background:transparent;color:var(--secondary);cursor:pointer; }
+.dots-msg-actions button:hover { background:var(--soft-fill);color:inherit; }
+.dots-msg-actions button.is-done { color:#34a853; }
+.dots-thinking { display:flex;align-items:center;gap:10px;width:fit-content;max-width:760px;margin:0 auto 28px 0;padding:12px 16px;border-radius:20px;background:var(--dots-reply-fill,#f6f7fb);border:.5px solid color-mix(in srgb,currentColor 6%,transparent);transform-origin:bottom left;animation:dots-pop-in .34s cubic-bezier(.2,.9,.3,1.2) both; }
+@media (prefers-color-scheme:dark) { .dots-thinking { --dots-reply-fill:rgba(255,255,255,.06); } }
+.dots-thinking-dots { display:flex;gap:5px; }
+.dots-thinking-dots i { width:7px;height:7px;border-radius:50%;background:linear-gradient(135deg,#6e78f5,#ab70ed);animation:dots-wave 1.15s ease-in-out infinite; }
+.dots-thinking-dots i:nth-child(2) { animation-delay:.15s; }
+.dots-thinking-dots i:nth-child(3) { animation-delay:.3s; }
+.dots-thinking-label { font-size:13px;background:linear-gradient(90deg,var(--secondary,#888) 0%,currentColor 50%,var(--secondary,#888) 100%);background-size:220% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:dots-shimmer 2.2s linear infinite; }
+@keyframes dots-wave { 0%,100% { transform:translateY(0) scale(.75);opacity:.4; } 45% { transform:translateY(-3.5px) scale(1.1);opacity:1; } }
+@keyframes dots-shimmer { from { background-position:120% 0; } to { background-position:-120% 0; } }
+@keyframes dots-pop-in { from { opacity:0;transform:scale(.86) translateY(6px); } to { opacity:1;transform:none; } }
+.dots-reply-preview { display:flex;align-items:center;gap:10px;margin:0 0 8px;padding:8px 8px 8px 12px;border-radius:14px;background:var(--soft-fill);border-left:3px solid var(--accent,#5b6cf0);animation:dots-pop-in .24s ease both; }
+.dots-reply-preview>div { flex:1;min-width:0;display:flex;flex-direction:column;gap:2px; }
+.dots-reply-preview strong { font-size:12px;color:var(--accent,#5b6cf0); }
+.dots-reply-preview span { font-size:12px;color:var(--secondary);overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical; }
+.dots-reply-preview button { width:26px;height:26px;border:0;border-radius:50%;background:transparent;color:var(--secondary);font-size:18px;cursor:pointer; }
+.dots-manager-message.is-user blockquote { margin:0 0 8px;padding-left:9px;border-left:3px solid color-mix(in srgb,var(--accent,#5b6cf0) 70%,transparent);color:var(--secondary);font-size:12.5px; }
+@media (prefers-reduced-motion:reduce) { .dots-thinking,.dots-thinking-dots i,.dots-thinking-label,.dots-reply-preview,.is-optimistic { animation:none; } }
+.dots-thinking.is-steady { animation:none; }
