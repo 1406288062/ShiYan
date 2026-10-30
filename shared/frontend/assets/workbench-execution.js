@@ -6,20 +6,24 @@
  let C,lastConversation='',previous=new Map();
  const state=()=>window.shiyan?.getState();
  const conversation=id=>state()?.conversations?.find(c=>c.id===id)||((window.ShiYanSchedules?.currentConversation?.()?.id===id)?window.ShiYanSchedules.currentConversation():null);
- const records=c=>(c?.messages||[]).filter(m=>m.role==='assistant'&&!working.has(m.state)&&window.ShiYanOutput?.itemsFor(m).length);
+ const records=c=>(c?.messages||[]).filter(m=>m.role==='assistant'&&window.ShiYanOutput?.itemsFor(m).length);
+ // 这一轮回复对应的用户消息（紧挨在它前面的那条）。
+ const promptFor=(c,m)=>{const list=c?.messages||[],at=list.findIndex(x=>x.id===m?.id);for(let i=at-1;i>=0;i--)if(list[i].role==='user')return list[i];return null;};
  function renderPane(tab,pane) {
   if(!pane)return;
   const c=conversation(tab.conversationId),rounds=records(c);
   const compact=rounds.find(m=>m.id===tab.messageId)||rounds.at(-1);
   const refresh=()=>{pane.__executionSignature=null;renderPane(tab,pane);};
-  const m=window.ShiYanMessageDetails.resolve(compact,tab.conversationId,refresh,pane);
+  const live=working.has(compact?.state);
+  const m=live?compact:window.ShiYanMessageDetails.resolve(compact,tab.conversationId,refresh,pane);
   if(m?.detailsDeferred){window.ShiYanMessageDetails.placeholder(m,pane,refresh);return;}
   if(m)tab.messageId=m.id;
-  const signature=JSON.stringify([c?.title,rounds.map(m=>[m.id,m.completedAt]),m]);
+  const prompt=promptFor(c,m);
+  const signature=JSON.stringify([c?.title,rounds.map(m=>[m.id,m.completedAt]),m,prompt?.id]);
   if(pane.__executionSignature===signature)return;pane.__executionSignature=signature;
   pane.classList.add('execution-pane');
   const index=rounds.findIndex(r=>r.id===m?.id);
-  pane.innerHTML='<header class="execution-toolbar"><strong>执行过程</strong><div class="execution-round-picker"><button type="button" data-execution-round aria-label="选择执行轮次" aria-haspopup="listbox" aria-expanded="false"'+(rounds.length?'':' disabled')+'>'+(rounds.length?'第 '+(index+1)+' 轮':'暂无轮次')+'<span aria-hidden="true">⌄</span></button><div class="execution-round-menu" role="listbox" aria-label="执行轮次" hidden>'+rounds.map((r,i)=>'<button type="button" role="option" aria-selected="'+(r.id===m?.id)+'" data-round-id="'+esc(r.id)+'"><span class="execution-round-check" aria-hidden="true">'+(r.id===m?.id?'✓':'')+'</span>第 '+(i+1)+' 轮</button>').join('')+'</div></div></header><div class="execution-scroll"><p class="execution-conversation">'+esc(c?.title||'当前会话')+'</p>'+(m?window.ShiYanOutput.details(m,true):'<p class="wb-empty">这条会话暂无已完成的执行记录。</p>')+'</div>';
+  pane.innerHTML='<header class="execution-toolbar"><strong>执行过程</strong><div class="execution-round-picker"><button type="button" data-execution-round aria-label="选择执行轮次" aria-haspopup="listbox" aria-expanded="false"'+(rounds.length?'':' disabled')+'>'+(rounds.length?'第 '+(index+1)+' 轮'+(live?' · 进行中':''):'暂无轮次')+'<span aria-hidden="true">⌄</span></button><div class="execution-round-menu" role="listbox" aria-label="执行轮次" hidden>'+rounds.map((r,i)=>'<button type="button" role="option" aria-selected="'+(r.id===m?.id)+'" data-round-id="'+esc(r.id)+'"><span class="execution-round-check" aria-hidden="true">'+(r.id===m?.id?'✓':'')+'</span>第 '+(i+1)+' 轮</button>').join('')+'</div></div></header><div class="execution-scroll"><p class="execution-conversation">'+esc(c?.title||'当前会话')+'</p>'+(prompt&&(prompt.text||'').trim()?'<blockquote class="execution-prompt">'+esc(String(prompt.text).slice(0,2000))+'</blockquote>':'')+(m?window.ShiYanOutput.details(m,true):'<p class="wb-empty">这条会话暂无已完成的执行记录。</p>')+'</div>';
   const trigger=pane.querySelector('[data-execution-round]'),menu=pane.querySelector('.execution-round-menu');
   const close=focus=>{menu.hidden=true;trigger.setAttribute('aria-expanded','false');if(focus)trigger.focus();};
   const open=()=>{menu.hidden=false;trigger.setAttribute('aria-expanded','true');menu.style.maxHeight=Math.max(60,Math.min(310,innerHeight-trigger.getBoundingClientRect().bottom-14))+'px';const chosen=menu.querySelector('[aria-selected="true"]')||menu.firstElementChild;chosen?.focus({preventScroll:true});chosen?.scrollIntoView({block:'nearest'});};

@@ -154,8 +154,8 @@
     const content=card.querySelector('.v26-quota-content');content.textContent='正在获取…';
     quotaPending=(async()=>{try{
      const data=await window.shiyan.api('/api/account/quota'),quota=data.quota;
-     const rows=(quota?.windows||[]).filter(w=>typeof w.remainingPercent==='number'&&Number.isFinite(w.remainingPercent));
-     if(!quota?.available||!rows.length){content.textContent='暂时无法获取剩余额度';return;}
+     const rows=[...(quota?.claude?.available?quota.claude.windows||[]:[]),...(quota?.available?quota.windows||[]:[])].filter(w=>typeof w.remainingPercent==='number'&&Number.isFinite(w.remainingPercent));
+     if(!rows.length){content.textContent='暂时无法获取剩余额度';return;}
      content.innerHTML=rows.map(w=>{const percent=Math.max(0,Math.min(100,w.remainingPercent)),reset=typeof w.resetsAt==='number'?new Date(w.resetsAt*1000):null;return '<div class="v26-quota-row"><div><span>'+esc(w.bucket)+' · '+esc(w.period)+'</span><strong>'+esc(Math.round(percent))+'%</strong></div><progress max="100" value="'+percent+'" aria-label="'+esc(w.period)+'剩余额度"></progress>'+(reset&&!isNaN(reset)?'<small>'+esc(reset.toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}))+' 重置</small>':'')+'</div>';}).join('');
     }catch{content.textContent='暂时无法获取剩余额度';}finally{quotaPending=null;}})();return quotaPending;
    }

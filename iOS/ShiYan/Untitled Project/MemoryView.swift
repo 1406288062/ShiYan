@@ -228,6 +228,14 @@ struct ShiyanMemoryEntry: Decodable, Identifiable, Equatable {
     var revision: Int
 }
 
+struct ShiyanMemorySummary: Decodable {
+    struct Section: Decodable, Identifiable { var id: String; var title: String; var points: [String] }
+    var state: String?
+    var total: Int?
+    var counts: [String: Int]?
+    var sections: [Section]
+}
+
 struct ShiyanMemoryEntriesSection: View {
     var cardBackground: Color
     @State private var entries: [ShiyanMemoryEntry] = []
@@ -236,17 +244,61 @@ struct ShiyanMemoryEntriesSection: View {
     @State private var editing: ShiyanMemoryEntry?
     @State private var deleting: ShiyanMemoryEntry?
     @State private var notice: String?
-    private let categories = ["preference": "偏好", "profile": "个人信息", "project": "项目", "fact": "事实", "instruction": "习惯"]
+    @State private var summary: ShiyanMemorySummary?
+    @State private var showAll = false
+    private let categories = ["profile": "关于你", "preference": "偏好与习惯", "project": "项目与工作", "context": "近期在做"]
+    private let order = ["profile", "preference", "project", "context"]
+    private var grouped: [(String, [ShiyanMemoryEntry])] {
+        let keys = order + Set(entries.compactMap(\.category)).subtracting(order).sorted()
+        return keys.compactMap { key in
+            let items = entries.filter { ($0.category ?? "") == key }
+            return items.isEmpty ? nil : (categories[key] ?? "其他", items)
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("记住的内容").font(.headline)
+                Text("记忆摘要").font(.headline)
                 Spacer()
-                if loaded { Text("\(entries.count) 条").font(.footnote).foregroundStyle(.secondary) }
+                if summary?.state == "generating" { Text("正在整理…").font(.footnote).foregroundStyle(.secondary) }
             }
-            Text("普通对话和 Dots 共用这些记忆。也可以直接在对话里说“记住……”或“忘掉……”。")
-                .font(.footnote).foregroundStyle(.secondary)
+            if let sections = summary?.sections, !sections.isEmpty {
+                ForEach(sections) { section in
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(section.title).font(.subheadline.weight(.semibold))
+                            Spacer()
+                            if let count = summary?.counts?[section.id], count > 0 { Text("\(count) 条").font(.caption).foregroundStyle(.secondary) }
+                        }
+                        ForEach(section.points, id: \.self) { point in
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                Circle().fill(Color.secondary.opacity(0.6)).frame(width: 4, height: 4).offset(y: -3)
+                                Text(point).font(.subheadline).fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                }
+            } else if loaded && entries.isEmpty {
+                Text("还没有记住任何内容。在对话里说“记住……”即可。").font(.subheadline).foregroundStyle(.secondary)
+            }
+            if loaded && !entries.isEmpty {
+                Button {
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.88)) { showAll.toggle() }
+                } label: {
+                    HStack {
+                        Text("管理全部记忆").font(.subheadline.weight(.medium))
+                        Text("\(entries.count) 条").font(.footnote).foregroundStyle(.secondary)
+                        Spacer()
+                        Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+                            .rotationEffect(.degrees(showAll ? 90 : 0))
+                    }.contentShape(Rectangle())
+                }.buttonStyle(.plain).padding(.top, 4)
+            }
+            if showAll {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                 TextField("搜索记忆", text: $query).textInputAutocapitalization(.never).autocorrectionDisabled()
@@ -260,27 +312,29 @@ struct ShiyanMemoryEntriesSection: View {
                 Text(query.isEmpty ? "还没有记住任何内容。" : "没有找到相关记忆。")
                     .font(.subheadline).foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.vertical, 8)
             } else {
-                VStack(spacing: 0) {
-                    ForEach(entries) { entry in
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(grouped, id: \.0) { group in
+                    Text(group.0).font(.caption.weight(.semibold)).foregroundStyle(.secondary).padding(.top, 12).padding(.bottom, 2)
+                    ForEach(group.1) { entry in
                         VStack(alignment: .leading, spacing: 4) {
                             Text(entry.content).font(.subheadline).fixedSize(horizontal: false, vertical: true)
-                            Text([categories[entry.category ?? ""] ?? "记忆", entry.scope == "project" ? "项目" : nil].compactMap { $0 }.joined(separator: " · "))
-                                .font(.caption).foregroundStyle(.secondary)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.vertical, 10)
                         .contentShape(Rectangle())
                         .contextMenu {
                             Button("修改", systemImage: "pencil") { editing = entry }
-                            Button("复制", systemImage: "doc.on.doc") { UIPasteboard.general.string = entry.content }
+                            Button { UIPasteboard.general.string = entry.content } label: { Label { Text("复制") } icon: { Image(uiImage: AgentCopyStyle.menuImage) } }
                             Button("删除", systemImage: "trash", role: .destructive) { deleting = entry }
                         }
                         .transition(.asymmetric(insertion: .opacity, removal: .move(edge: .trailing).combined(with: .opacity)))
-                        if entry.id != entries.last?.id { Divider() }
+                        if entry.id != group.1.last?.id { Divider() }
+                    }
                     }
                 }
                 .animation(.spring(response: 0.3, dampingFraction: 0.85), value: entries)
                 Text("长按一条记忆可以修改或删除。").font(.caption2).foregroundStyle(.tertiary)
+            }
             }
             if let notice { Text(notice).font(.footnote).foregroundStyle(.secondary) }
         }
@@ -299,13 +353,23 @@ struct ShiyanMemoryEntriesSection: View {
         do { entries = try await CodexClient.shared.memories(query: query.trimmingCharacters(in: .whitespaces)); notice = nil }
         catch { notice = error.localizedDescription }
         loaded = true
+        if query.isEmpty { await loadSummary() }
+    }
+    // 摘要在记忆变化后由服务器重新整理；整理中时稍后再取一次。
+    private func loadSummary(attempt: Int = 0) async {
+        guard let value = try? await CodexClient.shared.memorySummary() else { return }
+        withAnimation(.easeInOut(duration: 0.2)) { summary = value }
+        if value.state == "generating", attempt < 15 {
+            try? await Task.sleep(for: .seconds(4))
+            if !Task.isCancelled { await loadSummary(attempt: attempt + 1) }
+        }
     }
     private func remove(_ entry: ShiyanMemoryEntry) async {
         do {
             try await CodexClient.shared.deleteMemory(entry.id)
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             withAnimation { entries.removeAll { $0.id == entry.id } }
-            notice = "已删除。普通对话和 Dots 都不会再用到它。"
+            notice = "已删除。"
         } catch { notice = error.localizedDescription }
     }
     private func save(_ entry: ShiyanMemoryEntry, _ content: String) async -> String? {

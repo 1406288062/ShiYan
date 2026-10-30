@@ -229,6 +229,11 @@ final class CodexClient {
         let needle = query.trimmingCharacters(in: .whitespaces).lowercased()
         return needle.isEmpty ? all : all.filter { ($0.content + " " + ($0.category ?? "")).lowercased().contains(needle) }
     }
+    func memorySummary() async throws -> ShiyanMemorySummary {
+        try await prepareConnection()
+        let bytes = try await send(request(method: "GET", route: "memory/summary"))
+        return try JSONDecoder().decode(ShiyanMemorySummary.self, from: bytes)
+    }
     func updateMemory(_ id: String, content: String, revision: Int) async throws {
         try await prepareConnection()
         _ = try await send(request(method: "PATCH", route: "memory/" + id, object: ["content": content, "revision": revision]))
@@ -678,6 +683,23 @@ extension CodexClient: DotsTransport {
         let bytes = try await response(request(method: update == nil ? "GET" : "PATCH", route: "dots/settings", object: update),
                                        rejectDotsErrors: true).body
         return try JSONDecoder().decode(DotsSettingsResponse.self, from: bytes)
+    }
+    func dotsGrants() async throws -> DotsGrantsResponse {
+        try await prepareConnection()
+        let bytes = try await response(request(method: "GET", route: "dots/approval-grants"), rejectDotsErrors: true).body
+        return try JSONDecoder().decode(DotsGrantsResponse.self, from: bytes)
+    }
+    func dotsRevokeGrant(_ id: Int) async throws {
+        try await prepareConnection()
+        _ = try await response(request(method: "DELETE", route: "dots/approval-grants/\(id)"), rejectDotsErrors: true)
+    }
+    func dotsAudit(category: String?, before: Double?) async throws -> DotsAuditResponse {
+        try await prepareConnection()
+        var query = ["limit=50"]
+        if let category, !category.isEmpty { query.append("category=" + category) }
+        if let before { query.append("before=\(Int(before))") }
+        let bytes = try await response(request(method: "GET", route: "dots/audit?" + query.joined(separator: "&")), rejectDotsErrors: true).body
+        return try JSONDecoder().decode(DotsAuditResponse.self, from: bytes)
     }
     func dotsRelationship(_ change: DotsRelationshipChange) async throws -> DotsRelationshipResponse {
         try await prepareConnection()

@@ -12,8 +12,9 @@ nonisolated struct CodexQuota: Decodable, Sendable {
     /// Milliseconds since the Unix epoch, unlike the timestamps inside each item.
     let fetchedAt: Double?
     let error: String?
+    let claude: ClaudeQuota?
 
-    private enum CodingKeys: String, CodingKey { case available, windows, resetCredits, fetchedAt, error }
+    private enum CodingKeys: String, CodingKey { case available, windows, resetCredits, fetchedAt, error, claude }
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         available = try container.decodeIfPresent(Bool.self, forKey: .available) ?? false
@@ -21,9 +22,27 @@ nonisolated struct CodexQuota: Decodable, Sendable {
         resetCredits = try container.decodeIfPresent(CodexResetCredits.self, forKey: .resetCredits)
         fetchedAt = try container.decodeIfPresent(Double.self, forKey: .fetchedAt)
         error = try container.decodeIfPresent(String.self, forKey: .error)
+        claude = try? container.decodeIfPresent(ClaudeQuota.self, forKey: .claude)
     }
 
     var fetchedDate: Date? { CodexQuotaFormat.date(milliseconds: fetchedAt) }
+}
+
+/// Claude 订阅（5 小时 / 每周）额度，由服务器读取 Claude CLI 登录状态获得。
+nonisolated struct ClaudeQuota: Decodable, Sendable {
+    let available: Bool
+    let plan: String?
+    let windows: [CodexQuotaWindow]
+    let error: String?
+
+    private enum CodingKeys: String, CodingKey { case available, plan, windows, error }
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        available = try container.decodeIfPresent(Bool.self, forKey: .available) ?? false
+        plan = try container.decodeIfPresent(String.self, forKey: .plan)
+        windows = (try? container.decodeIfPresent([CodexQuotaWindow].self, forKey: .windows)) ?? []
+        error = try container.decodeIfPresent(String.self, forKey: .error)
+    }
 }
 
 nonisolated struct CodexQuotaWindow: Decodable, Sendable {

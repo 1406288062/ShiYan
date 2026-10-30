@@ -97,6 +97,8 @@ struct DotsApproval: Codable, Identifiable {
     var reason: String?
     var status: String?
     var created_at: Double?
+    /// 批准时可选择授权范围的“动作类型”，如 git push；为空表示只能逐次批准。
+    var grant_labels: [String]?
     var isPending: Bool { ["pending", "requested", "awaiting_approval", "waiting_approval", "needs_approval"].contains(status ?? "") }
     var canApproveCommand: Bool {
         guard let command, !command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
@@ -180,6 +182,7 @@ struct DotsPendingOperation: Codable, Equatable {
     var action: String?
     var decision: String?
     var confirmedCommand: String?
+    var scope: String? = nil
     var draftKey: String?
     var attachments: [DotsAttachment]?
     var schedule: DotsSchedule?
@@ -194,6 +197,7 @@ struct DotsPendingOperation: Codable, Equatable {
         if let action { value["action"] = action }
         if let decision { value["decision"] = decision }
         if let confirmedCommand { value["confirmedCommand"] = confirmedCommand }
+        if let scope { value["scope"] = scope }
         if let schedule, let bytes = try? JSONEncoder().encode(schedule), let fields = try? JSONSerialization.jsonObject(with: bytes) as? [String: Any] {
             value.merge(fields) { _, new in new }; value["endDate"] = (schedule.endDate as Any?) ?? NSNull()
         }

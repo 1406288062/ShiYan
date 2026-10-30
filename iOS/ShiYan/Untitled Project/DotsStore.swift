@@ -557,7 +557,7 @@ final class DotsStore: ObservableObject {
         guard let goalId = state.selectedGoalId else { return }
         await decide(approval, goalId: goalId, approve: approve)
     }
-    func decide(_ approval: DotsApproval, goalId: Int, approve: Bool) async {
+    func decide(_ approval: DotsApproval, goalId: Int, approve: Bool, scope: String = "once") async {
         guard !sending, checkingApproval == nil else { return }
         let route = "goals/\(goalId)/approvals/\(approval.id)/decision"
         let decision = approve ? "approve" : "reject", command = approval.command ?? ""
@@ -586,7 +586,8 @@ final class DotsStore: ObservableObject {
             }
             sending = false
             await perform(DotsPendingOperation(requestId: UUID().uuidString, route: route, goalId: goalId,
-                decision: decision, confirmedCommand: command))
+                decision: decision, confirmedCommand: command,
+                scope: approve && scope != "once" ? scope : nil))
         } catch { notice = "无法核对待批准的操作，请重新读取后再决定。" }
     }
     func retryPending() async { if let operation = state.pending { await perform(operation) } }

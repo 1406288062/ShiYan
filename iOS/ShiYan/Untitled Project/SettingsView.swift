@@ -12,6 +12,7 @@ struct SettingsView: View {
     @State private var showingUsers = false
     @State private var showingMemory = false
     @State private var showingCodexQuota = false
+    @State private var showingDevices = false
     @State private var showingScanner = false
     @State private var selectedAvatar: PhotosPickerItem?
     @State private var loadingAvatar = false
@@ -60,9 +61,14 @@ struct SettingsView: View {
                                     accountRow("邮箱", value: account.user?.email ?? "未设置", symbol: "envelope")
                                     rowDivider
                                     accountRow("角色", value: account.user?.isAdmin == true ? "管理员" : "普通用户", symbol: "person")
+                                    rowDivider
+                                    settingsRow("设备连接", detail: "查看已配对的海绵宝宝设备。", symbol: "desktopcomputer") {
+                                        showingDevices = true
+                                    }
+                                    .accessibilityIdentifier("settings-devices")
                                     if account.canAccessServer {
                                         rowDivider
-                                        settingsRow("额度与重置卡", detail: "查看额度剩余、重置时间与可用重置卡。", symbol: "gauge.with.dots.needle.50percent") {
+                                        settingsRow("额度与重置卡", detail: "查看 Claude 与 Codex 的额度剩余、重置时间与重置卡。", symbol: "gauge.with.dots.needle.50percent") {
                                             showingCodexQuota = true
                                         }
                                         .accessibilityIdentifier("settings-codex-quota")
@@ -103,6 +109,7 @@ struct SettingsView: View {
                 .foregroundStyle(.primary)
                 .accessibilityIdentifier("settings-page")
                 .fullScreenCover(isPresented: $showingScanner) { ShiyanQRScanner() }
+                .sheet(isPresented: $showingDevices) { ShiyanDevicesSheet() }
                 .task(id: selectedAvatar) { await updateAvatar() }
                 .alert("无法更新头像", isPresented: Binding(
                     get: { avatarError != nil }, set: { if !$0 { avatarError = nil } })) {
@@ -237,5 +244,61 @@ struct SettingsView: View {
         }
         .buttonStyle(.plain)
         .accessibilityHint(detail)
+    }
+}
+
+
+/// 设备连接（只读）：显示当前账号配对的海绵宝宝设备及在线状态。配对和管理在电脑端完成。
+struct ShiyanDevicesSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var sponge: DotsConnector?
+    @State private var loaded = false
+    @State private var error: String?
+    var body: some View {
+        NavigationStack {
+            List {
+                if !loaded { ProgressView().frame(maxWidth: .infinity) }
+                if let sponge {
+                    Section {
+                        HStack {
+                            Text("状态")
+                            Spacer()
+                            DotsSourceState(text: sponge.status, state: sponge.state)
+                        }
+                        if let account = sponge.account, !account.isEmpty {
+                            HStack { Text("账号"); Spacer(); Text(account).foregroundStyle(.secondary) }
+                        }
+                    }
+                    Section {
+                        if (sponge.devices ?? []).isEmpty { Text("还没有配对设备").foregroundStyle(.secondary) }
+                        ForEach(sponge.devices ?? [], id: \.self) { device in
+                            HStack(spacing: 12) {
+                                Image(systemName: (device.platform ?? "").lowercased().contains("linux") ? "server.rack" : "laptopcomputer")
+                                    .font(.system(size: 15, weight: .medium)).frame(width: 32, height: 32)
+                                    .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(device.name).font(.body.weight(.semibold))
+                                    if let platform = device.platform, !platform.isEmpty { Text(platform).font(.caption).foregroundStyle(.secondary) }
+                                }
+                                Spacer()
+                                DotsSourceState(text: device.online == true ? "在线" : "离线", state: device.online == true ? "connected" : "available")
+                            }
+                        }
+                    } header: { Text("设备") } footer: { Text("在电脑上的海绵宝宝客户端中配对和管理设备。") }
+                }
+                if let error { Text(error).font(.footnote).foregroundStyle(.red) }
+            }
+            .listStyle(.insetGrouped)
+            .navigationTitle("设备连接").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { ShiyanCloseButton(action: { dismiss() }, inToolbar: true) } }
+            .refreshable { await load() }
+            .task { await load() }
+        }
+        .presentationDragIndicator(.visible)
+    }
+    private func load() async {
+        defer { loaded = true }
+        do { sponge = try await CodexClient.shared.dotsConnectors().connectors.first { $0.kind == "sponge" }; error = nil }
+        catch { self.error = error.localizedDescription }
     }
 }

@@ -17,6 +17,8 @@ final class CodexQuotaStore: ObservableObject {
         self.loader = loader
     }
 
+    var claudeQuota: ClaudeQuota? { snapshot?.claude ?? lastAvailableQuota?.claude }
+
     var windowSnapshot: CodexQuota? {
         snapshot?.available == true ? snapshot : lastAvailableQuota
     }
@@ -78,6 +80,7 @@ struct CodexQuotaView: View {
                                       detail: error, symbol: "exclamationmark.circle")
                             .accessibilityIdentifier("codex-quota-error")
                     }
+                    claudeSection
                     quotaSection
                     resetCreditsSection
                     if let date = store.snapshot?.fetchedDate {
@@ -96,7 +99,7 @@ struct CodexQuotaView: View {
                 EmptyView()
             }
             .overlay(alignment: .top) {
-                Text("Codex").font(.system(size: 18, weight: .semibold))
+                Text("额度").font(.system(size: 18, weight: .semibold))
                     .frame(height: ShiyanPreviewLayout.controlDiameter)
                     .padding(.top, topInset + 3)
                     .allowsHitTesting(false)
@@ -110,7 +113,7 @@ struct CodexQuotaView: View {
 
     private var quotaSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("额度剩余").font(.headline)
+            Text("Codex").font(.headline)
             if store.snapshot?.available == false {
                 Text(CodexQuotaFormat.nonempty(store.snapshot?.error) ?? "当前服务暂未提供额度信息。")
                     .font(.subheadline).foregroundStyle(.secondary)
@@ -152,7 +155,29 @@ struct CodexQuotaView: View {
                     in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
-    private func windowRow(_ window: CodexQuotaWindow) -> some View {
+    @ViewBuilder private var claudeSection: some View {
+        if let claude = store.claudeQuota {
+            VStack(alignment: .leading, spacing: 16) {
+                Text(CodexQuotaFormat.nonempty(claude.plan) ?? "Claude").font(.headline)
+                if claude.available && !claude.windows.isEmpty {
+                    ForEach(Array(claude.windows.enumerated()), id: \.offset) { item in
+                        windowRow(item.element, showBucket: false)
+                            .accessibilityIdentifier("claude-quota-window-\(item.offset)")
+                    }
+                } else {
+                    Text(CodexQuotaFormat.nonempty(claude.error) ?? "暂时无法获取 Claude 额度")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                }
+            }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(uiColor: .secondarySystemGroupedBackground),
+                        in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .accessibilityIdentifier("claude-quota-section")
+        }
+    }
+
+    private func windowRow(_ window: CodexQuotaWindow, showBucket: Bool = true) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text(window.title).font(.subheadline.weight(.semibold))
@@ -166,7 +191,7 @@ struct CodexQuotaView: View {
                     .accessibilityLabel(window.title + "剩余")
                     .accessibilityValue(window.remainingText)
             }
-            if let bucket = CodexQuotaFormat.nonempty(window.bucket) {
+            if showBucket, let bucket = CodexQuotaFormat.nonempty(window.bucket) {
                 Text(bucket).font(.caption).foregroundStyle(.secondary)
             }
             Text(window.resetDate.map { "重置时间：" + CodexQuotaFormat.dateText($0) } ?? "未提供重置时间")
@@ -178,7 +203,7 @@ struct CodexQuotaView: View {
 
     private var resetCreditsSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("重置卡").font(.headline)
+            Text("Codex 重置卡").font(.headline)
             if let reset = store.snapshot?.resetCredits {
                 Text(reset.countText).font(.title3.weight(.semibold)).monospacedDigit()
                     .accessibilityIdentifier("codex-reset-credits-count")

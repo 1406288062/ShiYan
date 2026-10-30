@@ -123,15 +123,17 @@
     activatePage('settings', 'settingsGeneralTitle');
     elements.memoryEntry.focus();
   }
-  // 记忆条目：查看、搜索、修改、删除。普通对话和 Dots 共用。
+  // 记忆：上面是按类别整理的摘要，下面可以管理全部条目。
   let entriesSection = null, entries = [], entriesQuery = '', editingId = '', entriesTimer = null;
   const escHTML = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const categoryName = {preference:'偏好', profile:'个人信息', project:'项目', fact:'事实', instruction:'习惯'};
+  const categoryName = {profile:'关于你', preference:'偏好与习惯', project:'项目与工作', context:'近期在做'};
+  const categoryOrder = ['profile','preference','project','context'];
+  let summaryTimer = null, summaryTries = 0;
   function ensureEntries() {
     if (entriesSection?.isConnected) return entriesSection;
     entriesSection = document.createElement('section');
     entriesSection.className = 'memory-entries';
-    entriesSection.innerHTML = '<header><h3>记住的内容</h3><input type="search" placeholder="搜索" aria-label="搜索记忆" data-memory-search></header><p class="settings-note">普通对话和 Dots 共用这些记忆。也可以直接在对话里说“记住……”或“忘掉……”。</p><ul class="memory-entry-list" data-memory-list></ul><p class="memory-entry-status" role="status" data-memory-status></p>';
+    entriesSection.innerHTML = '<header><h3>记忆摘要</h3><small data-memory-summary-state></small></header><div class="memory-summary" data-memory-summary></div><details class="memory-all"><summary><span>管理全部记忆</span><small data-memory-count></small></summary><input type="search" placeholder="搜索" aria-label="搜索记忆" data-memory-search><ul class="memory-entry-list" data-memory-list></ul></details><p class="memory-entry-status" role="status" data-memory-status></p>';
     elements.topicsSection.before(entriesSection);
     entriesSection.querySelector('[data-memory-search]').addEventListener('input', event => {
       clearTimeout(entriesTimer); entriesTimer = setTimeout(() => { entriesQuery = event.target.value.trim(); loadEntries(); }, 250);
@@ -151,7 +153,7 @@
         if (event.target.closest('[data-memory-delete]')) {
           if (window.shiyan?.confirmAction && !await window.shiyan.confirmAction('删除这条记忆？', entry.content.slice(0, 80), '删除')) return;
           await api('/api/memory/'+encodeURIComponent(id), 'DELETE', {});
-          item.classList.add('is-removing'); status.textContent = '已删除。普通对话和 Dots 都不会再用到它。';
+          item.classList.add('is-removing'); status.textContent = '已删除。';
           setTimeout(() => loadEntries(), 180);
         }
       } catch (cause) { status.textContent = cause.message || '操作失败，请重试。'; }
@@ -160,13 +162,29 @@
   }
   function drawEntries() {
     const list = entriesSection.querySelector('[data-memory-list]');
-    list.innerHTML = entries.length ? entries.map(e => '<li data-memory-id="'+escHTML(e.id)+'">'+(editingId === e.id
+    entriesSection.querySelector('[data-memory-count]').textContent = entries.length ? entries.length+' 条' : '';
+    const sorted = [...entries].sort((a,b) => (categoryOrder.indexOf(a.category)+9)%9 - (categoryOrder.indexOf(b.category)+9)%9);
+    let lastGroup = '';
+    const group = e => { const name = categoryName[e.category] || '其他'; if (name === lastGroup) return ''; lastGroup = name; return '<li class="memory-entry-group">'+escHTML(name)+'</li>'; };
+    list.innerHTML = entries.length ? sorted.map(e => group(e)+'<li data-memory-id="'+escHTML(e.id)+'">'+(editingId === e.id
       ? '<textarea rows="3" maxlength="1200">'+escHTML(e.content)+'</textarea><div class="memory-entry-actions"><button type="button" class="wb-secondary" data-memory-cancel>取消</button><button type="button" class="wb-primary" data-memory-save>保存</button></div>'
-      : '<div class="memory-entry-text"><span>'+escHTML(e.content)+'</span><small>'+escHTML(categoryName[e.category] || '记忆')+(e.scope === 'project' ? ' · 项目' : '')+' · '+new Date(e.updatedAt).toLocaleDateString('zh-CN')+'</small></div><div class="memory-entry-actions"><button type="button" class="wb-text-button" data-memory-edit>修改</button><button type="button" class="wb-text-button is-destructive" data-memory-delete>删除</button></div>')+'</li>').join('')
+      : '<div class="memory-entry-text"><span>'+escHTML(e.content)+'</span><small>'+new Date(e.updatedAt).toLocaleDateString('zh-CN')+'</small></div><div class="memory-entry-actions"><button type="button" class="wb-text-button" data-memory-edit>修改</button><button type="button" class="wb-text-button is-destructive" data-memory-delete>删除</button></div>')+'</li>').join('')
       : '<li class="memory-entry-empty">'+(entriesQuery ? '没有找到相关记忆。' : '还没有记住任何内容。')+'</li>';
+  }
+  async function loadSummary() {
+    ensureEntries(); clearTimeout(summaryTimer);
+    const box = entriesSection.querySelector('[data-memory-summary]'), state = entriesSection.querySelector('[data-memory-summary-state]');
+    try {
+      const data = await api('/api/memory/summary');
+      const sections = Array.isArray(data?.sections) ? data.sections : [];
+      box.innerHTML = sections.length ? sections.map(s => '<section class="memory-summary-group"><h4>'+escHTML(s.title || categoryName[s.id] || '')+'<small>'+escHTML(data.counts?.[s.id] ? data.counts[s.id]+' 条' : '')+'</small></h4><ul>'+(s.points||[]).map(p => '<li>'+escHTML(p)+'</li>').join('')+'</ul></section>').join('') : '<p class="memory-summary-empty">还没有记住任何内容。在对话里说“记住……”即可。</p>';
+      state.textContent = data?.state === 'generating' ? '正在整理…' : '';
+      if (data?.state === 'generating' && summaryTries++ < 15) summaryTimer = setTimeout(loadSummary, 4000); else summaryTries = 0;
+    } catch (cause) { box.innerHTML = ''; state.textContent = ''; }
   }
   async function loadEntries() {
     ensureEntries();
+    if (!entriesQuery) loadSummary();
     try {
       const result = await api('/api/memory'+(entriesQuery ? '?query='+encodeURIComponent(entriesQuery) : ''));
       entries = Array.isArray(result?.memories) ? result.memories : [];
@@ -299,11 +317,47 @@
     const type = typeof value === 'string' ? value.toLowerCase() : '';
     return new Map([['codexratelimits','Codex 额度'], ['weekly','周额度重置卡'], ['week','周额度重置卡'], ['daily','日额度重置卡'], ['five_hour','5 小时额度重置卡'], ['primary','短期额度重置卡'], ['secondary','周额度重置卡']]).get(type) || (typeof value === 'string' && value ? value : '额度重置卡');
   }
+  function renderQuotaWindows(windows) {
+    const list = codexText('div', '', 'settings-quota-windows');
+    for (const window of windows) {
+      const item = codexText('section', '', 'settings-quota-window');
+      const remaining = Math.max(0, Math.min(100, window.remainingPercent));
+      const label = window.period || '当前周期';
+      const heading = codexText('div', '', 'settings-quota-window-heading');
+      heading.append(codexText('span', label), codexText('strong', Math.round(remaining)+'%'));
+      const progress = document.createElement('progress');
+      progress.max = 100;
+      progress.value = remaining;
+      progress.setAttribute('aria-label', (window.bucket || '')+label+'剩余');
+      const resetsAt = quotaDate(window.resetsAt);
+      item.append(heading, progress, codexText('p', resetsAt ? '重置时间：'+resetsAt : '重置时间暂未提供', 'settings-quota-muted'));
+      list.append(item);
+    }
+    return list;
+  }
+  function validWindows(value) {
+    return Array.isArray(value) ? value.filter(window => window && typeof window.remainingPercent === 'number' && Number.isFinite(window.remainingPercent)) : [];
+  }
+  function renderClaudeQuota(claude) {
+    if (!claude) return;
+    const windows = validWindows(claude.windows);
+    elements.codexContent.append(codexText('h3', claude.plan || 'Claude', 'settings-section-title'));
+    if (claude.available && windows.length) elements.codexContent.append(renderQuotaWindows(windows));
+    else elements.codexContent.append(codexText('p', claude.error || '暂时无法获取 Claude 额度', 'settings-quota-muted'));
+    if (claude.extraUsage && typeof claude.extraUsage.utilization === 'number') elements.codexContent.append(codexText('p', '额外用量已使用 '+Math.round(claude.extraUsage.utilization)+'%', 'settings-quota-muted'));
+  }
   function renderCodexQuota(quota) {
     elements.codexContent.replaceChildren();
+    renderClaudeQuota(quota.claude);
+    if (quota.available === false) {
+      elements.codexContent.append(codexText('h3', 'Codex', 'settings-section-title'), codexText('p', quota.error || '暂时无法获取 Codex 额度', 'settings-quota-muted'));
+      const fetched = quotaDate(quota.claude?.fetchedAt, false);
+      if (fetched) elements.codexContent.append(codexText('p', '更新于 '+fetched, 'settings-quota-updated settings-quota-muted'));
+      return;
+    }
     const windows = Array.isArray(quota.windows) ? quota.windows.filter(window => window && typeof window.remainingPercent === 'number' && Number.isFinite(window.remainingPercent)) : [];
     if (windows.length) {
-      elements.codexContent.append(codexText('h3', '额度剩余', 'settings-section-title'));
+      elements.codexContent.append(codexText('h3', 'Codex', 'settings-section-title'));
       const list = codexText('div', '', 'settings-quota-windows');
       for (const window of windows) {
         const item = codexText('section', '', 'settings-quota-window');
@@ -321,7 +375,7 @@
       }
       elements.codexContent.append(list);
     }
-    elements.codexContent.append(codexText('h3', '重置卡', 'settings-section-title'));
+    elements.codexContent.append(codexText('h3', 'Codex 重置卡', 'settings-section-title'));
     const cards = codexText('section', '', 'settings-reset-cards');
     const reset = quota.resetCredits;
     if (!reset || !Number.isSafeInteger(reset.availableCount) || reset.availableCount < 0) {
@@ -358,11 +412,11 @@
     quotaLoading = true;
     elements.codexPage.setAttribute('aria-busy', 'true');
     elements.codexContent.replaceChildren();
-    elements.codexNotice.textContent = '正在读取 Codex 额度与重置卡…';
+    elements.codexNotice.textContent = '正在读取 Claude 与 Codex 额度…';
     elements.codexNotice.classList.remove('is-error');
     try {
       const result = await api('/api/account/quota');
-      if (result?.ok === false || !result?.quota || result.quota.available === false) throw new Error('账户信息暂时不可用。');
+      if (result?.ok === false || !result?.quota || (result.quota.available === false && !result.quota.claude?.available)) throw new Error('账户信息暂时不可用。');
       renderCodexQuota(result.quota);
       elements.codexNotice.textContent = '';
     } catch (error) {
@@ -393,18 +447,18 @@
     const codexNavigation = document.createElement('button');
     codexNavigation.type = 'button';
     codexNavigation.dataset.settingsPage = 'codex';
-    codexNavigation.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M3 10h18m-14 5h4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span>Codex 额度与重置卡</span>';
+    codexNavigation.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M3 10h18m-14 5h4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span>额度与重置卡</span>';
     elements.navigation.insertBefore(codexNavigation, elements.navigationEmpty);
     const codexEntry = document.createElement('button');
     codexEntry.type = 'button';
     codexEntry.className = 'settings-memory-entry';
     codexEntry.dataset.settingsCodex = '';
-    codexEntry.innerHTML = '<span class="settings-entry-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24"><rect x="3" y="5" width="18" height="14" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M3 10h18m-14 5h4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span><span class="settings-entry-copy"><strong>Codex 额度与重置卡</strong><span>查看额度剩余、重置时间与可用重置卡</span></span><svg class="settings-entry-chevron" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="m9 5 7 7-7 7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    codexEntry.innerHTML = '<span class="settings-entry-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24"><rect x="3" y="5" width="18" height="14" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M3 10h18m-14 5h4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span><span class="settings-entry-copy"><strong>额度与重置卡</strong><span>查看额度剩余、重置时间与可用重置卡</span></span><svg class="settings-entry-chevron" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="m9 5 7 7-7 7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
     elements.home.append(codexText('h3', '账户', 'settings-section-title'), codexEntry);
     const codexPage = document.createElement('section');
     codexPage.className = 'settings-codex-page';
     codexPage.hidden = true;
-    codexPage.innerHTML = '<header class="memory-header"><h2 id="settingsCodexTitle" tabindex="-1">Codex 额度与重置卡</h2></header><div class="settings-quota-toolbar"><p>查看当前账户的额度与重置卡信息</p></div><p class="memory-notice" data-codex-notice role="status" aria-live="polite"></p><div data-codex-content></div>';
+    codexPage.innerHTML = '<header class="memory-header"><h2 id="settingsCodexTitle" tabindex="-1">额度与重置卡</h2></header><div class="settings-quota-toolbar"><p>查看当前账户的额度与重置卡信息</p></div><p class="memory-notice" data-codex-notice role="status" aria-live="polite"></p><div data-codex-content></div>';
     find('.settings-content').append(codexPage);
     Object.assign(elements, {codexPage, codexTitle:find('#settingsCodexTitle'), codexNotice:find('[data-codex-notice]'), codexContent:find('[data-codex-content]')});
     codexEntry.addEventListener('click', showCodex);

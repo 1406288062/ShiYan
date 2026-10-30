@@ -891,3 +891,8 @@ body.workbench-v22 .exec-panel { margin:0; }
 @keyframes exec-shimmer { from { background-position:120% 0; } to { background-position:-120% 0; } }
 @keyframes exec-reveal { from { opacity:0;transform:translateY(-3px); } to { opacity:1;transform:none; } }
 @media (prefers-reduced-motion:reduce) { body.workbench-v22 .exec *,body.workbench-v22 .exec { animation:none !important; } body.workbench-v22 .exec-shimmer { color:var(--exec-ink);background:none; } }
+
+/* 执行过程：本轮消息、每步说明、思考（沿用原执行过程样式） */
+.execution-prompt{margin:0 0 14px;padding:9px 12px;border-left:2px solid var(--line);color:var(--text);white-space:pre-wrap;overflow-wrap:anywhere;max-height:9.6em;overflow:auto;line-height:1.6}
+body.workbench-v22 .output-purpose{margin:0 0 6px;color:var(--secondary);font-size:12px}
+body.workbench-v22 .output-thought{margin:0;color:var(--secondary);white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6;font-size:12.5px}

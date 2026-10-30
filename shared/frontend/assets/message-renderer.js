@@ -123,20 +123,51 @@
     const content=item.result?.content;
     return Array.isArray(content)?content.filter(c=>c?.type==='text'&&typeof c.text==='string').map(c=>c.text).join('\n'):'';
   }
+  // 每一步用一句话说明在做什么（按命令 / 工具推断，推断不出就不写）。
+  function commandPurpose(command){
+    let c=String(command||'').trim();
+    const wrapped=c.match(/^(?:\/bin\/)?(?:ba|z)?sh\s+-l?c\s+(['"])([\s\S]*)\1$/);if(wrapped)c=wrapped[2];
+    c=c.replace(/^(?:cd\s+\S+\s*&&\s*)+/,'').trim();
+    const rules=[
+      [/^(rg|grep|ag|git\s+grep)\b/,'在代码里搜索'],[/^(ls|tree|find|fd)\b/,'查看目录和文件'],[/^(cat|head|tail|less|nl|wc|sed\s+-n)\b/,'读取文件内容'],
+      [/^git\s+(status|diff|log|show|blame)\b/,'查看代码改动和历史'],[/^git\s+(add|commit)\b/,'提交改动'],[/^git\s+push\b/,'推送到远端仓库'],[/^git\s+(pull|fetch|clone|checkout|switch|merge|rebase)\b/,'同步代码'],
+      [/^(npm|pnpm|yarn|bun)\s+(i|install|add|ci)\b|^pip3?\s+install\b|^brew\s+install\b/,'安装依赖'],
+      [/\b(test|pytest|vitest|jest|--test)\b/,'运行测试'],[/^(npm|pnpm|yarn)\s+run\s+build\b|^xcodebuild\b|^make\b|^cargo\s+build\b|^tsc\b/,'构建项目'],
+      [/^(curl|wget|http)\b/,'请求网络地址'],[/^(mkdir|cp|mv|rm|touch|ln|chmod)\b/,'整理文件'],[/^apply_patch\b|^(cat|tee)\b.*>\s*\S/,'写入文件'],
+      [/^(python3?|node|deno|ruby|bash|sh)\b/,'运行脚本'],[/^(systemctl|launchctl|service)\b/,'管理系统服务'],[/^(ps|top|df|du|free|uptime|lsof|netstat|ss)\b/,'查看系统状态'],[/^(open|osascript)\b/,'打开应用或文件'],
+    ];
+    for(const [re,text] of rules)if(re.test(c))return text;
+    return '';
+  }
+  function toolPurpose(item){
+    const server=String(item.server||'').toLowerCase(),tool=String(item.tool||'').toLowerCase();
+    if(server==='shiyan-input')return '向你确认信息';
+    if(/memory/.test(server+tool))return '读取或更新记忆';
+    if(/fetch|browser|web/.test(server)||/fetch|navigate|browse/.test(tool))return '读取网页内容';
+    if(/sponge|device|remote/.test(server))return '访问你的设备';
+    if(/file|fs/.test(server)||/read_file|write_file|list_dir/.test(tool))return '读写文件';
+    if(/search/.test(tool))return '搜索资料';
+    return '';
+  }
+  function purposeHTML(text){return text?'<p class="output-purpose">'+esc(text)+'</p>':'';}
   function itemHTML(item) {
     const s=status(item);let label='',body='';
+    if(item.type==='reasoning'){
+      const text=String(item.text||'').trim();
+      return text?'<section class="output-item output-reasoning" data-output-id="'+esc(item.id||'')+'"><header><span>思考</span></header><p class="output-thought">'+esc(limit(text,8000))+'</p></section>':'';
+    }
     if(item.type==='command_execution'){
-      label='终端命令';body='<pre class="output-command"><code>'+esc(limit(item.command,1000))+'</code></pre>'+output(item.aggregated_output,'输出');
+      label='终端命令';body=purposeHTML(commandPurpose(item.command))+'<pre class="output-command"><code>'+esc(limit(item.command,1000))+'</code></pre>'+output(item.aggregated_output,'输出');
       if(Number.isFinite(item.exit_code))body+='<p class="output-exit">退出码 '+esc(item.exit_code)+'</p>';
     }else if(item.type==='mcp_tool_call'){
       label=[limit(item.server,100),limit(item.tool,100)].filter(Boolean).join(' · ')||'工具调用';
-      body=output(toolText(item),'工具结果');
+      body=purposeHTML(toolPurpose(item))+output(toolText(item),'工具结果');
       if(item.error)body+='<p class="output-error">'+esc(limit(typeof item.error==='string'?item.error:item.error.message||'工具调用失败'))+'</p>';
     }else if(item.type==='todo_list'){
       label='执行计划';const rows=(Array.isArray(item.items)?item.items:[]).slice(0,50);s.label=rows.filter(t=>t.completed).length+'/'+rows.length+' 已完成';
       body='<ul class="output-plan">'+rows.map(t=>'<li'+(t.completed?' class="is-done"':'')+'><input type="checkbox" disabled'+(t.completed?' checked':'')+' aria-label="'+(t.completed?'已完成':'未完成')+'"><span>'+esc(limit(t.text,1000))+'</span></li>').join('')+'</ul>';
     }else if(item.type==='file_change'){
-      label='文件修改';body='<ul class="output-files">'+(Array.isArray(item.changes)?item.changes:[]).slice(0,50).map(f=>'<li><span>'+esc(limit(f.path,1000))+'</span><small>'+esc(({add:'新增',delete:'删除',update:'修改'})[f.kind]||limit(f.kind,40))+'</small></li>').join('')+'</ul>';
+      label='文件修改';body=purposeHTML('修改了 '+(Array.isArray(item.changes)?item.changes.length:0)+' 个文件')+'<ul class="output-files">'+(Array.isArray(item.changes)?item.changes:[]).slice(0,50).map(f=>'<li><span>'+esc(limit(f.path,1000))+'</span><small>'+esc(({add:'新增',delete:'删除',update:'修改'})[f.kind]||limit(f.kind,40))+'</small></li>').join('')+'</ul>';
     }else if(item.type==='web_search'){
       label='搜索网页';body='<p class="output-query">'+esc(limit(item.query,1000))+'</p>';
     }else if(item.type==='collab_tool_call'){
@@ -253,9 +284,8 @@
   });
   function details(message,busy) {
     const items=itemsFor(message);if(!items.length)return '';
-    if(busy)return '<div class="exec exec-panel">'+timelineHTML(items,false)+'</div>';
-    const errors=items.filter(i=>status(i).key==='failed').length;
-    return '<details class="output-details"'+(busy?' open':'')+'><summary><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg><span>执行过程</span><small>'+items.length+' 项'+(errors?' · '+errors+' 项失败':'')+'</small></summary><div class="output-detail-body">'+items.map(itemHTML).join('')+'</div></details>';
+    const errors=items.filter(i=>status(i).key==='failed').length,steps=items.filter(i=>i.type!=='reasoning').length;
+    return '<details class="output-details"'+(busy?' open':'')+'><summary><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg><span>执行过程</span><small>'+steps+' 项'+(errors?' · '+errors+' 项失败':'')+'</small></summary><div class="output-detail-body">'+items.map(itemHTML).join('')+'</div></details>';
   }
   window.ShiYanOutput={markdown,details,inline,itemsFor,executionStats,generatedAssetVisible,generatedDocumentVisible};
 })();

@@ -245,11 +245,9 @@
     const changedNames=new Set(changeSummary?changeFiles.map(f=>String(f.path).replace(/\\/g,'/').split('/').pop()):[]);
     const attachments=(m.assets||[]).filter(a=>user||window.ShiYanOutput.generatedAssetVisible(a)),images=attachments.filter(a=>(a.mimeType||'').startsWith('image/')),files=attachments.filter(a=>!(a.mimeType||'').startsWith('image/')&&!changedNames.has(String(a.filename||'').replace(/\\/g,'/').split('/').pop()));
     let inner=(user?attachments:images).length?'<div class="message-assets">'+(user?attachments:images).map(assetHTML).join('')+'</div>':'';
-    const execution=!user&&window.ShiYanOutput?.inline?window.ShiYanOutput.inline(m,busy):'';
-    if(execution)inner+=execution;
     if(m.text)inner+='<div class="message-body">'+(user?esc(m.text).replace(/\n/g,'<br>'):markdown(m.text))+'</div>';
     if(!user&&files.length)inner+='<div class="message-files" aria-label="生成的文件">'+files.map(assetHTML).join('')+'</div>';
-    if(!user && busy && !execution)inner+='<div class="thinking" aria-live="polite">'+esc(m.phase || '正在回复…')+'</div>';
+    if(!user && busy)inner+='<div class="thinking" aria-live="polite">'+esc(m.phase || '正在回复…')+'</div>';
     if(m.error)inner+='<div class="message-error">'+esc(m.error)+'</div>';
     if(!user && !busy && !m.text && !attachments.length && !m.error)inner+='<div class="message-empty">'+(m.state==='cancelled'?'已停止':'本次没有可展示的内容')+'</div>';
     const elapsed=!user&&m.requestStartedAt?'<div class="v22-elapsed" data-start="'+esc(m.requestStartedAt)+'" '+(m.completedAt?'data-end="'+esc(m.completedAt)+'"':'')+'><span></span></div>':'';

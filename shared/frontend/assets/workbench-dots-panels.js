@@ -17,7 +17,7 @@
     download:'<path d="M12 2v13m-5-5 5 5 5-5M4 16v5h16v-5"/>',
     check:'<path d="m5 12 4 4L19 6"/>',
   };
-  const icon = kind => '<svg class="dots-panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(icons[kind] || icons.file)+'</svg>';
+  const icon = kind => kind === 'copy' ? '<span class="symbol dots-panel-icon" data-symbol="reply-copy" style="--symbol:url(\'/assets/symbols/reply-copy.png\')" aria-hidden="true"></span>' : '<svg class="dots-panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(icons[kind] || icons.file)+'</svg>';
   const colors = ['#bdc4d5','#00b4ef','#ffd139','#d469da','#bada10','#ed729c','#f79557','#7293f1'];
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   let C, profile = {}, pets = [], cataloguePromise, snapshot = {}, activities = [], outputs = [];
@@ -226,23 +226,29 @@
     C.scheduleNative?.();const target=returnFocus?.isConnected&&returnFocus.getClientRects().length?returnFocus:$('dotsTasksButton');target?.focus({preventScroll:true});
     positionPet();
   }
-  // 事件订阅页只展示已经订阅成功的来源。新增订阅在 Dots 对话里完成（Dots 会在对话里请你补充凭据）。
+  // 连接器与事件订阅共用同一套列表样式：图标 · 名称 · 一行说明 · 右侧状态或操作。
+  const connectorGlyph={mail:'M4 6h16v12H4zM4 7l8 6 8-6',calendar:'M5 6h14v13H5zM5 10h14M9 4v4M15 4v4',dev:'M9 8l-4 4 4 4M15 8l4 4-4 4',feeds:'M5 19a1 1 0 1 0 0-.01M5 12a7 7 0 0 1 7 7M5 5a14 14 0 0 1 14 14',devices:'M4 5h16v11H4zM9 20h6M12 16v4',messaging:'M5 5h14v10H9l-4 4z',docs:'M7 4h7l4 4v12H7zM14 4v4h4',custom:'M10 4h4v3a2 2 0 0 0 4 0V4h2v6h-3a2 2 0 0 0 0 4h3v6h-6v-3a2 2 0 0 0-4 0v3H4v-6h3a2 2 0 0 0 0-4H4V4z',builtin:'M12 3l2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-.5z'};
+  const glyph=c=>'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+(connectorGlyph[c]||connectorGlyph.builtin)+'"/></svg>';
+  const providerCategory={github:'dev',email:'mail','google-calendar':'calendar',rss:'feeds'};
+  const sourceRow=({id,icon,name,line,side,more,open,state})=>'<li class="dots-src'+(state?' is-'+state:'')+(open?' is-open':'')+'"'+(id?' data-src="'+esc(id)+'"':'')+'><div class="dots-src-row"'+(more!==undefined?' data-src-toggle role="button" tabindex="0" aria-expanded="'+!!open+'"':'')+'><span class="dots-src-icon">'+glyph(icon)+'</span><span class="dots-src-text"><strong>'+esc(name)+'</strong>'+(line?'<small>'+esc(line)+'</small>':'')+'</span><span class="dots-src-side">'+side+'</span></div>'+(open&&more?'<div class="dots-src-more">'+more+'</div>':'')+'</li>';
+  const stateLabel=(text,state)=>'<span class="dots-src-state is-'+esc(state)+'"><i></i>'+esc(text)+'</span>';
+  // 事件订阅：只列出已订阅的来源；新增订阅在 Dots 对话里完成。
   async function openSubscriptions() {
     try {
       const result = await api('/subscriptions');
       const labels = {github:'GitHub',email:'邮箱','google-calendar':'Google 日历',rss:'RSS'};
-      const statusText = s => !s.enabled ? '已暂停' : ({pending:'等待首次检查',listening:'正在接收通知',ok:'正在接收通知',active:'正在接收通知',connecting:'正在连接',reconnecting:'正在重新连接',waiting_configuration:'等待配置',waiting_authorization:'等待授权'})[s.status] || ('需要处理：' + s.status);
-      const detail = s => s.repository || s.address || (Array.isArray(s.feeds) ? s.feeds.join('、') : '') || (s.calendarId && s.calendarId !== 'primary' ? s.calendarId : '');
+      const statusOf = s => !s.enabled ? ['已暂停','paused'] : ['backoff','error','failed','waiting_authorization'].includes(s.status) ? ['需要处理','error'] : ['接收中','connected'];
+      const detail = s => s.repository || s.address || (Array.isArray(s.feeds) ? s.feeds.length+' 个源' : '') || (s.calendarId && s.calendarId !== 'primary' ? s.calendarId : '');
       const dialog = makeDialog('dotsSubscriptionsDialog','dots-conversation-overlay');
-      dialog.innerHTML = '<section class="dots-conversation-card dots-subscriptions-card"><header><h2>事件订阅</h2><button type="button" class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button></header><p>想订阅什么，直接在对话里告诉 Dots，例如“订阅 openai/codex 仓库的更新”“有新邮件时通知我”。订阅成功后会显示在这里。</p><div data-subscription-list></div><p role="alert" class="dots-dialog-error" data-subscription-error hidden></p></section>';
+      dialog.innerHTML = '<section class="dots-conversation-card dots-sources-card"><header><div><h2>事件订阅</h2><small>在对话里告诉 Dots 想订阅什么</small></div><button type="button" class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button></header><div data-subscription-list></div><p role="alert" class="dots-dialog-error" data-subscription-error hidden></p></section>';
       showDialog(dialog, dialog);
       let subscriptions = result.subscriptions || [];
       const draw = () => {
         const list = dialog.querySelector('[data-subscription-list]'), active = subscriptions.filter(s => s.configured);
-        list.innerHTML = active.length ? '<ul class="dots-subscription-list">'+active.map(s => '<li><div><strong>'+esc(labels[s.provider]||s.provider)+'</strong>'+(detail(s)?'<span>'+esc(detail(s))+'</span>':'')+'<small>'+esc(statusText(s))+'</small></div><button type="button" data-remove-subscription="'+esc(s.provider)+'">取消订阅</button></li>').join('')+'</ul>' : '<p class="dots-subscription-empty">还没有订阅任何事件。</p>';
+        list.innerHTML = active.length ? '<ul class="dots-src-list">'+active.map(s => { const [text,state]=statusOf(s); return sourceRow({icon:providerCategory[s.provider],name:labels[s.provider]||s.provider,line:detail(s),state,side:stateLabel(text,state)+'<button type="button" class="dots-src-button" data-remove-subscription="'+esc(s.provider)+'">取消</button>'}); }).join('')+'</ul>' : '<p class="dots-src-empty">还没有订阅</p>';
         list.querySelectorAll('[data-remove-subscription]').forEach(button => {
           button.onclick = async () => {
-            if (!await window.shiyan.confirmAction('取消这项订阅？','只取消当前账号的订阅，不影响其他用户。','取消订阅')) return;
+            if (!await window.shiyan.confirmAction('取消这项订阅？','之后可以随时重新订阅。','取消订阅')) return;
             const error = dialog.querySelector('[data-subscription-error]'); error.hidden = true; button.disabled = true;
             try { subscriptions = (await api('/subscriptions/'+button.dataset.removeSubscription,'DELETE')).subscriptions || []; draw(); }
             catch (cause) { error.textContent = cause.message; error.hidden = false; button.disabled = false; }
@@ -252,51 +258,51 @@
       draw();
     } catch(error) { C.showError(error); }
   }
-  // 连接器：目录和状态由服务器给出，三端一致。连接需要凭据的来源时，交给 Dots 在对话里引导。
-  const connectorGlyph={mail:'M4 6h16v12H4zM4 7l8 6 8-6',calendar:'M5 6h14v13H5zM5 10h14M9 4v4M15 4v4',dev:'M9 8l-4 4 4 4M15 8l4 4-4 4',feeds:'M5 19a1 1 0 1 0 0-.01M5 12a7 7 0 0 1 7 7M5 5a14 14 0 0 1 14 14',devices:'M4 5h16v11H4zM9 20h6M12 16v4',messaging:'M5 5h14v10H9l-4 4z',docs:'M7 4h7l4 4v12H7zM14 4v4h4',custom:'M10 4h4v3a2 2 0 0 0 4 0V4h2v6h-3a2 2 0 0 0 0 4h3v6h-6v-3a2 2 0 0 0-4 0v3H4v-6h3a2 2 0 0 0 0-4H4V4z',builtin:'M12 3l2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-.5z'};
-  const glyph=c=>'<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+(connectorGlyph[c]||connectorGlyph.builtin)+'"/></svg>';
-  const stateClass={connected:'is-connected',paused:'is-paused',error:'is-error',available:'is-available',planned:'is-planned'};
+  // 连接器：已连接 / 可连接 / 即将支持；目录和状态由服务器给出，三端一致。
   async function openConnectors(focusId) {
     const dialog = makeDialog('dotsConnectorsDialog','dots-conversation-overlay');
-    dialog.innerHTML = '<section class="dots-conversation-card dots-connectors-card"><header><div><h2>连接器</h2><small data-connectors-summary>正在读取…</small></div><button type="button" class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button></header><nav class="dots-connector-filters" role="tablist" data-connector-filters></nav><div class="dots-connector-body" data-connector-body><div class="dots-connector-skeleton"></div><div class="dots-connector-skeleton"></div><div class="dots-connector-skeleton"></div></div><p role="alert" class="dots-dialog-error" data-connector-error hidden></p></section>';
+    dialog.innerHTML = '<section class="dots-conversation-card dots-sources-card"><header><div><h2>连接器</h2><small data-connectors-summary>正在读取…</small></div><button type="button" class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button></header><div class="dots-src-body" data-connector-body><div class="dots-src-skeleton"></div><div class="dots-src-skeleton"></div><div class="dots-src-skeleton"></div></div><p role="alert" class="dots-dialog-error" data-connector-error hidden></p></section>';
     showDialog(dialog, dialog);
-    let data, filter = 'all', expanded = focusId || '';
+    let data, expanded = focusId || '';
     const errorBox = dialog.querySelector('[data-connector-error]');
     const fail = cause => { errorBox.textContent = cause?.message || String(cause); errorBox.hidden = false; };
-    const card = c => {
-      const open = expanded === c.id, account = c.account ? '<span class="dots-connector-account">'+esc(c.account)+'</span>' : '';
-      const caps = (c.capabilities||[]).map(x=>'<li>'+esc(x)+'</li>').join('');
-      const devices = (c.devices||[]).length ? '<ul class="dots-connector-devices">'+c.devices.map(d=>'<li><i class="'+(d.online?'is-online':'')+'"></i>'+esc(d.name)+(d.platform?'<small>'+esc(d.platform)+'</small>':'')+'</li>').join('')+'</ul>' : '';
-      const act = a => ({connect:'<button type="button" class="dots-white-button" data-connector-act="connect">连接</button>',configure:'<button type="button" data-connector-act="connect">修改</button>',pause:'<button type="button" data-connector-act="pause">暂停</button>',resume:'<button type="button" data-connector-act="resume">恢复</button>',disconnect:'<button type="button" class="is-destructive" data-connector-act="disconnect">断开</button>',push_on:'<button type="button" data-connector-act="push_on">提醒同步到微信</button>',push_off:'<button type="button" data-connector-act="push_off">不再同步提醒</button>',manage:'<button type="button" data-connector-act="manage">管理设备</button>'})[a]||'';
-      return '<article class="dots-connector '+(stateClass[c.state]||'')+(open?' is-open':'')+'" data-connector="'+esc(c.id)+'"><button type="button" class="dots-connector-head" data-connector-toggle aria-expanded="'+open+'"><span class="dots-connector-icon">'+glyph(c.category)+'</span><span class="dots-connector-text"><strong>'+esc(c.name)+'</strong><span>'+esc(c.summary||'')+'</span></span><span class="dots-connector-state"><i></i>'+esc(c.status)+'</span></button><div class="dots-connector-more"'+(open?'':' hidden')+'>'+account+(c.detail?'<p>'+esc(c.detail)+'</p>':'')+(caps?'<ul class="dots-connector-caps">'+caps+'</ul>':'')+devices+((c.actions||[]).length?'<div class="dots-connector-actions">'+c.actions.map(act).join('')+'</div>':'')+(c.state==='planned'?'<p class="dots-connector-note">还在开发中。想优先用上，可以在对话里告诉 Dots。</p>':'')+'</div></article>';
+    const act = a => ({configure:'<button type="button" class="dots-src-button" data-connector-act="connect">修改</button>',pause:'<button type="button" class="dots-src-button" data-connector-act="pause">暂停</button>',resume:'<button type="button" class="dots-src-button" data-connector-act="resume">恢复</button>',disconnect:'<button type="button" class="dots-src-button is-danger" data-connector-act="disconnect">断开</button>',push_on:'<button type="button" class="dots-src-button" data-connector-act="push_on">提醒推送到微信</button>',push_off:'<button type="button" class="dots-src-button" data-connector-act="push_off">停止推送提醒</button>',manage:'<button type="button" class="dots-src-button" data-connector-act="manage">管理设备</button>'})[a]||'';
+    const connectedRow = c => {
+      const devices = (c.devices||[]).length ? '<ul class="dots-src-devices">'+c.devices.map(d=>'<li><i class="'+(d.online?'is-online':'')+'"></i>'+esc(d.name)+'</li>').join('')+'</ul>' : '';
+      const more = devices+(c.detail?'<p>'+esc(c.detail)+'</p>':'')+'<div class="dots-src-actions">'+(c.actions||[]).map(act).join('')+'</div>';
+      return sourceRow({id:c.id,icon:c.category,name:c.name,line:c.account||c.summary,state:c.state,open:expanded===c.id,more,side:stateLabel(c.status,c.state)+'<svg class="dots-src-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>'});
     };
+    const availableRow = c => sourceRow({id:c.id,icon:c.category,name:c.name,line:c.summary,side:'<button type="button" class="dots-src-button is-primary" data-connector-act="connect">连接</button>'});
     const draw = () => {
-      const cats = data.categories.filter(cat => data.connectors.some(c => c.category === cat.id));
-      dialog.querySelector('[data-connectors-summary]').textContent = '已连接 '+data.summary.connected+' 个 · 共 '+data.connectors.length+' 项';
-      dialog.querySelector('[data-connector-filters]').innerHTML = [{id:'all',name:'全部'},{id:'connected',name:'已连接'},...cats].map(cat=>'<button type="button" role="tab" aria-selected="'+(filter===cat.id)+'" data-connector-filter="'+esc(cat.id)+'">'+esc(cat.name)+'</button>').join('');
-      const visible = data.connectors.filter(c => filter==='all' || (filter==='connected' ? ['connected','paused','error'].includes(c.state) : c.category===filter));
-      const groups = filter==='all' ? cats.map(cat=>({cat,items:visible.filter(c=>c.category===cat.id)})) : [{cat:null,items:visible}];
-      dialog.querySelector('[data-connector-body]').innerHTML = groups.filter(g=>g.items.length).map(g=>(g.cat?'<h3>'+esc(g.cat.name)+'</h3>':'')+'<div class="dots-connector-grid">'+g.items.map(card).join('')+'</div>').join('') || '<p class="dots-subscription-empty">这里还没有内容。</p>';
+      const own = data.connectors.filter(c => c.kind !== 'builtin' && c.kind !== 'planned');
+      const connected = own.filter(c => ['connected','paused','error'].includes(c.state)), available = own.filter(c => c.state === 'available');
+      const builtin = data.connectors.filter(c => c.kind === 'builtin'), planned = data.connectors.filter(c => c.kind === 'planned');
+      dialog.querySelector('[data-connectors-summary]').textContent = connected.length ? '已连接 '+connected.length+' 个' : '还没有连接';
+      dialog.querySelector('[data-connector-body]').innerHTML =
+        (connected.length?'<h3>已连接</h3><ul class="dots-src-list">'+connected.map(connectedRow).join('')+'</ul>':'')+
+        (available.length?'<h3>可连接</h3><ul class="dots-src-list">'+available.map(availableRow).join('')+'</ul>':'')+
+        (builtin.length?'<h3>内置</h3><div class="dots-src-chips">'+builtin.map(c=>'<span>'+esc(c.name)+'</span>').join('')+'</div>':'')+
+        (planned.length?'<h3>即将支持</h3><div class="dots-src-chips is-muted">'+planned.map(c=>'<span>'+esc(c.name)+'</span>').join('')+'</div>':'');
     };
     const load = async () => { data = await api('/connectors'); draw(); };
+    const toggle = row => { const id = row.closest('[data-src]')?.dataset.src; if (!id) return; expanded = expanded === id ? '' : id; draw(); };
+    dialog.addEventListener('keydown', event => { const row = event.target.closest('[data-src-toggle]'); if (row && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); toggle(row); } });
     dialog.addEventListener('click', async event => {
-      const filterButton = event.target.closest('[data-connector-filter]');
-      if (filterButton) { filter = filterButton.dataset.connectorFilter; draw(); return; }
-      const article = event.target.closest('[data-connector]'); if (!article) return;
-      const c = data.connectors.find(x => x.id === article.dataset.connector); if (!c) return;
-      if (event.target.closest('[data-connector-toggle]')) { expanded = expanded === c.id ? '' : c.id; draw(); return; }
-      const action = event.target.closest('[data-connector-act]')?.dataset.connectorAct; if (!action) return;
+      const item = event.target.closest('[data-src]'); if (!item) return;
+      const c = data.connectors.find(x => x.id === item.dataset.src); if (!c) return;
+      const action = event.target.closest('[data-connector-act]')?.dataset.connectorAct;
+      if (!action) { if (event.target.closest('[data-src-toggle]')) toggle(event.target.closest('[data-src-toggle]')); return; }
       errorBox.hidden = true;
       try {
         if (c.kind === 'weixin') {
           if (action === 'connect') { closeDialog(); await openWeixinLogin(() => {}); return; }
-          if (action === 'disconnect') { if (!await window.shiyan.confirmAction('解绑微信？','解绑后微信里将收不到 Dots 的回复，之后可以重新扫码绑定。','解绑')) return; await api('/weixin','DELETE'); }
+          if (action === 'disconnect') { if (!await window.shiyan.confirmAction('解绑微信？','之后可以重新扫码绑定。','解绑')) return; await api('/weixin','DELETE'); }
           if (action === 'push_on' || action === 'push_off') await api('/weixin','PATCH',{enabled:action==='push_on'});
           await load(); return;
         }
         if (action === 'connect' && c.kind === 'sponge' || action === 'manage') { closeDialog(); window.ShiYanAccount?.openSettings?.(); return; }
         if (action === 'connect') { closeDialog(); await C.sendText?.(c.prompt || ('我想连接'+c.name)); return; }
-        if (action === 'disconnect') { if (!await window.shiyan.confirmAction('断开'+c.name+'？','只影响当前账号，之后可以随时重新连接。','断开')) return; await api('/subscriptions/'+c.provider,'DELETE'); }
+        if (action === 'disconnect') { if (!await window.shiyan.confirmAction('断开'+c.name+'？','之后可以随时重新连接。','断开')) return; await api('/subscriptions/'+c.provider,'DELETE'); }
         if (action === 'pause' || action === 'resume') await api('/subscriptions/'+c.provider,'PATCH',{enabled:action==='resume'});
         await load();
       } catch (cause) { fail(cause); }
@@ -347,21 +353,106 @@
   async function openDotsSettings() {
     const dialog = makeDialog('dotsSettingsDialog','dots-conversation-overlay');
     const modes = [['smart','智能审批','只有删除、提权、重启、推送代码等高风险操作才需要你批准，其余自动执行。'],['auto','全部自动','除提权和灾难性命令外全部自动执行，最少打扰。'],['ask','每次都问','每个需要审批的操作都等你确认。']];
-    let settings;
+    let settings, grants = [];
+    const scopeText = grant => grant.scope==='always'?'一直允许':grant.scope==='task'?'仅限这个任务':grant.expiresAt?'到 '+new Date(grant.expiresAt*1000).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+    const grantsHTML = () => grants.length ? '<ul class="dots-grant-list">'+grants.map(g=>'<li><span><strong>'+esc((g.labels||g.signatures||[]).join('、'))+'</strong><small>'+esc(scopeText(g))+(g.uses?' · 已自动执行 '+g.uses+' 次':'')+'</small></span><button type="button" data-revoke-grant="'+Number(g.id)+'">撤销</button></li>').join('')+'</ul>' : '<p class="dots-settings-empty">批准操作时可选择授权范围，同类操作之后不再询问。</p>';
     const draw = () => {
-      dialog.innerHTML = '<section class="dots-conversation-card dots-settings-card"><header><h2>Dots 设置</h2><button type="button" class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button></header><h3>审批方式</h3><div class="dots-choice-list" role="radiogroup" aria-label="审批方式">'+modes.map(([id,name,desc])=>'<button type="button" role="radio" aria-checked="'+(settings.approvalMode===id)+'" class="dots-choice'+(settings.approvalMode===id?' is-selected':'')+'" data-approval-mode="'+id+'"><i></i><span><strong>'+name+'</strong><small>'+desc+'</small></span></button>').join('')+'</div><h3>每日简报</h3><label class="dots-switch-row"><span><strong>每天推送一份简报</strong><small>汇总当天日程、进行中的任务和订阅动态。</small></span><input type="checkbox" data-daily-brief'+(settings.dailyBrief?' checked':'')+'></label><label class="dots-switch-row"><span><strong>推送时间</strong></span><input type="time" data-daily-brief-time value="'+esc(settings.dailyBriefTime)+'"'+(settings.dailyBrief?'':' disabled')+'></label><p role="alert" class="dots-dialog-error" data-settings-error hidden></p></section>';
+      dialog.innerHTML = '<section class="dots-conversation-card dots-settings-card"><header><h2>Dots 设置</h2><button type="button" class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button></header><h3>审批方式</h3><div class="dots-choice-list" role="radiogroup" aria-label="审批方式">'+modes.map(([id,name,desc])=>'<button type="button" role="radio" aria-checked="'+(settings.approvalMode===id)+'" class="dots-choice'+(settings.approvalMode===id?' is-selected':'')+'" data-approval-mode="'+id+'"><i></i><span><strong>'+name+'</strong><small>'+desc+'</small></span></button>').join('')+'</div><h3>已授权的操作</h3>'+grantsHTML()+'<button type="button" class="dots-settings-link" data-open-audit>查看 Dots 做过的事 ›</button><h3>每日简报</h3><label class="dots-switch-row"><span><strong>每天推送一份简报</strong><small>汇总当天日程、进行中的任务和订阅动态。</small></span><input type="checkbox" data-daily-brief'+(settings.dailyBrief?' checked':'')+'></label><label class="dots-switch-row"><span><strong>推送时间</strong></span><input type="time" data-daily-brief-time value="'+esc(settings.dailyBriefTime)+'"'+(settings.dailyBrief?'':' disabled')+'></label><p role="alert" class="dots-dialog-error" data-settings-error hidden></p></section>';
     };
     const save = async patch => {
       const before = settings; settings = {...settings, ...patch}; draw();
       try { settings = (await api('/settings','PATCH',patch)).settings || settings; draw(); }
       catch (cause) { settings = before; draw(); const box = dialog.querySelector('[data-settings-error]'); box.textContent = cause.message; box.hidden = false; }
     };
-    dialog.addEventListener('click', event => { const mode = event.target.closest('[data-approval-mode]'); if (mode && mode.dataset.approvalMode !== settings.approvalMode) save({approvalMode: mode.dataset.approvalMode}); });
+    dialog.addEventListener('click', async event => {
+      const mode = event.target.closest('[data-approval-mode]'); if (mode && mode.dataset.approvalMode !== settings.approvalMode) save({approvalMode: mode.dataset.approvalMode});
+      const revoke = event.target.closest('[data-revoke-grant]');
+      if (revoke) { revoke.disabled = true; try { await api('/approval-grants/'+revoke.dataset.revokeGrant,'DELETE'); grants = grants.filter(g => String(g.id) !== revoke.dataset.revokeGrant); draw(); } catch (cause) { revoke.disabled = false; C.showError(cause); } }
+      if (event.target.closest('[data-open-audit]')) openAudit();
+    });
     dialog.addEventListener('change', event => {
       if (event.target.matches('[data-daily-brief]')) save({dailyBrief: event.target.checked});
       if (event.target.matches('[data-daily-brief-time]') && /^\d\d:\d\d$/.test(event.target.value)) save({dailyBriefTime: event.target.value});
     });
-    try { settings = (await api('/settings')).settings; draw(); showDialog(dialog, dialog); } catch (cause) { C.showError(cause); }
+    try { const [s, g] = await Promise.all([api('/settings'), api('/approval-grants').catch(() => ({grants: []}))]); settings = s.settings; grants = g.grants || []; draw(); showDialog(dialog, dialog); } catch (cause) { C.showError(cause); }
+  }
+  // 长期目标：Dots 拆成里程碑，并按你选的频率主动来问进展。
+  async function openLifeGoals() {
+    const dialog = makeDialog('dotsGoalsDialog','dots-conversation-overlay');
+    const cadences = [['daily','每天'],['weekly','每周'],['biweekly','每两周'],['monthly','每月']];
+    let goals = [], creating = false, busy = false, error = '', poll = null, adding = null;
+    const when = at => at ? new Date(at*1000).toLocaleString('zh-CN',{month:'numeric',day:'numeric',weekday:'short',hour:'2-digit',minute:'2-digit'}) : '';
+    const shortDay = d => d ? d.slice(5).replace('-','/') : '';
+    const statusText = {active:'进行中',paused:'已暂停',done:'已达成'};
+    const goalHTML = g => {
+      const plan = g.planState==='planning' ? '<div class="dots-goal-planning"><span></span><span></span><span></span><em>Dots 正在拟计划…</em></div>'
+        : g.planState==='failed' ? '<div class="dots-goal-failed">计划没能生成。<button type="button" data-goal-replan="'+g.id+'">重试</button></div>'
+        : '<ul class="dots-goal-milestones">'+g.milestones.map(m=>'<li class="'+(m.done?'is-done':'')+'"><button type="button" class="dots-goal-check" role="checkbox" aria-checked="'+!!m.done+'" data-goal-toggle="'+g.id+'" data-milestone="'+esc(m.id)+'" aria-label="'+(m.done?'标记为未完成':'标记为完成')+'"></button><span>'+esc(m.title)+'</span>'+(m.due?'<time>'+shortDay(m.due)+'</time>':'')+'<button type="button" class="dots-goal-remove" data-goal-remove-milestone="'+g.id+'" data-milestone="'+esc(m.id)+'" aria-label="删除里程碑">×</button></li>').join('')+'</ul>'+(adding===g.id?'<form class="dots-goal-add" data-goal-add="'+g.id+'"><input name="title" maxlength="120" placeholder="新的里程碑" required><input name="due" type="date"><button type="submit">添加</button></form>':'<button type="button" class="dots-goal-link" data-goal-adding="'+g.id+'">＋ 添加里程碑</button>');
+      return '<article class="dots-goal is-'+esc(g.status)+'"><header><div><h3>'+esc(g.title)+'</h3>'+(g.why?'<p>'+esc(g.why)+'</p>':'')+'</div><span class="dots-goal-status">'+(statusText[g.status]||'')+'</span></header>'
+        +(g.planState==='ready'?'<div class="dots-goal-progress"><progress max="100" value="'+g.progress+'" aria-label="完成度"></progress><strong>'+g.progress+'%</strong></div>':'')
+        +'<p class="dots-goal-meta">'+[g.targetDate?'目标日期 '+esc(g.targetDate):'',esc(g.cadenceName)+' '+esc(g.checkinTime)+' 检查',g.nextCheckinAt?'下次：'+when(g.nextCheckinAt):''].filter(Boolean).join(' · ')+'</p>'
+        +(g.planSummary&&g.planState==='ready'?'<p class="dots-goal-summary">'+esc(g.planSummary)+'</p>':'')+plan
+        +'<footer>'+(g.status==='active'?'<button type="button" data-goal-status="paused" data-goal="'+g.id+'">暂停</button><button type="button" data-goal-status="done" data-goal="'+g.id+'">标记达成</button>':g.status==='paused'?'<button type="button" data-goal-status="active" data-goal="'+g.id+'">恢复</button>':'<button type="button" data-goal-status="archived" data-goal="'+g.id+'">归档</button>')+(g.planState==='ready'?'<button type="button" data-goal-replan="'+g.id+'">重新规划</button>':'')+'<button type="button" class="is-danger" data-goal-delete="'+g.id+'">删除</button></footer></article>';
+    };
+    const draw = () => {
+      const form = creating ? '<form class="dots-goal-form" data-goal-create><label><span>目标</span><input name="title" maxlength="120" required placeholder="比如：明年 6 月前日语过 N3"></label><label><span>为什么（可选）</span><textarea name="why" maxlength="500" rows="2" placeholder="Dots 会用它来鼓励你、调整计划"></textarea></label><div class="dots-goal-form-row"><label><span>目标日期</span><input name="targetDate" type="date"></label><label><span>检查频率</span><select name="cadence">'+cadences.map(([v,l])=>'<option value="'+v+'"'+(v==='weekly'?' selected':'')+'>'+l+'</option>').join('')+'</select></label><label><span>时间</span><input name="checkinTime" type="time" value="20:00" required></label></div><div class="dots-goal-form-actions"><button type="button" data-goal-cancel>取消</button><button type="submit" class="is-primary"'+(busy?' disabled':'')+'>'+(busy?'正在创建…':'创建并让 Dots 拟计划')+'</button></div></form>' : '<button type="button" class="dots-goal-new" data-goal-new>＋ 新目标</button>';
+      dialog.innerHTML = '<section class="dots-conversation-card dots-goals-card"><header><h2>目标</h2><button type="button" class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button></header>'+form+(error?'<p class="dots-dialog-error" role="alert">'+esc(error)+'</p>':'')+'<div class="dots-goal-list">'+goals.map(goalHTML).join('')+'</div>'+(!goals.length&&!creating?'<p class="dots-settings-empty">还没有目标。</p>':'')+'</section>';
+      if (creating) dialog.querySelector('[data-goal-create] input[name=title]')?.focus();
+      if (adding) dialog.querySelector('[data-goal-add] input[name=title]')?.focus();
+    };
+    const schedulePoll = () => { clearTimeout(poll); if (goals.some(g => g.planState === 'planning') && dialog.isConnected) poll = setTimeout(() => load().catch(() => {}), 3000); };
+    const load = async () => { goals = (await api('/life-goals')).goals || []; draw(); schedulePoll(); };
+    const replace = goal => { goals = goals.map(g => g.id === goal.id ? goal : g); draw(); schedulePoll(); };
+    const act = async fn => { error = ''; try { await fn(); } catch (cause) { error = cause.message || '操作失败'; draw(); } };
+    dialog.addEventListener('click', event => {
+      const t = event.target.closest('button'); if (!t) return;
+      if (t.matches('[data-goal-new]')) { creating = true; draw(); }
+      else if (t.matches('[data-goal-cancel]')) { creating = false; draw(); }
+      else if (t.matches('[data-goal-adding]')) { adding = Number(t.dataset.goalAdding); draw(); }
+      else if (t.matches('[data-goal-toggle]')) act(async () => { const g = goals.find(x => x.id === Number(t.dataset.goalToggle)), m = g.milestones.find(x => x.id === t.dataset.milestone); replace((await api('/life-goals/'+g.id+'/milestones','POST',{milestoneId:m.id,done:!m.done})).goal); });
+      else if (t.matches('[data-goal-remove-milestone]')) act(async () => replace((await api('/life-goals/'+t.dataset.goalRemoveMilestone+'/milestones','POST',{remove:t.dataset.milestone})).goal));
+      else if (t.matches('[data-goal-status]')) act(async () => { const result = await api('/life-goals/'+t.dataset.goal,'PATCH',{status:t.dataset.goalStatus}); if (t.dataset.goalStatus === 'archived') { goals = goals.filter(g => g.id !== result.goal.id); draw(); } else replace(result.goal); });
+      else if (t.matches('[data-goal-replan]')) act(async () => replace((await api('/life-goals/'+t.dataset.goalReplan+'/replan','POST',{})).goal));
+      else if (t.matches('[data-goal-delete]')) { if (!confirmDelete(t)) return; act(async () => { await api('/life-goals/'+t.dataset.goalDelete,'DELETE'); goals = goals.filter(g => g.id !== Number(t.dataset.goalDelete)); draw(); }); }
+    });
+    // 删除需要第二次点击确认（不弹系统对话框）。
+    const confirmDelete = button => { if (button.dataset.confirm) return true; button.dataset.confirm = '1'; button.textContent = '再点一次删除'; setTimeout(() => { if (button.isConnected) { delete button.dataset.confirm; button.textContent = '删除'; } }, 3000); return false; };
+    dialog.addEventListener('submit', event => {
+      event.preventDefault();
+      const form = event.target, data = Object.fromEntries(new FormData(form));
+      if (form.matches('[data-goal-create]')) act(async () => { busy = true; draw(); try { const goal = (await api('/life-goals','POST',{title:data.title,why:data.why||'',targetDate:data.targetDate||null,cadence:data.cadence,checkinTime:data.checkinTime})).goal; goals = [goal, ...goals]; creating = false; } finally { busy = false; draw(); schedulePoll(); } });
+      if (form.matches('[data-goal-add]')) act(async () => { const goal = (await api('/life-goals/'+form.dataset.goalAdd+'/milestones','POST',{add:data.title,due:data.due||null})).goal; adding = null; replace(goal); });
+    });
+    draw(); showDialog(dialog, dialog);
+    try { await load(); } catch (cause) { error = cause.message; draw(); }
+  }
+  // 「做过的事」：Dots 以你的名义实际做过的事，按天分组，可筛选、可加载更早。
+  async function openAudit() {
+    const dialog = makeDialog('dotsAuditDialog','dots-conversation-overlay');
+    const filters = [['','全部'],['action','操作'],['message','消息']];
+    const glyph = {action:'⌘',message:'✉',change:'⚙'};
+    let category = '', items = [], next = null, loading = false, error = '';
+    const day = at => { const d = new Date(at*1000), t = new Date(); const y = new Date(t); y.setDate(t.getDate()-1); return d.toDateString()===t.toDateString()?'今天':d.toDateString()===y.toDateString()?'昨天':d.toLocaleDateString('zh-CN',{month:'long',day:'numeric',weekday:'short'}); };
+    const draw = () => {
+      let last = '', rows = '';
+      for (const item of items) {
+        const label = day(item.at); if (label !== last) { rows += '<li class="dots-audit-day">'+esc(label)+'</li>'; last = label; }
+        rows += '<li class="dots-audit-item is-'+esc(item.category)+(item.ok===false?' is-failed':'')+'"><i aria-hidden="true">'+(glyph[item.category]||'•')+'</i><div><p><strong>'+esc(item.title)+'</strong>'+(item.ok===false?'<em>失败</em>':'')+'<time>'+new Date(item.at*1000).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})+'</time></p>'+(item.summary?'<small>'+esc(item.summary)+'</small>':'')+(item.detail?'<code>'+esc(item.detail)+'</code>':'')+(item.goalTitle?'<small class="dots-audit-goal">任务：'+esc(item.goalTitle)+'</small>':'')+(item.error?'<small class="dots-audit-error">'+esc(item.error)+'</small>':'')+'</div></li>';
+      }
+      dialog.innerHTML = '<section class="dots-conversation-card dots-audit-card"><header><h2>做过的事</h2><button type="button" class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button></header><div class="dots-audit-filters" role="tablist">'+filters.map(([value,label])=>'<button type="button" role="tab" aria-selected="'+(category===value)+'" class="'+(category===value?'is-selected':'')+'" data-audit-filter="'+value+'">'+label+'</button>').join('')+'</div>'+(error?'<p class="dots-dialog-error" role="alert">'+esc(error)+'</p>':'')+'<ul class="dots-audit-list">'+rows+'</ul>'+(!items.length&&!loading&&!error?'<p class="dots-settings-empty">这里还没有记录。</p>':'')+(loading?'<p class="dots-settings-empty">正在读取…</p>':next?'<button type="button" class="dots-settings-link" data-audit-more>加载更早的记录</button>':'')+'</section>';
+    };
+    const load = async more => {
+      if (loading) return; loading = true; error = ''; if (!more) { items = []; next = null; } draw();
+      try { const data = await api('/audit?limit=50'+(category?'&category='+category:'')+(more&&next?'&before='+next:'')); items = more ? items.concat(data.items||[]) : (data.items||[]); next = data.nextBefore || null; }
+      catch (cause) { error = cause.message || '暂时无法读取'; }
+      finally { loading = false; draw(); }
+    };
+    dialog.addEventListener('click', event => {
+      const filter = event.target.closest('[data-audit-filter]'); if (filter && filter.dataset.auditFilter !== category) { category = filter.dataset.auditFilter; load(false); }
+      if (event.target.closest('[data-audit-more]')) load(true);
+    });
+    dialog.addEventListener('change', event => { const select = event.target.closest('[data-dots-approval-scope]'); if (select) event.stopPropagation(); });
+    draw(); showDialog(dialog, dialog); await load(false);
   }
   async function openProfile() {
     try {
@@ -544,12 +635,23 @@
   }
   const isPendingApproval=approval=>['pending','awaiting_approval','requested'].includes(approval?.status);
   const canApprove=command=>typeof command==='string'&&!!command.trim()&&!/\bssh\b[^\n]*<[^>]+>/i.test(command);
+  // 批准范围：仅这次 / 这个任务 / 1 小时 / 24 小时 / 一直允许（按动作类型授权）。选择在重新渲染之间保留。
+  const SCOPES=[['once','仅这一次'],['task','这个任务内都允许'],['hour','1 小时内都允许'],['day','24 小时内都允许'],['always','以后一直允许']];
+  const scopeChoices=new Map();
+  document.addEventListener('change',event=>{const select=event.target.closest?.('[data-dots-approval-scope]');const card=select?.closest('[data-dots-approval]');if(!card)return;scopeChoices.set(Number(card.dataset.dotsApprovalGoal)+':'+Number(card.dataset.dotsApproval),select.value);});
+  const approvalScope=(goalId,id)=>scopeChoices.get(goalId+':'+id)||'once';
+  function scopeRow(goalId,id,approval,disabled){
+    const labels=Array.isArray(approval.grant_labels)?approval.grant_labels.filter(Boolean):[];
+    if(!labels.length)return '';
+    const current=approvalScope(goalId,id);
+    return '<div class="dots-approval-scope"><label><span>批准范围</span><select data-dots-approval-scope'+(disabled?' disabled':'')+'>'+SCOPES.map(([value,label])=>'<option value="'+value+'"'+(value===current?' selected':'')+'>'+label+'</option>').join('')+'</select></label><small>'+(current==='once'?'只执行上面这条命令。':'同类操作（'+esc(labels.join('、'))+'）之后自动执行，可在 Dots 设置里随时撤销。')+'</small></div>';
+  }
   function approvalCards(goal) {
     return (goal.approvals||[]).filter(isPendingApproval).map(approval=>{
       const id=Number(approval.id),goalId=Number(goal.id);if(!Number.isSafeInteger(id)||id<1||!Number.isSafeInteger(goalId)||goalId<1)return '';
       const state=C.approvalState?.(goalId,id)||{},prior=state.pending,valid=canApprove(approval.command);
       const button=(decision,label)=>'<button type="button" data-dots-decision="'+decision+'"'+(state.busy||(decision==='approve'&&!valid)||(prior&&prior.decision!==decision)?' disabled':'')+'>'+esc(state.busy?'正在提交…':prior?.decision===decision?'重试'+label:label)+'</button>';
-      return '<section class="dots-child-approval" data-dots-approval="'+id+'" data-dots-approval-goal="'+goalId+'" data-dots-approval-command="'+esc(encodeURIComponent(String(approval.command??'')))+'"><h3>'+esc(goal.title||'待批准操作')+'</h3><p>'+esc(approval.reason||'请核对以下实际命令后决定是否执行')+'</p><pre><code>'+esc(approval.command||'')+'</code></pre>'+(!valid?'<p class="dots-approval-note">命令尚未完整，无法批准；可以拒绝并让 Dots 重新评估。</p>':'')+'<div>'+button('approve','批准此命令')+button('reject','拒绝')+'</div></section>';
+      return '<section class="dots-child-approval" data-dots-approval="'+id+'" data-dots-approval-goal="'+goalId+'" data-dots-approval-command="'+esc(encodeURIComponent(String(approval.command??'')))+'"><h3>'+esc(goal.title||'待批准操作')+'</h3><p>'+esc(approval.reason||'请核对以下实际命令后决定是否执行')+'</p><pre><code>'+esc(approval.command||'')+'</code></pre>'+(!valid?'<p class="dots-approval-note">命令尚未完整，无法批准；可以拒绝并让 Dots 重新评估。</p>':'')+scopeRow(goalId,id,approval,state.busy||!valid||!!prior)+'<div>'+button('approve','批准此命令')+button('reject','拒绝')+'</div></section>';
     }).join('');
   }
   function syncApprovalState(){
@@ -652,7 +754,7 @@
       else if(target.hasAttribute('data-dots-preview-chat'))await openConversation(currentConversation.id,false);
       else if(target.hasAttribute('data-dots-schedule-pause'))await controlSchedule();
       else if(target.hasAttribute('data-dots-child-control')){await api('/goals/'+currentConversation.id+'/control','POST',{requestId:crypto.randomUUID(),action:target.dataset.dotsChildControl});await openConversation(currentConversation.id,true);await C.refresh();}
-      else if(target.hasAttribute('data-dots-decision')){e.stopPropagation();const card=target.closest('[data-dots-approval]'),id=Number(card.dataset.dotsApprovalGoal),full=conversationFull;await C.decideApproval(id,card.dataset.dotsApproval,target.dataset.dotsDecision,decodeURIComponent(card.dataset.dotsApprovalCommand));if(currentConversation?.id==id)await openConversation(id,full);}
+      else if(target.hasAttribute('data-dots-decision')){e.stopPropagation();const card=target.closest('[data-dots-approval]'),id=Number(card.dataset.dotsApprovalGoal),full=conversationFull;await C.decideApproval(id,card.dataset.dotsApproval,target.dataset.dotsDecision,decodeURIComponent(card.dataset.dotsApprovalCommand),approvalScope(id,Number(card.dataset.dotsApproval)));if(currentConversation?.id==id)await openConversation(id,full);}
     } catch(error){if(target.hasAttribute('data-dots-decision')){const label=conversationDialog?.querySelector('.dots-read-error');if(label){label.textContent=error.message||String(error);label.hidden=false;}}C.showError(error);}
   }
   const spriteImages=new Map();let pointer=null,petFrame=0;
@@ -742,5 +844,5 @@
     window.addEventListener('pagehide',stopReading);
     getCatalogue().catch(C.showError);
   }
-  window.ShiYanDotsPanels={install,render,name,avatar,voiceCallIdentity,openProfile,openSubscriptions,openConnectors,openDotsSettings,approvalCards,isPendingApproval,canApprove,syncApprovalState,syncVoiceLayout:positionPet};
+  window.ShiYanDotsPanels={install,render,name,avatar,voiceCallIdentity,openProfile,openSubscriptions,openConnectors,openDotsSettings,openAudit,openLifeGoals,approvalScope,setApprovalScope:(goalId,id,value)=>{scopeChoices.set(goalId+':'+id,value);},approvalCards,isPendingApproval,canApprove,syncApprovalState,syncVoiceLayout:positionPet};
 })();

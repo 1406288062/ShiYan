@@ -57,6 +57,7 @@ struct DotsView: View {
     @State private var headerHeight: CGFloat = 0
     @State private var needsApprovalReveal = false
     @State private var replyTarget: DotsManagerMessage?
+    @State private var approvalScopes: [String: String] = [:]
     @State private var selectingText: DotsSelectionText?
     /// Highest message id at the moment of sending; the thinking state stays
     /// until an assistant message after it carries text.
@@ -213,13 +214,14 @@ struct DotsView: View {
                     .onChange(of: unresolvedApprovalOperation?.requestId) { _, requestId in
                         if requestId != nil { scheduleApprovalReveal() }
                     }
-                    .overlay(alignment: .bottomTrailing) {
+                    .overlay(alignment: .bottom) {
                         let showsBottomButton = !atBottom
                         Button { proxy.scrollTo("dots-bottom", anchor: .bottom) } label: {
-                            Image(systemName: "arrow.down").frame(width: 38, height: 38)
-                                .background(.regularMaterial, in: Circle())
-                        }.buttonStyle(.plain).padding(16).padding(.bottom, composerHeight)
-                            .accessibilityLabel("回到底部")
+                            Image(systemName: "arrow.down").font(.system(size: 16, weight: .medium))
+                                .frame(width: 36, height: 36).shiyanGlass(in: Circle())
+                                .contentShape(Circle())
+                        }.buttonStyle(.plain).padding(.bottom, composerHeight + 8)
+                            .accessibilityLabel("查看最新消息")
                             .opacity(showsBottomButton ? 1 : 0)
                         .offset(y: reduceMotion || showsBottomButton ? 0 : 8)
                         .allowsHitTesting(showsBottomButton)
@@ -471,10 +473,10 @@ struct DotsView: View {
                 if item.role != "system" {
                     Button("回复", systemImage: "arrowshape.turn.up.left") { beginReply(item) }
                 }
-                Button("复制", systemImage: "doc.on.doc") {
+                Button {
                     UIPasteboard.general.string = item.role == "user" ? DotsQuote.split(item.content).body : item.content
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
-                }
+                } label: { Label { Text("复制") } icon: { Image(uiImage: AgentCopyStyle.menuImage) } }
                 Button("选择文本", systemImage: "selection.pin.in.out") {
                     selectingText = DotsSelectionText(text: item.role == "user" ? DotsQuote.split(item.content).body : item.content)
                 }
@@ -936,6 +938,7 @@ struct DotsView: View {
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("dots-approval-pending-result")
     }
+    static let approvalScopeOptions: [(String, String)] = [("once", "仅这一次"), ("task", "这个任务内都允许"), ("hour", "1 小时内都允许"), ("day", "24 小时内都允许"), ("always", "以后一直允许")]
     private func approvalCard(_ item: DotsApproval, goalId: Int, title: String) -> some View {
         let originalCommandShown = pendingApprovalOperation?.confirmedCommand == item.command
         let priorDecision = originalCommandShown ? store.pendingApprovalDecision(goalId: goalId, approvalId: item.id) : nil
@@ -956,6 +959,24 @@ struct DotsView: View {
                 .frame(maxWidth: .infinity, alignment: .leading).padding(12)
                 .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 12))
                 .accessibilityIdentifier("dots-approval-command-\(goalId)-\(item.id)")
+            if item.isPending, item.canApproveCommand, let labels = item.grant_labels, !labels.isEmpty {
+                let key = "\(goalId):\(item.id)", scope = approvalScopes[key] ?? "once"
+                VStack(alignment: .leading, spacing: 4) {
+                    Menu {
+                        Picker("批准范围", selection: Binding(get: { approvalScopes[key] ?? "once" }, set: { approvalScopes[key] = $0; UISelectionFeedbackGenerator().selectionChanged() })) {
+                            ForEach(Self.approvalScopeOptions, id: \.0) { Text($0.1).tag($0.0) }
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text("批准范围").foregroundStyle(.secondary)
+                            Text(Self.approvalScopeOptions.first { $0.0 == scope }?.1 ?? "仅这一次").foregroundStyle(.primary)
+                            Image(systemName: "chevron.up.chevron.down").font(.caption2).foregroundStyle(.secondary)
+                        }.font(.subheadline)
+                    }.disabled(!available)
+                    Text(scope == "once" ? "只执行上面这条命令。" : "同类操作（\(labels.joined(separator: "、"))）之后自动执行，可在 Dots 设置里撤销。")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+            }
             if !item.canApproveCommand {
                 Text("命令尚未完整，无法批准；可以拒绝并让 Dots 重新评估。")
                     .font(.footnote).foregroundStyle(.secondary)
@@ -977,7 +998,7 @@ struct DotsView: View {
             }
             if item.isPending { HStack(spacing: 16) {
                 Button(priorDecision == "approve" ? "重试批准" : "批准此命令") {
-                    Task { await store.decide(item, goalId: goalId, approve: true) }
+                    Task { await store.decide(item, goalId: goalId, approve: true, scope: approvalScopes["\(goalId):\(item.id)"] ?? "once") }
                 }.buttonStyle(.borderedProminent)
                     .disabled(!available || !item.canApproveCommand || (priorDecision != nil && priorDecision != "approve"))
                     .accessibilityIdentifier("dots-approval-approve-\(goalId)-\(item.id)")
@@ -1073,7 +1094,48 @@ struct DotsSubscription: Decodable, Identifiable {
     var id: String { provider }
 }
 
-/// 事件订阅页：只展示已经订阅成功的来源。新增订阅在 Dots 对话里完成。
+/// 连接器和事件订阅共用的一行：图标 · 名称 · 一行说明 · 右侧内容。
+struct DotsSourceRow<Trailing: View>: View {
+    var symbol: String
+    var name: String
+    var subtitle: String?
+    var active = false
+    @ViewBuilder var trailing: () -> Trailing
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: symbol)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(active ? Color.accentColor : Color.primary)
+                .frame(width: 32, height: 32)
+                .background((active ? Color.accentColor : Color.primary).opacity(active ? 0.12 : 0.06),
+                            in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name).font(.body.weight(.semibold))
+                if let subtitle, !subtitle.isEmpty {
+                    Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+            }
+            Spacer(minLength: 8)
+            trailing()
+        }
+        .padding(.vertical, 2)
+    }
+}
+struct DotsSourceState: View {
+    var text: String
+    var state: String
+    private var color: Color {
+        switch state { case "connected": return .green; case "error": return .red; case "paused": return .orange; default: return .secondary }
+    }
+    var body: some View {
+        HStack(spacing: 5) {
+            Circle().fill(color).frame(width: 6, height: 6)
+            Text(text).font(.caption).foregroundStyle(.secondary)
+        }.fixedSize()
+    }
+}
+
+/// 事件订阅：只列出已订阅的来源；新增订阅在 Dots 对话里完成。
 private struct DotsSubscriptionsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var subscriptions: [DotsSubscription] = []
@@ -1082,42 +1144,36 @@ private struct DotsSubscriptionsView: View {
     @State private var removing: DotsSubscription?
     @State private var client = CodexClient()
     private let titles = ["github": "GitHub", "email": "邮箱", "google-calendar": "Google 日历", "rss": "RSS"]
-    private func statusText(_ item: DotsSubscription) -> String {
-        if !item.enabled { return "已暂停" }
-        switch item.status ?? "" {
-        case "pending": return "等待首次检查"
-        case "listening", "ok", "active": return "正在接收通知"
-        case "connecting", "reconnecting": return "正在连接"
-        case "waiting_configuration": return "等待配置"
-        case "waiting_authorization": return "等待授权"
-        default: return "需要处理：" + (item.status ?? "未知")
-        }
+    private let symbols = ["github": "chevron.left.forwardslash.chevron.right", "email": "envelope", "google-calendar": "calendar", "rss": "dot.radiowaves.up.forward"]
+    private func state(_ item: DotsSubscription) -> (String, String) {
+        if !item.enabled { return ("已暂停", "paused") }
+        if ["backoff", "error", "failed", "waiting_authorization"].contains(item.status ?? "") { return ("需要处理", "error") }
+        return ("接收中", "connected")
     }
     var body: some View {
         NavigationStack {
             List {
-                Section { Text("想订阅什么，直接在对话里告诉 Dots，例如“订阅 openai/codex 仓库的更新”“有新邮件时通知我”。订阅成功后会显示在这里。").foregroundStyle(.secondary) }
-                if loading { ProgressView() }
-                if let error { Text(error).foregroundStyle(.red) }
                 let active = subscriptions.filter { $0.configured }
-                if !loading && active.isEmpty { Text("还没有订阅任何事件。").foregroundStyle(.secondary) }
-                ForEach(active) { item in
-                    HStack(alignment: .center, spacing: 12) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(titles[item.provider] ?? item.provider).font(.body.weight(.semibold))
-                            if let detail = item.repository ?? item.address ?? (item.calendarId == "primary" ? nil : item.calendarId) {
-                                Text(detail).font(.footnote).foregroundStyle(.secondary).lineLimit(2)
-                            }
-                            Text(statusText(item)).font(.caption).foregroundStyle(.secondary)
+                Section {
+                    if loading && active.isEmpty { ProgressView().frame(maxWidth: .infinity) }
+                    if !loading && active.isEmpty { Text("还没有订阅").foregroundStyle(.secondary) }
+                    ForEach(active) { item in
+                        let s = state(item)
+                        DotsSourceRow(symbol: symbols[item.provider] ?? "bell", name: titles[item.provider] ?? item.provider,
+                                      subtitle: item.repository ?? item.address ?? (item.calendarId == "primary" ? nil : item.calendarId),
+                                      active: s.1 == "connected") {
+                            DotsSourceState(text: s.0, state: s.1)
                         }
-                        Spacer(minLength: 8)
-                        Button("取消订阅", role: .destructive) { removing = item }.buttonStyle(.borderless)
+                        .swipeActions { Button("取消订阅", role: .destructive) { removing = item } }
+                        .contextMenu { Button("取消订阅", systemImage: "xmark.circle", role: .destructive) { removing = item } }
                     }
-                }
+                } footer: { Text("在对话里告诉 Dots 想订阅什么。左滑可取消订阅。") }
+                if let error { Text(error).font(.footnote).foregroundStyle(.red) }
             }
-            .navigationTitle("事件订阅")
-            .toolbar { ToolbarItem(placement: .confirmationAction) { ShiyanCloseButton(action: { dismiss() }, inToolbar: true) } }
-            .confirmationDialog("取消当前账号的这项订阅？", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }), titleVisibility: .visible) {
+            .listStyle(.insetGrouped)
+            .navigationTitle("事件订阅").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { ShiyanCloseButton(action: { dismiss() }, inToolbar: true) } }
+            .confirmationDialog("取消这项订阅？", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }), titleVisibility: .visible) {
                 Button("取消订阅", role: .destructive) {
                     guard let item = removing else { return }
                     Task { @MainActor in
@@ -1125,13 +1181,14 @@ private struct DotsSubscriptionsView: View {
                         catch { self.error = error.localizedDescription }
                     }
                 }
-            } message: { Text("不会影响其他用户。") }
+            } message: { Text("之后可以随时重新订阅。") }
             .task {
                 defer { loading = false }
                 do { subscriptions = try await client.dotsSubscriptions().subscriptions }
                 catch { self.error = error.localizedDescription }
             }
         }
+        .presentationDragIndicator(.visible)
     }
 }
 
@@ -1245,14 +1302,13 @@ struct DotsQuoteBlock: View {
 /// Shown the instant a message is sent, until the first words of the reply arrive.
 struct DotsThinkingIndicator: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.colorScheme) private var scheme
     @State private var appeared = false
     private let start = Date()
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1 / 60, paused: reduceMotion)) { context in
             let t = context.date.timeIntervalSince(start)
-            HStack(spacing: 10) {
+            HStack(spacing: 0) {
                 HStack(spacing: 5) {
                     ForEach(0..<3, id: \.self) { index in
                         let wave = reduceMotion ? 0.6 : (sin(t * 5.4 - Double(index) * 0.8) + 1) / 2
@@ -1266,16 +1322,6 @@ struct DotsThinkingIndicator: View {
                             .offset(y: -3.5 * wave)
                     }
                 }
-                let sweep = reduceMotion ? 0.5 : (t * 0.55).truncatingRemainder(dividingBy: 1.6) - 0.3
-                Text(t > 8 ? "正在整理回复" : "正在思考")
-                    .font(.subheadline)
-                    .foregroundStyle(LinearGradient(stops: [
-                        .init(color: .secondary, location: 0),
-                        .init(color: .primary.opacity(scheme == .dark ? 0.95 : 0.8), location: 0.5),
-                        .init(color: .secondary, location: 1)
-                    ], startPoint: UnitPoint(x: sweep - 0.45, y: 0.5), endPoint: UnitPoint(x: sweep + 0.45, y: 0.5)))
-                    .contentTransition(.opacity)
-                    .animation(.easeInOut(duration: 0.3), value: t > 8)
             }
             .padding(.horizontal, 15).padding(.vertical, 12)
             .background(DotsBubbleBackground(isUser: false))
@@ -1465,13 +1511,119 @@ struct DotsSettings: Decodable, Equatable {
     var dailyBrief: Bool
     var dailyBriefTime: String
 }
+struct DotsGrant: Decodable, Identifiable, Equatable {
+    let id: Int
+    var labels: [String]?
+    var signatures: [String]?
+    var scope: String
+    var expiresAt: Double?
+    var uses: Int?
+    var scopeText: String {
+        switch scope {
+        case "always": return "一直允许"
+        case "task": return "仅限这个任务"
+        default:
+            guard let expiresAt else { return "" }
+            return "到 " + Date(timeIntervalSince1970: expiresAt).formatted(.dateTime.month().day().hour().minute())
+        }
+    }
+}
+struct DotsGrantsResponse: Decodable { var grants: [DotsGrant] }
+struct DotsAuditItem: Decodable, Identifiable {
+    let id: String
+    var category: String
+    var title: String
+    var summary: String?
+    var detail: String?
+    var ok: Bool?
+    var goalTitle: String?
+    var error: String?
+    var at: Double
+}
+struct DotsAuditResponse: Decodable { var items: [DotsAuditItem]; var nextBefore: Double? }
+
+/// 「做过的事」：Dots 以你的名义实际做过的事，按天分组。
+struct DotsAuditView: View {
+    @State private var items: [DotsAuditItem] = []
+    @State private var next: Double?
+    @State private var category = ""
+    @State private var loading = false
+    @State private var error: String?
+    private let filters = [("", "全部"), ("action", "操作"), ("message", "消息")]
+    private var days: [(String, [DotsAuditItem])] {
+        var out: [(String, [DotsAuditItem])] = []
+        for item in items {
+            let date = Date(timeIntervalSince1970: item.at)
+            let label = Calendar.current.isDateInToday(date) ? "今天" : Calendar.current.isDateInYesterday(date) ? "昨天" : date.formatted(.dateTime.month().day().weekday())
+            if out.last?.0 == label { out[out.count - 1].1.append(item) } else { out.append((label, [item])) }
+        }
+        return out
+    }
+    var body: some View {
+        List {
+            Section {
+                Picker("类别", selection: $category) { ForEach(filters, id: \.0) { Text($0.1).tag($0.0) } }
+                    .pickerStyle(.segmented)
+                    .listRowBackground(Color.clear).listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+            }
+            if let error { Text(error).font(.footnote).foregroundStyle(.red) }
+            ForEach(days, id: \.0) { day in
+                Section(day.0) { ForEach(day.1) { row($0) } }
+            }
+            if items.isEmpty && !loading && error == nil {
+                Text("这里还没有记录。").font(.subheadline).foregroundStyle(.secondary)
+            }
+            if loading { ProgressView().frame(maxWidth: .infinity) }
+            else if next != nil {
+                Button("加载更早的记录") { Task { await load(more: true) } }.frame(maxWidth: .infinity)
+            }
+        }
+        .navigationTitle("做过的事").navigationBarTitleDisplayMode(.inline)
+        .task(id: category) { await load(more: false) }
+        .refreshable { await load(more: false) }
+    }
+    private func row(_ item: DotsAuditItem) -> some View {
+        let failed = item.ok == false
+        let symbol = failed ? "exclamationmark.triangle.fill" : ["action": "terminal", "message": "paperplane", "change": "gearshape"][item.category] ?? "circle"
+        let tint: Color = failed ? .red : ["action": .accentColor, "message": .orange][item.category] ?? .secondary
+        return HStack(alignment: .top, spacing: 12) {
+            Image(systemName: symbol).font(.footnote.weight(.semibold)).foregroundStyle(tint)
+                .frame(width: 28, height: 28).background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(item.title).font(.subheadline.weight(.semibold))
+                    if failed { Text("失败").font(.caption2).foregroundStyle(.red) }
+                    Spacer(minLength: 4)
+                    Text(Date(timeIntervalSince1970: item.at).formatted(.dateTime.hour().minute())).font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                }
+                if let summary = item.summary, !summary.isEmpty { Text(summary).font(.caption).foregroundStyle(.secondary) }
+                if let detail = item.detail, !detail.isEmpty {
+                    Text(detail).font(.system(.caption2, design: .monospaced)).lineLimit(4).padding(6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 7))
+                }
+                if let goal = item.goalTitle { Text("任务：" + goal).font(.caption2).foregroundStyle(.secondary) }
+                if let error = item.error, !error.isEmpty { Text(error).font(.caption2).foregroundStyle(.red) }
+            }
+        }.padding(.vertical, 2)
+    }
+    private func load(more: Bool) async {
+        guard !loading else { return }
+        loading = true; error = nil
+        defer { loading = false }
+        do {
+            let data = try await CodexClient.shared.dotsAudit(category: category, before: more ? next : nil)
+            items = more ? items + data.items : data.items
+            next = data.nextBefore
+        } catch { self.error = error.localizedDescription }
+    }
+}
 struct DotsSettingsResponse: Decodable { var settings: DotsSettings }
 
 struct DotsConnectorsView: View {
     var onConnect: (String) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var data: DotsConnectorsResponse?
-    @State private var filter = "all"
     @State private var expanded: String?
     @State private var error: String?
     @State private var working: String?
@@ -1479,165 +1631,96 @@ struct DotsConnectorsView: View {
     @State private var showWeixin = false
     @State private var confirmDisconnect: DotsConnector?
 
+    private var own: [DotsConnector] { (data?.connectors ?? []).filter { $0.kind != "builtin" && $0.kind != "planned" } }
+    private var connected: [DotsConnector] { own.filter { ["connected", "paused", "error"].contains($0.state) } }
+    private var available: [DotsConnector] { own.filter { $0.state == "available" } }
+    private func names(_ kind: String) -> String { (data?.connectors ?? []).filter { $0.kind == kind }.map(\.name).joined(separator: " · ") }
+
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    if let data {
-                        filters(data)
-                        ForEach(groups(data), id: \.0) { title, items in
-                            if let title { Text(title).font(.footnote.weight(.semibold)).foregroundStyle(.secondary).padding(.top, 6) }
-                            ForEach(items) { item in row(item) }
-                        }
-                    } else if error == nil {
-                        ForEach(0..<5, id: \.self) { _ in
-                            RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.primary.opacity(0.05)).frame(height: 70)
-                        }
-                    }
-                    if let error { Text(error).font(.footnote).foregroundStyle(.red) }
-                }.padding(.horizontal, 20).padding(.vertical, 12)
-                    .animation(.spring(response: 0.34, dampingFraction: 0.86), value: expanded)
-                    .animation(.easeInOut(duration: 0.2), value: filter)
-            }
-            .navigationTitle("连接器").navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    VStack(spacing: 1) {
-                        Text("连接器").font(.headline)
-                        if let data { Text("已连接 \(data.summary.connected) 个 · 共 \(data.connectors.count) 项").font(.caption2).foregroundStyle(.secondary) }
+            List {
+                if data == nil && error == nil { ProgressView().frame(maxWidth: .infinity) }
+                if !connected.isEmpty {
+                    Section("已连接") {
+                        ForEach(connected) { item in connectedRow(item) }
                     }
                 }
-                ToolbarItem(placement: .topBarTrailing) { ShiyanCloseButton(action: { dismiss() }, inToolbar: true) }
+                if !available.isEmpty {
+                    Section("可连接") {
+                        ForEach(available) { item in
+                            DotsSourceRow(symbol: item.icon ?? "puzzlepiece", name: item.name, subtitle: item.summary) {
+                                Button("连接") { Task { await act(item, "connect") } }
+                                    .buttonStyle(.borderedProminent).controlSize(.small).buttonBorderShape(.capsule)
+                            }
+                        }
+                    }
+                }
+                if data != nil {
+                    Section("内置") { Text(names("builtin")).font(.subheadline) }
+                    Section("即将支持") { Text(names("planned")).font(.subheadline).foregroundStyle(.secondary) }
+                }
+                if let error { Text(error).font(.footnote).foregroundStyle(.red) }
             }
+            .listStyle(.insetGrouped)
+            .animation(.spring(response: 0.32, dampingFraction: 0.88), value: expanded)
+            .navigationTitle("连接器").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { ShiyanCloseButton(action: { dismiss() }, inToolbar: true) } }
             .refreshable { await load() }
             .task { await load() }
             .sheet(isPresented: $showWeixin, onDismiss: { Task { await load() } }) { DotsWeixinLoginView { Task { await load() } } }
             .alert("连接海绵宝宝设备", isPresented: $showSpongeHelp) {
                 Button("好") {}
-            } message: {
-                Text("在电脑上打开海绵宝宝客户端，用当前拾燕账号登录并完成配对；也可以在拾燕桌面版或网页版的 设置 → 海绵宝宝 里连接。配对后的设备会显示在这里。")
-            }
+            } message: { Text("在电脑上打开海绵宝宝客户端，用当前拾燕账号登录并配对。") }
             .confirmationDialog("断开\(confirmDisconnect?.name ?? "")？", isPresented: Binding(get: { confirmDisconnect != nil }, set: { if !$0 { confirmDisconnect = nil } }), titleVisibility: .visible) {
                 Button("断开", role: .destructive) { if let item = confirmDisconnect { Task { await act(item, "disconnect") } } }
-            } message: { Text("只影响当前账号，之后可以随时重新连接。") }
+            } message: { Text("之后可以随时重新连接。") }
         }
         .presentationDragIndicator(.visible)
     }
 
-    private func filters(_ data: DotsConnectorsResponse) -> some View {
-        let used = data.categories.filter { cat in data.connectors.contains { $0.category == cat.id } }
-        let all = [DotsConnectorCategory(id: "all", name: "全部"), DotsConnectorCategory(id: "connected", name: "已连接")] + used
-        return ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(all) { cat in
-                    Button { UISelectionFeedbackGenerator().selectionChanged(); filter = cat.id } label: {
-                        Text(cat.name).font(.subheadline).padding(.horizontal, 13).padding(.vertical, 7)
-                            .foregroundStyle(filter == cat.id ? Color.white : Color.primary)
-                            .background(filter == cat.id ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color.primary.opacity(0.06)), in: Capsule())
-                    }.buttonStyle(.plain)
-                }
-            }
-        }
-    }
-    private func groups(_ data: DotsConnectorsResponse) -> [(String?, [DotsConnector])] {
-        let visible = data.connectors.filter { c in
-            filter == "all" || (filter == "connected" ? ["connected", "paused", "error"].contains(c.state) : c.category == filter)
-        }
-        guard filter == "all" else { return [(nil, visible)] }
-        return data.categories.compactMap { cat in
-            let items = visible.filter { $0.category == cat.id }
-            return items.isEmpty ? nil : (cat.name, items)
-        }
-    }
-    private func stateColor(_ state: String) -> Color {
-        switch state {
-        case "connected": return .green
-        case "error": return .orange
-        case "paused": return .yellow
-        default: return .secondary
-        }
-    }
-    private func row(_ item: DotsConnector) -> some View {
+    @ViewBuilder private func connectedRow(_ item: DotsConnector) -> some View {
         let open = expanded == item.id
-        return VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 10) {
             Button {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 expanded = open ? nil : item.id
             } label: {
-                HStack(spacing: 12) {
-                    Image(systemName: item.icon ?? "puzzlepiece")
-                        .font(.system(size: 17, weight: .medium))
-                        .foregroundStyle(item.state == "connected" ? Color.green : Color.accentColor)
-                        .frame(width: 38, height: 38)
-                        .background((item.state == "connected" ? Color.green : Color.accentColor).opacity(0.12),
-                                    in: RoundedRectangle(cornerRadius: 11, style: .continuous))
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(item.name).font(.body.weight(.semibold)).foregroundStyle(.primary)
-                        if let summary = item.summary {
-                            Text(summary).font(.caption).foregroundStyle(.secondary).lineLimit(open ? nil : 2)
-                                .multilineTextAlignment(.leading)
-                        }
+                DotsSourceRow(symbol: item.icon ?? "puzzlepiece", name: item.name, subtitle: item.account?.isEmpty == false ? item.account : item.summary, active: item.state == "connected") {
+                    HStack(spacing: 8) {
+                        DotsSourceState(text: item.status, state: item.state)
+                        Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+                            .rotationEffect(.degrees(open ? 90 : 0))
                     }
-                    Spacer(minLength: 6)
-                    HStack(spacing: 5) {
-                        Circle().fill(stateColor(item.state)).frame(width: 7, height: 7)
-                            .opacity(item.state == "planned" || item.state == "available" ? 0.45 : 1)
-                        Text(item.status).font(.caption).foregroundStyle(item.state == "connected" ? Color.green : .secondary)
-                    }.fixedSize()
                 }.contentShape(Rectangle())
             }.buttonStyle(.plain)
-            if open { details(item).transition(.opacity.combined(with: .move(edge: .top))) }
-        }
-        .padding(14)
-        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .opacity(item.state == "planned" ? 0.75 : 1)
-        .accessibilityIdentifier("dots-connector-\(item.id)")
-    }
-    @ViewBuilder private func details(_ item: DotsConnector) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if let account = item.account, !account.isEmpty {
-                Text(account).font(.caption).padding(.horizontal, 9).padding(.vertical, 4)
-                    .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 7))
-            }
-            if let detail = item.detail { Text(detail).font(.footnote).foregroundStyle(.secondary) }
-            if let caps = item.capabilities, !caps.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
-                        ForEach(caps, id: \.self) { cap in
-                            Text(cap).font(.caption2).foregroundStyle(.secondary).padding(.horizontal, 8).padding(.vertical, 4)
-                                .overlay(Capsule().strokeBorder(Color.primary.opacity(0.15)))
+            if open {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(item.devices ?? [], id: \.self) { device in
+                        HStack(spacing: 8) {
+                            Circle().fill(device.online == true ? Color.green : Color.gray.opacity(0.5)).frame(width: 6, height: 6)
+                            Text(device.name).font(.footnote)
+                        }
+                    }
+                    if let detail = item.detail { Text(detail).font(.caption).foregroundStyle(.secondary) }
+                    if let actions = item.actions, !actions.isEmpty {
+                        HStack(spacing: 8) {
+                            ForEach(actions, id: \.self) { action in actionButton(item, action) }
+                            if working == item.id { ProgressView().controlSize(.small) }
                         }
                     }
                 }
+                .padding(.leading, 44)
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
-            ForEach(item.devices ?? [], id: \.self) { device in
-                HStack(spacing: 8) {
-                    Circle().fill(device.online == true ? Color.green : Color.gray).frame(width: 7, height: 7)
-                    Text(device.name).font(.footnote)
-                    if let platform = device.platform, !platform.isEmpty { Text(platform).font(.caption).foregroundStyle(.secondary) }
-                }
-            }
-            if item.state == "planned" {
-                Text("还在开发中。想优先用上，可以在对话里告诉 Dots。").font(.caption).foregroundStyle(.secondary)
-            }
-            if let actions = item.actions, !actions.isEmpty {
-                HStack(spacing: 8) {
-                    ForEach(actions, id: \.self) { action in actionButton(item, action) }
-                    if working == item.id { ProgressView().controlSize(.small) }
-                }
-            }
-        }.padding(.leading, 50)
+        }
+        .accessibilityIdentifier("dots-connector-\(item.id)")
     }
     @ViewBuilder private func actionButton(_ item: DotsConnector, _ action: String) -> some View {
-        let label = ["connect": "连接", "configure": "修改", "pause": "暂停", "resume": "恢复", "disconnect": item.kind == "weixin" ? "解绑" : "断开", "manage": "管理设备",
-                     "push_on": "提醒同步到微信", "push_off": "不再同步提醒"][action] ?? action
-        if action == "connect" {
-            Button(label) { Task { await act(item, action) } }.buttonStyle(.borderedProminent).controlSize(.small)
-        } else {
-            Button(label, role: action == "disconnect" ? .destructive : nil) {
-                if action == "disconnect" { confirmDisconnect = item } else { Task { await act(item, action) } }
-            }.buttonStyle(.bordered).controlSize(.small).disabled(working != nil)
-        }
+        let label = ["configure": "修改", "pause": "暂停", "resume": "恢复", "disconnect": item.kind == "weixin" ? "解绑" : "断开", "manage": "管理设备",
+                     "push_on": "提醒推送到微信", "push_off": "停止推送提醒"][action] ?? action
+        Button(label, role: action == "disconnect" ? .destructive : nil) {
+            if action == "disconnect" { confirmDisconnect = item } else { Task { await act(item, action) } }
+        }.buttonStyle(.bordered).controlSize(.small).buttonBorderShape(.capsule).disabled(working != nil)
     }
     private func act(_ item: DotsConnector, _ action: String) async {
         if item.kind == "sponge" { showSpongeHelp = true; return }
@@ -1678,6 +1761,7 @@ struct DotsConnectorsView: View {
 struct DotsSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var settings: DotsSettings?
+    @State private var grants: [DotsGrant] = []
     @State private var error: String?
     private let modes: [(String, String, String, String)] = [
         ("smart", "智能审批", "只有删除、提权、重启、推送代码等高风险操作才需要你批准，其余自动执行。", "shield.lefthalf.filled"),
@@ -1706,6 +1790,25 @@ struct DotsSettingsView: View {
                         }
                     }
                     Section {
+                        if grants.isEmpty {
+                            Text("批准操作时可选择授权范围，同类操作之后不再询问。")
+                                .font(.footnote).foregroundStyle(.secondary)
+                        }
+                        ForEach(grants) { grant in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text((grant.labels ?? grant.signatures ?? []).joined(separator: "、"))
+                                        .font(.system(.subheadline, design: .monospaced).weight(.semibold))
+                                    Text(grant.scopeText + ((grant.uses ?? 0) > 0 ? " · 已自动执行 \(grant.uses ?? 0) 次" : ""))
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Button("撤销", role: .destructive) { revoke(grant) }.buttonStyle(.borderless).font(.subheadline)
+                            }
+                        }
+                        NavigationLink { DotsAuditView() } label: { Label("做过的事", systemImage: "clock.arrow.circlepath") }
+                    } header: { Text("已授权的操作") }
+                    Section {
                         Toggle("每天推送一份简报", isOn: Binding(get: { settings.dailyBrief }, set: { value in save(["dailyBrief": value]) { $0.dailyBrief = value } }))
                         DatePicker("推送时间", selection: Binding(get: { time(settings.dailyBriefTime) }, set: { date in
                             let text = Self.formatter.string(from: date); save(["dailyBriefTime": text]) { $0.dailyBriefTime = text }
@@ -1721,9 +1824,16 @@ struct DotsSettingsView: View {
             .task {
                 do { settings = try await CodexClient.shared.dotsSettings().settings }
                 catch { self.error = error.localizedDescription }
+                grants = (try? await CodexClient.shared.dotsGrants().grants) ?? []
             }
         }
         .presentationDetents([.medium, .large])
+    }
+    private func revoke(_ grant: DotsGrant) {
+        Task {
+            do { try await CodexClient.shared.dotsRevokeGrant(grant.id); withAnimation { grants.removeAll { $0.id == grant.id } }; UINotificationFeedbackGenerator().notificationOccurred(.success) }
+            catch { self.error = error.localizedDescription }
+        }
     }
     private static let formatter: DateFormatter = { let f = DateFormatter(); f.dateFormat = "HH:mm"; f.locale = Locale(identifier: "en_US_POSIX"); return f }()
     private func time(_ text: String) -> Date { Self.formatter.date(from: text) ?? Self.formatter.date(from: "09:00")! }

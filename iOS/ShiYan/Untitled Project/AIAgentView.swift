@@ -532,7 +532,7 @@ struct AIAgentView: View {
              
             .modifier(AgentReasoningDrawerGesture(
                 presentation: reasoningPresentation, progress: drawer,
-                excludedFrame: attachmentOpen ? attachmentCardFrame : .zero,
+                excludedFrame: featurePage == .dots && drawer < 0.001 ? .infinite : (attachmentOpen ? attachmentCardFrame : .zero),
                 changed: { updateDrawerDrag($0, width: width) },
                 ended: { finishDrawerDrag(translation: $0, velocity: $1, cancelled: $2, width: width) }
             ))
@@ -1176,9 +1176,6 @@ struct AIAgentView: View {
                     Text("已处理 " + processingTime(message, at: completed))
                         .font(.caption).foregroundStyle(.secondary).monospacedDigit()
                 }
-                if message.role == .assistant {
-                    AgentProcessTimeline(message: message)
-                }
                 if !message.text.isEmpty {
                     if message.role == .user {
                         userMessageBubble(message.text, selectionIdentifier: inlineSelectionMessageID == message.id ? "user-selection-\(message.id.uuidString)" : nil)
@@ -1234,6 +1231,7 @@ struct AIAgentView: View {
                    store.conversation(conversationID)?.messages.last?.id == message.id {
                     liveQuestionForms(message: message, conversationID: conversationID)
                 }
+                if message.isWorking { AgentActivityView(message: message) }
                 if let error = message.presentationError { Text(error).font(.subheadline).foregroundStyle(.red).textSelection(.enabled) }
                 if message.state == .cancelled { Text(message.phase.isEmpty ? "已停止" : message.phase).font(.caption).foregroundStyle(.secondary) }
                 if message.role == .assistant {

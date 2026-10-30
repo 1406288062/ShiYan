@@ -133,3 +133,22 @@
 .memory-entry-actions { flex:none;display:flex;gap:4px; }
 .memory-entry-actions .is-destructive { color:#d9480f; }
 .memory-entry-empty { justify-content:center !important;color:var(--secondary,#888); }
+
+/* 记忆摘要（按类别） */
+.memory-entries > header { display:flex;align-items:baseline;justify-content:space-between;gap:12px; }
+.memory-entries > header small { color:var(--secondary);font-size:12px; }
+.memory-summary { display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;margin:8px 0 14px; }
+.memory-summary-group { padding:14px 16px;border-radius:14px;border:1px solid var(--line,color-mix(in srgb,currentColor 9%,transparent));background:color-mix(in srgb,currentColor 1.5%,transparent); }
+.memory-summary-group h4 { margin:0 0 8px;font-size:13px;font-weight:600;display:flex;justify-content:space-between;align-items:baseline; }
+.memory-summary-group h4 small { font-weight:400;color:var(--secondary);font-size:11px; }
+.memory-summary-group ul { margin:0;padding:0 0 0 16px;display:flex;flex-direction:column;gap:5px; }
+.memory-summary-group li { font-size:13px;line-height:1.5; }
+.memory-summary-empty { color:var(--secondary);font-size:13px;margin:8px 0 14px; }
+.memory-all { border-top:1px solid var(--line,color-mix(in srgb,currentColor 9%,transparent));padding-top:10px; }
+.memory-all > summary { cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500;padding:4px 0; }
+.memory-all > summary::-webkit-details-marker { display:none; }
+.memory-all > summary::before { content:"";width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg);transition:transform .2s;opacity:.6; }
+.memory-all[open] > summary::before { transform:rotate(45deg); }
+.memory-all > summary small { color:var(--secondary);font-weight:400; }
+.memory-all > input[type=search] { margin:8px 0;width:100%;max-width:280px; }
+.memory-entry-list .memory-entry-group { list-style:none;font-size:12px;font-weight:600;color:var(--secondary);padding:12px 0 4px;border:0; }
