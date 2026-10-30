@@ -26,6 +26,8 @@ enum AgentMenuIcons {
     static let folder = draw("folder")
     static let folderRemove = draw("folderRemove")
     static let project = draw("project")
+    /// 与侧边栏、顶部的新聊天按钮同一个符号和粗细。
+    static let newChat: UIImage = UIImage(systemName: "square.and.pencil", withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .semibold))!.withRenderingMode(.alwaysTemplate)
     private static func draw(_ name: String) -> UIImage {
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: 24, height: 24))
         return renderer.image { context in
@@ -104,7 +106,7 @@ enum AgentCopyStyle {
         return UIGraphicsImageRenderer(size: CGSize(width: size, height: size), format: format).image { context in
             context.cgContext.addPath(AgentReplyCopyIcon().path(in: CGRect(x: 0, y: 0, width: size, height: size)).cgPath)
             context.cgContext.setStrokeColor(UIColor.label.cgColor)
-            context.cgContext.setLineWidth(size / 15.1 * 1.5)
+            context.cgContext.setLineWidth(1.3) // 与菜单里系统图标（常规粗细）一致
             context.cgContext.setLineCap(.round); context.cgContext.setLineJoin(.round)
             context.cgContext.strokePath()
         }.withRenderingMode(.alwaysTemplate)

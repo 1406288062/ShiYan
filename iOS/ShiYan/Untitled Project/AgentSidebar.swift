@@ -262,8 +262,10 @@ struct AgentSidebar: View {
                         .font(.system(size: 18)).frame(minHeight: 48).contentShape(Rectangle())
                 }.buttonStyle(.plain)
                 Menu {
-                    Button("新聊天", systemImage: "square.and.pencil") {
+                    Button {
                         let id = store.newConversation(); store.setProject(project.id, conversation: id); onSelect(id)
+                    } label: {
+                        Label { Text("新聊天") } icon: { Image(uiImage: AgentMenuIcons.newChat) }
                     }
                     Button { projectTarget = project.id; projectName = project.name; projectDialog = true } label: {
                         Label { Text("重命名") } icon: { Image(uiImage: AgentMenuIcons.rename).resizable().frame(width: 20, height: 20) }

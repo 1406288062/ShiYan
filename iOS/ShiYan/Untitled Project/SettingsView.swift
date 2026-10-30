@@ -13,6 +13,8 @@ struct SettingsView: View {
     @State private var showingMemory = false
     @State private var showingCodexQuota = false
     @State private var showingDevices = false
+    @State private var showingConnectors = false
+    @State private var showingDotsSettings = false
     @State private var showingScanner = false
     @State private var selectedAvatar: PhotosPickerItem?
     @State private var loadingAvatar = false
@@ -53,6 +55,20 @@ struct SettingsView: View {
                                         showingScanner = true
                                     }
                                     .accessibilityIdentifier("settings-qr-scanner")
+                                }
+                                .background(groupBackground, in: RoundedRectangle(cornerRadius: 24))
+
+                                sectionLabel("Dots").padding(.top, 28)
+                                VStack(spacing: 0) {
+                                    settingsRow("连接器", detail: "微信、常用插件和自定义 MCP。", symbol: "point.3.connected.trianglepath.dotted") {
+                                        showingConnectors = true
+                                    }
+                                    .accessibilityIdentifier("settings-connectors")
+                                    rowDivider
+                                    settingsRow("Dots 设置", detail: "审批方式和已授权的操作。", symbol: "gearshape") {
+                                        showingDotsSettings = true
+                                    }
+                                    .accessibilityIdentifier("settings-dots")
                                 }
                                 .background(groupBackground, in: RoundedRectangle(cornerRadius: 24))
 
@@ -110,6 +126,8 @@ struct SettingsView: View {
                 .accessibilityIdentifier("settings-page")
                 .fullScreenCover(isPresented: $showingScanner) { ShiyanQRScanner() }
                 .sheet(isPresented: $showingDevices) { ShiyanDevicesSheet() }
+                .sheet(isPresented: $showingConnectors) { DotsConnectorsView(onConnect: { _ in }) }
+                .sheet(isPresented: $showingDotsSettings) { DotsSettingsView() }
                 .task(id: selectedAvatar) { await updateAvatar() }
                 .alert("无法更新头像", isPresented: Binding(
                     get: { avatarError != nil }, set: { if !$0 { avatarError = nil } })) {

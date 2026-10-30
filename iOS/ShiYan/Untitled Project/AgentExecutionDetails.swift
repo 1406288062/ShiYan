@@ -239,98 +239,81 @@ private struct AgentLazyExecutionDisclosure<Content: View, Label: View>: View {
 }
 
 
+/// 执行过程：先列出我发过的消息（太长只留开头）、这一轮在干嘛和时间；点一条进入步骤详情。
 struct AgentExecutionHistoryView: View {
     let messages: [AgentMessage]
     @Environment(\.dismiss) private var dismiss
-    @ScaledMetric(relativeTo: .body) private var rowHeight: CGFloat = 44
-    @State private var selectedID: UUID?
-    @State private var choosingRound = false
-    private var rounds: [AgentMessage] { messages.filter { $0.role == .assistant } }
-    private var selection: AgentMessage? { rounds.first { $0.id == selectedID } ?? rounds.last }
-    private var selectedIndex: Int { rounds.firstIndex { $0.id == selection?.id } ?? 0 }
-    private func messageName(for round: AgentMessage) -> String {
-        guard let index = messages.firstIndex(where: { $0.id == round.id }),
-              let prompt = messages[..<index].last(where: { $0.role == .user }) else { return "" }
-        let title = prompt.text.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
-        return title.isEmpty ? (prompt.assets.first?.filename ?? "附件消息") : title
+    @State private var doing: [String: String] = [:]
+    private struct Round: Identifiable { var prompt: AgentMessage?; var reply: AgentMessage; var id: UUID { reply.id } }
+    private var rounds: [Round] {
+        messages.enumerated().compactMap { index, message in
+            guard message.role == .assistant else { return nil }
+            return Round(prompt: messages[..<index].last(where: { $0.role == .user }), reply: message)
+        }.reversed()
     }
-
-    private func roundLabel(_ round: AgentMessage, index: Int) -> some View {
-        HStack(spacing: 10) {
-            Text("第 \(index + 1) 轮").fixedSize()
-            Text(messageName(for: round))
-                .foregroundStyle(.secondary)
-                .lineLimit(1).truncationMode(.tail)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
+    private func promptText(_ prompt: AgentMessage?) -> String {
+        guard let prompt else { return "（没有对应的消息）" }
+        let text = prompt.text.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+        return text.isEmpty ? (prompt.assets.first?.filename ?? "附件消息") : text
+    }
+    private func timeText(_ date: Date) -> String {
+        Calendar.current.isDateInToday(date) ? date.formatted(date: .omitted, time: .shortened) : date.formatted(.dateTime.month().day().hour().minute())
     }
 
     var body: some View {
         NavigationStack {
-            GeometryReader { geometry in
-                VStack(alignment: .leading, spacing: 12) {
-                    Button { choosingRound.toggle() } label: {
-                        HStack {
-                            if let round = selection {
-                                roundLabel(round, index: selectedIndex)
-                            } else {
-                                Text("暂无执行轮次")
-                                Spacer()
-                            }
-                            Image(systemName: choosingRound ? "chevron.up" : "chevron.down")
-                        }
-                        .font(.subheadline).padding(.horizontal, 12).frame(minHeight: rowHeight)
-                        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 12))
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain).disabled(rounds.isEmpty)
-                    .accessibilityIdentifier("execution-round-picker")
-                    if choosingRound {
-                        ScrollViewReader { proxy in
-                            ScrollView(showsIndicators: false) {
-                                LazyVStack(spacing: 0) {
-                                    ForEach(Array(rounds.enumerated()), id: \.element.id) { index, message in
-                                        Button {
-                                            selectedID = message.id; choosingRound = false
-                                        } label: {
-                                            HStack {
-                                                roundLabel(message, index: index)
-                                                if message.id == selection?.id { Image(systemName: "checkmark") }
-                                            }
-                                            .font(.body).padding(.horizontal, 12).frame(height: rowHeight)
-                                            .contentShape(Rectangle())
-                                        }
-                                        .buttonStyle(.plain).id(message.id)
-                                    }
-                                }
-                            }
-                            .frame(height: min(CGFloat(min(rounds.count, 10)) * rowHeight, max(rowHeight, geometry.size.height * 0.45)))
-                            .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 12))
-                            .onAppear { if let id = selection?.id { proxy.scrollTo(id, anchor: .center) } }
-                        }
-                        .accessibilityIdentifier("execution-round-list")
-                    }
+            List {
+                if rounds.isEmpty {
+                    Text("这个对话还没有执行记录").foregroundStyle(.secondary).listRowSeparator(.hidden)
                 }
-                .padding(.horizontal, 20).padding(.top, 12)
-                .frame(maxHeight: .infinity, alignment: .top)
-                .overlay(alignment: .top) {
-                    if let message = selection, !choosingRound {
-                        AgentStepsPage(status: message.isWorking ? .running : (message.error?.isEmpty == false ? .failed : .done),
-                                       title: messageName(for: message).isEmpty ? "第 \(selectedIndex + 1) 轮" : messageName(for: message),
-                                       time: message.completedAt ?? message.createdAt,
-                                       result: message.text,
-                                       steps: AgentExecutionPresentation.steps(AgentExecutionPresentation.items(displayItems: message.displayItems, rawResult: message.rawResult)))
-                            .id(message.id)
-                            .padding(.top, rowHeight + 20)
+                ForEach(rounds) { round in
+                    NavigationLink {
+                        AgentStepsPage(status: round.reply.isWorking ? .running : (round.reply.error?.isEmpty == false ? .failed : .done),
+                                       title: String(promptText(round.prompt).prefix(80)) + (promptText(round.prompt).count > 80 ? "…" : ""),
+                                       time: round.reply.completedAt ?? round.reply.createdAt,
+                                       result: round.reply.text, prompt: round.prompt?.text ?? "",
+                                       steps: AgentExecutionPresentation.steps(AgentExecutionPresentation.items(displayItems: round.reply.displayItems, rawResult: round.reply.rawResult)))
+                            .navigationTitle("").navigationBarTitleDisplayMode(.inline)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(promptText(round.prompt)).font(.system(size: 17)).foregroundStyle(.primary).lineLimit(3)
+                            HStack(spacing: 6) {
+                                if let text = doing[round.reply.id.uuidString] { Text(text).lineLimit(1) }
+                                else if round.reply.isWorking { Text("正在执行") }
+                                Text(timeText(round.reply.completedAt ?? round.reply.createdAt)).foregroundStyle(.tertiary)
+                            }.font(.system(size: 14)).foregroundStyle(.secondary)
+                        }.padding(.vertical, 6)
                     }
+                    .listRowBackground(Color(uiColor: .systemBackground))
                 }
             }
+            .listStyle(.plain)
             .navigationTitle("执行过程").navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) { ShiyanCloseButton(action: { dismiss() }, inToolbar: true) }
-            }
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { ShiyanCloseButton(action: { dismiss() }, inToolbar: true) } }
+            .task { await loadDoing() }
         }
         .presentationDetents([.large])
+    }
+    private func loadDoing() async {
+        let items = rounds.prefix(40).map { (id: $0.reply.id.uuidString, prompt: $0.prompt?.text ?? "", reply: $0.reply.text) }
+        guard !items.isEmpty, let values = try? await AgentRoundSummaries.shared.load(items) else { return }
+        withAnimation(.easeOut(duration: 0.2)) { doing = values.mapValues(\.doing) }
+    }
+}
+
+struct AgentRoundSummary: Decodable, Equatable { var id: String; var doing: String; var result: String }
+struct AgentRoundSummaryResponse: Decodable { var rounds: [AgentRoundSummary] }
+
+/// 每轮“在干嘛 / 结果总结”的内存缓存，避免反复请求。
+@MainActor final class AgentRoundSummaries {
+    static let shared = AgentRoundSummaries()
+    private var cache: [String: AgentRoundSummary] = [:]
+    func load(_ items: [(id: String, prompt: String, reply: String)]) async throws -> [String: AgentRoundSummary] {
+        let missing = items.filter { cache[$0.id] == nil && !($0.prompt.isEmpty && $0.reply.isEmpty) }
+        if !missing.isEmpty {
+            for value in try await CodexClient.shared.roundSummaries(missing) { cache[value.id] = value }
+        }
+        return cache.filter { key, _ in items.contains { $0.id == key } }
     }
 }
 

@@ -125,6 +125,13 @@ def register_dots(app):
     async def refresh_mcp(connector: str, request: Request):
         return await remote(request, "POST", "connectors/mcp/" + connector_id(connector) + "/refresh", {})
 
+    # 执行过程：每轮“在干嘛”和结果的简短总结（服务端生成并缓存）。
+    @app.post("/api/dots/rounds/summary")
+    async def round_summary(request: Request):
+        data = await plain(request)
+        rounds = data.get("rounds") if isinstance(data.get("rounds"), list) else []
+        return await remote(request, "POST", "rounds/summary", {"rounds": rounds[:40]})
+
     # 执行过程：每个步骤的标题与说明（服务端生成并缓存）。
     @app.post("/api/dots/steps/summary")
     async def step_summary(request: Request):

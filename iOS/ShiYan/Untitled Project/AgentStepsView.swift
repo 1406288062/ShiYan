@@ -19,10 +19,13 @@ struct AgentStepsPage: View {
     var title: String
     var summary: String? = nil
     var time: Date? = nil
+    /// 模型回复原文：页面上只显示它的简短总结，不照搬原文。
     var result: String? = nil
+    var prompt: String = ""
     var steps: [AgentExecutionPresentation.Item]
     @State private var ai: [String: AgentStepSummary] = [:]
-    @State private var resultExpanded = false
+    @State private var resultSummary: String?
+    @State private var summaryFailed = false
 
     var body: some View {
         ScrollView {
@@ -30,11 +33,14 @@ struct AgentStepsPage: View {
                 header.padding(.horizontal, 20).padding(.bottom, 20)
                 if let text = cleanResult, !text.isEmpty {
                     Divider()
-                    Button { withAnimation(.easeInOut(duration: 0.2)) { resultExpanded.toggle() } } label: {
-                        Text(text).font(.system(size: 17)).foregroundStyle(.secondary)
-                            .lineLimit(resultExpanded ? nil : 6).multilineTextAlignment(.leading)
-                            .frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
-                    }.buttonStyle(.plain).padding(20)
+                    Group {
+                        if let resultSummary { Text(resultSummary) }
+                        else if summaryFailed { Text(String(text.prefix(100)) + (text.count > 100 ? "…" : "")) }
+                        else { Text("正在整理结果…").redacted(reason: .placeholder) }
+                    }
+                    .font(.system(size: 17)).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
+                    .padding(20)
                 }
                 Divider()
                 Text("执行步骤").font(.system(.subheadline, design: .monospaced).weight(.semibold))
@@ -50,6 +56,7 @@ struct AgentStepsPage: View {
         }
         .scrollIndicators(.hidden)
         .task(id: steps.map(\.id).joined(separator: ",")) { await loadSummaries() }
+        .task { await loadResultSummary() }
     }
     private var cleanResult: String? {
         guard let result else { return nil }
@@ -109,6 +116,15 @@ struct AgentStepsPage: View {
         case "cancelled", "interrupted": .secondary
         default: .green
         }
+    }
+    private func loadResultSummary() async {
+        guard let raw = result?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return }
+        let id = "page-" + String(title.prefix(60)) + "-" + String(raw.count)
+        do {
+            let values = try await AgentRoundSummaries.shared.load([(id: id, prompt: prompt.isEmpty ? title : prompt, reply: raw)])
+            if let value = values[id]?.result, !value.isEmpty { withAnimation(.easeOut(duration: 0.2)) { resultSummary = value } }
+            else { summaryFailed = true }
+        } catch { summaryFailed = true }
     }
     private func loadSummaries() async {
         guard !steps.isEmpty else { return }

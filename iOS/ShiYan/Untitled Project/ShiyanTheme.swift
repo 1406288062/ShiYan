@@ -39,6 +39,8 @@ struct ShiyanMoreButtonLabel: View {
     var showsCloseIcon = false
     var isLoading = false
     var hasGlass = true
+    /// 放在工具栏里时与关闭按钮同尺寸，系统玻璃底才会是正圆。
+    var inToolbar = false
 
     var body: some View {
         Group {
@@ -55,11 +57,12 @@ struct ShiyanMoreButtonLabel: View {
             if isLoading { ProgressView().tint(.primary) }
             else {
                 Image(systemName: showsCloseIcon ? "xmark" : "ellipsis")
-                    .font(.system(size: showsCloseIcon ? 19 : 18, weight: .semibold))
+                    .font(.system(size: inToolbar ? ShiyanPreviewLayout.toolbarIconPointSize : (showsCloseIcon ? 19 : 18), weight: .semibold))
                     .foregroundStyle(.primary)
             }
         }
-        .frame(width: ShiyanPreviewLayout.controlDiameter, height: ShiyanPreviewLayout.controlDiameter)
+        .frame(width: inToolbar ? ShiyanPreviewLayout.toolbarContentDiameter : ShiyanPreviewLayout.controlDiameter,
+               height: inToolbar ? ShiyanPreviewLayout.toolbarContentDiameter : ShiyanPreviewLayout.controlDiameter)
         .contentShape(Circle())
     }
 }
@@ -74,7 +77,7 @@ struct ShiyanMoreMenu<Content: View>: View {
     var body: some View {
         Menu { content() } label: {
             // 工具栏里系统已经给按钮加了玻璃底，这里再画一层会出现两个圆重叠。
-            ShiyanMoreButtonLabel(showsCloseIcon: showsCloseIcon, hasGlass: hasGlass && !inToolbar)
+            ShiyanMoreButtonLabel(showsCloseIcon: showsCloseIcon, hasGlass: hasGlass && !inToolbar, inToolbar: inToolbar)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("更多")

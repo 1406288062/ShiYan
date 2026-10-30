@@ -762,16 +762,7 @@ struct DotsView: View {
                                 else { activityPanel }
                             }.padding(.horizontal, store.selected == nil ? 16 : 24).padding(.vertical, 12).frame(maxWidth: .infinity, alignment: .leading)
                         }.scrollIndicators(.hidden).refreshable { await store.loadActivity() }
-                    case .connectors:
-                        DotsConnectorsView(onConnect: { prompt in
-                            showTasks = false
-                            store.setDraft(prompt)
-                            withAnimation(.spring(response: 0.34, dampingFraction: 0.8)) { sentAfterId = store.messages.map(\.id).max() ?? 0 }
-                            Task { await store.submit() }
-                        }, embedded: true)
                     case .subscriptions: DotsSubscriptionsView(embedded: true)
-                    case .activity: DotsAuditView()
-                    case .settings: DotsSettingsView(embedded: true)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -1058,11 +1049,12 @@ struct DotsView: View {
                 AgentStepsPage(status: goal.stepsStatus, title: goal.displayTitle,
                                time: goal.updated_at.map { Date(timeIntervalSince1970: $0 > 1e12 ? $0 / 1000 : $0) },
                                result: (goal.outputs ?? []).last?.summary ?? goal.last_summary,
+                               prompt: goal.displayTitle,
                                steps: goal.executionSteps)
                     .navigationTitle("").navigationBarTitleDisplayMode(.inline)
             } label: {
                 HStack {
-                    Text("处理过程").font(.system(size: 17)).foregroundStyle(.secondary)
+                    Text("执行过程").font(.system(size: 17)).foregroundStyle(.secondary)
                     Spacer()
                     Image(systemName: "chevron.right").font(.system(size: 15, weight: .semibold)).foregroundStyle(.primary)
                 }.contentShape(Rectangle())
@@ -1251,9 +1243,8 @@ extension EnvironmentValues {
     }
 }
 private struct DotsCardRow: ViewModifier {
-    @Environment(\.dotsHubEmbedded) private var embedded
     func body(content: Content) -> some View {
-        if embedded { content.listRowBackground(Color(uiColor: .secondarySystemBackground)) } else { content }
+        content.listRowBackground(Color(uiColor: .systemBackground))
     }
 }
 extension View {
@@ -1401,6 +1392,7 @@ private struct DotsSubscriptionsView: View {
                 if let error { Text(error).font(.footnote).foregroundStyle(.red) }
             }
             .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden).background(Color(uiColor: .systemBackground))
             .confirmationDialog("取消这项订阅？", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }), titleVisibility: .visible) {
                 Button("取消订阅", role: .destructive) {
                     guard let item = removing else { return }
@@ -1960,6 +1952,7 @@ struct DotsConnectorsView: View {
             if let error { Text(error).font(.footnote).foregroundStyle(.red) }
         }
         .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden).background(Color(uiColor: .systemBackground))
         .animation(.spring(response: 0.32, dampingFraction: 0.88), value: expanded)
         .refreshable { await load() }
         .task {
@@ -1990,9 +1983,17 @@ struct DotsConnectorsView: View {
             .frame(width: 32, height: 32)
             .background(Color(hue: hue, saturation: 0.55, brightness: 0.78), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
     }
+    /// 常用插件和微信用官方图标；自定义 MCP 没有图标时显示首字母。
+    @ViewBuilder private func logo(_ id: String, _ name: String) -> some View {
+        if let image = UIImage(named: "connector-" + id) {
+            Image(uiImage: image).resizable().scaledToFill().frame(width: 32, height: 32)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5))
+        } else { monogram(name) }
+    }
     private func row<Trailing: View>(id: String, name: String, subtitle: String, @ViewBuilder trailing: () -> Trailing) -> some View {
         HStack(spacing: 12) {
-            monogram(name)
+            logo(id, name)
             VStack(alignment: .leading, spacing: 2) {
                 Text(name).font(.body.weight(.medium)).foregroundStyle(.primary)
                 if !subtitle.isEmpty { Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(2) }
@@ -2227,19 +2228,14 @@ struct DotsSettingsView: View {
                                 Button("撤销", role: .destructive) { revoke(grant) }.buttonStyle(.borderless).font(.subheadline)
                             }
                         }
-                        NavigationLink { DotsAuditView() } label: { Label("做过的事", systemImage: "clock.arrow.circlepath") }
                     } header: { Text("已授权的操作") }.dotsCardRow()
-                    Section {
-                        Toggle("每天推送一份简报", isOn: Binding(get: { settings.dailyBrief }, set: { value in save(["dailyBrief": value]) { $0.dailyBrief = value } }))
-                        DatePicker("推送时间", selection: Binding(get: { time(settings.dailyBriefTime) }, set: { date in
-                            let text = Self.formatter.string(from: date); save(["dailyBriefTime": text]) { $0.dailyBriefTime = text }
-                        }), displayedComponents: .hourAndMinute).disabled(!settings.dailyBrief)
-                    } header: { Text("每日简报") } footer: { Text("汇总当天日程、进行中的任务和订阅动态。") }.dotsCardRow()
+                    // 每日简报功能保留，设置项暂不显示。
                 } else if error == nil {
                     ProgressView().frame(maxWidth: .infinity)
                 }
                 if let error { Text(error).foregroundStyle(.red).font(.footnote) }
             }
+            .scrollContentBackground(.hidden).background(Color(uiColor: .systemBackground))
             .task {
                 do { settings = try await CodexClient.shared.dotsSettings().settings }
                 catch { self.error = error.localizedDescription }
@@ -2418,23 +2414,17 @@ struct DotsWeixinLoginView: View {
 
 /// Dots 面板（点宠物打开）的分页。
 enum DotsHubTab: CaseIterable {
-    case tasks, connectors, subscriptions, activity, settings
+    case tasks, subscriptions
     var symbol: String {
         switch self {
         case .tasks: return "list.bullet"
-        case .connectors: return "point.3.connected.trianglepath.dotted"
         case .subscriptions: return "bell.badge"
-        case .activity: return "clock.arrow.circlepath"
-        case .settings: return "gearshape"
         }
     }
     var title: String {
         switch self {
         case .tasks: return "任务"
-        case .connectors: return "连接器"
         case .subscriptions: return "事件订阅"
-        case .activity: return "做过的事"
-        case .settings: return "Dots 设置"
         }
     }
 }

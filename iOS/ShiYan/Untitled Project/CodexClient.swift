@@ -697,6 +697,13 @@ extension CodexClient: DotsTransport {
                                        rejectDotsErrors: true).body
         return try JSONDecoder().decode(DotsSettingsResponse.self, from: bytes)
     }
+    /// 每轮“在干嘛”和结果的简短总结（服务端按内容缓存）。
+    func roundSummaries(_ items: [(id: String, prompt: String, reply: String)]) async throws -> [AgentRoundSummary] {
+        try await prepareConnection()
+        let payload: [[String: Any]] = items.prefix(40).map { ["id": $0.id, "prompt": String($0.prompt.prefix(1200)), "reply": String($0.reply.prefix(2500))] }
+        let bytes = try await response(request(method: "POST", route: "dots/rounds/summary", object: ["rounds": payload]), rejectDotsErrors: true).body
+        return try JSONDecoder().decode(AgentRoundSummaryResponse.self, from: bytes).rounds
+    }
     /// 执行步骤的标题和说明（服务端按步骤内容缓存）。
     func stepSummaries(_ steps: [AgentExecutionPresentation.Item]) async throws -> [AgentStepSummary] {
         try await prepareConnection()
