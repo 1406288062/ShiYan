@@ -46,6 +46,7 @@ struct DotsView: View {
     @State private var showSettings = false
     @State private var hubTab: DotsHubTab = .tasks
     @Namespace private var hubTabSpace
+    @Namespace private var petZoom
     @State private var showFiles = false
     @State private var attachmentPreview: URL?
     @State private var approval: DotsApprovalContext?
@@ -155,7 +156,7 @@ struct DotsView: View {
                                     Color.clear.preference(key: DotsBottomPreference.self,
                                         value: geo.frame(in: .named("dots-chat-scroll")).minY)
                                 })
-                        }.padding(.horizontal, 24)
+                        }.padding(.horizontal, 16) // 与顶部按钮外沿对齐
                             .padding(.top, (headerHeight > 0 ? headerHeight : topInset + 111) + 16)
                             .padding(.bottom, 20)
                             .opacity(voicePresentation.immersive ? 0 : 1)
@@ -305,7 +306,7 @@ struct DotsView: View {
             }
         }
         .quickLookPreview($attachmentPreview)
-        .fullScreenCover(isPresented: $showTasks) { taskSheet }
+        .fullScreenCover(isPresented: $showTasks) { taskSheet.navigationTransition(.zoom(sourceID: "dots-pet", in: petZoom)) }
         .sheet(isPresented: $showSubscriptions) { DotsSubscriptionsView() }
         .sheet(isPresented: $showConnectors) {
             DotsConnectorsView { prompt in
@@ -407,6 +408,8 @@ struct DotsView: View {
             } label: {
                 DotsLivePet().frame(width: 64, height: 68).contentShape(Rectangle())
             }.buttonStyle(.plain)
+                // 面板从宠物处展开，关闭时收回到宠物上。
+                .matchedTransitionSource(id: "dots-pet", in: petZoom)
                 .accessibilityLabel("打开 Dots 面板").accessibilityIdentifier("dots-open-hub")
             HStack(spacing: 6) {
                 Text(managerStatus ?? store.displayName)
@@ -513,7 +516,7 @@ struct DotsView: View {
             .padding(item.role == "system" ? 0 : 14)
             .background { if item.role != "system" { DotsBubbleBackground(isUser: item.role == "user") } }
             .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .contextMenu {
+            .agentLongPressMenu(isLong: AgentLongMessage.isLong(item.content)) {
                 if item.role != "system" {
                     Button("回复", systemImage: "arrowshape.turn.up.left") { beginReply(item) }
                 }
@@ -533,6 +536,12 @@ struct DotsView: View {
                         sendFeedback(item, item.feedback == "not_useful" ? "clear" : "not_useful")
                     }
                 }
+            } preview: {
+                Text(item.role == "user" ? DotsQuote.split(item.content).body : item.content)
+                    .font(.body).lineSpacing(5).fixedSize(horizontal: false, vertical: true)
+                    .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(DotsBubbleBackground(isUser: item.role == "user"))
+                    .padding(12)
             }
             .overlay(alignment: .bottomTrailing) {
                 if item.isProactive, let feedback = item.feedback {

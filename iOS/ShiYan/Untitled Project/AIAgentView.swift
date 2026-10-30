@@ -780,7 +780,7 @@ struct AIAgentView: View {
                                     }
                                     messageRow(message, conversationID: conversation.id)
                                 }
-                                .padding(.horizontal, 18)
+                                .padding(.horizontal, 16) // 气泡外沿与顶部按钮外沿对齐
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .id(message.id)
                                      
@@ -1183,7 +1183,7 @@ struct AIAgentView: View {
                             .accessibilityIdentifier("user-bubble-\(message.id.uuidString)")
                             .contentShape(.contextMenuPreview,
                                           RoundedRectangle(cornerRadius: 20, style: .continuous))
-                            .contextMenu {
+                            .agentLongPressMenu(isLong: AgentLongMessage.isLong(message.text)) {
                                 Section {
                                     Button {
                                         UIPasteboard.general.string = message.text
@@ -1199,6 +1199,9 @@ struct AIAgentView: View {
                                         .font(.system(size: 11, weight: .regular))
                                         .foregroundStyle(.tertiary)
                                 }
+                            } preview: {
+                                userMessageBubble(message.text, selectionIdentifier: nil)
+                                    .frame(maxWidth: .infinity, alignment: .trailing).padding(12)
                             }
                     } else {
                         AgentMarkdown(text: message.presentationText, identifier: "assistant-text-\(message.id.uuidString)", onSelectionChanged: { selecting in
