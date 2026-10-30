@@ -465,3 +465,21 @@ body.workbench-v22 :is(.message-body,.dots-manager-message) a.message-reference:
 @media (max-width:720px) { .dots-settings-grid { grid-template-columns:1fr;gap:0; } .dots-sources-card .dots-src-list { grid-template-columns:1fr; } }
 .dots-dialog-overlay .dots-sources-card { width:min(920px,100%);height:auto;max-height:min(720px,calc(100dvh - 48px)); }
 .dots-dialog-overlay .dots-settings-card { width:min(880px,100%);height:auto;max-height:min(720px,calc(100dvh - 48px));overflow:auto; }
+/* 连接器：插件首字母图标、授权提示、添加 MCP 表单、工具列表 */
+.dots-src-mono { font-weight:700;font-size:14px;color:#fff!important;background:hsl(var(--mono-hue,212) 55% 52%)!important; }
+.dots-src-notice { margin:0 0 10px;padding:10px 12px;border-radius:10px;font-size:13px;background:color-mix(in srgb,#0a84ff 9%,transparent);color:inherit; }
+.dots-src-notice a { color:#0a84ff;margin-left:6px; }
+.dots-src-add { display:flex;align-items:center;gap:8px;width:100%;margin-top:8px;padding:11px 14px;border:1px dashed color-mix(in srgb,currentColor 18%,transparent);border-radius:14px;background:none;color:inherit;font:inherit;font-size:14px;cursor:pointer; }
+.dots-src-add:hover { background:color-mix(in srgb,currentColor 4%,transparent); }
+.dots-src-add .dots-panel-icon { width:16px;height:16px; }
+.dots-mcp-form { display:flex;flex-direction:column;gap:10px; }
+.dots-mcp-add { margin-top:8px;padding:14px;border-radius:14px;border:1px solid color-mix(in srgb,currentColor 10%,transparent); }
+.dots-mcp-form p { margin:0;font-size:12.5px;color:var(--secondary,#8a8f98); }
+.dots-mcp-form label { display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:var(--secondary,#8a8f98); }
+.dots-mcp-form input { font:inherit;font-size:14px;color:var(--text,inherit);padding:8px 10px;border-radius:9px;border:1px solid color-mix(in srgb,currentColor 14%,transparent);background:color-mix(in srgb,currentColor 2%,transparent);outline:none; }
+.dots-mcp-form input:focus { border-color:#0a84ff; }
+.dots-mcp-form .dots-src-actions { justify-content:flex-end; }
+.dots-src-tools { display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px; }
+.dots-src-tools code { font-size:11.5px;padding:2px 7px;border-radius:6px;background:color-mix(in srgb,currentColor 6%,transparent); }
+.dots-src-tools span { font-size:12px;color:var(--secondary,#8a8f98);align-self:center; }
+.dots-sources-card .dots-mcp-add,.dots-sources-card .dots-src-add { grid-column:1 / -1; }

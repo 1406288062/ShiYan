@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import http.client
 import json
+import re
 import uuid
 from pathlib import Path
 from fastapi import Request
@@ -103,6 +104,26 @@ def register_dots(app):
     @app.get("/api/dots/connectors")
     async def dots_connectors(request: Request):
         return await remote(request, "GET", "connectors")
+
+    # MCP 连接：常用插件（catalogId）或自定义地址（name/url/token）。
+    def connector_id(value):
+        if not re.fullmatch(r"[a-z0-9_-]{1,64}", value or ""):
+            raise ValueError("连接标识无效")
+        return value
+
+    @app.post("/api/dots/connectors/mcp")
+    async def connect_mcp(request: Request):
+        data = await plain(request)
+        payload = {k: str(data[k])[:4096] for k in ("catalogId", "name", "url", "token") if isinstance(data.get(k), str) and data[k].strip()}
+        return await remote(request, "POST", "connectors/mcp", payload)
+
+    @app.delete("/api/dots/connectors/mcp/{connector}")
+    async def remove_mcp(connector: str, request: Request):
+        return await remote(request, "DELETE", "connectors/mcp/" + connector_id(connector))
+
+    @app.post("/api/dots/connectors/mcp/{connector}/refresh")
+    async def refresh_mcp(connector: str, request: Request):
+        return await remote(request, "POST", "connectors/mcp/" + connector_id(connector) + "/refresh", {})
 
     # 执行过程：每个步骤的标题与说明（服务端生成并缓存）。
     @app.post("/api/dots/steps/summary")

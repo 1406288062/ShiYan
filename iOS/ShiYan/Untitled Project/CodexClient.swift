@@ -664,6 +664,19 @@ extension CodexClient: DotsTransport {
         let bytes = try await response(request(method: "GET", route: "dots/connectors"), rejectDotsErrors: true).body
         return try JSONDecoder().decode(DotsConnectorsResponse.self, from: bytes)
     }
+    /// 连接一个 MCP：常用插件传 catalogId（可带 token），自定义传 name/url（可带 token）。需要授权时返回 authorizeUrl。
+    func dotsConnectMCP(_ fields: [String: Any]) async throws -> DotsMCPConnectResult {
+        try await prepareConnection()
+        let bytes = try await response(request(method: "POST", route: "dots/connectors/mcp", object: fields), rejectDotsErrors: true).body
+        return try JSONDecoder().decode(DotsMCPConnectResult.self, from: bytes)
+    }
+    /// action: remove / refresh
+    func dotsMCP(_ id: String, action: String) async throws {
+        try await prepareConnection()
+        let safe = id.filter { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }
+        if action == "remove" { _ = try await response(request(method: "DELETE", route: "dots/connectors/mcp/\(safe)"), rejectDotsErrors: true) }
+        else { _ = try await response(request(method: "POST", route: "dots/connectors/mcp/\(safe)/refresh", object: [:]), rejectDotsErrors: true) }
+    }
     /// action: status / login / verify / push / unbind
     func dotsWeixin(_ action: String, fields: [String: Any]? = nil) async throws -> DotsWeixinStatus {
         try await prepareConnection()

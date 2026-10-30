@@ -1708,18 +1708,44 @@ struct DotsSelectionText: Identifiable {
 // MARK: - Connectors
 
 struct DotsConnectorsResponse: Decodable {
-    var categories: [DotsConnectorCategory]
+    var categories: [DotsConnectorCategory]?
     var connectors: [DotsConnector]
+    var plugins: [DotsMCPPlugin]?
+    var custom: [DotsMCPConnector]?
     var summary: DotsConnectorSummary
 }
+/// 连接器里绑定的一个 MCP 服务（常用插件或自定义）。
+struct DotsMCPConnector: Decodable, Identifiable, Equatable {
+    var id: String
+    var name: String
+    var url: String
+    var catalogId: String?
+    var state: String
+    var error: String?
+    var authType: String?
+    var tools: [String]?
+    var toolCount: Int?
+}
+/// 常用插件目录：auth 为 oauth（浏览器授权）、token（填令牌）或 none（直接可用）。
+struct DotsMCPPlugin: Decodable, Identifiable, Equatable {
+    var id: String
+    var name: String
+    var url: String
+    var auth: String
+    var summary: String
+    var state: String
+    var tokenHint: String?
+    var connector: DotsMCPConnector?
+}
+struct DotsMCPConnectResult: Decodable { var state: String; var authorizeUrl: String? }
 struct DotsConnectorCategory: Decodable, Identifiable, Hashable { var id: String; var name: String }
-struct DotsConnectorSummary: Decodable { var connected: Int; var total: Int }
+struct DotsConnectorSummary: Decodable { var connected: Int; var total: Int? }
 struct DotsConnectorDevice: Decodable, Hashable { var name: String; var platform: String?; var online: Bool? }
 struct DotsConnector: Decodable, Identifiable {
     var id: String
     var provider: String?
     var kind: String
-    var category: String
+    var category: String?
     var name: String
     var icon: String?
     var summary: String?
@@ -1877,145 +1903,269 @@ struct DotsSettingsResponse: Decodable { var settings: DotsSettings }
 
 struct DotsConnectorsView: View {
     var onConnect: (String) -> Void
-    @Environment(\.dismiss) private var dismiss
-    @State private var data: DotsConnectorsResponse?
-    @State private var expanded: String?
-    @State private var error: String?
-    @State private var working: String?
-    @State private var showSpongeHelp = false
-    @State private var showWeixin = false
-    @State private var confirmDisconnect: DotsConnector?
-
-    private var own: [DotsConnector] { (data?.connectors ?? []).filter { $0.kind != "builtin" && $0.kind != "planned" } }
-    private var connected: [DotsConnector] { own.filter { ["connected", "paused", "error"].contains($0.state) } }
-    private var available: [DotsConnector] { own.filter { $0.state == "available" } }
-    private func names(_ kind: String) -> String { (data?.connectors ?? []).filter { $0.kind == kind }.map(\.name).joined(separator: " · ") }
-
     var embedded = false
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var phase
+    @State private var data: DotsConnectorsResponse?
+    @State private var error: String?
+    @State private var notice: String?
+    @State private var working: String?
+    @State private var expanded: String?
+    @State private var showWeixin = false
+    @State private var confirmWeixinUnbind = false
+    @State private var removing: DotsMCPConnector?
+    @State private var tokenFor: DotsMCPPlugin?
+    @State private var tokenText = ""
+    @State private var showAdd = false
+    @State private var addName = ""
+    @State private var addURL = ""
+    @State private var addToken = ""
+    @State private var pollUntil = Date.distantPast
+
+    private var weixin: [DotsConnector] { (data?.connectors ?? []).filter { $0.kind == "weixin" } }
+    private var plugins: [DotsMCPPlugin] { (data?.plugins ?? []).sorted { ($0.state == "connected" ? 0 : 1) < ($1.state == "connected" ? 0 : 1) } }
+    private var custom: [DotsMCPConnector] { data?.custom ?? [] }
+    private var authorizing: Bool { plugins.contains { $0.state == "authorizing" } || custom.contains { $0.state == "authorizing" } }
+
     var body: some View {
         if embedded { content } else {
             NavigationStack {
                 content
                     .navigationTitle("连接器").navigationBarTitleDisplayMode(.inline)
-                            .toolbar { ToolbarItem(placement: .topBarTrailing) { ShiyanCloseButton(action: { dismiss() }, inToolbar: true) } }
+                    .toolbar { ToolbarItem(placement: .topBarTrailing) { ShiyanCloseButton(action: { dismiss() }, inToolbar: true) } }
             }
             .presentationDragIndicator(.visible)
         }
     }
     private var content: some View {
-            List {
-                if data == nil && error == nil { ProgressView().frame(maxWidth: .infinity) }
-                if !connected.isEmpty {
-                    Section("已连接") {
-                        ForEach(connected) { item in connectedRow(item) }
-                    }
-                }
-                if !available.isEmpty {
-                    Section("可连接") {
-                        ForEach(available) { item in
-                            DotsSourceRow(symbol: item.icon ?? "puzzlepiece", name: item.name, subtitle: item.summary) {
-                                Button("连接") { Task { await act(item, "connect") } }
-                                    .buttonStyle(.borderedProminent).controlSize(.small).buttonBorderShape(.capsule)
-                            }
-                        }
-                    }
-                }
-                if data != nil {
-                    Section("内置") { Text(names("builtin")).font(.subheadline) }
-                    Section("即将支持") { Text(names("planned")).font(.subheadline).foregroundStyle(.secondary) }
-                }
-                if let error { Text(error).font(.footnote).foregroundStyle(.red) }
+        List {
+            if data == nil && error == nil { ProgressView().frame(maxWidth: .infinity) }
+            if let notice {
+                Section { Label(notice, systemImage: "safari").font(.footnote).foregroundStyle(.secondary) }.dotsCardRow()
             }
-            .listStyle(.insetGrouped)
-            .animation(.spring(response: 0.32, dampingFraction: 0.88), value: expanded)
-            .refreshable { await load() }
-            .task { await load() }
-            .sheet(isPresented: $showWeixin, onDismiss: { Task { await load() } }) { DotsWeixinLoginView { Task { await load() } } }
-            .alert("连接海绵宝宝设备", isPresented: $showSpongeHelp) {
-                Button("好") {}
-            } message: { Text("在电脑上打开海绵宝宝客户端，用当前拾燕账号登录并配对。") }
-            .confirmationDialog("断开\(confirmDisconnect?.name ?? "")？", isPresented: Binding(get: { confirmDisconnect != nil }, set: { if !$0 { confirmDisconnect = nil } }), titleVisibility: .visible) {
-                Button("断开", role: .destructive) { if let item = confirmDisconnect { Task { await act(item, "disconnect") } } }
-            } message: { Text("之后可以随时重新连接。") }
+            if !weixin.isEmpty {
+                Section("聊天软件") { ForEach(weixin) { weixinRow($0) } }.dotsCardRow()
+            }
+            if data != nil {
+                Section("常用插件") { ForEach(plugins) { pluginRow($0) } }.dotsCardRow()
+                Section {
+                    ForEach(custom) { customRow($0) }
+                    Button { addName = ""; addURL = ""; addToken = ""; showAdd = true } label: {
+                        Label("添加 MCP", systemImage: "plus")
+                    }
+                } header: { Text("自定义 MCP") } footer: { Text("填写 MCP 服务地址即可绑定，需要授权的服务会打开浏览器完成授权。") }
+                .dotsCardRow()
+            }
+            if let error { Text(error).font(.footnote).foregroundStyle(.red) }
+        }
+        .listStyle(.insetGrouped)
+        .animation(.spring(response: 0.32, dampingFraction: 0.88), value: expanded)
+        .refreshable { await load() }
+        .task {
+            await load()
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                if authorizing && Date() < pollUntil { await load() }
+            }
+        }
+        .onChange(of: phase) { _, value in if value == .active { Task { await load() } } }
+        .sheet(isPresented: $showWeixin, onDismiss: { Task { await load() } }) { DotsWeixinLoginView { Task { await load() } } }
+        .sheet(item: $tokenFor) { plugin in tokenSheet(plugin) }
+        .sheet(isPresented: $showAdd) { addSheet }
+        .confirmationDialog("解绑微信？", isPresented: $confirmWeixinUnbind, titleVisibility: .visible) {
+            Button("解绑", role: .destructive) { Task { await weixinAction("unbind") } }
+        } message: { Text("之后可以重新扫码绑定。") }
+        .confirmationDialog("断开\(removing?.name ?? "")？", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }), titleVisibility: .visible) {
+            Button("断开", role: .destructive) { if let item = removing { Task { await mcp(item.id, action: "remove") } } }
+        } message: { Text("Dots 将不能再使用它，之后可以重新连接。") }
     }
 
-    @ViewBuilder private func connectedRow(_ item: DotsConnector) -> some View {
+    // MARK: rows
+    private func monogram(_ name: String) -> some View {
+        let hues: [Double] = [212, 262, 152, 24, 338, 190, 45, 290]
+        let hue = hues[Int(name.unicodeScalars.reduce(UInt32(0)) { ($0 &* 31) &+ $1.value } % UInt32(hues.count))] / 360
+        return Text(String(name.trimmingCharacters(in: .whitespaces).prefix(1)).uppercased())
+            .font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
+            .frame(width: 32, height: 32)
+            .background(Color(hue: hue, saturation: 0.55, brightness: 0.78), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+    }
+    private func row<Trailing: View>(id: String, name: String, subtitle: String, @ViewBuilder trailing: () -> Trailing) -> some View {
+        HStack(spacing: 12) {
+            monogram(name)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name).font(.body.weight(.medium)).foregroundStyle(.primary)
+                if !subtitle.isEmpty { Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(2) }
+            }
+            Spacer(minLength: 8)
+            if working == id { ProgressView().controlSize(.small) } else { trailing() }
+        }.contentShape(Rectangle())
+    }
+    private func primaryButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(title, action: action).buttonStyle(.borderedProminent).controlSize(.small).buttonBorderShape(.capsule).disabled(working != nil)
+    }
+    private func connectedTrailing(open: Bool) -> some View {
+        HStack(spacing: 8) {
+            DotsSourceState(text: "已连接", state: "connected")
+            Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary).rotationEffect(.degrees(open ? 90 : 0))
+        }
+    }
+    @ViewBuilder private func details(_ connector: DotsMCPConnector) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let tools = connector.tools, !tools.isEmpty {
+                Text(tools.prefix(12).joined(separator: "、") + (tools.count > 12 ? " 等 \(tools.count) 个工具" : ""))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if connector.catalogId == nil { Text(connector.url).font(.caption2).foregroundStyle(.tertiary).textSelection(.enabled) }
+            HStack(spacing: 8) {
+                Button("刷新") { Task { await mcp(connector.id, action: "refresh") } }
+                Button("断开", role: .destructive) { removing = connector }
+            }.buttonStyle(.bordered).controlSize(.small).buttonBorderShape(.capsule).disabled(working != nil)
+        }.padding(.leading, 44).transition(.opacity.combined(with: .move(edge: .top)))
+    }
+    @ViewBuilder private func pluginRow(_ plugin: DotsMCPPlugin) -> some View {
+        let open = expanded == plugin.id
+        VStack(alignment: .leading, spacing: 10) {
+            row(id: plugin.id, name: plugin.name, subtitle: plugin.state == "connected" ? "\(plugin.connector?.toolCount ?? 0) 个工具 · \(plugin.summary)" : plugin.state == "error" ? (plugin.connector?.error ?? "连接异常") : plugin.summary) {
+                switch plugin.state {
+                case "connected": connectedTrailing(open: open)
+                case "authorizing": primaryButton("继续授权") { start(plugin) }
+                case "error": primaryButton("重新连接") { start(plugin) }
+                default: primaryButton("连接") { start(plugin) }
+                }
+            }
+            .onTapGesture { if plugin.state == "connected" { UIImpactFeedbackGenerator(style: .light).impactOccurred(); expanded = open ? nil : plugin.id } }
+            if open, let connector = plugin.connector { details(connector) }
+        }.accessibilityIdentifier("dots-plugin-\(plugin.id)")
+    }
+    @ViewBuilder private func customRow(_ item: DotsMCPConnector) -> some View {
         let open = expanded == item.id
         VStack(alignment: .leading, spacing: 10) {
-            Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                expanded = open ? nil : item.id
-            } label: {
-                DotsSourceRow(symbol: item.icon ?? "puzzlepiece", name: item.name, subtitle: item.account?.isEmpty == false ? item.account : item.summary, active: item.state == "connected") {
+            row(id: item.id, name: item.name, subtitle: item.state == "connected" ? "\(item.toolCount ?? 0) 个工具" : item.state == "authorizing" ? "等待授权" : (item.error ?? "连接异常")) {
+                if item.state == "connected" { connectedTrailing(open: open) }
+                else { primaryButton("重新连接") { addName = item.name; addURL = item.url; addToken = ""; showAdd = true } }
+            }
+            .onTapGesture { if item.state == "connected" || item.state == "error" { expanded = open ? nil : item.id } }
+            if open { details(item) }
+        }
+    }
+    @ViewBuilder private func weixinRow(_ item: DotsConnector) -> some View {
+        let open = expanded == item.id
+        VStack(alignment: .leading, spacing: 10) {
+            row(id: item.id, name: item.name, subtitle: item.summary ?? "") {
+                if item.state == "available" { primaryButton("连接") { showWeixin = true } }
+                else {
                     HStack(spacing: 8) {
                         DotsSourceState(text: item.status, state: item.state)
-                        Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
-                            .rotationEffect(.degrees(open ? 90 : 0))
-                    }
-                }.contentShape(Rectangle())
-            }.buttonStyle(.plain)
-            if open {
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(item.devices ?? [], id: \.self) { device in
-                        HStack(spacing: 8) {
-                            Circle().fill(device.online == true ? Color.green : Color.gray.opacity(0.5)).frame(width: 6, height: 6)
-                            Text(device.name).font(.footnote)
-                        }
-                    }
-                    if let detail = item.detail { Text(detail).font(.caption).foregroundStyle(.secondary) }
-                    if let actions = item.actions, !actions.isEmpty {
-                        HStack(spacing: 8) {
-                            ForEach(actions, id: \.self) { action in actionButton(item, action) }
-                            if working == item.id { ProgressView().controlSize(.small) }
-                        }
+                        Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary).rotationEffect(.degrees(open ? 90 : 0))
                     }
                 }
-                .padding(.leading, 44)
-                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+            .onTapGesture { if item.state != "available" { expanded = open ? nil : item.id } }
+            if open {
+                HStack(spacing: 8) {
+                    if item.state == "error" { Button("重新扫码") { showWeixin = true } }
+                    if (item.actions ?? []).contains("push_on") { Button("提醒推送到微信") { Task { await weixinAction("push_on") } } }
+                    if (item.actions ?? []).contains("push_off") { Button("停止推送提醒") { Task { await weixinAction("push_off") } } }
+                    Button("解绑", role: .destructive) { confirmWeixinUnbind = true }
+                }.buttonStyle(.bordered).controlSize(.small).buttonBorderShape(.capsule).padding(.leading, 44).disabled(working != nil)
             }
         }
-        .accessibilityIdentifier("dots-connector-\(item.id)")
     }
-    @ViewBuilder private func actionButton(_ item: DotsConnector, _ action: String) -> some View {
-        let label = ["configure": "修改", "pause": "暂停", "resume": "恢复", "disconnect": item.kind == "weixin" ? "解绑" : "断开", "manage": "管理设备",
-                     "push_on": "提醒推送到微信", "push_off": "停止推送提醒"][action] ?? action
-        Button(label, role: action == "disconnect" ? .destructive : nil) {
-            if action == "disconnect" { confirmDisconnect = item } else { Task { await act(item, action) } }
-        }.buttonStyle(.bordered).controlSize(.small).buttonBorderShape(.capsule).disabled(working != nil)
+
+    // MARK: sheets
+    private func tokenSheet(_ plugin: DotsMCPPlugin) -> some View {
+        NavigationStack {
+            Form {
+                Section {
+                    SecureField("粘贴访问令牌", text: $tokenText).textInputAutocapitalization(.never).autocorrectionDisabled()
+                } footer: { Text(plugin.tokenHint ?? "这个服务需要访问令牌。") }
+            }
+            .navigationTitle("连接 \(plugin.name)").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) { ShiyanCloseButton(action: { tokenFor = nil }, inToolbar: true) }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("连接") {
+                        let token = tokenText.trimmingCharacters(in: .whitespacesAndNewlines); tokenFor = nil
+                        Task { await connect(["catalogId": plugin.id, "token": token], id: plugin.id) }
+                    }.disabled(tokenText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }.presentationDetents([.medium])
     }
-    private func act(_ item: DotsConnector, _ action: String) async {
-        if item.kind == "sponge" { showSpongeHelp = true; return }
-        if item.kind == "weixin" {
-            if action == "connect" { showWeixin = true; return }
-            working = item.id; error = nil
-            defer { working = nil }
-            do {
-                if action == "disconnect" { _ = try await CodexClient.shared.dotsWeixin("unbind") }
-                else { _ = try await CodexClient.shared.dotsWeixin("push", fields: ["enabled": action == "push_on"]) }
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
-                await load()
-            } catch { self.error = error.localizedDescription }
-            return
-        }
-        if action == "connect" || action == "configure" {
-            dismiss(); onConnect(item.prompt ?? "我想连接\(item.name)"); return
-        }
-        guard let provider = item.provider else { return }
-        working = item.id; error = nil
+    private var addSheet: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("名称，比如：公司知识库", text: $addName)
+                    TextField("https://example.com/mcp", text: $addURL).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
+                } header: { Text("MCP 服务") }
+                Section {
+                    SecureField("访问令牌（可选）", text: $addToken).textInputAutocapitalization(.never).autocorrectionDisabled()
+                } footer: { Text("不填令牌时，需要授权的服务会打开浏览器完成授权。") }
+            }
+            .navigationTitle("添加 MCP").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) { ShiyanCloseButton(action: { showAdd = false }, inToolbar: true) }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("连接") {
+                        var fields: [String: Any] = ["name": addName.trimmingCharacters(in: .whitespaces), "url": addURL.trimmingCharacters(in: .whitespaces)]
+                        let token = addToken.trimmingCharacters(in: .whitespacesAndNewlines); if !token.isEmpty { fields["token"] = token }
+                        showAdd = false
+                        Task { await connect(fields, id: "custom-new") }
+                    }.disabled(addName.trimmingCharacters(in: .whitespaces).isEmpty || !addURL.lowercased().hasPrefix("https://"))
+                }
+            }
+        }.presentationDetents([.medium, .large])
+    }
+
+    // MARK: actions
+    private func start(_ plugin: DotsMCPPlugin) {
+        if plugin.auth == "token" { tokenText = ""; tokenFor = plugin; return }
+        Task { await connect(["catalogId": plugin.id], id: plugin.id) }
+    }
+    private func connect(_ fields: [String: Any], id: String) async {
+        working = id; error = nil
         defer { working = nil }
         do {
-            switch action {
-            case "disconnect": _ = try await CodexClient.shared.dotsSubscriptions(provider, method: "DELETE")
-            case "pause", "resume": _ = try await CodexClient.shared.dotsSubscriptions(provider, method: "PATCH", fields: ["enabled": action == "resume"])
-            default: break
+            let result = try await CodexClient.shared.dotsConnectMCP(fields)
+            if let raw = result.authorizeUrl, let url = URL(string: raw) {
+                notice = "已在浏览器打开授权页面，完成后回到拾燕即可。"
+                pollUntil = Date().addingTimeInterval(300)
+                openURL(url)
+            } else {
+                notice = nil
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
             }
+            await load()
+        } catch { self.error = error.localizedDescription }
+    }
+    private func mcp(_ id: String, action: String) async {
+        working = id; error = nil
+        defer { working = nil }
+        do {
+            try await CodexClient.shared.dotsMCP(id, action: action)
+            if action == "remove" { expanded = nil }
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            await load()
+        } catch { self.error = error.localizedDescription }
+    }
+    private func weixinAction(_ action: String) async {
+        working = "wechat"; error = nil
+        defer { working = nil }
+        do {
+            if action == "unbind" { _ = try await CodexClient.shared.dotsWeixin("unbind") }
+            else { _ = try await CodexClient.shared.dotsWeixin("push", fields: ["enabled": action == "push_on"]) }
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             await load()
         } catch { self.error = error.localizedDescription }
     }
     private func load() async {
-        do { data = try await CodexClient.shared.dotsConnectors(); error = nil }
-        catch { self.error = error.localizedDescription }
+        do {
+            let next = try await CodexClient.shared.dotsConnectors()
+            data = next; error = nil
+            if !(next.plugins ?? []).contains(where: { $0.state == "authorizing" }) && !(next.custom ?? []).contains(where: { $0.state == "authorizing" }) { notice = nil }
+        } catch { if data == nil { self.error = error.localizedDescription } }
     }
 }
 
