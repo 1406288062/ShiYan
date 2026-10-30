@@ -47,6 +47,8 @@ struct DotsView: View {
     @State private var hubTab: DotsHubTab = .tasks
     @Namespace private var hubTabSpace
     @Namespace private var petZoom
+    @State private var composerTall = false
+    @State private var composerTallAt = 0
     @State private var showFiles = false
     @State private var attachmentPreview: URL?
     @State private var approval: DotsApprovalContext?
@@ -650,6 +652,8 @@ struct DotsView: View {
             sendBase.mix(with: Color(red: 98/255, green: 91/255, blue: 209/255), by: amount, in: .device),
             sendBase.mix(with: Color(red: 129/255, green: 98/255, blue: 185/255), by: amount, in: .device)
         ], startPoint: .topLeading, endPoint: .bottomTrailing)
+        // 只在编辑多行时把按钮放到底部；收起键盘后恢复成一行。
+        let tallLayout = composerTall && inputFocused
         return VStack(alignment: .leading, spacing: 8) {
             if let reply = replyTarget {
                 HStack(spacing: 10) {
@@ -692,53 +696,116 @@ struct DotsView: View {
                     }
                 }
             }
-        HStack(alignment: .bottom, spacing: 12) {
-            Button {
-                inputFocused = false
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) { attachMenuOpen.toggle() }
-            } label: {
-                Group {
-                    if store.uploading { ProgressView() }
-                    else { Image(systemName: "plus").font(.system(size: 22)) }
-                }.frame(width: 34, height: 36).contentShape(Rectangle())
-            }.buttonStyle(.plain).foregroundStyle(controlInk).tint(controlInk)
-                .disabled(store.hasPending || store.sending || store.uploading)
-                .accessibilityLabel("添加").accessibilityIdentifier("dots-add-attachment")
-            TextField("交给我…", text: Binding(get: { store.draft }, set: store.setDraft),
-                      prompt: Text("交给我…").foregroundColor(promptInk), axis: .vertical)
-                .lineLimit(1...(inputFocused ? 6 : 1)).font(.body).focused($inputFocused)
-                .foregroundStyle(inputInk)
-                .frame(minHeight: 36)
-                .disabled(store.hasPending).accessibilityIdentifier("dots-composer")
-            Button {
-                inputFocused = false
-                if voiceButtonMode { Task { await voice.toggle() } }
-                else {
-                    // Show the thinking state on the same frame as the tap.
-                    let quote = replyTarget.map { DotsQuote.excerpt($0.content) }
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    withAnimation(.spring(response: 0.34, dampingFraction: 0.8)) {
-                        sentAfterId = store.messages.map(\.id).max() ?? 0
-                        replyTarget = nil
-                    }
-                    Task { await store.submit(quote: quote) }
+        // 文字框始终在同一位置（不重建，键盘不会收起）；多行时按钮移到底部一行。
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .bottom, spacing: 12) {
+                if !tallLayout {
+                        Button {
+                            inputFocused = false
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) { attachMenuOpen.toggle() }
+                        } label: {
+                            Group {
+                                if store.uploading { ProgressView() }
+                                else { Image(systemName: "plus").font(.system(size: 22)) }
+                            }.frame(width: 34, height: 36).contentShape(Rectangle())
+                        }.buttonStyle(.plain).foregroundStyle(controlInk).tint(controlInk)
+                            .disabled(store.hasPending || store.sending || store.uploading)
+                            .accessibilityLabel("添加").accessibilityIdentifier("dots-add-attachment")
                 }
-            } label: {
-                Group {
-                    if store.sending && !voiceButtonMode { ProgressView() }
-                    else {
-                        Image(systemName: voiceButtonMode ? (voice.active ? "stop.fill" : "waveform") : "arrow.up")
-                            .font(.system(size: 19, weight: .bold))
+                TextField("交给我…", text: Binding(get: { store.draft }, set: store.setDraft),
+                          prompt: Text("交给我…").foregroundColor(promptInk), axis: .vertical)
+                    .lineLimit(1...(inputFocused ? 8 : 1)).font(.body).focused($inputFocused)
+                    .foregroundStyle(inputInk)
+                    .frame(minHeight: 36)
+                    .disabled(store.hasPending).accessibilityIdentifier("dots-composer")
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                        // 变成多行后：文字在上占满整行，按钮放到底部一行；明显变短才切回，避免来回跳。
+                        if !composerTall && height > 44 { composerTallAt = store.draft.count; withAnimation(.easeOut(duration: 0.18)) { composerTall = true } }
                     }
-                }.foregroundStyle(.white)
-                    .frame(width: 36, height: 36)
-                    .background(sendFill, in: Circle())
+                    .padding(.horizontal, tallLayout ? 6 : 0)
+                if !tallLayout {
+                        Button {
+                            inputFocused = false
+                            if voiceButtonMode { Task { await voice.toggle() } }
+                            else {
+                                // Show the thinking state on the same frame as the tap.
+                                let quote = replyTarget.map { DotsQuote.excerpt($0.content) }
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                withAnimation(.spring(response: 0.34, dampingFraction: 0.8)) {
+                                    sentAfterId = store.messages.map(\.id).max() ?? 0
+                                    replyTarget = nil
+                                }
+                                Task { await store.submit(quote: quote) }
+                            }
+                        } label: {
+                            Group {
+                                if store.sending && !voiceButtonMode { ProgressView() }
+                                else {
+                                    Image(systemName: voiceButtonMode ? (voice.active ? "stop.fill" : "waveform") : "arrow.up")
+                                        .font(.system(size: 19, weight: .bold))
+                                }
+                            }.foregroundStyle(.white)
+                                .frame(width: 36, height: 36)
+                                .background(sendFill, in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(voiceButtonMode ? (!voice.active && !store.canStartVoice) : !store.canSend)
+                        .accessibilityLabel(voiceButtonMode ? (voice.active ? "结束语音聊天" : "语音实时聊天") : "发送")
+                        .accessibilityIdentifier("dots-send")
+                }
             }
-            .buttonStyle(.plain)
-            .disabled(voiceButtonMode ? (!voice.active && !store.canStartVoice) : !store.canSend)
-            .accessibilityLabel(voiceButtonMode ? (voice.active ? "结束语音聊天" : "语音实时聊天") : "发送")
-            .accessibilityIdentifier("dots-send")
+            if tallLayout {
+                HStack(alignment: .bottom, spacing: 12) {
+                    Button {
+                        inputFocused = false
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) { attachMenuOpen.toggle() }
+                    } label: {
+                        Group {
+                            if store.uploading { ProgressView() }
+                            else { Image(systemName: "plus").font(.system(size: 22)) }
+                        }.frame(width: 34, height: 36).contentShape(Rectangle())
+                    }.buttonStyle(.plain).foregroundStyle(controlInk).tint(controlInk)
+                        .disabled(store.hasPending || store.sending || store.uploading)
+                        .accessibilityLabel("添加").accessibilityIdentifier("dots-add-attachment")
+                    Spacer(minLength: 0)
+                    Button {
+                        inputFocused = false
+                        if voiceButtonMode { Task { await voice.toggle() } }
+                        else {
+                            // Show the thinking state on the same frame as the tap.
+                            let quote = replyTarget.map { DotsQuote.excerpt($0.content) }
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            withAnimation(.spring(response: 0.34, dampingFraction: 0.8)) {
+                                sentAfterId = store.messages.map(\.id).max() ?? 0
+                                replyTarget = nil
+                            }
+                            Task { await store.submit(quote: quote) }
+                        }
+                    } label: {
+                        Group {
+                            if store.sending && !voiceButtonMode { ProgressView() }
+                            else {
+                                Image(systemName: voiceButtonMode ? (voice.active ? "stop.fill" : "waveform") : "arrow.up")
+                                    .font(.system(size: 19, weight: .bold))
+                            }
+                        }.foregroundStyle(.white)
+                            .frame(width: 36, height: 36)
+                            .background(sendFill, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(voiceButtonMode ? (!voice.active && !store.canStartVoice) : !store.canSend)
+                    .accessibilityLabel(voiceButtonMode ? (voice.active ? "结束语音聊天" : "语音实时聊天") : "发送")
+                    .accessibilityIdentifier("dots-send")
+                }
+                .transition(.opacity)
+            }
+        }
+        .onChange(of: store.draft) { _, text in
+            if composerTall && (text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (!text.contains("\n") && Double(text.count) < Double(composerTallAt) * 0.6)) {
+                withAnimation(.easeOut(duration: 0.18)) { composerTall = false }
+            }
         }
         }.padding(10)
             .background { DotsVoiceComposerMaterial(presentation: voicePresentation, cornerRadius: 25) }
