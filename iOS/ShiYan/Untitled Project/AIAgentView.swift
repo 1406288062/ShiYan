@@ -1199,25 +1199,6 @@ struct AIAgentView: View {
                                         .font(.system(size: 11, weight: .regular))
                                         .foregroundStyle(.tertiary)
                                 }
-                            } preview: {
-                                if message.text.count <= 10 && !message.text.contains("\n") {
-                                     
-                                     
-                                     
-                                    userMessageBubble(message.text)
-                                        .fixedSize(horizontal: true, vertical: true)
-                                        .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 20, style: .continuous))
-                                        .background(AgentContextPreviewBackground())
-                                } else {
-                                     
-                                     
-                                     
-                                    AgentMultilineContextPreviewLayout(maxBubbleWidth: bubblePreviewWidth(for: message.text)) {
-                                        userMessageBubble(message.text, previewLineLimit: messagePreviewLineLimit)
-                                            .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 20, style: .continuous))
-                                    }
-                                    .background(AgentContextPreviewBackground())
-                                }
                             }
                     } else {
                         AgentMarkdown(text: message.presentationText, identifier: "assistant-text-\(message.id.uuidString)", onSelectionChanged: { selecting in

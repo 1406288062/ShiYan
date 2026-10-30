@@ -520,7 +520,7 @@ struct DotsView: View {
                 Button {
                     UIPasteboard.general.string = item.role == "user" ? DotsQuote.split(item.content).body : item.content
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
-                } label: { Label { Text("复制") } icon: { Image(uiImage: AgentCopyStyle.menuImage) } }
+                } label: { Label { Text("复制") } icon: { Image(uiImage: AgentCopyStyle.menuImage).renderingMode(.template) } }
                 Button("选择文本", systemImage: "selection.pin.in.out") {
                     selectingText = DotsSelectionText(text: item.role == "user" ? DotsQuote.split(item.content).body : item.content)
                 }
@@ -1440,7 +1440,7 @@ struct DotsBubbleBackground: View {
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
         if isUser {
-            shape.fill(Color.primary.opacity(0.045))
+            shape.fill(Color(uiColor: .systemBackground)).overlay(shape.fill(Color.primary.opacity(0.045)))
         } else {
             shape.fill(scheme == .dark ? Color.white.opacity(0.06) : Color(red: 0.965, green: 0.968, blue: 0.985))
                 .overlay(shape.strokeBorder(Color.primary.opacity(scheme == .dark ? 0.07 : 0.05), lineWidth: 0.5))
