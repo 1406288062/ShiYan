@@ -305,7 +305,7 @@ struct DotsView: View {
             }
         }
         .quickLookPreview($attachmentPreview)
-        .sheet(isPresented: $showTasks) { taskSheet }
+        .fullScreenCover(isPresented: $showTasks) { taskSheet }
         .sheet(isPresented: $showSubscriptions) { DotsSubscriptionsView() }
         .sheet(isPresented: $showConnectors) {
             DotsConnectorsView { prompt in
@@ -751,7 +751,8 @@ struct DotsView: View {
             NavigationStack {
                 VStack(spacing: 0) {
                     if !(hubTab == .tasks && store.selected != nil) {
-                        hubHeader.padding(.bottom, 12)
+                        // 头像与关闭/刷新按钮同一行，和参考图的布局一致。
+                        hubHeader.padding(.top, voice.active ? 4 : -40).padding(.bottom, 8)
                     }
                     switch hubTab {
                     case .tasks:
@@ -759,7 +760,7 @@ struct DotsView: View {
                             VStack(alignment: .leading, spacing: 24) {
                                 if let goal = store.selected { taskDetail(goal) }
                                 else { activityPanel }
-                            }.padding(.horizontal, 24).padding(.vertical, 12).frame(maxWidth: .infinity, alignment: .leading)
+                            }.padding(.horizontal, store.selected == nil ? 16 : 24).padding(.vertical, 12).frame(maxWidth: .infinity, alignment: .leading)
                         }.scrollIndicators(.hidden).refreshable { await store.loadActivity() }
                     case .connectors:
                         DotsConnectorsView(onConnect: { prompt in
@@ -774,8 +775,9 @@ struct DotsView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .background(Color(uiColor: .systemGroupedBackground))
+                .background(Color(uiColor: .systemBackground).ignoresSafeArea())
                 .scrollContentBackground(.hidden)
+                .environment(\.dotsHubEmbedded, true)
                     .navigationTitle("")
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
@@ -808,22 +810,21 @@ struct DotsView: View {
         .sheet(item: $outputPreview) { item in fullOutput(item) }
     }
     private var hubHeader: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 0) {
             if !voice.active {
-                DotsLivePet().frame(width: 104, height: 110)
-                    .frame(width: 128, height: 128)
-                    .background(Circle().fill(Color(uiColor: .secondarySystemGroupedBackground)))
+                DotsLivePet().frame(width: 72, height: 76)
+                    .frame(width: 88, height: 88)
+                    .background(Circle().fill(Color(uiColor: .secondarySystemBackground)))
                     .overlay(Circle().strokeBorder(Color.primary.opacity(0.06)))
                     .clipShape(Circle())
+                    .padding(.bottom, 16)
             }
-            VStack(spacing: 8) {
-                Text(store.displayName).font(.system(size: 30, weight: .bold)).lineLimit(1)
-                HStack(spacing: 8) {
-                    Image(systemName: hubStatus.symbol).font(.system(size: 11, weight: .bold)).foregroundStyle(.white)
-                        .frame(width: 22, height: 22).background(hubStatus.color, in: Circle())
-                    Text(hubStatus.text).font(.title3)
-                }
-            }
+            Text(store.displayName).font(.system(size: 28, weight: .bold)).lineLimit(1)
+            HStack(spacing: 6) {
+                Image(systemName: hubStatus.symbol).font(.system(size: 9, weight: .bold)).foregroundStyle(.white)
+                    .frame(width: 18, height: 18).background(hubStatus.color, in: Circle())
+                Text(hubStatus.text).font(.system(size: 17))
+            }.padding(.top, 6)
             HStack(spacing: 4) {
                 ForEach(DotsHubTab.allCases, id: \.self) { tab in
                     let selected = hubTab == tab
@@ -832,12 +833,12 @@ struct DotsView: View {
                         UISelectionFeedbackGenerator().selectionChanged()
                         withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { hubTab = tab }
                     } label: {
-                        Image(systemName: tab.symbol).font(.system(size: 20))
+                        Image(systemName: tab.symbol).font(.system(size: 18))
                             .foregroundStyle(.primary)
-                            .frame(maxWidth: .infinity).frame(height: 48)
+                            .frame(maxWidth: .infinity).frame(height: 36)
                             .background {
                                 if selected {
-                                    Capsule().fill(Color.primary.opacity(0.08))
+                                    Capsule().fill(Color.primary.opacity(0.06))
                                         .matchedGeometryEffect(id: "dots-hub-tab", in: hubTabSpace)
                                 }
                             }
@@ -846,11 +847,11 @@ struct DotsView: View {
                         .accessibilityLabel(tab.title).accessibilityAddTraits(selected ? .isSelected : [])
                 }
             }
-            .padding(6)
-            .background(Capsule().strokeBorder(Color.primary.opacity(0.1), lineWidth: 1))
-            .padding(.horizontal, 20)
+            .padding(5)
+            .background(Capsule().strokeBorder(Color.primary.opacity(0.08), lineWidth: 1))
+            .padding(.horizontal, 16)
+            .padding(.top, 22)
         }
-        .padding(.top, 4)
     }
     private var hubStatus: (text: String, color: Color, symbol: String) {
         switch store.manager?.status {
@@ -863,43 +864,17 @@ struct DotsView: View {
     }
     private var activityPanel: some View {
         VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("最近活动").font(.title2.weight(.semibold))
-                    Text(lastActiveText).font(.subheadline).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 0) {
+                let days = activityDays(historyExpanded ? store.panelActivities : Array(store.panelActivities.prefix(8)))
+                if days.isEmpty {
+                    dayHeader("最近活动", first: true)
+                    Text("还没有活动").foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
                 }
-                Spacer()
-                Button { editingSchedule = DotsSchedule(startDate: Date().formatted(.iso8601.year().month().day().dateSeparator(.dash))); schedulePresented = true } label: {
-                    Image(systemName: "plus").foregroundStyle(.secondary)
-                }.accessibilityLabel("新建定时任务")
-            }
-            VStack(spacing: 2) {
-                ForEach(historyExpanded ? store.panelActivities : Array(store.panelActivities.prefix(5))) { item in
-                    Button {
-                        if item.type == "schedule" { editingSchedule = item.schedule; schedulePresented = true }
-                        else if let id = item.taskId { processExpanded = false; store.select(id) }
-                    } label: {
-                        HStack(spacing: 14) {
-                            Image(systemName: item.type == "schedule" ? "clock" : "point.3.filled.connected.trianglepath.dotted")
-                                .font(.system(size: 18, weight: .medium)).foregroundStyle(.white)
-                                .frame(width: 48, height: 48)
-                                .background(Color(red: 0.36, green: 0.38, blue: 0.45), in: Circle())
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(item.title ?? "未命名任务").font(.headline).foregroundStyle(.primary).lineLimit(1)
-                                if let schedule = item.schedule {
-                                    Text(schedule.enabled ? "\(repeatLabel(schedule.repeat)) · \(schedule.time)" : "已暂停").font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
-                                } else if let at = item.updatedAt {
-                                    Text(Date(timeIntervalSince1970: at > 1e12 ? at / 1000 : at).formatted(.dateTime.month().day().hour().minute()))
-                                        .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
-                                }
-                            }
-                            Spacer(minLength: 4)
-                            if item.unread == true { Circle().fill(Color.accentColor).frame(width: 8, height: 8) }
-                        }.padding(.vertical, 8).contentShape(Rectangle())
-                    }.buttonStyle(DotsActivityRowStyle())
+                ForEach(Array(days.enumerated()), id: \.element.0) { index, day in
+                    dayHeader(day.0, first: index == 0)
+                    ForEach(day.1) { item in activityRow(item) }
                 }
-                if store.panelActivities.isEmpty { Text("还没有活动").foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading) }
-                if store.panelActivities.count > 5 { moreButton(expanded: $historyExpanded) }
+                if store.panelActivities.count > 8 { moreButton(expanded: $historyExpanded) }
             }
             Text("输出内容").foregroundStyle(.secondary).padding(.top, 8)
             VStack(spacing: 2) {
@@ -922,10 +897,56 @@ struct DotsView: View {
             }
         }
     }
-    private var lastActiveText: String {
-        guard let value = store.panelActivities.compactMap(\.updatedAt).max() else { return "上次活跃：暂无活动" }
-        let date = Date(timeIntervalSince1970: value > 1e12 ? value / 1000 : value)
-        return "上次活跃：" + RelativeDateTimeFormatter().localizedString(for: date, relativeTo: Date())
+    private func activityDate(_ value: Double?) -> Date? {
+        guard let value else { return nil }
+        return Date(timeIntervalSince1970: value > 1e12 ? value / 1000 : value)
+    }
+    /// 按天分组：今天 / 昨天 / 具体日期。
+    private func activityDays(_ items: [DotsPanelActivity]) -> [(String, [DotsPanelActivity])] {
+        var out: [(String, [DotsPanelActivity])] = []
+        for item in items {
+            let date = activityDate(item.updatedAt) ?? Date()
+            let label = Calendar.current.isDateInToday(date) ? "今天" : Calendar.current.isDateInYesterday(date) ? "昨天" : date.formatted(.dateTime.month().day().weekday())
+            if out.last?.0 == label { out[out.count - 1].1.append(item) } else { out.append((label, [item])) }
+        }
+        return out
+    }
+    private func dayHeader(_ title: String, first: Bool) -> some View {
+        HStack {
+            Text(title).font(.system(size: 17, weight: .semibold))
+            Spacer()
+            if first {
+                Button { editingSchedule = DotsSchedule(startDate: Date().formatted(.iso8601.year().month().day().dateSeparator(.dash))); schedulePresented = true } label: {
+                    Image(systemName: "plus").font(.system(size: 17)).foregroundStyle(.secondary).frame(width: 32, height: 32)
+                }.buttonStyle(.plain).accessibilityLabel("新建定时任务")
+            }
+        }.padding(.top, first ? 4 : 18).padding(.bottom, 6)
+    }
+    private func activityRow(_ item: DotsPanelActivity) -> some View {
+        Button {
+            if item.type == "schedule" { editingSchedule = item.schedule; schedulePresented = true }
+            else if let id = item.taskId { processExpanded = false; store.select(id) }
+        } label: {
+            HStack(alignment: .top, spacing: 14) {
+                Image(systemName: item.type == "schedule" ? "clock" : "point.3.filled.connected.trianglepath.dotted")
+                    .font(.system(size: 17, weight: .medium)).foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
+                    .background(LinearGradient(colors: [Color(red: 0.40, green: 0.41, blue: 0.50), Color(red: 0.53, green: 0.49, blue: 0.60)], startPoint: .topLeading, endPoint: .bottomTrailing), in: Circle())
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(item.title ?? "未命名任务").font(.system(size: 17, weight: .semibold)).foregroundStyle(.primary).lineLimit(1)
+                    if let schedule = item.schedule {
+                        Text(schedule.enabled ? "\(repeatLabel(schedule.repeat)) · \(schedule.time)" : "已暂停").font(.system(size: 15)).foregroundStyle(.secondary).lineLimit(1)
+                    } else if let summary = item.lastSummary?.split(separator: "\n").first, !summary.isEmpty {
+                        Text(String(summary)).font(.system(size: 15)).foregroundStyle(.secondary).lineLimit(2)
+                    }
+                    if let date = activityDate(item.updatedAt) {
+                        Text(date.formatted(.dateTime.hour().minute())).font(.system(size: 15)).foregroundStyle(.tertiary)
+                    }
+                }
+                Spacer(minLength: 4)
+                if item.unread == true { Circle().fill(Color.red).frame(width: 8, height: 8).padding(.top, 6) }
+            }.padding(.vertical, 10).contentShape(Rectangle())
+        }.buttonStyle(DotsActivityRowStyle())
     }
     private func moreButton(expanded: Binding<Bool>) -> some View {
         Button { expanded.wrappedValue.toggle() } label: {
@@ -1013,7 +1034,8 @@ struct DotsView: View {
                     if message.role != "user" { Spacer(minLength: 0) }
                 }
             }
-            if store.taskConversation.isEmpty, let summary = goal.last_summary, !summary.isEmpty {
+            if store.taskConversation.isEmpty, let summary = goal.last_summary, !summary.isEmpty,
+               !(goal.outputs ?? []).contains(where: { ($0.summary ?? $0.notification ?? "").trimmingCharacters(in: .whitespacesAndNewlines) == summary.trimmingCharacters(in: .whitespacesAndNewlines) }) {
                 AgentMarkdown(text: summary, identifier: "dots-task-summary-\(goal.id)")
             }
             ForEach((goal.approvals ?? []).filter(\.isPending)) { item in
@@ -1210,8 +1232,26 @@ struct DotsView: View {
 private struct DotsActivityRowStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.foregroundStyle(.primary)
-            .background(configuration.isPressed ? Color.primary.opacity(0.07) : .clear, in: Capsule())
+            .background(configuration.isPressed ? Color.primary.opacity(0.07) : .clear, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
+}
+
+private struct DotsHubEmbeddedKey: EnvironmentKey { static let defaultValue = false }
+extension EnvironmentValues {
+    /// 在宠物面板里嵌入时为 true：列表改成白底上的浅灰卡片。
+    var dotsHubEmbedded: Bool {
+        get { self[DotsHubEmbeddedKey.self] }
+        set { self[DotsHubEmbeddedKey.self] = newValue }
+    }
+}
+private struct DotsCardRow: ViewModifier {
+    @Environment(\.dotsHubEmbedded) private var embedded
+    func body(content: Content) -> some View {
+        if embedded { content.listRowBackground(Color(uiColor: .secondarySystemBackground)) } else { content }
+    }
+}
+extension View {
+    func dotsCardRow() -> some View { modifier(DotsCardRow()) }
 }
 
 struct DotsLivePet: View {
@@ -1351,7 +1391,7 @@ private struct DotsSubscriptionsView: View {
                         .swipeActions { Button("取消订阅", role: .destructive) { removing = item } }
                         .contextMenu { Button("取消订阅", systemImage: "xmark.circle", role: .destructive) { removing = item } }
                     }
-                } footer: { Text("在对话里告诉 Dots 想订阅什么。左滑可取消订阅。") }
+                } footer: { Text("在对话里告诉 Dots 想订阅什么。左滑可取消订阅。") }.dotsCardRow()
                 if let error { Text(error).font(.footnote).foregroundStyle(.red) }
             }
             .listStyle(.insetGrouped)
@@ -1769,7 +1809,7 @@ struct DotsAuditView: View {
             }
             if let error { Text(error).font(.footnote).foregroundStyle(.red) }
             ForEach(days, id: \.0) { day in
-                Section(day.0) { ForEach(day.1) { row($0) } }
+                Section(day.0) { ForEach(day.1) { row($0) } }.dotsCardRow()
             }
             if items.isEmpty && !loading && error == nil {
                 Text("这里还没有记录。").font(.subheadline).foregroundStyle(.secondary)
@@ -2013,7 +2053,7 @@ struct DotsSettingsView: View {
                                 }
                             }
                         }
-                    }
+                    }.dotsCardRow()
                     Section {
                         if grants.isEmpty {
                             Text("批准操作时可选择授权范围，同类操作之后不再询问。")
@@ -2032,13 +2072,13 @@ struct DotsSettingsView: View {
                             }
                         }
                         NavigationLink { DotsAuditView() } label: { Label("做过的事", systemImage: "clock.arrow.circlepath") }
-                    } header: { Text("已授权的操作") }
+                    } header: { Text("已授权的操作") }.dotsCardRow()
                     Section {
                         Toggle("每天推送一份简报", isOn: Binding(get: { settings.dailyBrief }, set: { value in save(["dailyBrief": value]) { $0.dailyBrief = value } }))
                         DatePicker("推送时间", selection: Binding(get: { time(settings.dailyBriefTime) }, set: { date in
                             let text = Self.formatter.string(from: date); save(["dailyBriefTime": text]) { $0.dailyBriefTime = text }
                         }), displayedComponents: .hourAndMinute).disabled(!settings.dailyBrief)
-                    } header: { Text("每日简报") } footer: { Text("汇总当天日程、进行中的任务和订阅动态。") }
+                    } header: { Text("每日简报") } footer: { Text("汇总当天日程、进行中的任务和订阅动态。") }.dotsCardRow()
                 } else if error == nil {
                     ProgressView().frame(maxWidth: .infinity)
                 }

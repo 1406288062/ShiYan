@@ -73,7 +73,8 @@ struct ShiyanMoreMenu<Content: View>: View {
 
     var body: some View {
         Menu { content() } label: {
-            ShiyanMoreButtonLabel(showsCloseIcon: showsCloseIcon, hasGlass: hasGlass)
+            // 工具栏里系统已经给按钮加了玻璃底，这里再画一层会出现两个圆重叠。
+            ShiyanMoreButtonLabel(showsCloseIcon: showsCloseIcon, hasGlass: hasGlass && !inToolbar)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("更多")

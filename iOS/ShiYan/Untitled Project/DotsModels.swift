@@ -415,6 +415,7 @@ struct DotsPanelActivity: Codable, Identifiable {
     var updatedAt: Double?
     var unread: Bool?
     var schedule: DotsSchedule?
+    var lastSummary: String?
 }
 struct DotsPanelOutput: Codable, Identifiable {
     var id: String
