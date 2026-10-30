@@ -97,3 +97,23 @@ body.desktop-workbench.workbench-v22.workbench-v2 :is(.v2-space-sidebar h2,.sche
 @container photo-workbench (max-width:360px){
  .workbench-v2 #compareActions #processButton{padding:0 6px;font-size:11px}
 }
+
+/* 变清晰：左侧增强记录（沿用空间侧栏样式） */
+.v2-enhance-sidebar{display:flex;flex-direction:column;min-height:0}
+.v2-enhance-list{flex:1;min-height:0;overflow:auto;margin:0 -6px;padding:0 6px 16px}
+.v2-enhance-group{font-size:12px;font-weight:600;color:var(--secondary,#8a8f98);padding:12px 6px 6px}
+.v2-enhance-item{display:flex;align-items:center;gap:10px;padding:6px;border-radius:9px;cursor:pointer;outline:none;transition:background .15s}
+.v2-enhance-item:hover,.v2-enhance-item:focus-visible{background:var(--v22-hover,#eceef2)}
+.v2-enhance-item img{flex:none;width:40px;height:40px;border-radius:7px;object-fit:cover;background:color-mix(in srgb,currentColor 6%,transparent)}
+.v2-enhance-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.v2-enhance-text strong{font-size:13px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.v2-enhance-text small{font-size:11px;color:var(--secondary,#8a8f98);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.v2-enhance-download{flex:none;width:28px;height:28px;border-radius:7px;display:grid;place-items:center;border:0;background:none;color:var(--secondary,#8a8f98);opacity:0;cursor:pointer;transition:opacity .15s,background .15s,color .15s}
+.v2-enhance-item:hover .v2-enhance-download,.v2-enhance-item:focus-within .v2-enhance-download{opacity:1}
+.v2-enhance-download:hover{background:color-mix(in srgb,currentColor 10%,transparent);color:var(--text)}
+.v2-enhance-download .wb-icon{width:16px;height:16px}
+.v2-enhance-empty{display:flex;flex-direction:column;align-items:center;gap:8px;padding:40px 12px;color:var(--secondary,#8a8f98);font-size:12px;text-align:center}
+.v2-enhance-empty .wb-icon{width:24px;height:24px;opacity:.6}
+
+/* 左侧栏收起时，给左上角的展开按钮留出位置 */
+.workbench-v2 #desktopLayout[data-view="home"]:not(.v2-left-open) .v2-enhance-toolbar{padding-left:40px}

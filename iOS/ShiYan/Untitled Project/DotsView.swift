@@ -3,6 +3,8 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 import QuickLook
+import PhotosUI
+import AVFoundation
 
 struct DotsIdentityIcon: View {
     @ObservedObject private var store = DotsStore.shared
@@ -58,6 +60,10 @@ struct DotsView: View {
     @State private var needsApprovalReveal = false
     @State private var replyTarget: DotsManagerMessage?
     @State private var approvalScopes: [String: String] = [:]
+    @State private var attachMenuOpen = false
+    @State private var showPhotos = false
+    @State private var showCamera = false
+    @State private var photoItems: [PhotosPickerItem] = []
     @State private var selectingText: DotsSelectionText?
     /// Highest message id at the moment of sending; the thinking state stays
     /// until an assistant message after it carries text.
@@ -258,6 +264,40 @@ struct DotsView: View {
             case .failure(let error): store.notice = error.localizedDescription
             }
         }
+        .photosPicker(isPresented: $showPhotos, selection: $photoItems, maxSelectionCount: max(1, 8 - store.attachments.count), matching: .images)
+        .onChange(of: photoItems) { _, items in
+            guard !items.isEmpty else { return }
+            Task {
+                defer { photoItems = [] }
+                var uploads: [(filename: String, mimeType: String, data: Data)] = []
+                for (index, item) in items.enumerated() {
+                    guard let data = try? await item.loadTransferable(type: Data.self), let image = UIImage(data: data),
+                          let jpeg = image.jpegData(compressionQuality: 0.9) else { store.notice = "无法读取选中的图片"; continue }
+                    uploads.append((filename: "照片-\(Int(Date().timeIntervalSince1970))-\(index + 1).jpg", mimeType: "image/jpeg", data: jpeg))
+                }
+                if !uploads.isEmpty { await store.addData(uploads) }
+            }
+        }
+        .sheet(isPresented: $showCamera) {
+            AgentCameraPicker { image in
+                showCamera = false
+                guard let image, let jpeg = image.jpegData(compressionQuality: 0.9) else { return }
+                Task { await store.addData([(filename: "拍照-\(Int(Date().timeIntervalSince1970)).jpg", mimeType: "image/jpeg", data: jpeg)]) }
+            }.ignoresSafeArea()
+        }
+        .overlay(alignment: .bottomLeading) {
+            if attachMenuOpen {
+                ZStack(alignment: .bottomLeading) {
+                    Color.clear.contentShape(Rectangle())
+                        .onTapGesture { withAnimation(.easeOut(duration: 0.18)) { attachMenuOpen = false } }
+                    attachCard
+                        .padding(.leading, 14)
+                        .padding(.bottom, composerHeight + 6)
+                        .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .bottomLeading)))
+                }
+                .ignoresSafeArea(.keyboard)
+            }
+        }
         .quickLookPreview($attachmentPreview)
         .sheet(isPresented: $showTasks) { taskSheet }
         .sheet(isPresented: $showSubscriptions) { DotsSubscriptionsView() }
@@ -450,6 +490,10 @@ struct DotsView: View {
                     Text(parts.body).font(.body).lineSpacing(5)
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("dots-user-bubble-\(item.id)")
+                } else if let prose = Self.plainProse(item.content) {
+                    Text(prose).font(.body).lineSpacing(5)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("dots-manager-message-\(item.id)")
                 } else {
                     AgentMarkdown(text: item.content, identifier: "dots-manager-message-\(item.id)")
                 }
@@ -500,6 +544,55 @@ struct DotsView: View {
             }
             if item.role == "user" { EmptyView() } else { Spacer(minLength: 28) }
         }
+    }
+    private var attachCard: some View {
+        VStack(spacing: 4) {
+            attachRow("相机", symbol: "camera") { openAttach(.camera) }
+            attachRow("照片", symbol: "photo") { openAttach(.photos) }
+            attachRow("文件", symbol: "paperclip") { openAttach(.files) }
+        }
+        .padding(10)
+        .frame(width: 248)
+        .shiyanGlass(in: RoundedRectangle(cornerRadius: 32, style: .continuous))
+        .shadow(color: .black.opacity(0.10), radius: 24, x: 0, y: 10)
+        .accessibilityIdentifier("dots-attachment-card")
+    }
+    private func attachRow(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 18) {
+                AgentAttachmentIcon(symbol: symbol)
+                    .stroke(Color.primary, style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
+                    .frame(width: 24, height: 24)
+                    .frame(width: 44, height: 44)
+                    .background(Color.primary.opacity(0.045), in: Circle())
+                Text(title).font(.system(size: 19))
+                Spacer(minLength: 0)
+            }.foregroundStyle(.primary).padding(.horizontal, 12).frame(height: 64)
+                .contentShape(Rectangle())
+        }.buttonStyle(.plain)
+    }
+    private enum AttachSource { case camera, photos, files }
+    private func openAttach(_ source: AttachSource) {
+        withAnimation(.easeOut(duration: 0.18)) { attachMenuOpen = false }
+        guard store.attachments.count < 8 else { store.notice = "最多添加 8 个文件"; return }
+        switch source {
+        case .photos: showPhotos = true
+        case .files: showFiles = true
+        case .camera:
+            guard UIImagePickerController.isSourceTypeAvailable(.camera) else { store.notice = "当前设备无法使用相机"; return }
+            Task { @MainActor in
+                let status = AVCaptureDevice.authorizationStatus(for: .video)
+                var allowed = status == .authorized
+                if status == .notDetermined { allowed = await AVCaptureDevice.requestAccess(for: .video) }
+                if allowed { showCamera = true } else { store.notice = "请在系统设置中允许拾燕访问相机" }
+            }
+        }
+    }
+    /// 只有普通段落的回复按内容宽度显示气泡；含代码、表格、列表等仍用完整排版。
+    private static func plainProse(_ text: String) -> AttributedString? {
+        let blocks = AgentMarkdownParser.blocks(text)
+        guard !blocks.isEmpty, blocks.allSatisfy({ if case .prose = $0.kind { return true }; return false }) else { return nil }
+        return (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(text)
     }
     private func sendFeedback(_ item: DotsManagerMessage, _ value: String) {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -591,14 +684,18 @@ struct DotsView: View {
                 }
             }
         HStack(alignment: .bottom, spacing: 12) {
-            Button { inputFocused = false; showFiles = true } label: {
+            Button {
+                inputFocused = false
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) { attachMenuOpen.toggle() }
+            } label: {
                 Group {
                     if store.uploading { ProgressView() }
                     else { Image(systemName: "plus").font(.system(size: 22)) }
                 }.frame(width: 34, height: 36).contentShape(Rectangle())
             }.buttonStyle(.plain).foregroundStyle(controlInk).tint(controlInk)
                 .disabled(store.hasPending || store.sending || store.uploading)
-                .accessibilityLabel("添加文件").accessibilityIdentifier("dots-add-attachment")
+                .accessibilityLabel("添加").accessibilityIdentifier("dots-add-attachment")
             TextField("交给我…", text: Binding(get: { store.draft }, set: store.setDraft),
                       prompt: Text("交给我…").foregroundColor(promptInk), axis: .vertical)
                 .lineLimit(1...(inputFocused ? 6 : 1)).font(.body).focused($inputFocused)
@@ -1549,6 +1646,7 @@ struct DotsAuditView: View {
     @State private var category = ""
     @State private var loading = false
     @State private var error: String?
+    @Namespace private var filterSpace
     private let filters = [("", "全部"), ("action", "操作"), ("message", "消息")]
     private var days: [(String, [DotsAuditItem])] {
         var out: [(String, [DotsAuditItem])] = []
@@ -1562,9 +1660,29 @@ struct DotsAuditView: View {
     var body: some View {
         List {
             Section {
-                Picker("类别", selection: $category) { ForEach(filters, id: \.0) { Text($0.1).tag($0.0) } }
-                    .pickerStyle(.segmented)
-                    .listRowBackground(Color.clear).listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                HStack(spacing: 10) {
+                    ForEach(filters, id: \.0) { filter in
+                        let selected = category == filter.0
+                        Button {
+                            guard !selected else { return }
+                            UISelectionFeedbackGenerator().selectionChanged()
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) { category = filter.0 }
+                        } label: {
+                            Text(filter.1).font(.body.weight(selected ? .semibold : .regular))
+                                .frame(maxWidth: .infinity).frame(height: 44)
+                                .foregroundStyle(selected ? Color(uiColor: .systemBackground) : Color.primary)
+                                .background {
+                                    if selected {
+                                        Capsule().fill(Color.primary).matchedGeometryEffect(id: "audit-filter", in: filterSpace)
+                                    } else {
+                                        Capsule().fill(Color.primary.opacity(0.06))
+                                    }
+                                }
+                                .contentShape(Capsule())
+                        }.buttonStyle(.plain)
+                    }
+                }
+                .listRowBackground(Color.clear).listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
             }
             if let error { Text(error).font(.footnote).foregroundStyle(.red) }
             ForEach(days, id: \.0) { day in
@@ -1607,15 +1725,23 @@ struct DotsAuditView: View {
             }
         }.padding(.vertical, 2)
     }
+    // 切换类别会取消上一次请求：被取消的请求不算出错，只采用当前类别的结果。
     private func load(more: Bool) async {
-        guard !loading else { return }
+        if more && loading { return }
+        let requested = category
         loading = true; error = nil
-        defer { loading = false }
+        if !more { items = []; next = nil }
         do {
-            let data = try await CodexClient.shared.dotsAudit(category: category, before: more ? next : nil)
+            let data = try await CodexClient.shared.dotsAudit(category: requested, before: more ? next : nil)
+            guard requested == category, !Task.isCancelled else { return }
             items = more ? items + data.items : data.items
             next = data.nextBefore
-        } catch { self.error = error.localizedDescription }
+        } catch is CancellationError {
+        } catch let failure as URLError where failure.code == .cancelled {
+        } catch {
+            if requested == category && !Task.isCancelled { self.error = error.localizedDescription }
+        }
+        if requested == category { loading = false }
     }
 }
 struct DotsSettingsResponse: Decodable { var settings: DotsSettings }

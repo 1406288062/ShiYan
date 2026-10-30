@@ -144,6 +144,22 @@ final class DotsStore: ObservableObject {
         state.draftAttachments = attachments.filter { $0.id != id }
         do { try save() } catch { state = before; notice = "附件保存失败，请重试" }
     }
+    /// 相机 / 照片选取的内容：直接按数据上传。
+    func addData(_ items: [(filename: String, mimeType: String, data: Data)]) async {
+        guard !uploading, !sending, !hasPending else { return }
+        uploading = true; notice = nil
+        defer { uploading = false }
+        for item in items {
+            do {
+                try configure()
+                guard attachments.count < 8 else { throw AgentClientError.message("最多添加 8 个文件") }
+                guard !item.data.isEmpty, item.data.count <= 20 * 1024 * 1024 else { throw AgentClientError.message("文件不能为空，单个文件不能超过 20 MB") }
+                let attachment = try await client.dotsUploadAttachment(id: UUID().uuidString.lowercased(), filename: item.filename, mimeType: item.mimeType, data: item.data)
+                state.draftAttachments = attachments + [attachment]
+                try save()
+            } catch { notice = item.filename + "：" + error.localizedDescription }
+        }
+    }
     func addFiles(_ urls: [URL]) async {
         guard !uploading, !sending, !hasPending else { return }
         uploading = true; notice = nil

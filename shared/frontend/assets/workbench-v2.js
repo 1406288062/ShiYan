@@ -18,7 +18,7 @@
  };
  function install(C){
   const rightWorkspaceEnabled=C.rightWorkspaceEnabled!==false;
-  const S={full:false,compactSide:'left',compact:false,bottomId:null,bottomIds:[],bottomShown:false,booted:false,bottomHeight:230,menuCallbacks:new Map(),closedProjects:new Set(),spaceSelection:new Set(),spaceQuery:'',spaceColumns:0,lastSpaceSignature:'',photoSignature:'',compare:{zoom:1,x:0,y:0},overlayCompare:false,files:new Map(),animationUntil:0,animationFrame:0,dragging:null,lastView:'agent',spaceSidebarOpen:true,photoInput:null,photoOutput:null};
+  const S={full:false,compactSide:'left',compact:false,bottomId:null,bottomIds:[],bottomShown:false,booted:false,bottomHeight:230,menuCallbacks:new Map(),closedProjects:new Set(),spaceSelection:new Set(),spaceQuery:'',spaceColumns:0,lastSpaceSignature:'',photoSignature:'',compare:{zoom:1,x:0,y:0},overlayCompare:false,files:new Map(),animationUntil:0,animationFrame:0,dragging:null,lastView:'agent',spaceSidebarOpen:true,enhanceSidebarOpen:true,lastEnhanceSignature:'',photoInput:null,photoOutput:null};
   function icon(name){if(['rename','pin','unpin','project'].includes(name))return window.shiyan.sessionMenuIcon(name);if(name==="folderOpen")return C.icon(name);return extraPaths[name]?`<svg class="wb-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${extraPaths[name]}"></path></svg>`:C.icon(name);}
   const button=(id,name,label,cls='')=>`<button type="button" ${id?'id="'+id+'"':''} class="wb-icon-button ${cls}" aria-label="${esc(label)}" title="${esc(label)}">${id==='spaceSearchToggle'?C.toolbarIcon('search'):icon(name)}</button>`;
   const action=(label,run,name)=>({label,run,icon:name});
@@ -47,7 +47,7 @@
    if(!rightWorkspaceEnabled)S.full=false;
    const width=innerWidth,height=innerHeight,rail=50,view=window.shiyan?.getView()||'agent',photo=view==='home',space=view==='history',coding=!photo&&!space;
    const compact=width<1060;if(compact&&!S.compact)S.compactSide='left';S.compact=compact;
-   let showLeft=coding?!!C.prefs.leftOpen&&(!compact||S.compactSide==='left'):space&&S.spaceSidebarOpen;
+   let showLeft=coding?!!C.prefs.leftOpen&&(!compact||S.compactSide==='left'):space?S.spaceSidebarOpen:photo&&S.enhanceSidebarOpen;
    let showRight=rightWorkspaceEnabled&&coding&&!!C.prefs.rightOpen&&(!compact||S.compactSide==='right'||S.full);
    if(S.full&&coding){showRight=true;if(compact)showLeft=false;}
    const preferredLeft=Math.min(Math.max(190,Math.min(Number(C.prefs.leftWidth)||250,350)),compact?Math.max(190,width*.28):350);
@@ -69,8 +69,8 @@
    shell.classList.toggle('v2-left-open',showLeft);shell.classList.toggle('v2-right-open',showRight);shell.style.setProperty('--left-width',left+'px');shell.style.setProperty('--right-width',right+'px');shell.style.setProperty('--bottom-height',bh+'px');
    $('leftContainer').hidden=false;$('rightWorkspace').hidden=!rightWorkspaceEnabled;$('mainWorkspace').inert=S.full&&coding;$('leftContainer').inert=!showLeft;$('rightWorkspace').inert=!showRight;
    $('leftContainer').setAttribute('aria-hidden',String(!showLeft));$('rightWorkspace').setAttribute('aria-hidden',String(!showRight));
-   $('agentSidebar').hidden=!coding;$('spaceSidebar').hidden=!space;$('desktopToolbar').hidden=photo||space;$('bottomTerminal').hidden=!bottom;
-   const toggle=$('toggleLeftSidebar');toggle.hidden=!(coding||space);toggle.style.left=(showLeft?rail+left-43:rail+11)+'px';toggle.setAttribute('aria-expanded',String(showLeft));const sidebarGlyph=showLeft?'left':'leftCollapsed';if(toggle.dataset.sidebarGlyph!==sidebarGlyph){toggle.innerHTML=C.toolbarIcon(sidebarGlyph);toggle.dataset.sidebarGlyph=sidebarGlyph;}toggle.title=toggle.ariaLabel=showLeft?'隐藏左侧栏':'显示左侧栏';
+   $('agentSidebar').hidden=!coding;$('spaceSidebar').hidden=!space;if($('enhanceSidebar'))$('enhanceSidebar').hidden=!photo;$('desktopToolbar').hidden=photo||space;$('bottomTerminal').hidden=!bottom;
+   const toggle=$('toggleLeftSidebar');toggle.hidden=!(coding||space||photo);toggle.style.left=(showLeft?rail+left-43:rail+11)+'px';toggle.setAttribute('aria-expanded',String(showLeft));const sidebarGlyph=showLeft?'left':'leftCollapsed';if(toggle.dataset.sidebarGlyph!==sidebarGlyph){toggle.innerHTML=C.toolbarIcon(sidebarGlyph);toggle.dataset.sidebarGlyph=sidebarGlyph;}toggle.title=toggle.ariaLabel=showLeft?'隐藏左侧栏':'显示左侧栏';
    $('toggleRightWorkspace').hidden=!rightWorkspaceEnabled||!coding;$('toggleRightWorkspace').innerHTML=C.toolbarIcon(showRight?'pane':'addPanel');$('toggleRightWorkspace').setAttribute('aria-expanded',String(showRight));$('toggleRightWorkspace').title=$('toggleRightWorkspace').ariaLabel=showRight?'隐藏右侧工作区':'打开右侧工作区';
    $('toggleFullWorkspace').hidden=!coding||!showRight;$('toggleFullWorkspace').innerHTML=C.toolbarIcon(S.full?'contract':'expand');$('toggleFullWorkspace').title=$('toggleFullWorkspace').ariaLabel=S.full?'退出完整视图':'进入完整视图';$('toggleFullWorkspace').setAttribute('aria-pressed',String(S.full));shell.classList.toggle('v2-left-visible',showLeft);
    $('leftResizeHandle').hidden=!coding||!showLeft;$('rightResizeHandle').hidden=!coding||!showRight||S.full;$('leftResizeHandle').style.left=(rail+left-5)+'px';$('rightResizeHandle').style.left=(width-right-5)+'px';$('bottomResizeHandle').hidden=!bottom;
@@ -86,7 +86,7 @@
    const signature=JSON.stringify([show,dividers]);if(S.nativeLayoutSignature===signature)return;
    C.native('show',show);C.native('dividers',dividers);S.nativeLayoutSignature=signature;
   }
-  function toggleLeft(){closePopup();const shown=$('toggleLeftSidebar').getAttribute('aria-expanded')==='true';if(window.shiyan?.getView()==='history')S.spaceSidebarOpen=!shown;else C.prefs.leftOpen=!shown;S.compactSide='left';animateLayout();persist();}
+  function toggleLeft(){closePopup();const shown=$('toggleLeftSidebar').getAttribute('aria-expanded')==='true';const currentView=window.shiyan?.getView();if(currentView==='history')S.spaceSidebarOpen=!shown;else if(currentView==='home')S.enhanceSidebarOpen=!shown;else C.prefs.leftOpen=!shown;S.compactSide='left';animateLayout();persist();}
   function revealRight(){if(!rightWorkspaceEnabled)return;C.prefs.rightOpen=true;S.compactSide='right';}
   function closeEmptyWorkspace(){if(C.tabs.some(t=>!S.bottomIds.includes(t.id)))return false;C.prefs.rightOpen=false;S.full=false;S.compactSide='left';return true;}
   function toggleRight(){if(!rightWorkspaceEnabled)return;closePopup();const shown=$('toggleRightWorkspace').getAttribute('aria-expanded')==='true';C.prefs.rightOpen=!shown;if(shown){S.full=false;S.compactSide='left';}else {S.compactSide='right';if(!C.tabs.some(t=>!S.bottomIds.includes(t.id)))C.openTab();}animateLayout();persist();}
@@ -131,7 +131,7 @@
    $('v21ProjectName').value=p.name;$('v21ProjectError').hidden=true;
    C.scheduleNative();$('v21ProjectName').focus();$('v21ProjectName').select();
   }
-  function renderState(next){if(!next)return;if(S.lastConversationId!==next.selectedConversationId){S.lastConversationId=next.selectedConversationId;if(S.full){S.full=false;layout();}}renderProjects();renderSpace();renderCompare();const view=window.shiyan?.getView()||'agent';if(view!==S.lastView){S.lastView=view;closePopup();layout();}$('railHistory').title=$('railHistory').ariaLabel='空间';}
+  function renderState(next){if(!next)return;if(S.lastConversationId!==next.selectedConversationId){S.lastConversationId=next.selectedConversationId;if(S.full){S.full=false;layout();}}renderProjects();renderSpace();renderEnhanceHistory();renderCompare();const view=window.shiyan?.getView()||'agent';if(view!==S.lastView){S.lastView=view;closePopup();layout();}$('railHistory').title=$('railHistory').ariaLabel='空间';}
   function decorateTabs(){
    const tabs=$('workspaceTabs');if(!tabs)return;tabs.after(S.addTab);
    for(const id of S.bottomIds){tabs.querySelector(`[data-tab="${id}"]`)?.setAttribute('hidden','');const pane=C.panes.get(id);if(pane)pane.hidden=id!==S.bottomId||!S.bottomShown;}
@@ -366,6 +366,39 @@
    if(!p.input&&S.overlayCompare)closeCompare();
    $('compareWorkbench').dataset.model=p.model||'general';$('chooseCompareImage').disabled=p.busy;if(p.error&&p.error!==S.photoError)window.shiyan?.toast?.(p.error);S.photoError=p.error||'';renderCompareTransform();
   }
+  // 变清晰左侧面板：每次增强的记录，可查看、下载。桌面端和网页端共用（保存 / 预览走 window.shiyan，两端各自处理）。
+  function buildEnhanceHistory(){
+   const sidebar=document.createElement('aside');sidebar.id='enhanceSidebar';sidebar.className='v2-space-sidebar v2-enhance-sidebar';sidebar.hidden=true;sidebar.setAttribute('aria-label','增强记录');
+   sidebar.innerHTML=`<header><h2>增强记录</h2></header><div id="enhanceHistoryList" class="v2-enhance-list" role="list"></div><div id="enhanceHistoryEmpty" class="v2-enhance-empty" hidden>${icon('image')}<span>增强后的图片会出现在这里</span></div>`;
+   $('leftContainer').appendChild(sidebar);
+   $('enhanceHistoryList').onclick=e=>{
+    const button=e.target.closest('[data-enhance-action]'),row=e.target.closest('[data-enhance-item]');if(!row)return;
+    const h=state()?.history.find(x=>x.id===row.dataset.enhanceItem);if(!h?.asset)return;
+    if(button?.dataset.enhanceAction==='download'){e.stopPropagation();window.shiyan.saveAsset(h.asset);return;}
+    window.shiyan.openPreview(h.asset);
+   };
+   $('enhanceHistoryList').onkeydown=e=>{const row=e.target.closest('[data-enhance-item]');if(row&&e.target===row&&(e.key==='Enter'||e.key===' ')){e.preventDefault();row.click();}};
+  }
+  function enhanceDay(value){
+   const d=new Date(value);if(Number.isNaN(d.getTime()))return '更早';
+   const today=new Date();today.setHours(0,0,0,0);const day=new Date(d);day.setHours(0,0,0,0);const diff=Math.round((today-day)/86400000);
+   return diff===0?'今天':diff===1?'昨天':diff<7?'近 7 天':d.toLocaleDateString('zh-CN',{year:d.getFullYear()===today.getFullYear()?undefined:'numeric',month:'long',day:'numeric'});
+  }
+  function renderEnhanceHistory(){
+   if(!$('enhanceHistoryList')||!state())return;
+   const items=(state().history||[]).filter(h=>h.asset&&(h.asset.mimeType||'image/').startsWith('image/')&&!/消除|上色/.test(h.modelName||''))
+      .sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)||String(b.id).localeCompare(String(a.id)));
+   const signature=JSON.stringify(items.map(h=>[h.id,h.asset.id,h.filename,h.modelName]));
+   if(signature===S.lastEnhanceSignature)return;S.lastEnhanceSignature=signature;
+   $('enhanceHistoryEmpty').hidden=!!items.length;
+   let group='';
+   $('enhanceHistoryList').innerHTML=items.map(h=>{
+    const a=h.asset,name=h.filename||a.filename||'图片',label=enhanceDay(h.createdAt),time=new Date(h.createdAt);
+    const heading=label!==group?`<div class="v2-enhance-group">${esc(label)}</div>`:'';group=label;
+    const meta=[h.modelName||'增强',a.width&&a.height?a.width+'×'+a.height:'',Number.isNaN(time.getTime())?'':time.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})].filter(Boolean).join(' · ');
+    return heading+`<div class="v2-enhance-item" role="listitem" tabindex="0" data-enhance-item="${esc(h.id)}" title="查看 ${esc(name)}"><img src="${esc(thumbnailURL(a))}" alt="" loading="lazy" decoding="async"><span class="v2-enhance-text"><strong>${esc(name)}</strong><small>${esc(meta)}</small></span><button type="button" class="v2-enhance-download" data-enhance-action="download" aria-label="下载 ${esc(name)}" title="下载">${icon('download')}</button></div>`;
+   }).join('');
+  }
   function buildSpace(){
    const sidebar=document.createElement('aside');sidebar.id='spaceSidebar';sidebar.className='v2-space-sidebar';sidebar.hidden=true;sidebar.innerHTML=`<header><h2>空间</h2>${button('spaceSearchToggle','search','搜索图像')}</header><label id="spaceSearchField" hidden><input id="spaceSearchInput" type="search" aria-label="搜索空间图像" placeholder="搜索图像…"></label><button type="button" class="v2-space-category selected">${icon('image')}<span>图像</span></button>`;$('leftContainer').appendChild(sidebar);
    const view=$('historyView'),legacy=document.createElement('div');legacy.className='v2-legacy-history';while(view.firstChild)legacy.appendChild(view.firstChild);view.appendChild(legacy);const space=document.createElement('div');space.id='spaceContent';space.className='v2-space-content';space.innerHTML=`<header class="v2-space-toolbar"><span id="spaceCount"></span><span class="toolbar-spacer"></span><button id="spaceSelectToggle" class="wb-text-button" type="button">选择</button></header><div class="v2-space-scroll"><div id="spaceGallery" class="v2-space-gallery"></div><div id="spaceEmpty" class="v2-space-empty" hidden>${icon('image')}<span>暂无图像</span></div></div><div id="spaceBatch" class="v2-space-batch" hidden><span id="spaceSelectionCount"></span><button id="spaceExport" type="button">${icon('download')}导出</button><button id="spaceShare" type="button">${icon('share')}分享</button><button id="spaceDelete" class="danger" type="button">${icon('trash')}删除记录</button></div>`;view.appendChild(space);
@@ -450,7 +483,7 @@
    const bottom=document.createElement('section');bottom.id='bottomTerminal';bottom.hidden=true;bottom.innerHTML=`<header class="v22-bottom-header"><div id="bottomTerminalTabs" role="tablist" aria-label="底部终端标签"></div>${button('addBottomTerminal','plus','新建独立终端')}<span class="toolbar-spacer"></span><div class="v2-bottom-actions">${button('restoreBottomTerminal','undock','返回右侧终端')}${button('closeBottomTerminal','down','收起底部终端')}</div></header><div id="bottomTerminalHost"></div>`;shell.appendChild(bottom);$('restoreBottomTerminal').onclick=()=>undockTerminal();$('closeBottomTerminal').onclick=()=>{S.bottomShown=false;decorateTabs();layout();persist();};$('addBottomTerminal').onclick=()=>newBottomTerminal().catch(handleError);$('bottomTerminalTabs').onclick=e=>{const close=e.target.closest('[data-close-bottom-tab]');if(close){e.stopPropagation();C.closeTab(close.dataset.closeBottomTab).catch(handleError);return;}const tab=e.target.closest('[data-bottom-tab]');if(tab)selectBottomTerminal(tab.dataset.bottomTab);};$('bottomTerminalTabs').onkeydown=e=>{if(e.target.closest('button'))return;if(['Enter',' '].includes(e.key)){const tab=e.target.closest('[data-bottom-tab]');if(tab){e.preventDefault();selectBottomTerminal(tab.dataset.bottomTab);}}};
    for(const id of ['leftResizeHandle','rightResizeHandle'])shell.appendChild($(id));const resize=document.createElement('div');resize.id='bottomResizeHandle';resize.className='wb-resizer v2-bottom-resizer';resize.setAttribute('role','separator');resize.setAttribute('aria-label','调整底部终端高度');resize.setAttribute('aria-orientation','horizontal');bottom.appendChild(resize);
    for(const id of ['leftResizeHandle','rightResizeHandle','bottomResizeHandle']){const handle=$(id);handle.tabIndex=0;handle.onpointerdown=e=>{if(e.button!==0)return;e.preventDefault();e.stopPropagation();dragStart(id,e.clientX,e.clientY);handle.setPointerCapture(e.pointerId);};handle.onpointermove=e=>{if(S.dragging){e.preventDefault();dragMove(e.clientX,e.clientY);}};handle.onpointerup=handle.onpointercancel=()=>dragEnd();handle.onkeydown=e=>{if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key))return;e.preventDefault();dragStart(id,0,0);dragMove(e.key==='ArrowLeft'?-16:e.key==='ArrowRight'?16:0,e.key==='ArrowUp'?-16:e.key==='ArrowDown'?16:0);dragEnd();};}
-   buildCompare();buildSpace();$('historyView').setAttribute('aria-label','空间');
+   buildCompare();buildSpace();buildEnhanceHistory();$('historyView').setAttribute('aria-label','空间');
    document.addEventListener('pointerdown',e=>{if(!e.target.closest('#v2Popup'))closePopup();},true);
    document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('v21ProjectEditor').hidden){e.preventDefault();e.stopImmediatePropagation();$('v21ProjectEditor').hidden=true;C.scheduleNative();return;}if(e.key==='Escape'){if(!$('comparePreview').hidden){e.preventDefault();e.stopImmediatePropagation();closeCompare();return;}if(!$('v2Popup').hidden){e.preventDefault();e.stopImmediatePropagation();closePopup();return;}dragEnd();}},true);
    window.addEventListener('shiyan-terminal',renderBottomTabs);window.addEventListener('blur',dragEnd);window.addEventListener('shiyan-photo',renderCompare);window.addEventListener('shiyan-reasoning',positionReasoning);

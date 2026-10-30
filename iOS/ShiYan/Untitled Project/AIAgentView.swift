@@ -1719,7 +1719,7 @@ struct AIAgentView: View {
 }
 
 
-private struct AgentCameraPicker: UIViewControllerRepresentable {
+struct AgentCameraPicker: UIViewControllerRepresentable {
     let completion: (UIImage?) -> Void
     func makeCoordinator() -> Coordinator { Coordinator(completion: completion) }
     func makeUIViewController(context: Context) -> UIImagePickerController {
@@ -1742,7 +1742,7 @@ private struct AgentCameraPicker: UIViewControllerRepresentable {
 
 
  
-private struct AgentAttachmentIcon: Shape {
+struct AgentAttachmentIcon: Shape {
     let symbol: String
     func path(in rect: CGRect) -> Path {
         var p = Path()
