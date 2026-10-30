@@ -101,7 +101,14 @@ body.desktop-workbench.workbench-v22.workbench-v2 :is(.v2-space-sidebar h2,.sche
 /* 变清晰：左侧增强记录（沿用空间侧栏样式） */
 .v2-enhance-sidebar{display:flex;flex-direction:column;min-height:0}
 .v2-enhance-list{flex:1;min-height:0;overflow:auto;margin:0 -6px;padding:0 6px 16px}
-.v2-enhance-group{font-size:12px;font-weight:600;color:var(--secondary,#8a8f98);padding:12px 6px 6px}
+.v2-enhance-group{display:flex;align-items:center;gap:5px;width:100%;border:0;background:none;font:inherit;font-size:12px;font-weight:600;color:var(--secondary,#8a8f98);padding:12px 6px 6px;cursor:pointer;text-align:left;border-radius:7px}
+.v2-enhance-group:hover{color:var(--text)}
+.v2-enhance-group small{margin-left:auto;font-weight:500;opacity:.8}
+.v2-enhance-chevron{width:12px;height:12px;flex:none;transform:rotate(90deg);transition:transform .18s ease}
+.v2-enhance-group[aria-expanded="false"] .v2-enhance-chevron{transform:rotate(0)}
+.v2-enhance-search{display:flex;align-items:center;gap:7px;height:32px;margin:0 0 6px;padding:0 10px;border-radius:9px;background:color-mix(in srgb,currentColor 6%,transparent);color:var(--secondary,#8a8f98)}
+.v2-enhance-search .wb-icon{width:15px;height:15px;flex:none}
+.v2-enhance-search input{flex:1;min-width:0;border:0;background:none;outline:none;font:inherit;font-size:13px;color:var(--text)}
 .v2-enhance-item{display:flex;align-items:center;gap:10px;padding:6px;border-radius:9px;cursor:pointer;outline:none;transition:background .15s}
 .v2-enhance-item:hover,.v2-enhance-item:focus-visible{background:var(--v22-hover,#eceef2)}
 .v2-enhance-item img{flex:none;width:40px;height:40px;border-radius:7px;object-fit:cover;background:color-mix(in srgb,currentColor 6%,transparent)}

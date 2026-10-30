@@ -368,10 +368,13 @@
   }
   // 变清晰左侧面板：每次增强的记录，可查看、下载。桌面端和网页端共用（保存 / 预览走 window.shiyan，两端各自处理）。
   function buildEnhanceHistory(){
-   const sidebar=document.createElement('aside');sidebar.id='enhanceSidebar';sidebar.className='v2-space-sidebar v2-enhance-sidebar';sidebar.hidden=true;sidebar.setAttribute('aria-label','增强记录');
-   sidebar.innerHTML=`<header><h2>增强记录</h2></header><div id="enhanceHistoryList" class="v2-enhance-list" role="list"></div><div id="enhanceHistoryEmpty" class="v2-enhance-empty" hidden>${icon('image')}<span>增强后的图片会出现在这里</span></div>`;
+   const sidebar=document.createElement('aside');sidebar.id='enhanceSidebar';sidebar.className='v2-space-sidebar v2-enhance-sidebar';sidebar.hidden=true;sidebar.setAttribute('aria-label','变清晰');
+   sidebar.innerHTML=`<header><h2>变清晰</h2></header><label class="v2-enhance-search">${C.icon('search')}<input id="enhanceSearchInput" type="search" aria-label="搜索变清晰记录" placeholder="搜索文件名或模型"></label><div id="enhanceHistoryList" class="v2-enhance-list" role="list"></div><div id="enhanceHistoryEmpty" class="v2-enhance-empty" hidden>${icon('image')}<span>增强后的图片会出现在这里</span></div>`;
    $('leftContainer').appendChild(sidebar);
+   $('enhanceSearchInput').oninput=e=>{S.enhanceQuery=e.target.value;renderEnhanceHistory();};
    $('enhanceHistoryList').onclick=e=>{
+    const group=e.target.closest('[data-enhance-group]');
+    if(group){const key=group.dataset.enhanceGroup;S.enhanceCollapsed||=new Set();if(S.enhanceCollapsed.has(key))S.enhanceCollapsed.delete(key);else S.enhanceCollapsed.add(key);renderEnhanceHistory();return;}
     const button=e.target.closest('[data-enhance-action]'),row=e.target.closest('[data-enhance-item]');if(!row)return;
     const h=state()?.history.find(x=>x.id===row.dataset.enhanceItem);if(!h?.asset)return;
     if(button?.dataset.enhanceAction==='download'){e.stopPropagation();window.shiyan.saveAsset(h.asset);return;}
@@ -386,17 +389,23 @@
   }
   function renderEnhanceHistory(){
    if(!$('enhanceHistoryList')||!state())return;
-   const items=(state().history||[]).filter(h=>h.asset&&(h.asset.mimeType||'image/').startsWith('image/')&&!/消除|上色/.test(h.modelName||''))
+   const query=String(S.enhanceQuery||'').trim().toLowerCase(),collapsed=S.enhanceCollapsed||new Set();
+   const all=(state().history||[]).filter(h=>h.asset&&(h.asset.mimeType||'image/').startsWith('image/')&&!/消除|上色/.test(h.modelName||''));
+   const items=all.filter(h=>!query||[h.filename,h.asset.filename,h.modelName].some(v=>String(v||'').toLowerCase().includes(query)))
       .sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)||String(b.id).localeCompare(String(a.id)));
-   const signature=JSON.stringify(items.map(h=>[h.id,h.asset.id,h.filename,h.modelName]));
+   const signature=JSON.stringify([query,[...collapsed].sort(),items.map(h=>[h.id,h.asset.id,h.filename,h.modelName])]);
    if(signature===S.lastEnhanceSignature)return;S.lastEnhanceSignature=signature;
-   $('enhanceHistoryEmpty').hidden=!!items.length;
-   let group='';
-   $('enhanceHistoryList').innerHTML=items.map(h=>{
-    const a=h.asset,name=h.filename||a.filename||'图片',label=enhanceDay(h.createdAt),time=new Date(h.createdAt);
-    const heading=label!==group?`<div class="v2-enhance-group">${esc(label)}</div>`:'';group=label;
-    const meta=[h.modelName||'增强',a.width&&a.height?a.width+'×'+a.height:'',Number.isNaN(time.getTime())?'':time.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})].filter(Boolean).join(' · ');
-    return heading+`<div class="v2-enhance-item" role="listitem" tabindex="0" data-enhance-item="${esc(h.id)}" title="查看 ${esc(name)}"><img src="${esc(thumbnailURL(a))}" alt="" loading="lazy" decoding="async"><span class="v2-enhance-text"><strong>${esc(name)}</strong><small>${esc(meta)}</small></span><button type="button" class="v2-enhance-download" data-enhance-action="download" aria-label="下载 ${esc(name)}" title="下载">${icon('download')}</button></div>`;
+   const empty=$('enhanceHistoryEmpty');empty.hidden=!!items.length;empty.querySelector('span').textContent=query&&all.length?'没有找到相关记录':'增强后的图片会出现在这里';
+   const groups=[];for(const h of items){const label=enhanceDay(h.createdAt);if(groups.at(-1)?.label!==label)groups.push({label,items:[]});groups.at(-1).items.push(h);}
+   // 时间分组可以折叠；搜索时全部展开，方便看到结果。
+   $('enhanceHistoryList').innerHTML=groups.map(g=>{
+    const open=query||!collapsed.has(g.label);
+    const rows=open?g.items.map(h=>{
+     const a=h.asset,name=h.filename||a.filename||'图片',time=new Date(h.createdAt);
+     const meta=[h.modelName||'增强',a.width&&a.height?a.width+'×'+a.height:'',Number.isNaN(time.getTime())?'':time.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})].filter(Boolean).join(' · ');
+     return `<div class="v2-enhance-item" role="listitem" tabindex="0" data-enhance-item="${esc(h.id)}" title="查看 ${esc(name)}"><img src="${esc(thumbnailURL(a))}" alt="" loading="lazy" decoding="async"><span class="v2-enhance-text"><strong>${esc(name)}</strong><small>${esc(meta)}</small></span><button type="button" class="v2-enhance-download" data-enhance-action="download" aria-label="下载 ${esc(name)}" title="下载">${icon('download')}</button></div>`;
+    }).join(''):'';
+    return `<button type="button" class="v2-enhance-group" data-enhance-group="${esc(g.label)}" aria-expanded="${open?'true':'false'}"><svg class="v2-enhance-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>${esc(g.label)}</span><small>${g.items.length}</small></button>`+rows;
    }).join('');
   }
   function buildSpace(){
