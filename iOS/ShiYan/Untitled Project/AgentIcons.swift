@@ -100,13 +100,25 @@ struct AgentReplyCopyIcon: Shape {
 
  
 enum AgentCopyStyle {
+    /// Dots 长按菜单用：线条与菜单里的系统图标（回复、点赞）同样粗细。普通对话保持原样。
+    static let dotsMenuImage: UIImage = {
+        let size: CGFloat = 18
+        let format = UIGraphicsImageRendererFormat(); format.opaque = false
+        return UIGraphicsImageRenderer(size: CGSize(width: size, height: size), format: format).image { context in
+            context.cgContext.addPath(AgentReplyCopyIcon().path(in: CGRect(x: 1.5, y: 1.5, width: size - 3, height: size - 3)).cgPath)
+            context.cgContext.setStrokeColor(UIColor.label.cgColor)
+            context.cgContext.setLineWidth(1.3)
+            context.cgContext.setLineCap(.round); context.cgContext.setLineJoin(.round)
+            context.cgContext.strokePath()
+        }.withRenderingMode(.alwaysTemplate)
+    }()
     static let menuImage: UIImage = {
         let size: CGFloat = 18
         let format = UIGraphicsImageRendererFormat(); format.opaque = false
         return UIGraphicsImageRenderer(size: CGSize(width: size, height: size), format: format).image { context in
             context.cgContext.addPath(AgentReplyCopyIcon().path(in: CGRect(x: 0, y: 0, width: size, height: size)).cgPath)
             context.cgContext.setStrokeColor(UIColor.label.cgColor)
-            context.cgContext.setLineWidth(1.3) // 与菜单里系统图标（常规粗细）一致
+            context.cgContext.setLineWidth(size / 15.1 * 1.5)
             context.cgContext.setLineCap(.round); context.cgContext.setLineJoin(.round)
             context.cgContext.strokePath()
         }.withRenderingMode(.alwaysTemplate)

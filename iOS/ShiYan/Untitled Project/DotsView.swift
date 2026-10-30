@@ -525,7 +525,7 @@ struct DotsView: View {
                 Button {
                     UIPasteboard.general.string = item.role == "user" ? DotsQuote.split(item.content).body : item.content
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
-                } label: { Label { Text("复制") } icon: { Image(uiImage: AgentCopyStyle.menuImage).renderingMode(.template) } }
+                } label: { Label { Text("复制") } icon: { Image(uiImage: AgentCopyStyle.dotsMenuImage).renderingMode(.template) } }
                 Button("选择文本", systemImage: "selection.pin.in.out") {
                     selectingText = DotsSelectionText(text: item.role == "user" ? DotsQuote.split(item.content).body : item.content)
                 }

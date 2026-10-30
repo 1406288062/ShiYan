@@ -17,7 +17,7 @@
     download:'<path d="M12 2v13m-5-5 5 5 5-5M4 16v5h16v-5"/>',
     check:'<path d="m5 12 4 4L19 6"/>',
   };
-  const icon = kind => kind === 'copy' ? '<span class="symbol dots-panel-icon" data-symbol="reply-copy" style="--symbol:url(\'/assets/symbols/reply-copy.png\')" aria-hidden="true"></span>' : '<svg class="dots-panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(icons[kind] || icons.file)+'</svg>';
+  const icon = kind => kind === 'copy' ? '<span class="symbol dots-panel-icon" data-symbol="dots-copy" style="--symbol:url(\'/assets/symbols/dots-copy.png\')" aria-hidden="true"></span>' : '<svg class="dots-panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(icons[kind] || icons.file)+'</svg>';
   const colors = ['#bdc4d5','#00b4ef','#ffd139','#d469da','#bada10','#ed729c','#f79557','#7293f1'];
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   let C, profile = {}, pets = [], cataloguePromise, snapshot = {}, activities = [], outputs = [];
@@ -230,7 +230,7 @@
   const connectorGlyph={mail:'M4 6h16v12H4zM4 7l8 6 8-6',calendar:'M5 6h14v13H5zM5 10h14M9 4v4M15 4v4',dev:'M9 8l-4 4 4 4M15 8l4 4-4 4',feeds:'M5 19a1 1 0 1 0 0-.01M5 12a7 7 0 0 1 7 7M5 5a14 14 0 0 1 14 14',devices:'M4 5h16v11H4zM9 20h6M12 16v4',messaging:'M5 5h14v10H9l-4 4z',docs:'M7 4h7l4 4v12H7zM14 4v4h4',custom:'M10 4h4v3a2 2 0 0 0 4 0V4h2v6h-3a2 2 0 0 0 0 4h3v6h-6v-3a2 2 0 0 0-4 0v3H4v-6h3a2 2 0 0 0 0-4H4V4z',builtin:'M12 3l2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-.5z'};
   const glyph=c=>'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+(connectorGlyph[c]||connectorGlyph.builtin)+'"/></svg>';
   const providerCategory={github:'dev',email:'mail','google-calendar':'calendar',rss:'feeds'};
-  const sourceRow=({id,icon,name,line,side,more,open,state})=>'<li class="dots-src'+(state?' is-'+state:'')+(open?' is-open':'')+'"'+(id?' data-src="'+esc(id)+'"':'')+'><div class="dots-src-row"'+(more!==undefined?' data-src-toggle role="button" tabindex="0" aria-expanded="'+!!open+'"':'')+'><span class="dots-src-icon">'+glyph(icon)+'</span><span class="dots-src-text"><strong>'+esc(name)+'</strong>'+(line?'<small>'+esc(line)+'</small>':'')+'</span><span class="dots-src-side">'+side+'</span></div>'+(open&&more?'<div class="dots-src-more">'+more+'</div>':'')+'</li>';
+  const sourceRow=({id,icon,name,line,side,more,open,state})=>'<li class="dots-src'+(state?' is-'+state:'')+(open?' is-open':'')+'"'+(id?' data-src="'+esc(id)+'"':'')+'><div class="dots-src-row"'+(more!==undefined?' data-src-toggle role="button" tabindex="0" aria-expanded="'+!!open+'"':'')+'>'+(String(icon||'').startsWith('logo:')?'<span class="dots-src-icon dots-src-logo"><img src="/assets/connector-logos/'+esc(icon.slice(5))+'.png" alt="" loading="lazy"></span>':'<span class="dots-src-icon">'+glyph(icon)+'</span>')+'<span class="dots-src-text"><strong>'+esc(name)+'</strong>'+(line?'<small>'+esc(line)+'</small>':'')+'</span><span class="dots-src-side">'+side+'</span></div>'+(open&&more?'<div class="dots-src-more">'+more+'</div>':'')+'</li>';
   const stateLabel=(text,state)=>'<span class="dots-src-state is-'+esc(state)+'"><i></i>'+esc(text)+'</span>';
   // 事件订阅：只列出已订阅的来源；新增订阅在 Dots 对话里完成。
   async function openSubscriptions() {
@@ -283,12 +283,12 @@
       let more = '';
       if (open && entry?.auth === 'token' && state !== 'connected') more = '<form class="dots-mcp-form" data-mcp-token><p>'+esc(entry.tokenHint||'需要访问令牌')+'</p><input name="token" type="password" autocomplete="off" placeholder="粘贴访问令牌" required><div class="dots-src-actions"><button type="submit" class="dots-src-button is-primary">连接</button></div></form>';
       else if (open && conn && state !== 'available') more = ((conn.tools||[]).length?'<div class="dots-src-tools">'+conn.tools.slice(0,24).map(t=>'<code>'+esc(t)+'</code>').join('')+(conn.tools.length>24?'<span>等 '+conn.tools.length+' 个</span>':'')+'</div>':'')+(!entry&&c.url?'<p>'+esc(c.url)+'</p>':'')+'<div class="dots-src-actions"><button type="button" class="dots-src-button" data-mcp-act="refresh">刷新</button><button type="button" class="dots-src-button is-danger" data-mcp-act="remove">断开</button></div>';
-      return '<li class="dots-src is-'+esc(state)+(open?' is-open':'')+'" data-mcp="'+esc(id)+'"'+(entry?' data-mcp-catalog="1"':'')+'><div class="dots-src-row"'+(state==='connected'||state==='error'?' data-src-toggle role="button" tabindex="0" aria-expanded="'+open+'"':'')+'>'+mono(name)+'<span class="dots-src-text"><strong>'+esc(name)+'</strong><small>'+esc(line)+'</small></span><span class="dots-src-side">'+side+'</span></div>'+(more?'<div class="dots-src-more">'+more+'</div>':'')+'</li>';
+      return '<li class="dots-src is-'+esc(state)+(open?' is-open':'')+'" data-mcp="'+esc(id)+'"'+(entry?' data-mcp-catalog="1"':'')+'><div class="dots-src-row"'+(state==='connected'||state==='error'?' data-src-toggle role="button" tabindex="0" aria-expanded="'+open+'"':'')+'>'+(entry?'<span class="dots-src-icon dots-src-logo"><img src="/assets/connector-logos/'+esc(id)+'.png" alt="" loading="lazy"></span>':mono(name))+'<span class="dots-src-text"><strong>'+esc(name)+'</strong><small>'+esc(line)+'</small></span><span class="dots-src-side">'+side+'</span></div>'+(more?'<div class="dots-src-more">'+more+'</div>':'')+'</li>';
     };
     const weixinRow = c => {
       const acts = (c.actions||[]).map(a=>({push_on:'<button type="button" class="dots-src-button" data-weixin-act="push_on">提醒推送到微信</button>',push_off:'<button type="button" class="dots-src-button" data-weixin-act="push_off">停止推送提醒</button>',disconnect:'<button type="button" class="dots-src-button is-danger" data-weixin-act="disconnect">解绑</button>'})[a]||'').join('');
-      if (c.state === 'available') return sourceRow({id:c.id,icon:'messaging',name:c.name,line:c.summary,side:'<button type="button" class="dots-src-button is-primary" data-weixin-act="connect">连接</button>'});
-      return sourceRow({id:c.id,icon:'messaging',name:c.name,line:c.summary,state:c.state,open:expanded===c.id,more:(c.detail?'<p>'+esc(c.detail)+'</p>':'')+'<div class="dots-src-actions">'+acts+'</div>',side:stateLabel(c.status,c.state)+chevron});
+      if (c.state === 'available') return sourceRow({id:c.id,icon:'logo:wechat',name:c.name,line:c.summary,side:'<button type="button" class="dots-src-button is-primary" data-weixin-act="connect">连接</button>'});
+      return sourceRow({id:c.id,icon:'logo:wechat',name:c.name,line:c.summary,state:c.state,open:expanded===c.id,more:(c.detail?'<p>'+esc(c.detail)+'</p>':'')+'<div class="dots-src-actions">'+acts+'</div>',side:stateLabel(c.status,c.state)+chevron});
     };
     const addForm = () => adding ? '<form class="dots-mcp-form dots-mcp-add" data-mcp-add><label><span>名称</span><input name="name" maxlength="40" placeholder="比如：公司知识库" required></label><label><span>地址</span><input name="url" type="url" placeholder="https://example.com/mcp" required></label><label><span>访问令牌（可选）</span><input name="token" type="password" autocomplete="off" placeholder="需要授权的服务会自动打开授权页面"></label><div class="dots-src-actions"><button type="button" class="dots-src-button" data-mcp-cancel>取消</button><button type="submit" class="dots-src-button is-primary">连接</button></div></form>' : '<button type="button" class="dots-src-add" data-mcp-add-open>'+icon('add')+'<span>添加 MCP</span></button>';
     const draw = () => {
@@ -412,7 +412,7 @@
     const scopeText = grant => grant.scope==='always'?'一直允许':grant.scope==='task'?'仅限这个任务':grant.expiresAt?'到 '+new Date(grant.expiresAt*1000).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
     const grantsHTML = () => grants.length ? '<ul class="dots-grant-list">'+grants.map(g=>'<li><span><strong>'+esc((g.labels||g.signatures||[]).join('、'))+'</strong><small>'+esc(scopeText(g))+(g.uses?' · 已自动执行 '+g.uses+' 次':'')+'</small></span><button type="button" data-revoke-grant="'+Number(g.id)+'">撤销</button></li>').join('')+'</ul>' : '<p class="dots-settings-empty">批准操作时可选择授权范围，同类操作之后不再询问。</p>';
     const draw = () => {
-      dialog.innerHTML = '<section class="dots-conversation-card dots-settings-card"><header><h2>Dots 设置</h2><button type="button" class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button></header><div class="dots-settings-grid"><div class="dots-settings-col"><h3>审批方式</h3><div class="dots-choice-list" role="radiogroup" aria-label="审批方式">'+modes.map(([id,name,desc])=>'<button type="button" role="radio" aria-checked="'+(settings.approvalMode===id)+'" class="dots-choice'+(settings.approvalMode===id?' is-selected':'')+'" data-approval-mode="'+id+'"><i></i><span><strong>'+name+'</strong><small>'+desc+'</small></span></button>').join('')+'</div><h3>每日简报</h3><label class="dots-switch-row"><span><strong>每天推送一份简报</strong><small>汇总当天日程、进行中的任务和订阅动态。</small></span><input type="checkbox" data-daily-brief'+(settings.dailyBrief?' checked':'')+'></label><label class="dots-switch-row"><span><strong>推送时间</strong></span><input type="time" data-daily-brief-time value="'+esc(settings.dailyBriefTime)+'"'+(settings.dailyBrief?'':' disabled')+'></label></div><div class="dots-settings-col"><h3>已授权的操作</h3>'+grantsHTML()+'<button type="button" class="dots-settings-link" data-open-audit>查看 Dots 做过的事 ›</button></div></div><p role="alert" class="dots-dialog-error" data-settings-error hidden></p></section>';
+      dialog.innerHTML = '<section class="dots-conversation-card dots-settings-card"><header><h2>Dots 设置</h2><button type="button" class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button></header><div class="dots-settings-grid"><div class="dots-settings-col"><h3>审批方式</h3><div class="dots-choice-list" role="radiogroup" aria-label="审批方式">'+modes.map(([id,name,desc])=>'<button type="button" role="radio" aria-checked="'+(settings.approvalMode===id)+'" class="dots-choice'+(settings.approvalMode===id?' is-selected':'')+'" data-approval-mode="'+id+'"><i></i><span><strong>'+name+'</strong><small>'+desc+'</small></span></button>').join('')+'</div></div><div class="dots-settings-col"><h3>已授权的操作</h3>'+grantsHTML()+'</div></div><p role="alert" class="dots-dialog-error" data-settings-error hidden></p></section>';
     };
     const save = async patch => {
       const before = settings; settings = {...settings, ...patch}; draw();
@@ -657,18 +657,18 @@
         (m.role==='assistant'&&m.source==='worker_summary'?'<small class="dots-message-source">任务结果</small>':'')+
         '<div class="message-body">'+(m.role==='user'?'<p>'+esc(m.content || m.text || '').replace(/\n/g,'<br>')+'</p>':C.markdown(m.content || m.text || ''))+'</div>'+messageTools(m,index)+'</article>';
     }).join('')+(messages.length?'':'<p class="dots-panel-empty">任务还没有回复</p>')+(conversationFull?renderTaskActions(goal):'')+approvalCards(goal)+
-      (window.ShiYanSteps?'<button type="button" class="dots-process-link" data-dots-process><span>处理过程</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>':'');
+      (window.ShiYanSteps?'<button type="button" class="dots-process-link" data-dots-process><span>执行过程</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>':'');
   }
-  // 处理过程：和执行过程页同一套样式，覆盖在任务对话卡片上，可返回。
+  // 执行过程：和对话的执行过程页同一套样式，覆盖在任务对话卡片上，可返回。
   function showProcess() {
     const card=conversationDialog?.querySelector('.dots-conversation-card'),goal=currentConversation?.goal;if(!card||!goal)return;
     card.querySelector('.dots-process-view')?.remove();
     const view=document.createElement('div');view.className='dots-process-view';
-    view.innerHTML='<header><button type="button" class="dots-conversation-back" data-dots-process-close>'+icon('back')+'<strong>处理过程</strong></button></header><div class="dots-process-host"></div>';
+    view.innerHTML='<header><button type="button" class="dots-conversation-back" data-dots-process-close>'+icon('back')+'<strong>执行过程</strong></button></header><div class="dots-process-host"></div>';
     card.appendChild(view);
     const status=['done','completed'].includes(goal.status)?'done':['failed','blocked','cancelled'].includes(goal.status)?'failed':['needs_approval','waiting_approval','awaiting_approval'].includes(goal.status)?'waiting':'running';
     const outputs=goal.outputs||[];
-    window.ShiYanSteps.render(view.querySelector('.dots-process-host'),{status,title:goal.title||'任务',time:goal.updated_at,result:outputs.at(-1)?.summary||goal.last_summary||'',steps:window.ShiYanSteps.fromTimeline(goal.timeline)});
+    window.ShiYanSteps.render(view.querySelector('.dots-process-host'),{status,title:goal.title||'任务',time:goal.updated_at,result:outputs.at(-1)?.summary||goal.last_summary||'',prompt:goal.title||'',steps:window.ShiYanSteps.fromTimeline(goal.timeline)});
     view.querySelector('[data-dots-process-close]').focus({preventScroll:true});
   }
   async function refreshConversation() {
@@ -850,8 +850,28 @@
     }
     petFrame=requestAnimationFrame(animatePanelPet);
   }
+  // 主设置里的「Dots」分组：连接器、Dots 设置（从 Dots 菜单移过来）。点了先关设置，再打开对应面板。
+  function mountSettingsEntries() {
+    const home = document.querySelector('.settings-home');
+    if (!home || home.querySelector('[data-settings-dots]')) return;
+    const chevron = '<svg class="settings-entry-chevron" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="m9 5 7 7-7 7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    const entry = (key, symbol, title, detail) => '<button type="button" class="settings-memory-entry" data-settings-dots="'+key+'"><span class="settings-entry-icon" aria-hidden="true"><span class="wb-icon wb-ios-icon" style="--ios-symbol:url(\'/assets/symbols/'+symbol+'.png\')"></span></span><span class="settings-entry-copy"><strong>'+title+'</strong><span>'+detail+'</span></span>'+chevron+'</button>';
+    const heading = document.createElement('h3'); heading.className = 'settings-section-title'; heading.textContent = 'Dots';
+    const group = document.createElement('div'); group.className = 'settings-dots-entries';
+    group.innerHTML = entry('connectors','point.3.connected.trianglepath.dotted','连接器','微信、常用插件和自定义 MCP')+entry('settings','gearshape','Dots 设置','审批方式和已授权的操作');
+    const account = home.querySelector('.settings-section-title'), first = [...home.querySelectorAll('.settings-section-title')].find(h => h.textContent === '账户');
+    if (first) home.insertBefore(heading, first); else home.append(heading);
+    heading.after(group);
+    group.addEventListener('click', async event => {
+      const button = event.target.closest('[data-settings-dots]'); if (!button) return;
+      window.ShiYanSettings?.close?.(false);
+      if (button.dataset.settingsDots === 'connectors') await openConnectors(); else await openDotsSettings();
+    });
+  }
+  window.addEventListener('shiyan-settings-ready', mountSettingsEntries);
   function install(context) {
     C=context;
+    mountSettingsEntries();
     const floating = floatingPet = document.createElement('div');
     floating.id = 'dotsFloatingPet'; floating.hidden = true;
     document.body.appendChild(floating);

@@ -124,3 +124,10 @@ body.desktop-workbench.workbench-v22.workbench-v2 :is(.v2-space-sidebar h2,.sche
 
 /* 左侧栏收起时，给左上角的展开按钮留出位置 */
 .workbench-v2 #desktopLayout[data-view="home"]:not(.v2-left-open) .v2-enhance-toolbar{padding-left:40px}
+
+/* 侧边栏搜索（变清晰、空间与定时任务一致）：标题栏右侧图标，展开后在标题下方 */
+.v2-space-sidebar .v2-sidebar-search{display:block;margin:0 0 10px}
+.v2-space-sidebar .v2-sidebar-search[hidden]{display:none}
+body.desktop-workbench.workbench-v22.workbench-v2 .v2-space-sidebar header :is(#enhanceSearchToggle,#spaceSearchToggle){display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;flex:0 0 30px;padding:0;border:0;border-radius:8px;background:transparent;box-shadow:none;color:#66686c}
+body.desktop-workbench.workbench-v22.workbench-v2 .v2-space-sidebar header :is(#enhanceSearchToggle,#spaceSearchToggle) .toolbar-glyph{width:18px;height:18px;min-width:18px;stroke-width:1.5}
+body.desktop-workbench.workbench-v22.workbench-v2 .v2-space-sidebar header :is(#enhanceSearchToggle,#spaceSearchToggle):hover{background:rgba(100,110,130,.055);color:#252525}

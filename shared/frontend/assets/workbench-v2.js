@@ -20,7 +20,7 @@
   const rightWorkspaceEnabled=C.rightWorkspaceEnabled!==false;
   const S={full:false,compactSide:'left',compact:false,bottomId:null,bottomIds:[],bottomShown:false,booted:false,bottomHeight:230,menuCallbacks:new Map(),closedProjects:new Set(),spaceSelection:new Set(),spaceQuery:'',spaceColumns:0,lastSpaceSignature:'',photoSignature:'',compare:{zoom:1,x:0,y:0},overlayCompare:false,files:new Map(),animationUntil:0,animationFrame:0,dragging:null,lastView:'agent',spaceSidebarOpen:true,enhanceSidebarOpen:true,lastEnhanceSignature:'',photoInput:null,photoOutput:null};
   function icon(name){if(['rename','pin','unpin','project'].includes(name))return window.shiyan.sessionMenuIcon(name);if(name==="folderOpen")return C.icon(name);return extraPaths[name]?`<svg class="wb-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${extraPaths[name]}"></path></svg>`:C.icon(name);}
-  const button=(id,name,label,cls='')=>`<button type="button" ${id?'id="'+id+'"':''} class="wb-icon-button ${cls}" aria-label="${esc(label)}" title="${esc(label)}">${id==='spaceSearchToggle'?C.toolbarIcon('search'):icon(name)}</button>`;
+  const button=(id,name,label,cls='')=>`<button type="button" ${id?'id="'+id+'"':''} class="wb-icon-button ${cls}" aria-label="${esc(label)}" title="${esc(label)}">${['spaceSearchToggle','enhanceSearchToggle'].includes(id)?C.toolbarIcon('search'):icon(name)}</button>`;
   const action=(label,run,name)=>({label,run,icon:name});
   const state=()=>window.shiyan?.getState();
   const isCoding=()=>['agent','search','dots'].includes(window.shiyan?.getView()||'agent');
@@ -369,9 +369,11 @@
   // 变清晰左侧面板：每次增强的记录，可查看、下载。桌面端和网页端共用（保存 / 预览走 window.shiyan，两端各自处理）。
   function buildEnhanceHistory(){
    const sidebar=document.createElement('aside');sidebar.id='enhanceSidebar';sidebar.className='v2-space-sidebar v2-enhance-sidebar';sidebar.hidden=true;sidebar.setAttribute('aria-label','变清晰');
-   sidebar.innerHTML=`<header><h2>变清晰</h2></header><label class="v2-enhance-search">${C.icon('search')}<input id="enhanceSearchInput" type="search" aria-label="搜索变清晰记录" placeholder="搜索文件名或模型"></label><div id="enhanceHistoryList" class="v2-enhance-list" role="list"></div><div id="enhanceHistoryEmpty" class="v2-enhance-empty" hidden>${icon('image')}<span>增强后的图片会出现在这里</span></div>`;
+   sidebar.innerHTML=`<header><h2>变清晰</h2>${button('enhanceSearchToggle','search','搜索记录')}</header><label id="enhanceSearchField" class="schedule-search v2-sidebar-search" hidden><input id="enhanceSearchInput" type="search" aria-label="搜索变清晰记录" placeholder="搜索文件名或模型"></label><div id="enhanceHistoryList" class="v2-enhance-list" role="list"></div><div id="enhanceHistoryEmpty" class="v2-enhance-empty" hidden>${icon('image')}<span>增强后的图片会出现在这里</span></div>`;
    $('leftContainer').appendChild(sidebar);
    $('enhanceSearchInput').oninput=e=>{S.enhanceQuery=e.target.value;renderEnhanceHistory();};
+   // 和定时任务、空间一样：点标题栏右侧的搜索图标，在标题下方展开搜索框；再点一次收起并清空。
+   $('enhanceSearchToggle').onclick=()=>{const box=$('enhanceSearchField');box.hidden=!box.hidden;$('enhanceSearchToggle').setAttribute('aria-expanded',String(!box.hidden));if(!box.hidden)$('enhanceSearchInput').focus();else if(S.enhanceQuery){S.enhanceQuery='';$('enhanceSearchInput').value='';renderEnhanceHistory();}};
    $('enhanceHistoryList').onclick=e=>{
     const group=e.target.closest('[data-enhance-group]');
     if(group){const key=group.dataset.enhanceGroup;S.enhanceCollapsed||=new Set();if(S.enhanceCollapsed.has(key))S.enhanceCollapsed.delete(key);else S.enhanceCollapsed.add(key);renderEnhanceHistory();return;}

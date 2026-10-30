@@ -1094,6 +1094,8 @@
   function closeDialog(id) {const el=$(id);if(typeof el.close==='function' && el.open)el.close();show(id,false);}
   function confirmAction(title,message,accept='确认') {
     return new Promise(resolve=>{
+      // 确认框总是放在最外层：挂到 body 末尾，避免被其他面板（如 Dots 弹窗）盖住。
+      const confirmNode=$('confirmDialog');if(confirmNode&&confirmNode.parentElement!==document.body||confirmNode?.nextElementSibling)document.body.appendChild(confirmNode);
       setText('confirmTitle',title);setText('confirmMessage',message);setText('confirmAcceptButton',accept);$('confirmAcceptButton').classList.toggle('danger-action',accept==='删除');openDialog('confirmDialog');
       const finish=value=>{closeDialog('confirmDialog');resolve(value);};
       $('confirmCancelButton').onclick=()=>finish(false);$('confirmAcceptButton').onclick=()=>finish(true);

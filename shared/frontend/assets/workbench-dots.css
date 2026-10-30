@@ -449,7 +449,7 @@ body.workbench-v22 :is(.message-body,.dots-manager-message) a.message-reference:
 .dots-msg-actions .symbol { width:14px;height:14px; }
 .dots-menu-content .wb-ios-icon { width:17px;height:17px;flex:none; }
 /* 确认对话框总在 Dots 弹窗之上 */
-#confirmDialog.modal-overlay { z-index:300; }
+#confirmDialog.modal-overlay { z-index:2000; }
 
 /* 电脑横屏：连接器、事件订阅、Dots 设置用更宽的两栏布局 */
 .dots-sources-card { width:min(920px,94vw); }
@@ -489,3 +489,8 @@ body.workbench-v22 :is(.message-body,.dots-manager-message) a.message-reference:
 .dots-composer-surface.is-tall textarea { grid-area:input;padding:4px 6px; }
 .dots-composer-surface.is-tall .dots-add-file { grid-area:add; }
 .dots-composer-surface.is-tall .dots-send { grid-area:send; }
+
+.dots-src-logo { background:#fff!important;padding:0;overflow:hidden;box-shadow:inset 0 0 0 .5px color-mix(in srgb,#000 10%,transparent); }
+.dots-src-logo img { width:100%;height:100%;object-fit:cover;display:block;border-radius:inherit; }
+.settings-dots-entries { display:flex;flex-direction:column;gap:8px; }
+.settings-entry-icon .wb-ios-icon { width:22px;height:22px; }

@@ -9,47 +9,55 @@
  const records=c=>(c?.messages||[]).filter(m=>m.role==='assistant'&&window.ShiYanOutput?.itemsFor(m).length);
  // 这一轮回复对应的用户消息（紧挨在它前面的那条）。
  const promptFor=(c,m)=>{const list=c?.messages||[],at=list.findIndex(x=>x.id===m?.id);for(let i=at-1;i>=0;i--)if(list[i].role==='user')return list[i];return null;};
+ // 执行过程：第一层列出我发过的消息（太长只留开头）+ 这一轮在干嘛 + 时间；点一条进入步骤详情。
+ const back='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg>';
+ const chevron='<svg class="xs-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
+ const oneLine=text=>String(text||'').replace(/\s+/g,' ').trim();
  function renderPane(tab,pane) {
   if(!pane)return;
   const c=conversation(tab.conversationId),rounds=records(c);
-  const compact=rounds.find(m=>m.id===tab.messageId)||rounds.at(-1);
+  pane.classList.add('execution-pane');
+  if(tab.view==='detail'&&rounds.some(r=>r.id===tab.messageId))return renderDetail(tab,pane,c,rounds);
+  const signature=JSON.stringify(['list',c?.id,rounds.map(m=>[m.id,m.state,m.completedAt])]);
+  if(pane.__executionSignature===signature)return;pane.__executionSignature=signature;
+  const items=rounds.slice().reverse().map(m=>({m,prompt:promptFor(c,m)}));
+  pane.innerHTML='<header class="execution-toolbar"><strong>执行过程</strong></header><div class="execution-scroll">'+(items.length?'<ol class="xs-rounds">'+items.map(({m,prompt})=>{
+    const text=oneLine(prompt?.text)||'（附件消息）',time=window.ShiYanSteps?.when?.(m.completedAt||m.createdAt)||'';
+    return '<li><button type="button" data-round-id="'+esc(m.id)+'"><span class="xs-round-copy"><strong>'+esc(text.slice(0,400))+'</strong><small><span data-round-doing="'+esc(m.id)+'">'+(working.has(m.state)?'正在执行':'')+'</span>'+(time?'<span> · '+esc(time)+'</span>':'')+'</small></span>'+chevron+'</button></li>';
+  }).join('')+'</ol>':'<p class="wb-empty">这条会话暂无执行记录。</p>')+'</div>';
+  pane.querySelector('.xs-rounds')?.addEventListener('click',e=>{const b=e.target.closest('[data-round-id]');if(!b)return;Object.assign(tab,{view:'detail',messageId:b.dataset.roundId});C.persist();pane.__executionSignature=null;renderPane(tab,pane);});
+  window.ShiYanSteps?.summarizeRounds(items.slice(0,40).map(({m,prompt})=>({id:m.id,prompt:prompt?.text||'',reply:m.text||''}))).then(map=>{
+    for(const node of pane.querySelectorAll('[data-round-doing]')){const doing=map['doing:'+node.dataset.roundDoing];if(doing&&!node.textContent)node.textContent=doing;}
+  });
+ }
+ function renderDetail(tab,pane,c,rounds){
+  const compact=rounds.find(m=>m.id===tab.messageId);
   const refresh=()=>{pane.__executionSignature=null;renderPane(tab,pane);};
   const live=working.has(compact?.state);
   const m=live?compact:window.ShiYanMessageDetails.resolve(compact,tab.conversationId,refresh,pane);
   if(m?.detailsDeferred){window.ShiYanMessageDetails.placeholder(m,pane,refresh);return;}
-  if(m)tab.messageId=m.id;
   const prompt=promptFor(c,m);
-  const signature=JSON.stringify([c?.title,rounds.map(m=>[m.id,m.completedAt]),m,prompt?.id]);
+  const signature=JSON.stringify(['detail',m,prompt?.id]);
   if(pane.__executionSignature===signature)return;pane.__executionSignature=signature;
-  pane.classList.add('execution-pane');
-  const index=rounds.findIndex(r=>r.id===m?.id);
-  pane.innerHTML='<header class="execution-toolbar"><strong>执行过程</strong><div class="execution-round-picker"><button type="button" data-execution-round aria-label="选择执行轮次" aria-haspopup="listbox" aria-expanded="false"'+(rounds.length?'':' disabled')+'>'+(rounds.length?'第 '+(index+1)+' 轮'+(live?' · 进行中':''):'暂无轮次')+'<span aria-hidden="true">⌄</span></button><div class="execution-round-menu" role="listbox" aria-label="执行轮次" hidden>'+rounds.map((r,i)=>'<button type="button" role="option" aria-selected="'+(r.id===m?.id)+'" data-round-id="'+esc(r.id)+'"><span class="execution-round-check" aria-hidden="true">'+(r.id===m?.id?'✓':'')+'</span>第 '+(i+1)+' 轮</button>').join('')+'</div></div></header><div class="execution-scroll"><div class="execution-steps-host"></div></div>';
-  const host=pane.querySelector('.execution-steps-host');
-  if(m&&window.ShiYanSteps){
-   const title=String(prompt?.text||'').trim().replace(/\s+/g,' ');
-   window.ShiYanSteps.render(host,{status:live?'running':m.error?'failed':'done',title:title?title.slice(0,160)+(title.length>160?'…':''):(c?.title||'当前会话'),time:m.completedAt||m.createdAt,result:m.text||'',steps:window.ShiYanSteps.fromItems(window.ShiYanOutput.itemsFor(m))});
-  }else host.innerHTML='<p class="wb-empty">这条会话暂无已完成的执行记录。</p>';
-  const trigger=pane.querySelector('[data-execution-round]'),menu=pane.querySelector('.execution-round-menu');
-  const close=focus=>{menu.hidden=true;trigger.setAttribute('aria-expanded','false');if(focus)trigger.focus();};
-  const open=()=>{menu.hidden=false;trigger.setAttribute('aria-expanded','true');menu.style.maxHeight=Math.max(60,Math.min(310,innerHeight-trigger.getBoundingClientRect().bottom-14))+'px';const chosen=menu.querySelector('[aria-selected="true"]')||menu.firstElementChild;chosen?.focus({preventScroll:true});chosen?.scrollIntoView({block:'nearest'});};
-  trigger.onclick=()=>menu.hidden?open():close(false);
-  trigger.onkeydown=e=>{if(['ArrowDown','ArrowUp'].includes(e.key)){e.preventDefault();open();}};
-  menu.onclick=e=>{const option=e.target.closest('[data-round-id]');if(!option)return;tab.messageId=option.dataset.roundId;C.persist();renderPane(tab,pane);pane.querySelector('[data-execution-round]')?.focus();};
-  menu.onkeydown=e=>{const options=[...menu.children],at=options.indexOf(document.activeElement);let next;if(e.key==='Escape'){e.preventDefault();close(true);return;}if(e.key==='Tab'){close(false);return;}if(e.key==='ArrowDown')next=Math.min(options.length-1,at+1);if(e.key==='ArrowUp')next=Math.max(0,at-1);if(e.key==='Home')next=0;if(e.key==='End')next=options.length-1;if(e.key==='PageDown')next=Math.min(options.length-1,at+10);if(e.key==='PageUp')next=Math.max(0,at-10);if(next!==undefined){e.preventDefault();options[next]?.focus();}};
-
+  pane.innerHTML='<header class="execution-toolbar"><strong>执行过程</strong></header><div class="execution-scroll"><button type="button" class="xs-detail-back" data-execution-back>'+back+'<span>全部消息</span></button><div class="execution-steps-host"></div></div>';
+  pane.querySelector('[data-execution-back]').onclick=()=>{tab.view='list';C.persist();pane.__executionSignature=null;renderPane(tab,pane);};
+  const host=pane.querySelector('.execution-steps-host'),title=oneLine(prompt?.text);
+  window.ShiYanSteps.render(host,{status:live?'running':m.error?'failed':'done',title:title?title.slice(0,160)+(title.length>160?'…':''):(c?.title||'当前会话'),time:m.completedAt||m.createdAt,result:m.text||'',prompt:prompt?.text||'',steps:window.ShiYanSteps.fromItems(window.ShiYanOutput.itemsFor(m))});
  }
  function openMessage(id) {
   if(!C)return;
   const c=state()?.conversations?.find(c=>(c.messages||[]).some(m=>m.id===id))||(window.ShiYanSchedules?.message?.(id)?window.ShiYanSchedules.currentConversation():null);
   if(!c)return;
   let tab=C.tabs.find(t=>t.type==='execution');
-  if(tab){Object.assign(tab,{conversationId:c.id,messageId:id});renderPane(tab,C.panes.get(tab.id));C.selectTab(tab.id);C.persist();}
-  else tab=C.openTab({type:'execution',title:'执行过程',conversationId:c.id,messageId:id});
+  if(tab){Object.assign(tab,{conversationId:c.id,messageId:id,view:'detail'});renderPane(tab,C.panes.get(tab.id));C.selectTab(tab.id);C.persist();}
+  else tab=C.openTab({type:'execution',title:'执行过程',conversationId:c.id,messageId:id,view:'detail'});
   return tab;
  }
  function openLatest() {
-  const c=state()?.conversations?.find(c=>c.id===state()?.selectedConversationId),m=records(c).at(-1);
-  if(m)return openMessage(m.id);
+  const c=state()?.conversations?.find(c=>c.id===state()?.selectedConversationId);
+  let tab=C?.tabs.find(t=>t.type==='execution');
+  if(tab&&c){Object.assign(tab,{conversationId:c.id,view:'list'});tab.__sig=null;renderPane(tab,C.panes.get(tab.id));C.selectTab(tab.id);C.persist();return tab;}
+  if(C&&c)return C.openTab({type:'execution',title:'执行过程',conversationId:c.id,view:'list'});
   if(C)C.openTab({type:'execution',title:'执行过程',conversationId:c?.id},true);
  }
  function update() {

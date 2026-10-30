@@ -64,10 +64,10 @@
   if(!container)return;
   const o={status:'done',title:'',summary:'',time:null,result:'',steps:[],...options},steps=o.steps||[];
   const key=steps.map(s=>s.id+':'+s.input.length+':'+s.output.length+':'+s.status).join('|');
-  const info=cache.get(key)||{};const [label,cls]=STATUS[o.status]||STATUS.done;const result=plain(o.result);
+  const info=cache.get(key)||{};const [label,cls]=STATUS[o.status]||STATUS.done;const result=plain(o.result);const resultKey='page:'+String(o.title||'').slice(0,60)+':'+result.length;
   container.classList.add('xs-host');container.dataset.xsKey=key;
   container.innerHTML='<div class="xs-page"><div class="xs-list"><header class="xs-head"><span class="xs-badge '+cls+'">'+label+'</span><h2>'+esc(o.title||'执行过程')+'</h2>'+(o.summary?'<p class="xs-summary">'+esc(o.summary)+'</p>':'')+(when(o.time)?'<time>'+esc(when(o.time))+'</time>':'')+'</header>'+
-   (result?'<button type="button" class="xs-result" data-xs-result title="展开或收起">'+esc(limit(result,6000))+'</button>':'')+
+   (result?'<p class="xs-result" data-xs-result>'+(roundCache.get(resultKey)?esc(roundCache.get(resultKey)):'<span class="xs-loading">正在整理结果…</span>')+'</p>':'')+
    '<h3 class="xs-section">执行步骤</h3>'+(steps.length?'<ol class="xs-steps">'+steps.map((s,i)=>stepRow(s,info[s.id],i===steps.length-1)).join('')+'</ol>':'<p class="xs-empty">'+(o.status==='running'?'正在执行…':'这次没有调用工具')+'</p>')+
    '</div><div class="xs-detail" hidden></div></div>';
   const list=container.querySelector('.xs-list'),detail=container.querySelector('.xs-detail');
@@ -75,8 +75,9 @@
    const row=e.target.closest('[data-xs-step]');
    if(row){const step=steps.find(s=>s.id===row.dataset.xsStep);if(!step)return;detail.innerHTML=detailHTML(step,(cache.get(key)||{})[step.id]);list.hidden=true;detail.hidden=false;detail.scrollIntoView?.({block:'start'});detail.querySelector('[data-xs-back]')?.focus({preventScroll:true});return;}
    if(e.target.closest('[data-xs-back]')){detail.hidden=true;list.hidden=false;return;}
-   const r=e.target.closest('[data-xs-result]');if(r&&!String(window.getSelection?.()||''))r.classList.toggle('is-expanded');
   };
+  // 中间的结果只显示简短总结，不照搬模型原文。
+  if(result&&!roundCache.has(resultKey))summarizeRounds([{id:resultKey,prompt:o.prompt||o.title||'',reply:result}]).then(map=>{const box=container.querySelector('[data-xs-result]');if(!box||container.dataset.xsKey!==key)return;const text=map[resultKey];box.textContent=text||limit(result,100);});
   if(!steps.length||cache.has(key))return;
   window.shiyan?.api?.('/api/dots/steps/summary','POST',{steps}).then(res=>{
    const map={};for(const s of res?.steps||[])map[s.id]=s;cache.set(key,map);
@@ -85,5 +86,13 @@
     button.querySelector('[data-xs-title]').textContent=value.title;const sub=button.querySelector('[data-xs-sub]');sub.textContent=value.summary;sub.hidden=!value.summary;sub.classList.remove('is-raw');}
   }).catch(()=>{});
  }
- window.ShiYanSteps={render,fromItems,fromTimeline};
+ // 每轮“在干嘛 / 结果总结”，按 id 缓存。
+ const roundCache=new Map();
+ async function summarizeRounds(items){
+  const missing=items.filter(i=>!roundCache.has(i.id)&&(i.prompt||i.reply));
+  if(missing.length){try{const res=await window.shiyan.api('/api/dots/rounds/summary','POST',{rounds:missing.slice(0,40).map(i=>({id:i.id,prompt:limit(i.prompt,1200),reply:limit(i.reply,2500)}))});for(const r of res?.rounds||[]){roundCache.set(r.id,r.result);roundCache.set('doing:'+r.id,r.doing);}}catch{}
+   for(const i of missing)if(!roundCache.has(i.id))roundCache.set(i.id,'');}
+  return Object.fromEntries(items.map(i=>[i.id,roundCache.get(i.id)||'']).concat(items.map(i=>['doing:'+i.id,roundCache.get('doing:'+i.id)||''])));
+ }
+ window.ShiYanSteps={render,fromItems,fromTimeline,summarizeRounds,when};
 })();
