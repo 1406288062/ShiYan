@@ -450,3 +450,16 @@ body.workbench-v22 :is(.message-body,.dots-manager-message) a.message-reference:
 .dots-menu-content .wb-ios-icon { width:17px;height:17px;flex:none; }
 /* 确认对话框总在 Dots 弹窗之上 */
 #confirmDialog.modal-overlay { z-index:300; }
+
+/* 电脑横屏：连接器、事件订阅、Dots 设置用更宽的两栏布局 */
+.dots-sources-card { width:min(920px,94vw); }
+.dots-sources-card .dots-src-list { display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:10px;border:0;border-radius:0;overflow:visible; }
+.dots-sources-card .dots-src { border:1px solid color-mix(in srgb,currentColor 8%,transparent);border-radius:14px;background:color-mix(in srgb,currentColor 1.5%,transparent);align-self:start; }
+.dots-sources-card .dots-src + .dots-src { border-top:1px solid color-mix(in srgb,currentColor 8%,transparent); }
+.dots-sources-card .dots-src.is-open { grid-column:1 / -1; }
+.dots-sources-card .dots-src-row { min-height:60px; }
+.dots-sources-card h3 { margin-top:20px; }
+.dots-settings-card { width:min(880px,94vw); }
+.dots-settings-grid { display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:28px;align-items:start; }
+.dots-settings-col > h3:first-child { margin-top:6px; }
+@media (max-width:720px) { .dots-settings-grid { grid-template-columns:1fr;gap:0; } .dots-sources-card .dots-src-list { grid-template-columns:1fr; } }
