@@ -1054,13 +1054,19 @@ struct DotsView: View {
                     }.font(.footnote).buttonStyle(.plain).foregroundStyle(.secondary)
                 }
             }
-            DisclosureGroup("处理过程", isExpanded: $processExpanded) {
-                VStack(alignment: .leading, spacing: 14) {
-                    ForEach(goal.timeline ?? []) { item in
-                        Text(item.message ?? item.kind ?? "状态已更新").font(.subheadline).textSelection(.enabled)
-                    }
-                }.padding(.top, 12)
-            }.tint(.secondary).accessibilityIdentifier("dots-process")
+            NavigationLink {
+                AgentStepsPage(status: goal.stepsStatus, title: goal.displayTitle,
+                               time: goal.updated_at.map { Date(timeIntervalSince1970: $0 > 1e12 ? $0 / 1000 : $0) },
+                               result: (goal.outputs ?? []).last?.summary ?? goal.last_summary,
+                               steps: goal.executionSteps)
+                    .navigationTitle("").navigationBarTitleDisplayMode(.inline)
+            } label: {
+                HStack {
+                    Text("处理过程").font(.system(size: 17)).foregroundStyle(.secondary)
+                    Spacer()
+                    Image(systemName: "chevron.right").font(.system(size: 15, weight: .semibold)).foregroundStyle(.primary)
+                }.contentShape(Rectangle())
+            }.buttonStyle(.plain).accessibilityIdentifier("dots-process")
         }
     }
     private func fullOutput(_ output: DotsOutput) -> some View {

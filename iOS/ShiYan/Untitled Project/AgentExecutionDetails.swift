@@ -310,19 +310,20 @@ struct AgentExecutionHistoryView: View {
                         }
                         .accessibilityIdentifier("execution-round-list")
                     }
-                    ScrollView(showsIndicators: false) {
-                        if let message = selection {
-                            if AgentExecutionDetails.hasDetails(message) {
-                                AgentExecutionDetails(message: message, initiallyExpanded: true).id(message.id)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            } else {
-                                Text(message.isWorking ? "等待执行记录…" : "本轮暂无执行记录")
-                                    .font(.subheadline).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                        }
+                }
+                .padding(.horizontal, 20).padding(.top, 12)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .overlay(alignment: .top) {
+                    if let message = selection, !choosingRound {
+                        AgentStepsPage(status: message.isWorking ? .running : (message.error?.isEmpty == false ? .failed : .done),
+                                       title: messageName(for: message).isEmpty ? "第 \(selectedIndex + 1) 轮" : messageName(for: message),
+                                       time: message.completedAt ?? message.createdAt,
+                                       result: message.text,
+                                       steps: AgentExecutionPresentation.steps(AgentExecutionPresentation.items(displayItems: message.displayItems, rawResult: message.rawResult)))
+                            .id(message.id)
+                            .padding(.top, rowHeight + 20)
                     }
                 }
-                .padding(20)
             }
             .navigationTitle("执行过程").navigationBarTitleDisplayMode(.inline)
             .toolbar {

@@ -684,6 +684,16 @@ extension CodexClient: DotsTransport {
                                        rejectDotsErrors: true).body
         return try JSONDecoder().decode(DotsSettingsResponse.self, from: bytes)
     }
+    /// 执行步骤的标题和说明（服务端按步骤内容缓存）。
+    func stepSummaries(_ steps: [AgentExecutionPresentation.Item]) async throws -> [AgentStepSummary] {
+        try await prepareConnection()
+        let payload: [[String: Any]] = steps.prefix(60).map {
+            ["id": $0.id, "type": $0.type, "title": $0.title, "status": $0.status,
+             "input": String($0.subtitle.prefix(1500)), "output": String($0.body.prefix(2000))]
+        }
+        let bytes = try await response(request(method: "POST", route: "dots/steps/summary", object: ["steps": payload]), rejectDotsErrors: true).body
+        return try JSONDecoder().decode(AgentStepSummaryResponse.self, from: bytes).steps
+    }
     func dotsGrants() async throws -> DotsGrantsResponse {
         try await prepareConnection()
         let bytes = try await response(request(method: "GET", route: "dots/approval-grants"), rejectDotsErrors: true).body

@@ -70,6 +70,7 @@ struct DotsTimelineItem: Codable, Identifiable {
     let id: Int
     var kind: String?
     var message: String?
+    var data: AgentSyncValue?
     var created_at: Double?
 }
 struct DotsInputEvent: Codable, Identifiable {
