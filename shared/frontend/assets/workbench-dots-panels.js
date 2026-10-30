@@ -601,7 +601,20 @@
       return '<article class="dots-child-message '+(m.role==='user'?'is-user':'is-assistant')+'" data-dots-message-index="'+index+'">'+
         (m.role==='assistant'&&m.source==='worker_summary'?'<small class="dots-message-source">任务结果</small>':'')+
         '<div class="message-body">'+(m.role==='user'?'<p>'+esc(m.content || m.text || '').replace(/\n/g,'<br>')+'</p>':C.markdown(m.content || m.text || ''))+'</div>'+messageTools(m,index)+'</article>';
-    }).join('')+(messages.length?'':'<p class="dots-panel-empty">任务还没有回复</p>')+(conversationFull?renderTaskActions(goal):'')+approvalCards(goal);
+    }).join('')+(messages.length?'':'<p class="dots-panel-empty">任务还没有回复</p>')+(conversationFull?renderTaskActions(goal):'')+approvalCards(goal)+
+      (window.ShiYanSteps?'<button type="button" class="dots-process-link" data-dots-process><span>处理过程</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>':'');
+  }
+  // 处理过程：和执行过程页同一套样式，覆盖在任务对话卡片上，可返回。
+  function showProcess() {
+    const card=conversationDialog?.querySelector('.dots-conversation-card'),goal=currentConversation?.goal;if(!card||!goal)return;
+    card.querySelector('.dots-process-view')?.remove();
+    const view=document.createElement('div');view.className='dots-process-view';
+    view.innerHTML='<header><button type="button" class="dots-conversation-back" data-dots-process-close>'+icon('back')+'<strong>处理过程</strong></button></header><div class="dots-process-host"></div>';
+    card.appendChild(view);
+    const status=['done','completed'].includes(goal.status)?'done':['failed','blocked','cancelled'].includes(goal.status)?'failed':['needs_approval','waiting_approval','awaiting_approval'].includes(goal.status)?'waiting':'running';
+    const outputs=goal.outputs||[];
+    window.ShiYanSteps.render(view.querySelector('.dots-process-host'),{status,title:goal.title||'任务',time:goal.updated_at,result:outputs.at(-1)?.summary||goal.last_summary||'',steps:window.ShiYanSteps.fromTimeline(goal.timeline)});
+    view.querySelector('[data-dots-process-close]').focus({preventScroll:true});
   }
   async function refreshConversation() {
     if(conversationPolling||!conversationVisible()||document.hidden||!currentConversation)return;
@@ -747,6 +760,8 @@
       else if(target.hasAttribute('data-dots-task')){e.stopPropagation();await openConversation(target.dataset.dotsTask);}
       else if(target.hasAttribute('data-dots-panel-output')){e.stopPropagation();await openOutput(target.dataset.dotsPanelOutput);}
       else if(target.hasAttribute('data-dots-panel-copy-output')){await window.shiyan.copyText(outputRaw);target.textContent='已复制';}
+      else if(target.hasAttribute('data-dots-process')){e.stopPropagation();showProcess();}
+      else if(target.hasAttribute('data-dots-process-close')){e.stopPropagation();target.closest('.dots-process-view')?.remove();}
       else if(target.hasAttribute('data-dots-close-dialog'))closeDialog();
       else if(target.hasAttribute('data-dots-select-pet')){profileDraft.name=$('dotsProfileName').value;profileDraft.petId=target.dataset.dotsSelectPet;renderProfile();profileDialog.querySelector('[data-dots-select-pet="'+CSS.escape(profileDraft.petId)+'"]').focus();}
       else if(target.hasAttribute('data-dots-select-color')){profileDraft.name=$('dotsProfileName').value;profileDraft.accent=target.dataset.dotsSelectColor;renderProfile();profileDialog.querySelector('[data-dots-select-color="'+profileDraft.accent+'"]').focus();}

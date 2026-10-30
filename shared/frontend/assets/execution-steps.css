@@ -1,0 +1,47 @@
+/* 执行过程页：状态 + 标题 + 结果 + 步骤列表（绿勾、虚线、标题、一句话结果、箭头）+ 步骤详情 */
+.xs-page{--xs-text:var(--text,#1d1d1f);--xs-muted:var(--secondary,#8a8f98);--xs-line:color-mix(in srgb,currentColor 12%,transparent);color:var(--xs-text);font-size:15px}
+.xs-head{display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:18px 20px 18px}
+.xs-badge{font-size:13px;font-weight:600;padding:4px 9px;border-radius:7px}
+.xs-badge.is-done{color:#1f9d55;background:color-mix(in srgb,#34c759 14%,transparent)}
+.xs-badge.is-running{color:#0a84ff;background:color-mix(in srgb,#0a84ff 13%,transparent)}
+.xs-badge.is-failed{color:#e5484d;background:color-mix(in srgb,#ff3b30 13%,transparent)}
+.xs-badge.is-waiting{color:#d97706;background:color-mix(in srgb,#ff9f0a 15%,transparent)}
+.xs-head h2{margin:2px 0 0;font-size:19px;line-height:1.3;font-weight:700;letter-spacing:-.01em}
+.xs-summary{margin:0;font-size:15px}
+.xs-head time{font-size:13px;color:var(--xs-muted)}
+.xs-result{display:-webkit-box;-webkit-line-clamp:6;-webkit-box-orient:vertical;overflow:hidden;width:100%;text-align:left;border:0;border-top:1px solid var(--xs-line);background:none;margin:0;padding:16px 20px;font:inherit;font-size:15px;line-height:1.55;color:var(--xs-muted);white-space:pre-wrap;cursor:pointer;user-select:text}
+.xs-result.is-expanded{display:block}
+.xs-section{margin:0;padding:18px 20px 10px;border-top:1px solid var(--xs-line);font:600 13px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.04em;color:var(--xs-text)}
+.xs-steps{list-style:none;margin:0;padding:0 8px 16px}
+.xs-step button{position:relative;display:flex;align-items:flex-start;gap:12px;width:100%;border:0;background:none;text-align:left;font:inherit;color:inherit;padding:8px 12px 18px;border-radius:12px;cursor:pointer}
+.xs-step.is-last button{padding-bottom:8px}
+.xs-step button:hover{background:color-mix(in srgb,currentColor 5%,transparent)}
+.xs-step button:focus-visible{outline:2px solid #0a84ff;outline-offset:-2px}
+.xs-step:not(.is-last) button::after{content:"";position:absolute;left:22.5px;top:34px;bottom:-2px;border-left:1.5px dotted color-mix(in srgb,currentColor 30%,transparent)}
+.xs-node{flex:none;width:22px;height:22px;margin-top:1px;color:#34c759}
+.xs-step[data-state="failed"] .xs-node{color:#ff3b30}
+.xs-step[data-state="running"] .xs-node{color:#0a84ff}
+.xs-node svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.xs-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.xs-text strong{font-size:15px;font-weight:600;line-height:1.35}
+.xs-text small{font-size:13.5px;line-height:1.45;color:var(--xs-muted);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+.xs-text small.is-raw{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
+.xs-chevron{flex:none;width:16px;height:16px;margin-top:3px;fill:none;stroke:var(--xs-muted);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;opacity:.7}
+.xs-empty{margin:0;padding:4px 20px 20px;color:var(--xs-muted)}
+.xs-detail{padding:14px 20px 24px}
+.xs-back{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--xs-line);background:color-mix(in srgb,currentColor 3%,transparent);color:inherit;cursor:pointer}
+.xs-back svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.xs-detail h2{margin:18px 0 10px;font-size:19px;line-height:1.3;font-weight:700}
+.xs-detail-md,.xs-detail-text{font-size:15px;line-height:1.6}
+.xs-block{margin-top:16px}
+.xs-block h4{margin:0 0 6px;font-size:12px;font-weight:600;color:var(--xs-muted)}
+.xs-block pre{margin:0;padding:12px;border-radius:10px;background:color-mix(in srgb,currentColor 5%,transparent);font:12.5px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;word-break:break-word;max-height:420px;overflow:auto;user-select:text}
+.execution-scroll:has(>.execution-steps-host){padding:0}
+/* Dots 任务对话里的“处理过程”入口和覆盖层 */
+.dots-process-link{display:flex;align-items:center;justify-content:space-between;width:100%;margin:14px 0 4px;padding:12px 4px;border:0;border-top:1px solid color-mix(in srgb,currentColor 10%,transparent);background:none;font:inherit;font-size:15px;color:var(--secondary,#8a8f98);cursor:pointer}
+.dots-process-link:hover{color:var(--text)}
+.dots-process-link svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.dots-conversation-card{position:relative}
+.dots-process-view{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;background:var(--bg,#fff);border-radius:inherit;overflow:hidden}
+.dots-process-view>header{display:flex;align-items:center;padding:14px 16px 0}
+.dots-process-host{flex:1;min-height:0;overflow:auto}

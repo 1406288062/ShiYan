@@ -104,6 +104,13 @@ def register_dots(app):
     async def dots_connectors(request: Request):
         return await remote(request, "GET", "connectors")
 
+    # 执行过程：每个步骤的标题与说明（服务端生成并缓存）。
+    @app.post("/api/dots/steps/summary")
+    async def step_summary(request: Request):
+        data = await plain(request)
+        steps = data.get("steps") if isinstance(data.get("steps"), list) else []
+        return await remote(request, "POST", "steps/summary", {"steps": steps[:60]})
+
     @app.post("/api/dots/manager/messages/{message_id}/feedback")
     async def message_feedback(message_id: int, request: Request):
         data = await plain(request)
