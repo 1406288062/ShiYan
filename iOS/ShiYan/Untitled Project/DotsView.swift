@@ -164,8 +164,12 @@ struct DotsView: View {
                     }
                     .coordinateSpace(name: "dots-chat-scroll")
                     .defaultScrollAnchor(.bottom, for: .initialOffset)
-                    .onPreferenceChange(DotsBottomPreference.self) { y in
-                        atBottom = y <= viewport.size.height + 70
+                    // Same rule as normal chat: measure real scroll geometry (insets included)
+                    // instead of an anchor offset that sits under the composer.
+                    .onScrollGeometryChange(for: Bool.self) { value in
+                        value.contentOffset.y + value.containerSize.height >= value.contentSize.height - 100
+                    } action: { _, latest in
+                        if atBottom != latest { atBottom = latest }
                         updateReadingVisibility()
                     }
                     .scrollDisabled(voicePresentation.immersive)
@@ -223,8 +227,8 @@ struct DotsView: View {
                         if requestId != nil { scheduleApprovalReveal() }
                     }
                     .overlay(alignment: .bottom) {
-                        let showsBottomButton = !atBottom
-                        Button { proxy.scrollTo("dots-bottom", anchor: .bottom) } label: {
+                        let showsBottomButton = !atBottom && !store.messages.isEmpty && !voicePresentation.immersive
+                        Button { withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) { proxy.scrollTo("dots-bottom", anchor: .bottom) } } label: {
                             Image(systemName: "arrow.down").font(.system(size: 16, weight: .medium))
                                 .frame(width: 36, height: 36).shiyanGlass(in: Circle())
                                 .contentShape(Circle())
