@@ -304,7 +304,7 @@
       dialog.querySelector('[data-mcp-add] input[name=name]')?.focus();
       const authorizing = plugins.some(p=>p.state==='authorizing') || custom.some(c=>c.state==='authorizing');
       clearTimeout(pollTimer);
-      if (authorizing && Date.now() < pollUntil && dialog.isConnected) pollTimer = setTimeout(() => load().catch(()=>{}), 3000);
+      if (authorizing && Date.now() < pollUntil && dialog.isConnected && !dialog.hidden) pollTimer = setTimeout(() => load().catch(()=>{}), 3000);
     };
     const load = async () => { data = await api('/connectors'); draw(); };
     const openAuth = (url, popup) => {
@@ -362,7 +362,8 @@
         const toggleRow = event.target.closest('[data-src-toggle]'); if (toggleRow) toggle(toggleRow);
       } catch (cause) { fail(cause); }
     });
-    const refocus = () => { if (document.visibilityState === 'visible' && dialog.isConnected && data) { pollUntil = Math.max(pollUntil, Date.now() + 60_000); load().catch(()=>{}); } };
+    // 连接器窗口关掉后（包括转去扫码连接微信时）不再在后台刷新列表。
+    const refocus = () => { if (document.visibilityState === 'visible' && dialog.isConnected && !dialog.hidden && data) { pollUntil = Math.max(pollUntil, Date.now() + 60_000); load().catch(()=>{}); } };
     document.addEventListener('visibilitychange', refocus); window.addEventListener('focus', refocus);
     try { await load(); } catch (cause) { fail(cause); dialog.querySelector('[data-connector-body]').innerHTML=''; }
   }

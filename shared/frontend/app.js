@@ -259,6 +259,9 @@
     const scroller=$('messagesScroller');if(!id || ui.view!=='agent' || !scroller.clientHeight || restoringReadingPosition)return;
     const bounds=scroller.getBoundingClientRect(),anchor=[...$('messages').querySelectorAll(':scope>article')].find(e=>e.getBoundingClientRect().bottom>bounds.top+1);
     const position={scrollTop:scroller.scrollTop,anchorMessageId:anchor?.dataset.messageId||'',offset:anchor?anchor.getBoundingClientRect().top-bounds.top:0,followLatest:messageAutoFollow};
+    // 位置没变（或一直在跟随最新消息）就不再保存：否则“保存 → 服务器返回整页状态 → 重绘 → 滚动”会形成每几秒一次的刷新循环。
+    const last=readingPositions.get(id);
+    if(last&&((last.followLatest&&position.followLatest)||(last.followLatest===position.followLatest&&last.anchorMessageId===position.anchorMessageId&&Math.abs(last.scrollTop-position.scrollTop)<2&&Math.abs((last.offset||0)-position.offset)<2)))return;
     readingPositions.set(id,position);pendingReadingPositions.set(id,position);clearTimeout(readingSaveTimer);readingSaveTimer=setTimeout(flushReadingPositions,500);
   }
   async function flushReadingPositions(){
