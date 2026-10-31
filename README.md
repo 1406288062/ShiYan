@@ -23,7 +23,10 @@ config/platforms.json    # 公共配置与 desktop/web 覆盖
 tests/                  # 共用回归测试
 Mac/                     # 旧启动兼容入口、资源与历史集成
 iOS/                    # 原 iOS 工程与辅助脚本
-Cloud/                   # 已有云端代码
+Cloud/                   # 云端服务源码
+  shiyan-v2/             # 拾燕账号、会话执行与统一 MCP 连接器运行时
+  dots-runtime/          # Dots 持久目标、总管与 MCP 桥接运行时
+  knowledge/             # 云端知识库服务
 ```
 
 `Mac/` 下的 `web`、`desktop_backend`、`src`、`native`、`tools`、`tests` 和 `platforms.json` 是指向新目录的相对链接，源码没有复制。原模型、知识库伴随工程、输入输出与安装包位置沿用现有路径，避免目录整理迁移用户数据或独立服务环境。

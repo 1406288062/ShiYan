@@ -1,0 +1,28 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "dots-mcp",
+  "version": "0.2.0",
+  "description": "Connect ChatGPT to the user's Dots Runtime for persistent goals with real-time MCP Events lifecycle updates.",
+  "author": {
+    "name": "Dots"
+  },
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Dots",
+        "shortDescription": "Persistent goals with real-time updates",
+        "longDescription": "Create, inspect, continue, and read results from persistent Dots goals. Persistent goals use MCP Events so important lifecycle updates can be delivered back to the originating ChatGPT conversation in real time.",
+        "developerName": "Dots",
+        "category": "Productivity",
+        "capabilities": [
+          "Interactive"
+        ],
+        "defaultPrompt": [
+          "Create a persistent Dots goal for this task and notify me here in real time when it completes, fails, is blocked, or needs approval.",
+          "Check the status of my Dots goal.",
+          "Continue an existing Dots goal and keep its real-time lifecycle subscription active."
+        ]
+      }
+    }
+  }
+}
