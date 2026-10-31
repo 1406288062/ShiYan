@@ -317,29 +317,46 @@
       return sourceRow({id:c.id,icon:'logo:wechat',name:c.name,line:connected?(c.status||c.summary):c.summary,state:connected?c.state:'',open,more,side:connected?stateLabel(c.status,c.state)+chevron:(open?chevron:'<button type="button" class="dots-src-button is-primary" data-weixin-act="open">连接</button>')});
     };
     const addForm = () => adding ? '<form class="dots-mcp-form dots-mcp-add" data-mcp-add><label><span>名称</span><input name="name" maxlength="40" placeholder="比如：公司知识库" required></label><label><span>地址</span><input name="url" type="url" placeholder="https://example.com/mcp" required></label><label><span>访问令牌（可选）</span><input name="token" type="password" autocomplete="off" placeholder="需要授权的服务会自动打开授权页面"></label><div class="dots-src-actions"><button type="button" class="dots-src-button" data-mcp-cancel>取消</button><button type="submit" class="dots-src-button is-primary">连接</button></div></form>' : '<button type="button" class="dots-src-add" data-mcp-add-open>'+icon('add')+'<span>添加 MCP</span></button>';
-    const spongeSection = () => {
+    const spongeRow = () => {
       const connected = spongeStatus?.connected === true;
-      const devices = Array.isArray(spongeStatus?.devices) ? spongeStatus.devices : [];
-      const online = devices.filter(device => device.online === true).length;
       const pending = spongePendingUntil > Date.now();
-      const line = connected ? (spongeStatus?.needsPairing ? '已连接 · 请先绑定设备' : devices.length ? '已连接 · '+devices.length+' 台设备 · '+online+' 台在线' : '已连接 · 尚未绑定设备') : pending ? '等待完成登录和设备绑定…' : spongeStatus ? '尚未连接' : '正在读取连接状态…';
-      const description = connected ? (spongeStatus?.needsPairing ? '连接已建立，请打开设备管理完成电脑绑定。' : '管理你已授权的 Mac、电脑等设备。') : '连接海绵宝宝后，即可在拾燕中管理已授权的设备。';
+      const line = connected ? (spongeStatus?.needsPairing ? '已连接 · 等待设备绑定' : '已连接') : pending ? '等待完成授权…' : spongeStatus ? '尚未连接' : '正在读取连接状态…';
+      const open = expanded === 'sponge';
       const actions = connected
-        ? '<button type="button" class="dots-src-button is-primary" data-sponge-act="manage">管理设备</button><button type="button" class="dots-src-button" data-sponge-act="refresh">刷新状态</button><button type="button" class="dots-src-button is-danger" data-sponge-act="ask-disconnect">断开连接</button>'
+        ? '<button type="button" class="dots-src-button is-primary" data-sponge-act="manage">打开海绵宝宝</button><button type="button" class="dots-src-button" data-sponge-act="refresh">刷新状态</button><button type="button" class="dots-src-button is-danger" data-sponge-act="ask-disconnect">断开连接</button>'
         : '<button type="button" class="dots-src-button is-primary" data-sponge-act="connect">连接海绵宝宝</button><button type="button" class="dots-src-button" data-sponge-act="refresh">刷新状态</button>';
-      const confirm = spongeConfirm ? '<div class="dots-src-confirm" role="group" aria-label="确认断开"><span>断开后，拾燕将无法再访问你绑定的设备。</span><div class="dots-src-actions"><button type="button" class="dots-src-button" data-sponge-act="cancel">取消</button><button type="button" class="dots-src-button is-danger" data-sponge-act="disconnect">确定断开</button></div></div>' : '';
-      return '<h3>设备管理</h3><section class="dots-sponge-card" aria-label="海绵宝宝设备管理"><div class="dots-sponge-heading"><span class="dots-src-icon dots-src-mono">海</span><span><strong>海绵宝宝</strong><small>'+esc(line)+'</small></span></div><p class="dots-sponge-description">'+esc(description)+'</p><div class="dots-src-actions">'+(spongeBusy?'<span class="dots-src-state"><i></i>正在处理…</span>':actions)+'</div>'+(spongeError?'<p class="dots-sponge-error" role="alert">'+esc(spongeError)+'</p>':'')+(spongeFallback?'<p class="dots-sponge-fallback"><a href="'+esc(spongeFallback)+'" data-sponge-fallback target="_blank" rel="noopener noreferrer">继续连接海绵宝宝</a></p>':'')+confirm+'</section>';
+      const confirm = spongeConfirm ? '<div class="dots-src-confirm" role="group" aria-label="确认断开"><span>断开后，拾燕将无法再访问已授权的设备。</span><div class="dots-src-actions"><button type="button" class="dots-src-button" data-sponge-act="cancel">取消</button><button type="button" class="dots-src-button is-danger" data-sponge-act="disconnect">确定断开</button></div></div>' : '';
+      const more = open ? '<p class="dots-src-label">插件功能</p><p class="dots-src-howto">连接后，Dots 可以通过海绵宝宝访问你授权的电脑和设备。</p><div class="dots-src-actions">'+(spongeBusy?'<span class="dots-src-state"><i></i>正在处理…</span>':actions)+'</div>'+(spongeError?'<p class="dots-sponge-error" role="alert">'+esc(spongeError)+'</p>':'')+(spongeFallback?'<p class="dots-sponge-fallback"><a href="'+esc(spongeFallback)+'" data-sponge-fallback target="_blank" rel="noopener noreferrer">继续授权</a></p>':'')+confirm : '';
+      return '<li class="dots-src is-'+(connected?'connected':'available')+(open?' is-open':'')+'" data-src="sponge"><div class="dots-src-row" data-src-toggle role="button" tabindex="0" aria-expanded="'+open+'"><span class="dots-src-icon dots-src-mono">海</span><span class="dots-src-text"><strong>海绵宝宝</strong><small>'+esc(line)+'</small></span><span class="dots-src-side">'+(connected?stateLabel('已连接','connected')+chevron:open?chevron:'<button type="button" class="dots-src-button is-primary" data-sponge-act="open">连接</button>')+'</span></div>'+(more?'<div class="dots-src-more">'+more+'</div>':'')+'</li>';
     };
     const draw = () => {
       const plugins = data.plugins||[], custom = data.custom||[], weixin = data.connectors||[];
       const count = (data.summary?.connected)||0;
       dialog.querySelector('[data-connectors-summary]').textContent = count ? '已连接 '+count+' 个' : '让 Dots 使用你的应用和工具';
       const sorted = [...plugins].sort((a,b)=>(b.state==='connected')-(a.state==='connected'));
+      const groups = new Map();
+      const pluginCategory = plugin => {
+        const supplied = String(plugin.category || plugin.group || '').trim();
+        if (supplied) return supplied;
+        const name = String(plugin.name || plugin.id || '').toLowerCase();
+        if (/微信|飞书|钉钉|企业微信|slack|discord|telegram|邮件|邮箱/.test(name)) return '沟通协作';
+        if (/腾讯文档|文档|表格|notion|语雀|石墨|drive|dropbox|网盘|日历|calendar/.test(name)) return '办公与知识管理';
+        if (/github|gitee|gitlab|代码|git|开发|终端|服务器/.test(name)) return '开发与运维';
+        if (/高德|地图|搜索|浏览器|网页|搜索引擎|天气/.test(name)) return '搜索与信息';
+        if (/支付|财务|发票|银行|订单|电商|淘宝|京东/.test(name)) return '业务与数据';
+        return '其他插件';
+      };
+      for (const plugin of sorted) {
+        const category = pluginCategory(plugin);
+        if (!groups.has(category)) groups.set(category, []);
+        groups.get(category).push(plugin);
+      }
+      const categorized = [...groups].map(([category, entries]) => '<h3>'+esc(category)+'</h3><ul class="dots-src-list">'+entries.map(p=>mcpRow(null,p)).join('')+'</ul>').join('');
       dialog.querySelector('[data-connector-body]').innerHTML =
-        (weixin.length?'<h3>聊天软件</h3><ul class="dots-src-list">'+weixin.map(weixinRow).join('')+'</ul>':'')+
-        spongeSection()+
-        '<h3>常用插件</h3><ul class="dots-src-list">'+sorted.map(p=>mcpRow(null,p)).join('')+'</ul>'+
-        '<h3>自定义 MCP</h3>'+(custom.length?'<ul class="dots-src-list">'+custom.map(c=>mcpRow(c,null)).join('')+'</ul>':'')+addForm();
+        (weixin.length?'<h3>聊天与通讯</h3><ul class="dots-src-list">'+weixin.map(weixinRow).join('')+'</ul>':'')+
+        '<h3>设备与远程控制</h3><ul class="dots-src-list">'+spongeRow()+'</ul>'+
+        categorized+
+        '<h3>自定义插件</h3>'+(custom.length?'<ul class="dots-src-list">'+custom.map(c=>mcpRow(c,null)).join('')+'</ul>':'')+addForm();
       dialog.querySelector('[data-mcp-add] input[name=name]')?.focus();
       const authorizing = plugins.some(p=>p.state==='authorizing') || custom.some(c=>c.state==='authorizing');
       clearTimeout(pollTimer);
@@ -353,7 +370,7 @@
     const refreshSponge = async () => {
       try {
         const service = window.ShiYanSpongeIntegration;
-        if (!service) throw new Error('设备管理模块尚未加载，请重新打开连接器。');
+        if (!service) throw new Error('海绵宝宝插件尚未加载，请重新打开连接器。');
         spongeStatus = await service.status();
         spongeError = '';
         if (spongeStatus?.connected === true) { spongePendingUntil = 0; spongeFallback = ''; }
@@ -403,10 +420,10 @@
         }
         if (spongeAct) {
           const service = window.ShiYanSpongeIntegration;
-          if (!service) throw new Error('设备管理模块尚未加载，请重新打开连接器。');
+          if (!service) throw new Error('海绵宝宝插件尚未加载，请重新打开连接器。');
           if (spongeAct === 'cancel') { spongeConfirm = false; draw(); return; }
           if (spongeAct === 'ask-disconnect') { spongeConfirm = true; draw(); return; }
-          if (spongeAct === 'manage') { if (!service.manage()) throw new Error('暂时无法打开海绵宝宝设备管理页面。'); return; }
+          if (spongeAct === 'manage' || spongeAct === 'open') { if (!service.manage()) throw new Error('暂时无法打开海绵宝宝页面。'); return; }
           if (spongeAct === 'refresh') { spongeBusy = true; spongeError = ''; draw(); await refreshSponge(); spongeBusy = false; draw(); return; }
           if (spongeAct === 'connect') {
             spongeBusy = true; spongeError = ''; spongeFallback = ''; draw();
@@ -471,7 +488,7 @@
       const done = s.state === 'connected', expired = s.state === 'login_expired';
       dialog.innerHTML = '<section class="dots-conversation-card dots-weixin-card'+(done?' is-done':'')+'"><header><h2>连接微信</h2><button type="button" class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button></header><div class="dots-weixin-body">'
         + '<div class="dots-weixin-qr'+(done?' is-done':expired?' is-expired':s.loginStatus==='scaned'?' is-scanned':'')+'">'
-        + (done ? '<div class="dots-weixin-ok"><svg viewBox="0 0 24 24"><path d="M5.5 12.5l4 4 9-9"/></svg></div>' : expired ? '<div class="dots-weixin-expired-state"><span class="dots-weixin-expired-icon">↻</span><strong>二维码已失效</strong><span>重新获取后，用手机微信扫码即可继续</span><button type="button" class="dots-white-button" data-weixin-refresh>重新获取二维码</button></div>' : (s.qrSvg || ''))
+        + (done ? '<div class="dots-weixin-ok"><svg viewBox="0 0 24 24"><path d="M5.5 12.5l4 4 9-9"/></svg></div>' : expired ? '<div class="dots-weixin-expired-state"><strong>二维码已过期</strong><button type="button" class="dots-white-button" data-weixin-refresh>重新获取</button></div>' : (s.qrSvg || ''))
         + '</div>'
         + (expired ? '' : '<p class="dots-weixin-status" role="status">'+esc(text(s))+(s.message && !done ? '<small>'+esc(s.message)+'</small>' : '')+'</p>')
         + (s.needsVerifyCode ? '<form class="dots-weixin-verify" data-weixin-verify><input inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="one-time-code" aria-label="验证数字" placeholder="手机上显示的数字" required><button type="submit" class="dots-white-button">确定</button></form>' : '')
