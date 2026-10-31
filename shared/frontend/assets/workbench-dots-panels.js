@@ -264,6 +264,7 @@
     dialog.innerHTML = '<section class="dots-conversation-card dots-sources-card"><header><div><h2>连接器</h2><small data-connectors-summary>正在读取…</small></div><button type="button" class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button></header><p class="dots-src-notice" data-connector-notice hidden></p><div class="dots-src-body" data-connector-body><div class="dots-src-skeleton"></div><div class="dots-src-skeleton"></div><div class="dots-src-skeleton"></div></div><p role="alert" class="dots-dialog-error" data-connector-error hidden></p></section>';
     showDialog(dialog, dialog);
     let data, expanded = focusId || '', adding = false, busy = '', pollTimer = null, pollUntil = 0, confirming = '', showTools = '', noticeTimer = null;
+    let spongeStatus = null, spongeBusy = false, spongeError = '', spongeFallback = '', spongePendingUntil = 0, spongePollTimer = null, spongeConfirm = false;
     const errorBox = dialog.querySelector('[data-connector-error]'), noticeBox = dialog.querySelector('[data-connector-notice]');
     const fail = cause => { errorBox.textContent = cause?.message || String(cause); errorBox.hidden = false; };
     const notice = (html, autoHide) => { clearTimeout(noticeTimer); noticeBox.innerHTML = html || ''; noticeBox.hidden = !html; if (html && autoHide) noticeTimer = setTimeout(() => notice(''), 5000); };
@@ -316,6 +317,19 @@
       return sourceRow({id:c.id,icon:'logo:wechat',name:c.name,line:connected?(c.status||c.summary):c.summary,state:connected?c.state:'',open,more,side:connected?stateLabel(c.status,c.state)+chevron:(open?chevron:'<button type="button" class="dots-src-button is-primary" data-weixin-act="open">连接</button>')});
     };
     const addForm = () => adding ? '<form class="dots-mcp-form dots-mcp-add" data-mcp-add><label><span>名称</span><input name="name" maxlength="40" placeholder="比如：公司知识库" required></label><label><span>地址</span><input name="url" type="url" placeholder="https://example.com/mcp" required></label><label><span>访问令牌（可选）</span><input name="token" type="password" autocomplete="off" placeholder="需要授权的服务会自动打开授权页面"></label><div class="dots-src-actions"><button type="button" class="dots-src-button" data-mcp-cancel>取消</button><button type="submit" class="dots-src-button is-primary">连接</button></div></form>' : '<button type="button" class="dots-src-add" data-mcp-add-open>'+icon('add')+'<span>添加 MCP</span></button>';
+    const spongeSection = () => {
+      const connected = spongeStatus?.connected === true;
+      const devices = Array.isArray(spongeStatus?.devices) ? spongeStatus.devices : [];
+      const online = devices.filter(device => device.online === true).length;
+      const pending = spongePendingUntil > Date.now();
+      const line = connected ? (spongeStatus?.needsPairing ? '已连接 · 请先绑定设备' : devices.length ? '已连接 · '+devices.length+' 台设备 · '+online+' 台在线' : '已连接 · 尚未绑定设备') : pending ? '等待完成登录和设备绑定…' : spongeStatus ? '尚未连接' : '正在读取连接状态…';
+      const description = connected ? (spongeStatus?.needsPairing ? '连接已建立，请打开设备管理完成电脑绑定。' : '管理你已授权的 Mac、电脑等设备。') : '连接海绵宝宝后，即可在拾燕中管理已授权的设备。';
+      const actions = connected
+        ? '<button type="button" class="dots-src-button is-primary" data-sponge-act="manage">管理设备</button><button type="button" class="dots-src-button" data-sponge-act="refresh">刷新状态</button><button type="button" class="dots-src-button is-danger" data-sponge-act="ask-disconnect">断开连接</button>'
+        : '<button type="button" class="dots-src-button is-primary" data-sponge-act="connect">连接海绵宝宝</button><button type="button" class="dots-src-button" data-sponge-act="refresh">刷新状态</button>';
+      const confirm = spongeConfirm ? '<div class="dots-src-confirm" role="group" aria-label="确认断开"><span>断开后，拾燕将无法再访问你绑定的设备。</span><div class="dots-src-actions"><button type="button" class="dots-src-button" data-sponge-act="cancel">取消</button><button type="button" class="dots-src-button is-danger" data-sponge-act="disconnect">确定断开</button></div></div>' : '';
+      return '<h3>设备管理</h3><section class="dots-sponge-card" aria-label="海绵宝宝设备管理"><div class="dots-sponge-heading"><span class="dots-src-icon dots-src-mono">海</span><span><strong>海绵宝宝</strong><small>'+esc(line)+'</small></span></div><p class="dots-sponge-description">'+esc(description)+'</p><div class="dots-src-actions">'+(spongeBusy?'<span class="dots-src-state"><i></i>正在处理…</span>':actions)+'</div>'+(spongeError?'<p class="dots-sponge-error" role="alert">'+esc(spongeError)+'</p>':'')+(spongeFallback?'<p class="dots-sponge-fallback"><a href="'+esc(spongeFallback)+'" data-sponge-fallback target="_blank" rel="noopener noreferrer">继续连接海绵宝宝</a></p>':'')+confirm+'</section>';
+    };
     const draw = () => {
       const plugins = data.plugins||[], custom = data.custom||[], weixin = data.connectors||[];
       const count = (data.summary?.connected)||0;
@@ -323,6 +337,7 @@
       const sorted = [...plugins].sort((a,b)=>(b.state==='connected')-(a.state==='connected'));
       dialog.querySelector('[data-connector-body]').innerHTML =
         (weixin.length?'<h3>聊天软件</h3><ul class="dots-src-list">'+weixin.map(weixinRow).join('')+'</ul>':'')+
+        spongeSection()+
         '<h3>常用插件</h3><ul class="dots-src-list">'+sorted.map(p=>mcpRow(null,p)).join('')+'</ul>'+
         '<h3>自定义 MCP</h3>'+(custom.length?'<ul class="dots-src-list">'+custom.map(c=>mcpRow(c,null)).join('')+'</ul>':'')+addForm();
       dialog.querySelector('[data-mcp-add] input[name=name]')?.focus();
@@ -330,7 +345,22 @@
       clearTimeout(pollTimer);
       if (authorizing && Date.now() < pollUntil && dialog.isConnected && !dialog.hidden) pollTimer = setTimeout(() => load().catch(()=>{}), 3000);
     };
-    const load = async () => { data = await api('/connectors'); draw(); };
+    const scheduleSpongePoll = () => {
+      clearTimeout(spongePollTimer); spongePollTimer = null;
+      if (spongePendingUntil <= Date.now() || !dialog.isConnected || dialog.hidden) return;
+      spongePollTimer = setTimeout(() => refreshSponge(), 3000);
+    };
+    const refreshSponge = async () => {
+      try {
+        const service = window.ShiYanSpongeIntegration;
+        if (!service) throw new Error('设备管理模块尚未加载，请重新打开连接器。');
+        spongeStatus = await service.status();
+        spongeError = '';
+        if (spongeStatus?.connected === true) { spongePendingUntil = 0; spongeFallback = ''; }
+      } catch (cause) { spongeError = cause?.message || '读取设备状态失败，请重试。'; }
+      draw(); scheduleSpongePoll();
+    };
+    const load = async () => { data = await api('/connectors'); draw(); await refreshSponge(); };
     const openAuth = (url, popup) => {
       const native = !!window.webkit?.messageHandlers?.native;
       if (native) window.ShiYanPlatform?.postNative?.('openExternal',{url});
@@ -362,8 +392,39 @@
       if (event.target.closest('[data-mcp-cancel]')) { adding = false; draw(); return; }
       if (event.target.closest('[data-confirm-cancel]')) { confirming = ''; draw(); return; }
       const weixinAct = event.target.closest('[data-weixin-act]')?.dataset.weixinAct;
+      const spongeAct = event.target.closest('[data-sponge-act]')?.dataset.spongeAct;
+      const spongeFallbackLink = event.target.closest('[data-sponge-fallback]');
       const mcpItem = event.target.closest('[data-mcp]'), mcpAct = event.target.closest('[data-mcp-act]')?.dataset.mcpAct;
       try {
+        if (spongeFallbackLink) {
+          const service = window.ShiYanSpongeIntegration;
+          if (!service?.openAuthorization(spongeFallbackLink.href)) throw new Error('暂时无法打开海绵宝宝授权页面。');
+          event.preventDefault(); return;
+        }
+        if (spongeAct) {
+          const service = window.ShiYanSpongeIntegration;
+          if (!service) throw new Error('设备管理模块尚未加载，请重新打开连接器。');
+          if (spongeAct === 'cancel') { spongeConfirm = false; draw(); return; }
+          if (spongeAct === 'ask-disconnect') { spongeConfirm = true; draw(); return; }
+          if (spongeAct === 'manage') { if (!service.manage()) throw new Error('暂时无法打开海绵宝宝设备管理页面。'); return; }
+          if (spongeAct === 'refresh') { spongeBusy = true; spongeError = ''; draw(); await refreshSponge(); spongeBusy = false; draw(); return; }
+          if (spongeAct === 'connect') {
+            spongeBusy = true; spongeError = ''; spongeFallback = ''; draw();
+            try {
+              const result = await service.connect();
+              spongeFallback = result.fallbackUrl || '';
+              spongePendingUntil = Date.now() + 5*60_000;
+              spongeError = result.opened ? '请在新页面登录海绵宝宝并完成设备绑定。' : '浏览器阻止了自动打开，请使用下方链接继续。';
+            } finally { spongeBusy = false; }
+            await refreshSponge(); return;
+          }
+          if (spongeAct === 'disconnect') {
+            spongeBusy = true; spongeError = ''; draw();
+            try { await service.disconnect(); spongeStatus = {connected:false,devices:[]}; spongePendingUntil = 0; spongeFallback = ''; spongeConfirm = false; }
+            finally { spongeBusy = false; }
+            draw(); return;
+          }
+        }
         if (weixinAct) {
           errorBox.hidden = true;
           if (weixinAct === 'open') { expanded = 'wechat'; confirming = ''; draw(); return; }

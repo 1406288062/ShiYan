@@ -37,6 +37,7 @@ body.workbench-v22.workbench-v2 .sidebar-dots.is-selected { background:var(--v22
 .dots-manager-message { max-width:760px;margin:0 auto 28px;overflow-wrap:anywhere;line-height:1.7;font-size:14px; }
 .dots-manager-message>header { font-size:11px;color:var(--secondary);margin-bottom:7px; }
 .dots-manager-message.is-user { width:fit-content;max-width:85%;margin-left:auto;margin-right:0;padding:12px 16px;border-radius:20px;background:var(--soft-fill); }
+.dots-manager-message.is-user:has(.message-body:empty):has(.dots-images) { padding:0;background:transparent;border-radius:0;box-shadow:none; }
 .dots-manager-message .message-body>:first-child { margin-top:0; }
 .dots-manager-message .message-body>:last-child { margin-bottom:0; }
 .dots-view .dots-history-more { display:block;margin:0 auto 24px;border:0;font-size:12px;color:var(--secondary); }
@@ -410,6 +411,17 @@ body.workbench-v22 :is(.message-body,.dots-manager-message) a.message-reference:
 .dots-src-body { overflow:auto;min-height:0;flex:1;margin:0 -4px;padding:0 4px 4px; }
 .dots-sources-card h3 { margin:18px 0 6px;font-size:12px;font-weight:600;color:var(--secondary); }
 .dots-sources-card h3:first-child { margin-top:6px; }
+.dots-sponge-card { display:flex;flex-direction:column;gap:9px;padding:13px 14px;border:1px solid color-mix(in srgb,currentColor 9%,transparent);border-radius:14px;background:color-mix(in srgb,currentColor 1.5%,transparent); }
+.dots-sponge-heading { display:flex;align-items:center;gap:10px; }
+.dots-sponge-heading>span:last-child { display:flex;min-width:0;flex-direction:column;gap:3px; }
+.dots-sponge-heading strong { font-size:13px;font-weight:600; }
+.dots-sponge-heading small,.dots-sponge-description { margin:0;color:var(--secondary);font-size:12px;line-height:1.5; }
+.dots-sponge-card>.dots-src-actions { display:flex;align-items:center;gap:7px;flex-wrap:wrap; }
+.dots-sponge-card .dots-src-actions .dots-src-button { margin:0; }
+.dots-sponge-error { margin:0;color:#d64545;font-size:12px;line-height:1.5; }
+.dots-sponge-fallback { margin:0;font-size:12px; }
+.dots-sponge-fallback a { color:#0a84ff;text-decoration:none; }
+.dots-sponge-card .dots-src-confirm { margin-top:2px; }
 .dots-src-list { list-style:none;margin:0;padding:0;border-radius:14px;border:1px solid color-mix(in srgb,currentColor 8%,transparent);overflow:hidden; }
 .dots-src + .dots-src { border-top:1px solid color-mix(in srgb,currentColor 7%,transparent); }
 .dots-src-row { display:flex;align-items:center;gap:12px;padding:11px 14px;min-height:52px; }
@@ -504,8 +516,8 @@ body.workbench-v22 :is(.message-body,.dots-manager-message) a.message-reference:
 /* 消息里的图片缩略图（例如微信发来的图片） */
 .dots-images { display:flex;flex-wrap:wrap;gap:8px;margin-top:6px; }
 .dots-manager-message.is-user .dots-images { justify-content:flex-end; }
-.dots-image { display:block;border-radius:14px;overflow:hidden;line-height:0;background:color-mix(in srgb,currentColor 5%,transparent); }
-.dots-image img { display:block;max-width:min(260px,100%);max-height:240px;width:auto;height:auto;object-fit:contain; }
+.dots-image { display:block;border-radius:10px;overflow:hidden;line-height:0;background:transparent;box-shadow:none;filter:none; }
+.dots-image img { display:block;max-width:min(260px,100%);max-height:240px;width:auto;height:auto;object-fit:contain;border:0;border-radius:inherit;box-shadow:none!important;filter:none!important; }
 .dots-manager-message .message-body:empty { display:none; }
 
 /* 连接器说明：连上后能做什么、怎么连接；断开在卡片里原地确认 */
