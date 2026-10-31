@@ -509,9 +509,13 @@ struct DotsView: View {
                             catch { store.notice = error.localizedDescription }
                         }
                     } label: {
-                        Label(attachment.filename, systemImage: "doc")
-                            .font(.subheadline).lineLimit(2).padding(10)
-                            .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
+                        if attachment.mimeType.hasPrefix("image/") {
+                            DotsAttachmentThumbnail(attachment: attachment)
+                        } else {
+                            Label(attachment.filename, systemImage: "doc")
+                                .font(.subheadline).lineLimit(2).padding(10)
+                                .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
+                        }
                     }.buttonStyle(.plain).foregroundStyle(.primary)
                 }
             }
@@ -2501,6 +2505,37 @@ enum DotsHubTab: CaseIterable {
         switch self {
         case .tasks: return "任务"
         case .subscriptions: return "事件订阅"
+        }
+    }
+}
+
+/// 消息里的图片附件（比如微信发来的图片）直接显示缩略图；点按仍打开完整预览。
+private struct DotsAttachmentThumbnail: View {
+    let attachment: DotsAttachment
+    @State private var image: UIImage?
+    @State private var failed = false
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image).resizable().scaledToFit()
+                    .frame(maxWidth: 220, maxHeight: 220)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            } else if failed {
+                Label(attachment.filename, systemImage: "photo")
+                    .font(.subheadline).lineLimit(2).padding(10)
+                    .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
+            } else {
+                RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.primary.opacity(0.05))
+                    .frame(width: 160, height: 120).overlay(ProgressView())
+            }
+        }
+        .accessibilityLabel(Text("图片 \(attachment.filename)"))
+        .task(id: attachment.id) {
+            do {
+                let url = try await CodexClient.shared.dotsAttachmentFile(attachment)
+                if let loaded = UIImage(contentsOfFile: url.path) { image = loaded } else { failed = true }
+            } catch { failed = true }
         }
     }
 }

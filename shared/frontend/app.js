@@ -302,7 +302,12 @@
         // 附件缩略图：同一组文件时保留原来的节点，不重新加载；模型输出期间同步偶尔让用户消息短暂丢失附件，也沿用原节点。
         const assetIds=node=>[...node.querySelectorAll('[data-asset-id]')].map(e=>e.dataset.assetId).join('|');
         if(oldAssets && newAssets && (oldAssets.outerHTML===newAssets.outerHTML||assetIds(oldAssets)===assetIds(newAssets)))newAssets.replaceWith(oldAssets);
-        else if(oldAssets && !newAssets && message.role==='user'){const body=fresh.querySelector('.message-content');if(body)body.prepend(oldAssets);}
+        else if(oldAssets && newAssets){
+          // 图片增减时，已有的缩略图沿用原节点，不重新加载，避免闪烁和页面跳动。
+          for(const card of newAssets.querySelectorAll('[data-asset-id]')){const kept=[...oldAssets.querySelectorAll('[data-asset-id]')].find(e=>e.dataset.assetId===card.dataset.assetId);if(kept)card.replaceWith(kept);}
+        }
+        // 模型输出期间（以及用户消息）附件不应凭空消失：同步数据短暂缺失时沿用原来的缩略图。
+        else if(oldAssets && !newAssets && (message.role==='user'||busyStates.has(message.state))){const body=fresh.querySelector('.message-content');if(body)body.prepend(oldAssets);}
         const oldBody=article.querySelector('.message-body'),newBody=fresh.querySelector('.message-body');
         if(oldBody&&newBody&&article.__bodyText===(message.text||'')&&article.__bodyRole===message.role)newBody.replaceWith(oldBody);
         else if(oldBody&&newBody){

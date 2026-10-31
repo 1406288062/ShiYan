@@ -500,3 +500,10 @@ body.workbench-v22 :is(.message-body,.dots-manager-message) a.message-reference:
 .dots-src-logo img { width:100%;height:100%;object-fit:cover;display:block;border-radius:inherit; }
 .settings-dots-entries { display:flex;flex-direction:column;gap:8px; }
 .settings-entry-icon .wb-ios-icon { width:22px;height:22px; }
+
+/* 消息里的图片缩略图（例如微信发来的图片） */
+.dots-images { display:flex;flex-wrap:wrap;gap:8px;margin-top:6px; }
+.dots-manager-message.is-user .dots-images { justify-content:flex-end; }
+.dots-image { display:block;border-radius:14px;overflow:hidden;line-height:0;background:color-mix(in srgb,currentColor 5%,transparent); }
+.dots-image img { display:block;max-width:min(260px,100%);max-height:240px;width:auto;height:auto;object-fit:contain; }
+.dots-manager-message .message-body:empty { display:none; }
