@@ -312,3 +312,10 @@ body.workbench-v22.workbench-v2.dots-is-current-view #agentSidebar .session-row.
  .dots-subscriptions-card .dots-subscription-form>label:has(>span) { grid-template-columns:minmax(0,1fr);gap:6px; }
  .dots-subscriptions-card .dots-subscription-form>div { gap:8px; }
 }
+
+/* 微信绑定与 Dots 权限审批统一尺寸；覆盖上方通用 760px 对话框高度。 */
+.dots-dialog-overlay .dots-conversation-card.dots-weixin-card,
+.dots-dialog-overlay .dots-conversation-card.dots-settings-card {
+  width:min(470px,94vw);height:min(460px,calc(100dvh - 32px)) !important;
+  min-height:0;max-height:calc(100dvh - 32px);
+}

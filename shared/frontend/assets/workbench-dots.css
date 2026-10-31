@@ -445,8 +445,14 @@ body.workbench-v22 :is(.message-body,.dots-manager-message) a.message-reference:
 .dots-src.is-open .dots-src-chevron { transform:rotate(90deg); }
 .dots-dialog-overlay .dots-src-button { border:1px solid color-mix(in srgb,currentColor 13%,transparent);background:none;color:inherit;font:inherit;font-size:12px;padding:5px 12px;border-radius:999px;cursor:pointer;white-space:nowrap;transition:background .15s,border-color .15s; }
 .dots-dialog-overlay .dots-src-button:hover { background:color-mix(in srgb,currentColor 5%,transparent); }
-.dots-dialog-overlay .dots-src-button.is-primary { background:var(--text,#111);border-color:transparent;color:var(--bg,#fff); }
-.dots-dialog-overlay .dots-src-button.is-primary:hover { opacity:.86;background:var(--text,#111); }
+.dots-dialog-overlay .dots-src-button.is-primary { background:#3988fa;border-color:#3988fa;color:#fff; }
+.dots-dialog-overlay .dots-src-button.is-primary:hover { opacity:.9;background:#2878e8; }
+.dots-dialog-overlay .dots-src-button:not(.is-primary):not(.is-danger) { color:var(--text,#222); }
+.dots-dialog-overlay .dots-src-logo { overflow:hidden;background:transparent!important; }
+.dots-dialog-overlay .dots-src-logo img { display:block;width:100%;height:100%;object-fit:contain;border-radius:7px; }
+:root[data-theme="dark"] .dots-dialog-overlay .dots-src-button:not(.is-primary):not(.is-danger) { color:#f2f3f5;border-color:rgba(255,255,255,.24);background:rgba(255,255,255,.07); }
+:root[data-theme="dark"] .dots-dialog-overlay .dots-src-button:not(.is-primary):not(.is-danger):hover { background:rgba(255,255,255,.14); }
+@media (prefers-color-scheme:dark) { :root:not([data-theme="light"]) .dots-dialog-overlay .dots-src-button:not(.is-primary):not(.is-danger) { color:#f2f3f5;border-color:rgba(255,255,255,.24);background:rgba(255,255,255,.07); } :root:not([data-theme="light"]) .dots-dialog-overlay .dots-src-button:not(.is-primary):not(.is-danger):hover { background:rgba(255,255,255,.14); } }
 .dots-dialog-overlay .dots-src-button.is-danger { color:#d64545;border-color:color-mix(in srgb,#d64545 30%,transparent); }
 .dots-src-more { padding:0 14px 12px 58px;display:flex;flex-direction:column;gap:8px; }
 .dots-src-more p { margin:0;color:var(--secondary);font-size:12px;line-height:1.55; }
