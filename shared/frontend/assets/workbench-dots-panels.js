@@ -263,33 +263,57 @@
     const dialog = makeDialog('dotsConnectorsDialog','dots-conversation-overlay');
     dialog.innerHTML = '<section class="dots-conversation-card dots-sources-card"><header><div><h2>连接器</h2><small data-connectors-summary>正在读取…</small></div><button type="button" class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button></header><p class="dots-src-notice" data-connector-notice hidden></p><div class="dots-src-body" data-connector-body><div class="dots-src-skeleton"></div><div class="dots-src-skeleton"></div><div class="dots-src-skeleton"></div></div><p role="alert" class="dots-dialog-error" data-connector-error hidden></p></section>';
     showDialog(dialog, dialog);
-    let data, expanded = focusId || '', adding = false, busy = '', pollTimer = null, pollUntil = 0;
+    let data, expanded = focusId || '', adding = false, busy = '', pollTimer = null, pollUntil = 0, confirming = '', showTools = '', noticeTimer = null;
     const errorBox = dialog.querySelector('[data-connector-error]'), noticeBox = dialog.querySelector('[data-connector-notice]');
     const fail = cause => { errorBox.textContent = cause?.message || String(cause); errorBox.hidden = false; };
-    const notice = (html) => { noticeBox.innerHTML = html || ''; noticeBox.hidden = !html; };
+    const notice = (html, autoHide) => { clearTimeout(noticeTimer); noticeBox.innerHTML = html || ''; noticeBox.hidden = !html; if (html && autoHide) noticeTimer = setTimeout(() => notice(''), 5000); };
     const chevron = '<svg class="dots-src-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
     const hues = [212,262,152,24,338,190,45,290];
     const mono = name => { let h = 0; for (const ch of String(name)) h = (h*31 + ch.codePointAt(0)) >>> 0; return '<span class="dots-src-icon dots-src-mono" style="--mono-hue:'+hues[h % hues.length]+'">'+esc(String(name).trim().charAt(0).toUpperCase())+'</span>'; };
+    // 每个插件点开都先说明：连上后 Dots 能做什么、怎么连接（去官网授权 / 需要 Key / 直接可用），再给出连接或断开操作。
+    const aboutHTML = (abilities, example) => (abilities||[]).length ? '<p class="dots-src-label">连上后，Dots 可以</p><ul class="dots-src-abilities">'+abilities.map(a=>'<li>'+esc(a)+'</li>').join('')+'</ul>'+(example?'<p class="dots-src-example">比如对 Dots 说：“'+esc(example)+'”</p>':'') : '';
+    const spaced = name => (/^[A-Za-z0-9]/.test(name)?' ':'')+name+(/[A-Za-z0-9]$/.test(name)?' ':'');
+    const confirmHTML = (name, act) => '<div class="dots-src-confirm" role="group" aria-label="确认断开"><span>断开后 Dots 就不能再用'+esc(spaced(name))+'了，之后可以随时重新连接。</span><div class="dots-src-actions"><button type="button" class="dots-src-button" data-confirm-cancel>取消</button><button type="button" class="dots-src-button is-danger" '+act+'>确定断开</button></div></div>';
     const mcpRow = (c, entry) => {
       const id = entry ? entry.id : c.id, conn = entry ? entry.connector : c, state = entry ? entry.state : c.state, name = entry ? entry.name : c.name;
-      const line = state === 'connected' ? (conn?.toolCount ? conn.toolCount+' 个工具' : '已连接') : state === 'error' ? (conn?.error || '连接异常') : entry ? entry.summary : (c.url || '');
-      let side = '';
-      if (busy === id) side = '<span class="dots-src-state"><i></i>连接中…</span>';
-      else if (state === 'connected') side = stateLabel('已连接','connected')+chevron;
-      else if (state === 'authorizing') side = '<button type="button" class="dots-src-button is-primary" data-mcp-act="connect">继续授权</button>';
-      else if (state === 'error') side = '<button type="button" class="dots-src-button is-primary" data-mcp-act="connect">重新连接</button>';
-      else if (expanded === id && entry?.auth === 'token') side = '<button type="button" class="dots-src-button" data-mcp-act="collapse">取消</button>';
-      else side = '<button type="button" class="dots-src-button is-primary" data-mcp-act="connect">连接</button>';
       const open = expanded === id;
+      const line = state === 'connected' ? (conn?.toolCount ? '已连接 · 可用 '+conn.toolCount+' 个工具' : '已连接') : state === 'error' ? (conn?.error || '连接异常，需要重新连接') : state === 'authorizing' ? '等待你在浏览器里完成授权' : entry ? entry.summary : (c.url || '');
+      let side = '';
+      if (busy === id) side = '<span class="dots-src-state"><i></i>'+(state==='connected'?'正在处理…':'连接中…')+'</span>';
+      else if (state === 'connected') side = stateLabel('已连接','connected')+chevron;
+      else if (state === 'error') side = stateLabel('需要重连','error')+chevron;
+      else if (state === 'authorizing') side = stateLabel('待授权','paused')+chevron;
+      else side = open ? chevron : '<button type="button" class="dots-src-button is-primary" data-mcp-act="open">连接</button>';
       let more = '';
-      if (open && entry?.auth === 'token' && state !== 'connected') more = '<form class="dots-mcp-form" data-mcp-token><p>'+esc(entry.tokenHint||'需要访问令牌')+'</p><input name="token" type="password" autocomplete="off" placeholder="'+(entry.tokenParam?'粘贴 Key':'粘贴访问令牌')+'" required><div class="dots-src-actions"><button type="submit" class="dots-src-button is-primary">连接</button></div></form>';
-      else if (open && conn && state !== 'available') more = ((conn.tools||[]).length?'<div class="dots-src-tools">'+conn.tools.slice(0,24).map(t=>'<code>'+esc(t)+'</code>').join('')+(conn.tools.length>24?'<span>等 '+conn.tools.length+' 个</span>':'')+'</div>':'')+(!entry&&c.url?'<p>'+esc(c.url)+'</p>':'')+'<div class="dots-src-actions"><button type="button" class="dots-src-button" data-mcp-act="refresh">刷新</button><button type="button" class="dots-src-button is-danger" data-mcp-act="remove">断开</button></div>';
-      return '<li class="dots-src is-'+esc(state)+(open?' is-open':'')+'" data-mcp="'+esc(id)+'"'+(entry?' data-mcp-catalog="1"':'')+'><div class="dots-src-row"'+(state==='connected'||state==='error'?' data-src-toggle role="button" tabindex="0" aria-expanded="'+open+'"':'')+'>'+(entry?'<span class="dots-src-icon dots-src-logo"><img src="/assets/connector-logos/'+esc(id)+'.png" alt="" loading="lazy"></span>':mono(name))+'<span class="dots-src-text"><strong>'+esc(name)+'</strong><small>'+esc(line)+'</small></span><span class="dots-src-side">'+side+'</span></div>'+(more?'<div class="dots-src-more">'+more+'</div>':'')+'</li>';
+      if (open) {
+        more = entry ? aboutHTML(entry.abilities, entry.example) : '';
+        if (state === 'connected') {
+          const tools = conn?.tools || [];
+          more += '<p class="dots-src-status">'+(tools.length?'Dots 现在可以使用它的 '+tools.length+' 个工具。'+(showTools===id?'':'<button type="button" class="dots-src-link" data-mcp-act="tools">查看工具名</button>'):'已连接。')+'</p>'
+            + (showTools===id&&tools.length?'<div class="dots-src-tools">'+tools.slice(0,60).map(t=>'<code>'+esc(t)+'</code>').join('')+'</div>':'')
+            + (!entry&&c.url?'<p class="dots-src-url">'+esc(c.url)+'</p>':'')
+            + (confirming===id ? confirmHTML(name,'data-mcp-act="remove"') : '<div class="dots-src-actions"><button type="button" class="dots-src-button" data-mcp-act="refresh">重新检查</button><button type="button" class="dots-src-button is-danger" data-mcp-act="ask-remove">断开连接</button></div>');
+        } else if (entry) {
+          more += '<p class="dots-src-label">怎么连接</p><p class="dots-src-howto">'+esc(entry.howto||entry.tokenHint||'')+'</p>';
+          if (entry.auth === 'token') more += '<form class="dots-mcp-form" data-mcp-token><input name="token" type="password" autocomplete="off" placeholder="'+(entry.tokenParam?'粘贴 Key':'粘贴访问令牌')+'" required><div class="dots-src-actions"><button type="button" class="dots-src-button" data-mcp-act="collapse">取消</button><button type="submit" class="dots-src-button is-primary">连接</button></div></form>';
+          else more += '<div class="dots-src-actions"><button type="button" class="dots-src-button" data-mcp-act="collapse">取消</button><button type="button" class="dots-src-button is-primary" data-mcp-act="connect">'+(entry.auth==='oauth'?(state==='authorizing'?'重新打开授权页':'去授权'):'连接')+'</button></div>';
+          if (state === 'error' || state === 'authorizing') more += confirming===id ? confirmHTML(name,'data-mcp-act="remove"') : '<div class="dots-src-actions is-secondary"><button type="button" class="dots-src-link is-danger" data-mcp-act="ask-remove">移除这个连接</button></div>';
+        } else {
+          more += (c.url?'<p class="dots-src-url">'+esc(c.url)+'</p>':'') + (confirming===id ? confirmHTML(name,'data-mcp-act="remove"') : '<div class="dots-src-actions"><button type="button" class="dots-src-button is-primary" data-mcp-act="connect">重新连接</button><button type="button" class="dots-src-button is-danger" data-mcp-act="ask-remove">移除</button></div>');
+        }
+      }
+      return '<li class="dots-src is-'+esc(state)+(open?' is-open':'')+'" data-mcp="'+esc(id)+'"'+(entry?' data-mcp-catalog="1"':'')+'><div class="dots-src-row" data-src-toggle role="button" tabindex="0" aria-expanded="'+open+'">'+(entry?'<span class="dots-src-icon dots-src-logo"><img src="/assets/connector-logos/'+esc(id)+'.png" alt="" loading="lazy"></span>':mono(name))+'<span class="dots-src-text"><strong>'+esc(name)+'</strong><small>'+esc(line)+'</small></span><span class="dots-src-side">'+side+'</span></div>'+(more?'<div class="dots-src-more">'+more+'</div>':'')+'</li>';
     };
     const weixinRow = c => {
-      const acts = (c.actions||[]).map(a=>({push_on:'<button type="button" class="dots-src-button" data-weixin-act="push_on">提醒推送到微信</button>',push_off:'<button type="button" class="dots-src-button" data-weixin-act="push_off">停止推送提醒</button>',disconnect:'<button type="button" class="dots-src-button is-danger" data-weixin-act="disconnect">解绑</button>'})[a]||'').join('');
-      if (c.state === 'available') return sourceRow({id:c.id,icon:'logo:wechat',name:c.name,line:c.summary,side:'<button type="button" class="dots-src-button is-primary" data-weixin-act="connect">连接</button>'});
-      return sourceRow({id:c.id,icon:'logo:wechat',name:c.name,line:c.summary,state:c.state,open:expanded===c.id,more:(c.detail?'<p>'+esc(c.detail)+'</p>':'')+'<div class="dots-src-actions">'+acts+'</div>',side:stateLabel(c.status,c.state)+chevron});
+      const open = expanded === c.id, connected = c.state !== 'available';
+      let more = aboutHTML(c.abilities);
+      if (!connected) more += '<p class="dots-src-label">怎么连接</p><p class="dots-src-howto">'+esc(c.howto||c.detail||'')+'</p><div class="dots-src-actions"><button type="button" class="dots-src-button" data-mcp-act="collapse">取消</button><button type="button" class="dots-src-button is-primary" data-weixin-act="connect">扫码连接</button></div>';
+      else {
+        const acts = (c.actions||[]).map(a=>({push_on:'<button type="button" class="dots-src-button" data-weixin-act="push_on">提醒推送到微信</button>',push_off:'<button type="button" class="dots-src-button" data-weixin-act="push_off">停止推送提醒</button>'})[a]||'').join('');
+        more += (c.state==='error'?'<p class="dots-src-status">微信登录已失效，需要重新扫码。</p>':'')
+          + (confirming===c.id ? confirmHTML('微信','data-weixin-act="disconnect"').replace('断开后 Dots 就不能再用微信了','解绑后就不能在微信里和 Dots 对话了').replace('确定断开','确定解绑') : '<div class="dots-src-actions">'+(c.state==='error'?'<button type="button" class="dots-src-button is-primary" data-weixin-act="connect">重新扫码</button>':'')+acts+'<button type="button" class="dots-src-button is-danger" data-weixin-act="ask-disconnect">解绑</button></div>');
+      }
+      return sourceRow({id:c.id,icon:'logo:wechat',name:c.name,line:connected?(c.status||c.summary):c.summary,state:connected?c.state:'',open,more,side:connected?stateLabel(c.status,c.state)+chevron:(open?chevron:'<button type="button" class="dots-src-button is-primary" data-weixin-act="open">连接</button>')});
     };
     const addForm = () => adding ? '<form class="dots-mcp-form dots-mcp-add" data-mcp-add><label><span>名称</span><input name="name" maxlength="40" placeholder="比如：公司知识库" required></label><label><span>地址</span><input name="url" type="url" placeholder="https://example.com/mcp" required></label><label><span>访问令牌（可选）</span><input name="token" type="password" autocomplete="off" placeholder="需要授权的服务会自动打开授权页面"></label><div class="dots-src-actions"><button type="button" class="dots-src-button" data-mcp-cancel>取消</button><button type="submit" class="dots-src-button is-primary">连接</button></div></form>' : '<button type="button" class="dots-src-add" data-mcp-add-open>'+icon('add')+'<span>添加 MCP</span></button>';
     const draw = () => {
@@ -326,7 +350,7 @@
       } catch (cause) { popup?.close(); fail(cause); }
       finally { busy = ''; await load().catch(fail); }
     };
-    const toggle = row => { const id = row.closest('[data-mcp],[data-src]'); const key = id?.dataset.mcp || id?.dataset.src; if (!key) return; expanded = expanded === key ? '' : key; draw(); };
+    const toggle = row => { const id = row.closest('[data-mcp],[data-src]'); const key = id?.dataset.mcp || id?.dataset.src; if (!key) return; expanded = expanded === key ? '' : key; confirming = ''; showTools = ''; draw(); };
     dialog.addEventListener('keydown', event => { const row = event.target.closest('[data-src-toggle]'); if (row && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); toggle(row); } });
     dialog.addEventListener('submit', async event => {
       event.preventDefault(); const form = event.target;
@@ -336,27 +360,33 @@
     dialog.addEventListener('click', async event => {
       if (event.target.closest('[data-mcp-add-open]')) { adding = true; draw(); return; }
       if (event.target.closest('[data-mcp-cancel]')) { adding = false; draw(); return; }
+      if (event.target.closest('[data-confirm-cancel]')) { confirming = ''; draw(); return; }
       const weixinAct = event.target.closest('[data-weixin-act]')?.dataset.weixinAct;
       const mcpItem = event.target.closest('[data-mcp]'), mcpAct = event.target.closest('[data-mcp-act]')?.dataset.mcpAct;
       try {
         if (weixinAct) {
           errorBox.hidden = true;
+          if (weixinAct === 'open') { expanded = 'wechat'; confirming = ''; draw(); return; }
+          if (weixinAct === 'ask-disconnect') { confirming = 'wechat'; draw(); return; }
           if (weixinAct === 'connect') { closeDialog(); await openWeixinLogin(() => {}); return; }
-          if (weixinAct === 'disconnect') { if (!await window.shiyan.confirmAction('解绑微信？','之后可以重新扫码绑定。','解绑')) return; await api('/weixin','DELETE'); }
+          if (weixinAct === 'disconnect') { busy = 'wechat'; await api('/weixin','DELETE'); busy = ''; confirming = ''; expanded = ''; notice('已解绑微信。想再用时，点微信右边的「连接」重新扫码即可。', true); }
           if (weixinAct === 'push_on' || weixinAct === 'push_off') await api('/weixin','PATCH',{enabled:weixinAct==='push_on'});
           await load(); return;
         }
         if (mcpItem && mcpAct) {
           const id = mcpItem.dataset.mcp, catalog = mcpItem.hasAttribute('data-mcp-catalog'), entry = catalog ? data.plugins.find(p=>p.id===id) : null, custom = catalog ? null : data.custom.find(c=>c.id===id);
           errorBox.hidden = true;
-          if (mcpAct === 'collapse') { expanded = ''; draw(); return; }
+          if (mcpAct === 'collapse') { expanded = ''; confirming = ''; draw(); return; }
+          if (mcpAct === 'open') { expanded = id; confirming = ''; showTools = ''; draw(); dialog.querySelector('[data-mcp="'+CSS.escape(id)+'"] [data-mcp-token] input')?.focus(); return; }
+          if (mcpAct === 'tools') { showTools = id; draw(); return; }
+          if (mcpAct === 'ask-remove') { confirming = id; draw(); dialog.querySelector('[data-mcp="'+CSS.escape(id)+'"] [data-confirm-cancel]')?.focus(); return; }
           if (mcpAct === 'connect') {
             if (entry?.auth === 'token') { expanded = id; draw(); dialog.querySelector('[data-mcp-token] input')?.focus(); return; }
             if (custom) { adding = true; draw(); const form = dialog.querySelector('[data-mcp-add]'); form.name.value = custom.name; form.url.value = custom.url; return; }
             await connect({catalogId:id}, id, entry?.auth === 'oauth'); return;
           }
-          if (mcpAct === 'remove') { const name = entry?.name || custom?.name || id; if (!await window.shiyan.confirmAction('断开'+name+'？','Dots 将不能再使用它，之后可以重新连接。','断开')) return; await api('/connectors/mcp/'+encodeURIComponent(id),'DELETE'); expanded = ''; }
-          if (mcpAct === 'refresh') { busy = id; draw(); try { await api('/connectors/mcp/'+encodeURIComponent(id)+'/refresh','POST',{}); } finally { busy = ''; } }
+          if (mcpAct === 'remove') { const name = entry?.name || custom?.name || id; busy = id; draw(); try { await api('/connectors/mcp/'+encodeURIComponent(id),'DELETE'); } finally { busy = ''; } confirming = ''; expanded = ''; notice('已断开'+esc(spaced(name).replace(/ $/,''))+'。想再用时，点它右边的「连接」即可。', true); }
+          if (mcpAct === 'refresh') { busy = id; draw(); try { const r = await api('/connectors/mcp/'+encodeURIComponent(id)+'/refresh','POST',{}); notice(r.connector?.state === 'connected' ? '连接正常，可用 '+(r.connector.toolCount||0)+' 个工具。' : '连接有问题：'+esc(r.connector?.error||'请重新连接'), true); } finally { busy = ''; } }
           await load(); return;
         }
         const toggleRow = event.target.closest('[data-src-toggle]'); if (toggleRow) toggle(toggleRow);

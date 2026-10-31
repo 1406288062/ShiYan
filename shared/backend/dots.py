@@ -226,7 +226,10 @@ def register_dots(app):
         gateway = request.app.state.runtime.gateway
         await gateway.ensure_enrolled()
         _, headers, data = await gateway.raw("GET", "dots/attachments/" + attachment_id)
-        return Response(data, media_type="application/octet-stream", headers={
+        # 图片按真实类型返回，Dots 消息里才能直接显示缩略图；其他文件仍按下载处理。
+        kind = str(headers.get("content-type", "")).split(";")[0].strip().lower()
+        media_type = kind if kind in {"image/jpeg", "image/png", "image/gif", "image/webp"} else "application/octet-stream"
+        return Response(data, media_type=media_type, headers={
             "Content-Disposition": headers.get("content-disposition", "attachment"),
             "Content-Security-Policy": "sandbox; default-src 'none'",
         })
