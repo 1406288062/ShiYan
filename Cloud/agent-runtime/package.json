@@ -1,7 +1,7 @@
 {
-  "name": "shiyan-v2",
+  "name": "shiyan-agent-runtime",
   "version": "1.0.0",
-  "description": "ShiYan account-scoped execution and connector runtime",
+  "description": "ShiYan account, conversation execution, and MCP connector runtime",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"

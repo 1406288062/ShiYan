@@ -543,7 +543,7 @@ export function createServer(){return http.createServer(async(req,res)=>{
       const asset=readSyncAsset(syncStore,state,owner,syncAssetMatch[1]);if(!asset)return json(res,404,{ok:false,error:'文件不存在'});
       const bytes=await fs.readFile(asset.file);return sendSyncAsset(res,url,asset,bytes);
     }
-    if(req.method==='GET'&&pathname==='/v1/health')return json(res,200,{ok:true,...(auth.serverAccess?{service:'shiyan-v2',active,queued:queue.length}:{})});
+    if(req.method==='GET'&&pathname==='/v1/health')return json(res,200,{ok:true,...(auth.serverAccess?{service:'agent-runtime',active,queued:queue.length}:{})});
     if(req.method==='GET'&&pathname==='/v1/capabilities'){await refreshCatalog();const hostAccess=auth.role==='admin'&&auth.serverAccess===true;return json(res,200,{ok:true,...capabilities(),serverAccess:hostAccess,executionMode:hostAccess?'server':'isolated',features:{chat:true,models:true,uploads:true,history:true,dots:true,agent:true,mcp:true,coding:true,files:true,terminal:true,executionHistory:true,memories:true,topics:true,schedules:true,projects:true,serverManagement:hostAccess}});}
     if(req.method==='GET'&&pathname==='/v1/account/quota'){
       if(!auth.serverAccess||auth.role!=='admin')throw fail('需要服务器访问权限',403);

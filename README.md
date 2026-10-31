@@ -24,7 +24,7 @@ tests/                  # 共用回归测试
 Mac/                     # 旧启动兼容入口、资源与历史集成
 iOS/                    # 原 iOS 工程与辅助脚本
 Cloud/                   # 云端服务源码
-  shiyan-v2/             # 拾燕账号、会话执行与统一 MCP 连接器运行时
+  agent-runtime/        # 拾燕账号、会话执行与统一 MCP 连接器运行时
   dots-runtime/          # Dots 持久目标、总管与 MCP 桥接运行时
   knowledge/             # 云端知识库服务
 ```

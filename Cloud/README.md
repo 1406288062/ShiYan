@@ -2,7 +2,7 @@
 
 本目录纳入拾燕云端运行时的可审查源码，与服务器部署目录对应：
 
-- `shiyan-v2/`：拾燕账户、普通会话执行、MCP 连接器、Sponge、Dots 签名网关适配器等服务源码。生产部署目录：`/home/ubuntu/boss-codex-service/shiyan-v2`。
+- `agent-runtime/`：拾燕账户、普通会话执行、MCP 连接器、Sponge、Dots 签名网关适配器等服务源码。生产部署目录：`/home/ubuntu/boss-codex-service/shiyan-v2`。
 - `dots-runtime/`：Dots 持久目标、总管、审批、通知、微信桥接和 MCP 运行时源码。生产部署目录：`/home/ubuntu/dots-runtime`。
 - `knowledge/`：拾燕云端知识库服务源码（原有目录）。
 
@@ -12,6 +12,6 @@
 
 ## 统一 MCP 连接器
 
-普通会话和 Dots 应共用 `shiyan-v2/mcp-connectors.mjs` 的账号级连接记录及调用入口。Dots Codex 通过 `shiyan-v2/mcp-connector-proxy.mjs` 转发工具发现与调用；桥接进程必须携带已认证的 owner 和 connector ID，连接器服务再次校验 owner 归属。不要为普通会话和 Dots 增加两套插件连接或独立授权开关。
+普通会话和 Dots 应共用 `agent-runtime/mcp-connectors.mjs` 的账号级连接记录及调用入口。Dots Codex 通过 `agent-runtime/mcp-connector-proxy.mjs` 转发工具发现与调用；桥接进程必须携带已认证的 owner 和 connector ID，连接器服务再次校验 owner 归属。不要为普通会话和 Dots 增加两套插件连接或独立授权开关。
 
 部署目录与 Git 源码目录分离；更新时只同步源码，不覆盖 `data/`、`workspaces/`、`.env` 或其他运行数据。
