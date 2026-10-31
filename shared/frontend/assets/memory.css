@@ -91,6 +91,9 @@
 
 /* Codex account data shares the existing settings surface and controls. */
 .settings-codex-page { max-width:760px; margin:0 auto; }
+.settings-dots-page,.settings-devices-page { max-width:760px; margin:0 auto; }
+.settings-dots-page[hidden],.settings-devices-page[hidden] { display:none; }
+.settings-dots-page .settings-dots-entries,.settings-devices-page .sponge-integration { margin-top:16px; }
 .settings-codex-page[hidden] { display:none; }
 .settings-codex-page .memory-header h2 { overflow-wrap:anywhere; }
 .settings-quota-toolbar { margin-top:18px; }

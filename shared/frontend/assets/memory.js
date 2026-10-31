@@ -114,6 +114,15 @@
       entry.onShow?.();
     } else showSettings();
   }
+  // 左侧「个人」的顺序与常规页的分组顺序一致：常规 · 记忆 · Dots · 额度与重置卡 · 账户 · 设备连接。
+  const navigationOrder = ['settings', 'memory', 'dots', 'codex', 'account', 'devices'];
+  function orderNavigation() {
+    const buttons = [...elements.navigation.querySelectorAll(':scope > [data-settings-page]')];
+    const rank = button => { const index = navigationOrder.indexOf(button.dataset.settingsPage); return index < 0 ? navigationOrder.length : index; };
+    const sorted = [...buttons].sort((a, b) => rank(a) - rank(b));
+    if (sorted.every((button, index) => button === buttons[index])) return;
+    for (const button of sorted) elements.navigation.insertBefore(button, elements.navigationEmpty);
+  }
   function registerPage(id, entry) {
     if (additionalPages.has(id)) return;
     additionalPages.set(id, entry);
@@ -462,6 +471,8 @@
     find('.settings-content').append(codexPage);
     Object.assign(elements, {codexPage, codexTitle:find('#settingsCodexTitle'), codexNotice:find('[data-codex-notice]'), codexContent:find('[data-codex-content]')});
     codexEntry.addEventListener('click', showCodex);
+    new MutationObserver(orderNavigation).observe(elements.navigation, {childList:true});
+    orderNavigation();
     elements.settingsSearch.addEventListener('input', filterCategories);
     elements.navigation.addEventListener('click', event => {
       const button = event.target.closest('[data-settings-page]');

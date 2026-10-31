@@ -65,7 +65,7 @@ struct SettingsView: View {
                                     }
                                     .accessibilityIdentifier("settings-connectors")
                                     rowDivider
-                                    settingsRow("Dots 设置", detail: "审批方式和已授权的操作。", symbol: "gearshape") {
+                                    settingsRow("Dots 权限审批", detail: "审批方式和已授权的操作。", symbol: "checkmark.shield") {
                                         showingDotsSettings = true
                                     }
                                     .accessibilityIdentifier("settings-dots")

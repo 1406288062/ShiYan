@@ -277,8 +277,14 @@ body.workbench-v22 :is(.message-body,.dots-manager-message) a.message-reference:
 .dots-manager-message.is-assistant:has(.is-on) .dots-msg-actions { opacity:1;transform:none;pointer-events:auto; }
 
 /* WeChat binding */
-.dots-weixin-card { width:min(380px,92vw);text-align:center; }
+.dots-weixin-card { width:min(380px,92vw);height:auto;min-height:min(540px,calc(100dvh - 48px));text-align:center; }
 .dots-weixin-card>header { text-align:left; }
+/* 二维码、说明和绑定成功都放在卡片的视觉中心（略高于几何中心）。 */
+.dots-weixin-body { flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding-bottom:36px; }
+.dots-weixin-body .dots-weixin-qr { margin-top:0; }
+.dots-weixin-card.is-done .dots-weixin-status { font-size:18px;font-weight:600;margin-top:2px; }
+.dots-weixin-card.is-done .dots-weixin-tip { max-width:290px;margin-top:4px; }
+.dots-dialog-overlay .dots-weixin-card .dots-weixin-done { width:auto;min-width:140px;margin-top:22px; }
 .dots-weixin-qr { position:relative;width:208px;height:208px;margin:14px auto 10px;padding:10px;border-radius:18px;background:#fff;box-shadow:0 0 0 .5px rgba(0,0,0,.08),0 8px 28px rgba(0,0,0,.08);display:grid;place-items:center;transition:filter .25s,opacity .25s; }
 .dots-weixin-qr svg { width:100%;height:100%;display:block; }
 .dots-weixin-qr.is-scanned svg,.dots-weixin-qr.is-expired svg { filter:blur(3px);opacity:.35; }

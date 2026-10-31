@@ -278,10 +278,11 @@
       else if (state === 'connected') side = stateLabel('已连接','connected')+chevron;
       else if (state === 'authorizing') side = '<button type="button" class="dots-src-button is-primary" data-mcp-act="connect">继续授权</button>';
       else if (state === 'error') side = '<button type="button" class="dots-src-button is-primary" data-mcp-act="connect">重新连接</button>';
+      else if (expanded === id && entry?.auth === 'token') side = '<button type="button" class="dots-src-button" data-mcp-act="collapse">取消</button>';
       else side = '<button type="button" class="dots-src-button is-primary" data-mcp-act="connect">连接</button>';
       const open = expanded === id;
       let more = '';
-      if (open && entry?.auth === 'token' && state !== 'connected') more = '<form class="dots-mcp-form" data-mcp-token><p>'+esc(entry.tokenHint||'需要访问令牌')+'</p><input name="token" type="password" autocomplete="off" placeholder="粘贴访问令牌" required><div class="dots-src-actions"><button type="submit" class="dots-src-button is-primary">连接</button></div></form>';
+      if (open && entry?.auth === 'token' && state !== 'connected') more = '<form class="dots-mcp-form" data-mcp-token><p>'+esc(entry.tokenHint||'需要访问令牌')+'</p><input name="token" type="password" autocomplete="off" placeholder="'+(entry.tokenParam?'粘贴 Key':'粘贴访问令牌')+'" required><div class="dots-src-actions"><button type="submit" class="dots-src-button is-primary">连接</button></div></form>';
       else if (open && conn && state !== 'available') more = ((conn.tools||[]).length?'<div class="dots-src-tools">'+conn.tools.slice(0,24).map(t=>'<code>'+esc(t)+'</code>').join('')+(conn.tools.length>24?'<span>等 '+conn.tools.length+' 个</span>':'')+'</div>':'')+(!entry&&c.url?'<p>'+esc(c.url)+'</p>':'')+'<div class="dots-src-actions"><button type="button" class="dots-src-button" data-mcp-act="refresh">刷新</button><button type="button" class="dots-src-button is-danger" data-mcp-act="remove">断开</button></div>';
       return '<li class="dots-src is-'+esc(state)+(open?' is-open':'')+'" data-mcp="'+esc(id)+'"'+(entry?' data-mcp-catalog="1"':'')+'><div class="dots-src-row"'+(state==='connected'||state==='error'?' data-src-toggle role="button" tabindex="0" aria-expanded="'+open+'"':'')+'>'+(entry?'<span class="dots-src-icon dots-src-logo"><img src="/assets/connector-logos/'+esc(id)+'.png" alt="" loading="lazy"></span>':mono(name))+'<span class="dots-src-text"><strong>'+esc(name)+'</strong><small>'+esc(line)+'</small></span><span class="dots-src-side">'+side+'</span></div>'+(more?'<div class="dots-src-more">'+more+'</div>':'')+'</li>';
     };
@@ -348,6 +349,7 @@
         if (mcpItem && mcpAct) {
           const id = mcpItem.dataset.mcp, catalog = mcpItem.hasAttribute('data-mcp-catalog'), entry = catalog ? data.plugins.find(p=>p.id===id) : null, custom = catalog ? null : data.custom.find(c=>c.id===id);
           errorBox.hidden = true;
+          if (mcpAct === 'collapse') { expanded = ''; draw(); return; }
           if (mcpAct === 'connect') {
             if (entry?.auth === 'token') { expanded = id; draw(); dialog.querySelector('[data-mcp-token] input')?.focus(); return; }
             if (custom) { adding = true; draw(); const form = dialog.querySelector('[data-mcp-add]'); form.name.value = custom.name; form.url.value = custom.url; return; }
@@ -375,15 +377,15 @@
     const draw = s => {
       const key = JSON.stringify([s.state, s.loginStatus, s.needsVerifyCode, s.message, (s.qrSvg || '').length]); if (key === last) return; last = key;
       const done = s.state === 'connected', expired = s.state === 'login_expired';
-      dialog.innerHTML = '<section class="dots-conversation-card dots-weixin-card"><header><h2>连接微信</h2><button type="button" class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button></header>'
+      dialog.innerHTML = '<section class="dots-conversation-card dots-weixin-card'+(done?' is-done':'')+'"><header><h2>连接微信</h2><button type="button" class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button></header><div class="dots-weixin-body">'
         + '<div class="dots-weixin-qr'+(done?' is-done':expired?' is-expired':s.loginStatus==='scaned'?' is-scanned':'')+'">'
         + (done ? '<div class="dots-weixin-ok"><svg viewBox="0 0 24 24"><path d="M5.5 12.5l4 4 9-9"/></svg></div>' : (s.qrSvg || ''))
         + (expired ? '<button type="button" class="dots-white-button" data-weixin-refresh>刷新二维码</button>' : '') + '</div>'
         + '<p class="dots-weixin-status" role="status">'+esc(text(s))+(s.message && !expired && !done ? '<small>'+esc(s.message)+'</small>' : '')+'</p>'
         + (s.needsVerifyCode ? '<form class="dots-weixin-verify" data-weixin-verify><input inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="one-time-code" aria-label="验证数字" placeholder="手机上显示的数字" required><button type="submit" class="dots-white-button">确定</button></form>' : '')
-        + (done ? '<p class="dots-weixin-tip">现在可以在微信里直接给 Dots 发消息了。简报和提醒也会同步到微信，可以在连接器里关闭。</p>'
+        + (done ? '<p class="dots-weixin-tip">现在可以在微信里直接给 '+esc(name())+' 发消息了，文字、语音、图片和文件都可以。<br>简报和提醒也会同步到微信，可以在连接器里关闭。</p><button type="button" class="dots-white-button dots-weixin-done" data-dots-close-dialog>完成</button>'
                 : '<ol class="dots-weixin-steps"><li>打开手机微信，扫描上方二维码</li><li>在手机上点“确认”授权</li><li>绑定后在微信里直接和 Dots 对话</li></ol><p class="dots-weixin-tip">需要微信 8.0.70 及以上版本。只有你本人能和它对话，不能拉进群。</p>')
-        + '</section>';
+        + '</div></section>';
       dialog.querySelector('[data-weixin-verify] input')?.focus();
     };
     const poll = async () => {
@@ -404,15 +406,15 @@
     showDialog(dialog, dialog);
     try { await start(); } catch (cause) { stop(); C.showError(cause); }
   }
-  // Dots 设置：审批方式与每日简报。
+  // Dots 权限审批：审批方式与已授权的操作。
   async function openDotsSettings() {
     const dialog = makeDialog('dotsSettingsDialog','dots-conversation-overlay');
     const modes = [['smart','智能审批','只有删除、提权、重启、推送代码等高风险操作才需要你批准，其余自动执行。'],['auto','全部自动','除提权和灾难性命令外全部自动执行，最少打扰。'],['ask','每次都问','每个需要审批的操作都等你确认。']];
     let settings, grants = [];
     const scopeText = grant => grant.scope==='always'?'一直允许':grant.scope==='task'?'仅限这个任务':grant.expiresAt?'到 '+new Date(grant.expiresAt*1000).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
-    const grantsHTML = () => grants.length ? '<ul class="dots-grant-list">'+grants.map(g=>'<li><span><strong>'+esc((g.labels||g.signatures||[]).join('、'))+'</strong><small>'+esc(scopeText(g))+(g.uses?' · 已自动执行 '+g.uses+' 次':'')+'</small></span><button type="button" data-revoke-grant="'+Number(g.id)+'">撤销</button></li>').join('')+'</ul>' : '<p class="dots-settings-empty">批准操作时可选择授权范围，同类操作之后不再询问。</p>';
+    const grantsHTML = () => grants.length ? '<ul class="dots-grant-list">'+grants.map(g=>'<li><span><strong>'+esc((g.labels||g.signatures||[]).join('、'))+'</strong><small>'+esc(scopeText(g))+(g.uses?' · 已自动执行 '+g.uses+' 次':'')+'</small></span><button type="button" data-revoke-grant="'+Number(g.id)+'">撤销</button></li>').join('')+'</ul>' : '<p class="dots-settings-empty">还没有授权过的操作。<br>Dots 请你批准某个操作（比如删除文件、重启服务）时，批准按钮旁可以选授权范围：“这个任务内都允许”“24 小时内都允许”或“以后一直允许”，之后遇到同类操作就自动执行、不再弹窗询问。授权过的操作会列在这里，随时可以撤销。</p>';
     const draw = () => {
-      dialog.innerHTML = '<section class="dots-conversation-card dots-settings-card"><header><h2>Dots 设置</h2><button type="button" class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button></header><div class="dots-settings-grid"><div class="dots-settings-col"><h3>审批方式</h3><div class="dots-choice-list" role="radiogroup" aria-label="审批方式">'+modes.map(([id,name,desc])=>'<button type="button" role="radio" aria-checked="'+(settings.approvalMode===id)+'" class="dots-choice'+(settings.approvalMode===id?' is-selected':'')+'" data-approval-mode="'+id+'"><i></i><span><strong>'+name+'</strong><small>'+desc+'</small></span></button>').join('')+'</div></div><div class="dots-settings-col"><h3>已授权的操作</h3>'+grantsHTML()+'</div></div><p role="alert" class="dots-dialog-error" data-settings-error hidden></p></section>';
+      dialog.innerHTML = '<section class="dots-conversation-card dots-settings-card"><header><h2>Dots 权限审批</h2><button type="button" class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button></header><div class="dots-settings-grid"><div class="dots-settings-col"><h3>审批方式</h3><div class="dots-choice-list" role="radiogroup" aria-label="审批方式">'+modes.map(([id,name,desc])=>'<button type="button" role="radio" aria-checked="'+(settings.approvalMode===id)+'" class="dots-choice'+(settings.approvalMode===id?' is-selected':'')+'" data-approval-mode="'+id+'"><i></i><span><strong>'+name+'</strong><small>'+desc+'</small></span></button>').join('')+'</div></div><div class="dots-settings-col"><h3>已授权的操作</h3>'+grantsHTML()+'</div></div><p role="alert" class="dots-dialog-error" data-settings-error hidden></p></section>';
     };
     const save = async patch => {
       const before = settings; settings = {...settings, ...patch}; draw();
@@ -850,7 +852,7 @@
     }
     petFrame=requestAnimationFrame(animatePanelPet);
   }
-  // 主设置里的「Dots」分组：连接器、Dots 设置（从 Dots 菜单移过来）。点了先关设置，再打开对应面板。
+  // 主设置里的「Dots」分组：连接器、Dots 权限审批（从 Dots 菜单移过来）。常规页和左侧「Dots」页各一份入口，点了先关设置，再打开对应面板。
   function mountSettingsEntries() {
     const home = document.querySelector('.settings-home');
     if (!home || home.querySelector('[data-settings-dots]')) return;
@@ -858,15 +860,29 @@
     const entry = (key, symbol, title, detail) => '<button type="button" class="settings-memory-entry" data-settings-dots="'+key+'"><span class="settings-entry-icon" aria-hidden="true"><span class="wb-icon wb-ios-icon" style="--ios-symbol:url(\'/assets/symbols/'+symbol+'.png\')"></span></span><span class="settings-entry-copy"><strong>'+title+'</strong><span>'+detail+'</span></span>'+chevron+'</button>';
     const heading = document.createElement('h3'); heading.className = 'settings-section-title'; heading.textContent = 'Dots';
     const group = document.createElement('div'); group.className = 'settings-dots-entries';
-    group.innerHTML = entry('connectors','point.3.connected.trianglepath.dotted','连接器','微信、常用插件和自定义 MCP')+entry('settings','gearshape','Dots 设置','审批方式和已授权的操作');
+    const entries = entry('connectors','point.3.connected.trianglepath.dotted','连接器','微信、常用插件和自定义 MCP')+entry('settings','checkmark.circle','Dots 权限审批','审批方式和已授权的操作');
+    group.innerHTML = entries;
     const account = home.querySelector('.settings-section-title'), first = [...home.querySelectorAll('.settings-section-title')].find(h => h.textContent === '账户');
     if (first) home.insertBefore(heading, first); else home.append(heading);
     heading.after(group);
-    group.addEventListener('click', async event => {
+    const open = async event => {
       const button = event.target.closest('[data-settings-dots]'); if (!button) return;
       window.ShiYanSettings?.close?.(false);
       if (button.dataset.settingsDots === 'connectors') await openConnectors(); else await openDotsSettings();
-    });
+    };
+    group.addEventListener('click', open);
+    const navigation = document.querySelector('.settings-sidebar nav');
+    if (navigation && window.ShiYanSettings?.registerPage && !navigation.querySelector('[data-settings-page="dots"]')) {
+      const category = document.createElement('button');
+      category.type = 'button'; category.dataset.settingsPage = 'dots';
+      category.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="8.5" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="15.5" cy="12" r="1.3" fill="currentColor"/></svg><span>Dots</span>';
+      navigation.querySelector('.settings-category-empty')?.before(category);
+      const page = document.createElement('section');
+      page.className = 'settings-dots-page'; page.hidden = true;
+      page.innerHTML = '<header class="memory-header"><h2 id="settingsDotsTitle" tabindex="-1">Dots</h2></header><div class="settings-dots-entries">'+entries+'</div>';
+      page.addEventListener('click', open);
+      window.ShiYanSettings.registerPage('dots', {element:page, titleId:'settingsDotsTitle'});
+    }
   }
   window.addEventListener('shiyan-settings-ready', mountSettingsEntries);
   function install(context) {

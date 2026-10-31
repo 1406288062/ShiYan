@@ -227,7 +227,7 @@
   function assetHTML(a) {
     const isImage=(a.mimeType || '').startsWith('image/');
     return '<button type="button" class="asset-card '+(isImage?'is-image':'is-file')+'" data-asset-id="'+esc(a.id)+'" aria-label="'+esc(isImage?'预览图片 '+(a.filename || ''):a.filename || '打开文件')+'">'+
-      (isImage?'<img class="asset-image" src="'+esc(assetUrl(a))+'" alt="'+esc(a.filename || '图片')+'" '+(a.width&&a.height?'width="'+Number(a.width)+'" height="'+Number(a.height)+'" style="aspect-ratio:'+Number(a.width)+' / '+Number(a.height)+';height:auto" ':'')+'loading="lazy">':assetTypeIcon(a)+'<span class="asset-file-info"><span class="asset-name" title="'+esc(a.filename || '文件')+'">'+esc(a.filename || '文件')+'</span><span class="file-kind">'+esc(fileDescription(a))+'</span></span>')+'</button>';
+      (isImage?'<img class="asset-image" src="'+esc(assetUrl(a))+'" alt="'+esc(a.filename || '图片')+'" '+(a.width&&a.height?'width="'+Number(a.width)+'" height="'+Number(a.height)+'" style="aspect-ratio:'+Number(a.width)+' / '+Number(a.height)+';height:auto" ':'')+'decoding="async">':assetTypeIcon(a)+'<span class="asset-file-info"><span class="asset-name" title="'+esc(a.filename || '文件')+'">'+esc(a.filename || '文件')+'</span><span class="file-kind">'+esc(fileDescription(a))+'</span></span>')+'</button>';
   }
   function canRetryConnection(m) {
     if(m.role!=='assistant' || !m.error)return false;
@@ -299,7 +299,10 @@
        
       if(!changedConversation && article){
         const oldAssets=article.querySelector(".message-content>.message-assets"),newAssets=fresh.querySelector(".message-content>.message-assets");
-        if(oldAssets && newAssets && oldAssets.outerHTML===newAssets.outerHTML)newAssets.replaceWith(oldAssets);
+        // 附件缩略图：同一组文件时保留原来的节点，不重新加载；模型输出期间同步偶尔让用户消息短暂丢失附件，也沿用原节点。
+        const assetIds=node=>[...node.querySelectorAll('[data-asset-id]')].map(e=>e.dataset.assetId).join('|');
+        if(oldAssets && newAssets && (oldAssets.outerHTML===newAssets.outerHTML||assetIds(oldAssets)===assetIds(newAssets)))newAssets.replaceWith(oldAssets);
+        else if(oldAssets && !newAssets && message.role==='user'){const body=fresh.querySelector('.message-content');if(body)body.prepend(oldAssets);}
         const oldBody=article.querySelector('.message-body'),newBody=fresh.querySelector('.message-body');
         if(oldBody&&newBody&&article.__bodyText===(message.text||'')&&article.__bodyRole===message.role)newBody.replaceWith(oldBody);
         else if(oldBody&&newBody){

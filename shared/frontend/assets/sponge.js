@@ -8,7 +8,8 @@
   let pendingUntil = 0, fallbackUrl = '', notice = '', error = '';
   const current = epoch => !invalidated && epoch === generation && owner === accountId();
   const find = selector => card.querySelector(selector);
-  const isVisible = () => !!card && !invalidated && !document.hidden && !modal.hidden && !home.hidden;
+  let devicesPage = null, homeHeading = null;
+  const isVisible = () => !!card && !invalidated && !document.hidden && !modal.hidden && (!home.hidden || (!!devicesPage && !devicesPage.hidden));
 
   function openExternal(url) {
     // The existing native action is permitted for any active account and opens
@@ -172,6 +173,7 @@
     }
   }
   function syncVisibility() {
+    if (home && card && homeHeading && !home.hidden && card.parentElement !== home) homeHeading.after(card);
     const next = isVisible();
     if (next === visible) return;
     visible = next;
@@ -191,6 +193,19 @@
     card.setAttribute('aria-label', '海绵宝宝连接');
     card.innerHTML = '<div class="sponge-integration-header"><span class="settings-entry-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24"><rect x="3" y="3" width="18" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 21h8m-4-5v5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span><div><strong>海绵宝宝</strong><p data-sponge-state role="status" aria-live="polite"></p><p data-sponge-description></p></div></div><div class="sponge-integration-actions"><button type="button" class="wb-secondary" data-sponge-connect>连接</button><a data-sponge-manage href="https://mcp.yandot.ai/account" target="_blank" rel="noopener noreferrer" hidden>管理设备</a><button type="button" class="wb-text-button" data-sponge-refresh>刷新</button><button type="button" class="wb-text-button" data-sponge-disconnect hidden>断开连接</button></div><p data-sponge-notice role="status" hidden></p><p data-sponge-error class="sponge-integration-error" role="alert" hidden></p><a data-sponge-fallback class="sponge-integration-fallback" target="_blank" rel="noopener noreferrer" hidden>继续连接海绵宝宝</a>';
     home.append(heading, card);
+    homeHeading = heading;
+    // 左侧「设备连接」：单独一页显示同一张卡片；回到常规页时卡片放回原处。
+    const navigation = modal.querySelector('.settings-sidebar nav');
+    if (navigation && window.ShiYanSettings?.registerPage && !navigation.querySelector('[data-settings-page="devices"]')) {
+      const category = document.createElement('button');
+      category.type = 'button'; category.dataset.settingsPage = 'devices';
+      category.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><rect x="3" y="3" width="18" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 21h8m-4-5v5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span>设备连接</span>';
+      navigation.querySelector('.settings-category-empty')?.before(category);
+      devicesPage = document.createElement('section');
+      devicesPage.className = 'settings-devices-page'; devicesPage.hidden = true;
+      devicesPage.innerHTML = '<header class="memory-header"><h2 id="settingsDevicesTitle" tabindex="-1">设备连接</h2></header>';
+      window.ShiYanSettings.registerPage('devices', {element:devicesPage, titleId:'settingsDevicesTitle', onShow:() => { devicesPage.append(card); syncVisibility(); }});
+    }
     find('[data-sponge-connect]').addEventListener('click', connect);
     find('[data-sponge-refresh]').addEventListener('click', loadStatus);
     find('[data-sponge-disconnect]').addEventListener('click', disconnect);
@@ -203,6 +218,7 @@
     observer = new MutationObserver(syncVisibility);
     observer.observe(modal, {attributes:true, attributeFilter:['hidden']});
     observer.observe(home, {attributes:true, attributeFilter:['hidden']});
+    if (devicesPage) observer.observe(devicesPage, {attributes:true, attributeFilter:['hidden']});
     render();
     syncVisibility();
   }

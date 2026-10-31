@@ -396,7 +396,8 @@
     entry.type = 'button'; entry.className = 'settings-memory-entry'; entry.dataset.settingsAccount = '';
     entry.innerHTML = '<span class="settings-entry-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24"><circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M4 21v-2a8 8 0 0 1 16 0v2" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></span><span class="settings-entry-copy"><strong>' + (user.role === 'admin' ? '用户权限管理' : '账户') + '</strong><span>' + (user.role === 'admin' ? '管理账户、角色和服务器访问权限' : '当前登录账户与退出登录') + '</span></span><svg class="settings-entry-chevron" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="m9 5 7 7-7 7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
     entry.onclick = openSettings;
-    home.appendChild(entry);
+    const quota = home.querySelector('[data-settings-codex]');
+    if (quota) quota.after(entry); else home.appendChild(entry);
     const navigation = document.querySelector('.settings-sidebar nav');
     if (navigation && !navigation.querySelector('[data-settings-page="account"]')) {
       const category = document.createElement('button');

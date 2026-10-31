@@ -1243,7 +1243,7 @@ struct DotsView: View {
                             Image(systemName: "chevron.up.chevron.down").font(.caption2).foregroundStyle(.secondary)
                         }.font(.subheadline)
                     }.disabled(!available)
-                    Text(scope == "once" ? "只执行上面这条命令。" : "同类操作（\(labels.joined(separator: "、"))）之后自动执行，可在 Dots 设置里撤销。")
+                    Text(scope == "once" ? "只执行上面这条命令。" : "同类操作（\(labels.joined(separator: "、"))）之后自动执行，可在 Dots 权限审批里撤销。")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -2261,7 +2261,7 @@ struct DotsSettingsView: View {
         if embedded { content } else {
             NavigationStack {
                 content
-                    .navigationTitle("Dots 设置").navigationBarTitleDisplayMode(.inline)
+                    .navigationTitle("Dots 权限审批").navigationBarTitleDisplayMode(.inline)
                             .toolbar { ToolbarItem(placement: .topBarTrailing) { ShiyanCloseButton(action: { dismiss() }, inToolbar: true) } }
             }
             .presentationDetents([.medium, .large])
@@ -2289,7 +2289,7 @@ struct DotsSettingsView: View {
                     }.dotsCardRow()
                     Section {
                         if grants.isEmpty {
-                            Text("批准操作时可选择授权范围，同类操作之后不再询问。")
+                            Text("还没有授权过的操作。Dots 请你批准某个操作（比如删除文件、重启服务）时，可以选择“这个任务内都允许”“24 小时内都允许”或“以后一直允许”，之后遇到同类操作就自动执行、不再询问。授权过的操作会列在这里，随时可以撤销。")
                                 .font(.footnote).foregroundStyle(.secondary)
                         }
                         ForEach(grants) { grant in
