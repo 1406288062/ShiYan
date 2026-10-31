@@ -65,4 +65,9 @@ test('Dots Connectors owns the Sponge management UI and image-only messages have
   assert.doesNotMatch(source,/settings-devices-page|settings-section-title/);
   assert.match(css,/\.dots-manager-message\.is-user:has\(\.message-body:empty\):has\(\.dots-images\)/);
   assert.match(css,/\.dots-image img[^\n]*box-shadow:none!important;filter:none!important/);
+  assert.match(panel,/dots-weixin-expired-state/);
+  assert.match(panel,/重新获取二维码/);
+  assert.doesNotMatch(panel,/Dots 请你批准某个操作/);
+  assert.match(css,/\.dots-weixin-card \{[^}]*min-height:0/);
+  assert.match(css,/\.dots-dialog-overlay \.dots-settings-card \{ width:min\(380px,92vw\)/);
 });

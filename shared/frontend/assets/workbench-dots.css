@@ -278,18 +278,23 @@ body.workbench-v22 :is(.message-body,.dots-manager-message) a.message-reference:
 .dots-manager-message.is-assistant:has(.is-on) .dots-msg-actions { opacity:1;transform:none;pointer-events:auto; }
 
 /* WeChat binding */
-.dots-weixin-card { width:min(380px,92vw);height:auto;min-height:min(540px,calc(100dvh - 48px));text-align:center; }
+.dots-weixin-card { width:min(380px,92vw);height:auto;min-height:0;max-height:calc(100dvh - 32px);text-align:center; }
 .dots-weixin-card>header { text-align:left; }
 /* 二维码、说明和绑定成功都放在卡片的视觉中心（略高于几何中心）。 */
-.dots-weixin-body { flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding-bottom:36px; }
+.dots-weixin-body { display:flex;flex-direction:column;align-items:center;justify-content:center;padding-bottom:8px; }
 .dots-weixin-body .dots-weixin-qr { margin-top:0; }
 .dots-weixin-card.is-done .dots-weixin-status { font-size:18px;font-weight:600;margin-top:2px; }
 .dots-weixin-card.is-done .dots-weixin-tip { max-width:290px;margin-top:4px; }
 .dots-dialog-overlay .dots-weixin-card .dots-weixin-done { width:auto;min-width:140px;margin-top:22px; }
 .dots-weixin-qr { position:relative;width:208px;height:208px;margin:14px auto 10px;padding:10px;border-radius:18px;background:#fff;box-shadow:0 0 0 .5px rgba(0,0,0,.08),0 8px 28px rgba(0,0,0,.08);display:grid;place-items:center;transition:filter .25s,opacity .25s; }
 .dots-weixin-qr svg { width:100%;height:100%;display:block; }
-.dots-weixin-qr.is-scanned svg,.dots-weixin-qr.is-expired svg { filter:blur(3px);opacity:.35; }
-.dots-weixin-qr.is-expired button { position:absolute; }
+.dots-weixin-qr.is-scanned svg { filter:blur(3px);opacity:.35; }
+.dots-weixin-qr.is-expired { background:color-mix(in srgb,#07c160 5%,var(--surface,#fff));box-shadow:none;border:1px dashed color-mix(in srgb,#07c160 28%,transparent); }
+.dots-weixin-expired-state { width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;padding:12px;text-align:center; }
+.dots-weixin-expired-icon { width:48px;height:48px;display:grid;place-items:center;border-radius:50%;background:color-mix(in srgb,#07c160 13%,transparent);color:#079b50;font-size:32px;line-height:1; }
+.dots-weixin-expired-state strong { font-size:15px; }
+.dots-weixin-expired-state>span:not(.dots-weixin-expired-icon) { max-width:190px;color:var(--secondary);font-size:12px;line-height:1.5; }
+.dots-weixin-expired-state button { margin-top:4px; }
 .dots-weixin-qr.is-done { box-shadow:none;background:transparent; }
 .dots-weixin-ok { width:84px;height:84px;border-radius:50%;display:grid;place-items:center;background:#07c160;color:#fff;animation:dots-pop-in .35s cubic-bezier(.2,.9,.3,1.3) both; }
 .dots-weixin-ok svg { width:44px;height:44px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round; }
@@ -477,12 +482,12 @@ body.workbench-v22 :is(.message-body,.dots-manager-message) a.message-reference:
 .dots-sources-card .dots-src.is-open { grid-column:1 / -1; }
 .dots-sources-card .dots-src-row { min-height:60px; }
 .dots-sources-card h3 { margin-top:20px; }
-.dots-settings-card { width:min(880px,94vw); }
-.dots-settings-grid { display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:28px;align-items:start; }
+.dots-settings-card { width:min(380px,92vw); }
+.dots-settings-grid { display:grid;grid-template-columns:1fr;gap:12px;align-items:start; }
 .dots-settings-col > h3:first-child { margin-top:6px; }
-@media (max-width:720px) { .dots-settings-grid { grid-template-columns:1fr;gap:0; } .dots-sources-card .dots-src-list { grid-template-columns:1fr; } }
+@media (max-width:720px) { .dots-settings-grid { grid-template-columns:1fr;gap:12px; } .dots-sources-card .dots-src-list { grid-template-columns:1fr; } }
 .dots-dialog-overlay .dots-sources-card { width:min(920px,100%);height:auto;max-height:min(720px,calc(100dvh - 48px)); }
-.dots-dialog-overlay .dots-settings-card { width:min(880px,100%);height:auto;max-height:min(720px,calc(100dvh - 48px));overflow:auto; }
+.dots-dialog-overlay .dots-settings-card { width:min(380px,92vw);height:auto;max-height:calc(100dvh - 32px);overflow:auto; }
 /* 连接器：插件首字母图标、授权提示、添加 MCP 表单、工具列表 */
 .dots-src-mono { font-weight:700;font-size:14px;color:#fff!important;background:hsl(var(--mono-hue,212) 55% 52%)!important; }
 .dots-src-notice { margin:0 0 10px;padding:10px 12px;border-radius:10px;font-size:13px;background:color-mix(in srgb,#0a84ff 9%,transparent);color:inherit; }
