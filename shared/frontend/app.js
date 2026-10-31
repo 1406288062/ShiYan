@@ -58,6 +58,10 @@
     if(typeof error === 'object') return error.message || error.error || JSON.stringify(error);
     return String(error);
   }
+  function isApplicationStateSnapshot(value) {
+    return !!value && typeof value === 'object' && !Array.isArray(value)
+      && Array.isArray(value.conversations);
+  }
   async function api(path, method='GET', body) {
     if(window.ShiYanPlatform?.mode==='web' && (path==='/api/state' || path==='/api/dots/local-state' || path==='/api/dots/manager'))await window.ShiYanUploadPriority?.wait();
     const options={method,credentials:'same-origin',headers:{}};
@@ -73,7 +77,9 @@
       error.status = response.status; error.code = data.code;
       throw error;
     }
-    if(data.state) applyState(data.state);
+    // Some domain APIs (for example /weixin) also use `state` for a status
+    // string. Only full application snapshots may replace the global UI state.
+    if(isApplicationStateSnapshot(data.state)) applyState(data.state);
     return data;
   }
   async function upload(files,kind='input') {
