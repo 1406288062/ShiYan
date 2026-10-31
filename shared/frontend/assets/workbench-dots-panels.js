@@ -303,7 +303,7 @@
           more += (c.url?'<p class="dots-src-url">'+esc(c.url)+'</p>':'') + (confirming===id ? confirmHTML(name,'data-mcp-act="remove"') : '<div class="dots-src-actions"><button type="button" class="dots-src-button is-primary" data-mcp-act="connect">重新连接</button><button type="button" class="dots-src-button is-danger" data-mcp-act="ask-remove">移除</button></div>');
         }
       }
-      return '<li class="dots-src is-'+esc(state)+(open?' is-open':'')+'" data-mcp="'+esc(id)+'"'+(entry?' data-mcp-catalog="1"':'')+'><div class="dots-src-row" data-src-toggle role="button" tabindex="0" aria-expanded="'+open+'">'+(entry?'<span class="dots-src-icon dots-src-logo"><img src="/assets/connector-logos/'+esc(id)+'.png" alt="" loading="lazy"></span>':mono(name))+'<span class="dots-src-text"><strong>'+esc(name)+'</strong><small>'+esc(line)+'</small></span><span class="dots-src-side">'+side+'</span></div>'+(more?'<div class="dots-src-more">'+more+'</div>':'')+'</li>';
+      return '<li class="dots-src is-'+esc(state)+(open?' is-open':'')+'" data-mcp="'+esc(id)+'"'+(entry?' data-mcp-catalog="1"':'')+'><div class="dots-src-row" data-src-toggle role="button" tabindex="0" aria-expanded="'+open+'">'+(entry?(entry.logo===false?mono(name):'<span class="dots-src-icon dots-src-logo"><img src="/assets/connector-logos/'+esc(id)+'.png" alt="" loading="lazy"></span>'):mono(name))+'<span class="dots-src-text"><strong>'+esc(name)+'</strong><small>'+esc(line)+'</small></span><span class="dots-src-side">'+side+'</span></div>'+(more?'<div class="dots-src-more">'+more+'</div>':'')+'</li>';
     };
     const weixinRow = c => {
       const open = expanded === c.id, connected = c.state !== 'available';
