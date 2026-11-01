@@ -352,11 +352,14 @@
         groups.get(category).push(plugin);
       }
       const categorized = [...groups].map(([category, entries]) => '<h3>'+esc(category)+'</h3><ul class="dots-src-list">'+entries.map(p=>mcpRow(null,p)).join('')+'</ul>').join('');
-      dialog.querySelector('[data-connector-body]').innerHTML =
-        (weixin.length?'<h3>聊天与通讯</h3><ul class="dots-src-list">'+weixin.map(weixinRow).join('')+'</ul>':'')+
+      const body = dialog.querySelector('[data-connector-body]');
+      const html = (weixin.length?'<h3>聊天与通讯</h3><ul class="dots-src-list">'+weixin.map(weixinRow).join('')+'</ul>':'')+
         '<h3>设备与远程控制</h3><ul class="dots-src-list">'+spongeRow()+'</ul>'+
         categorized+
         '<h3>自定义插件</h3>'+(custom.length?'<ul class="dots-src-list">'+custom.map(c=>mcpRow(c,null)).join('')+'</ul>':'')+addForm();
+      // 状态轮询可能每 3 秒触发一次 draw；内容未变化时不要重建整个列表，
+      // 否则所有 img 都会被销毁并重新加载，表现为插件图标高频闪烁。
+      if (body.__connectorHTML !== html) { body.innerHTML = html; body.__connectorHTML = html; }
       dialog.querySelector('[data-mcp-add] input[name=name]')?.focus();
       const authorizing = plugins.some(p=>p.state==='authorizing') || custom.some(c=>c.state==='authorizing');
       clearTimeout(pollTimer);
