@@ -445,7 +445,6 @@ struct DotsView: View {
         if store.uploading { return "正在上传…" }
         if let status = store.approvalStatus { return status }
         if store.sending { return "正在发送…" }
-        if store.hasPending { return "发送结果未知，请重试" }
         if store.manager?.status == "paused" { return "已暂停" }
         if store.manager?.status == "cancelled" { return "已停止" }
         if store.messages.last?.role == "assistant" && store.messages.last?.isStreaming == true { return "正在回复…" }

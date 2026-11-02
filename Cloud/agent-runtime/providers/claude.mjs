@@ -95,7 +95,11 @@ export async function claudeContent(input) {
 // 统一 MCP 描述 -> Claude stdio 配置（secretEnv 只进子进程环境）。
 export function claudeMcpConfig(mcpServers = {}) {
   const out = {};
-  for (const [name, spec] of Object.entries(mcpServers)) out[name] = { type: 'stdio', command: spec.command, args: spec.args || [], env: { ...(spec.env || {}), ...(spec.secretEnv || {}) } };
+  for (const [name, spec] of Object.entries(mcpServers)) {
+    out[name] = spec.url
+      ? { type: 'http', url: spec.url, ...(spec.headers && Object.keys(spec.headers).length ? { headers: spec.headers } : {}) }
+      : { type: 'stdio', command: spec.command, args: spec.args || [], env: { ...(spec.env || {}), ...(spec.secretEnv || {}) } };
+  }
   return out;
 }
 

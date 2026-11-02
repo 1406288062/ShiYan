@@ -106,6 +106,8 @@ body.workbench-v22 .dots-menu-content button>span:not(.wb-icon){min-width:0;text
 
  
 .dots-view .dots-send.is-voice{width:32px;height:32px;flex-basis:32px;background:var(--text);color:var(--v22-panel);opacity:1}
+.dots-view .dots-send.is-stop{background:var(--text);color:var(--v22-panel)}
+.dots-view .dots-send.is-stop:hover{background:var(--text)}
 .dots-view .dots-send.is-voice:hover{background:var(--text)}
 .dots-voice-glyph{display:block;width:19px;height:19px}
 .dots-voice-stop{display:block;width:11px;height:11px;border-radius:2px;background:currentColor}
@@ -543,3 +545,10 @@ body.workbench-v22 :is(.message-body,.dots-manager-message) a.message-reference:
 .dots-dialog-overlay .dots-src-link.is-danger { margin-left:0;color:#d64545; }
 .dots-src-confirm { display:flex;flex-direction:column;gap:8px;margin-top:4px;padding:10px 12px;border-radius:12px;background:color-mix(in srgb,#d64545 7%,transparent);font-size:12.5px;line-height:1.55; }
 .dots-src-confirm .dots-src-actions { justify-content:flex-end; }
+
+.dots-send-note { display:flex;align-items:center;gap:8px;width:fit-content;max-width:85%;margin:-18px 0 22px auto;font-size:12px;color:var(--secondary); }
+.dots-send-failure { color:#c44; }
+.dots-view .dots-send-retry { display:grid;place-items:center;width:26px;height:26px;padding:0;border:0;border-radius:8px;background:transparent;color:inherit;cursor:pointer; }
+.dots-view .dots-send-retry:hover { background:var(--soft-fill); }
+.dots-send-retry .wb-icon { width:14px;height:14px; }
+.dots-manager-message.is-send-failed { opacity:1; }

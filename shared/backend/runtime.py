@@ -10,7 +10,7 @@ import sys
 import shutil
 import time
 from datetime import datetime
-from .message_view import conversation_view
+from .message_view import conversation_view, conversation_summary_view
 from .file_changes import begin_changes,finish_changes
 from .storage import Storage, new_id, now, anime_export_filename
 from .gateway import Gateway, GatewayError, FALLBACK_CAPABILITIES
@@ -151,7 +151,8 @@ class Runtime:
         for entry in history:
             asset = self.storage.get("assets",entry["assetId"])
             entry["asset"] = self.storage.public_asset(asset) if asset else None
-        return {"version":self.version,"conversations":[conversation_view(c) for c in conversations],
+        selected = self.storage.setting("selectedConversationId")
+        return {"version":self.version,"conversations":[conversation_view(c) if c.get("id")==selected or c.get("isBusy") else conversation_summary_view(c) for c in conversations],
                 "selectedConversationId":self.storage.setting("selectedConversationId"),
                 "temporaryConversations":[{**conversation_view(c),"isBusy":self.is_busy(c)} for c in self.storage.list("temporaryConversations") if not self.temporary_expired(c)],
                 "projects":self.storage.list("projects"),"workspace":self.storage.setting("workspace",{}),

@@ -89,3 +89,19 @@ def message_view(message):
 
 def conversation_view(conversation):
     return {**conversation, "messages": [message_view(m) for m in conversation.get("messages", [])]}
+
+
+SUMMARY_MESSAGE_FIELDS = ("id", "role", "state", "text", "assets", "createdAt", "error", "submissionFailed")
+
+
+def conversation_summary_view(conversation):
+    """Background conversations keep list, search and busy-state fields; heavy execution details load on selection."""
+    return {**conversation, "messagesSummarized": True,
+            "messages": [summary_message(m) for m in conversation.get("messages", []) if isinstance(m, dict)]}
+
+
+def summary_message(message):
+    view = {key: message[key] for key in SUMMARY_MESSAGE_FIELDS if key in message}
+    if isinstance(view.get("text"), str) and len(view["text"]) > 160:
+        view["text"] = view["text"][:160]
+    return view

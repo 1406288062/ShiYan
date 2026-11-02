@@ -270,8 +270,8 @@ export function createMcpConnectors({ file = process.env.SHIYAN_MCP_DB || path.j
     // 运行时：当前账号已连接的 MCP 及请求头（必要时先刷新令牌）。
     async runtimeServers(owner) {
       const out = [];
-      for (const c of db.prepare("SELECT * FROM connectors WHERE owner=? AND state IN ('connected','error')").all(owner).map(decode)) {
-        try { out.push({ id: c.id, name: c.name, url: endpointFor(c), headers: await headersFor(owner, c), tools: c.tools }); } catch {}
+      for (const c of db.prepare("SELECT * FROM connectors WHERE owner=? AND state='connected'").all(owner).map(decode)) {
+        try { out.push({ id: c.id, name: c.name, url: endpointFor(c), headers: await headersFor(owner, c), transport: c.transport || 'streamable', tools: c.tools }); } catch {}
       }
       return out;
     },

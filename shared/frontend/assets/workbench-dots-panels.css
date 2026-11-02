@@ -319,3 +319,18 @@ body.workbench-v22.workbench-v2.dots-is-current-view #agentSidebar .session-row.
   width:min(470px,94vw);height:min(460px,calc(100dvh - 32px)) !important;
   min-height:0;max-height:calc(100dvh - 32px);
 }
+
+
+
+/* The identity header stays stationary; only activity and outputs scroll. */
+#dotsActivity { display:flex;flex-direction:column;overflow:hidden; }
+#dotsActivity .dots-profile-identity {
+  position:relative;top:auto;z-index:2;flex:0 0 auto;box-sizing:border-box;
+  margin:0 0 10px;padding:0 0 10px;background:var(--v22-panel);
+  border-bottom:1px solid var(--line);
+}
+#dotsActivity .dots-panel-scroll {
+  flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;
+  overscroll-behavior:contain;scrollbar-width:none;
+}
+#dotsActivity .dots-panel-scroll::-webkit-scrollbar { display:none;width:0;height:0; }

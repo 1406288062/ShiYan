@@ -12,6 +12,10 @@ const CODEX_BIN = process.env.SHIYAN_CODEX_BIN || '/home/ubuntu/.local/bin/codex
 export function codexMcpConfig(mcpServers = {}) {
   const secret = {}, servers = {};
   for (const [name, spec] of Object.entries(mcpServers)) {
+    if (spec.url) {
+      servers[name] = { url: spec.url, ...(spec.headers && Object.keys(spec.headers).length ? { http_headers: spec.headers } : {}) };
+      continue;
+    }
     Object.assign(secret, spec.secretEnv || {});
     servers[name] = { command: spec.command, args: spec.args || [], env: spec.env || {},
       env_vars: Object.keys(spec.secretEnv || {}), ...(spec.timeoutSec ? { tool_timeout_sec: spec.timeoutSec } : {}) };

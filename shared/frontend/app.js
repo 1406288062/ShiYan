@@ -44,6 +44,7 @@
   };
   const setText = (id, value) => { const el=$(id); if(el){const text=value == null ? '' : String(value);if(el.textContent!==text)el.textContent=text;} };
   const current = () => state && state.conversations.find(c => c.id === state.selectedConversationId);
+  let pendingSelection = null;
   const visibleConversation = () => ui.view==='schedules'?(window.ShiYanSchedules?.currentConversation?.()||current()):current();
   const visibleMessage = id => (ui.view==='schedules'?window.ShiYanSchedules?.message?.(id):null)||visibleConversation()?.messages?.find(m=>m.id===id);
   const isBusy = c => !!(c && (c.pendingMessageId || (c.messages || []).some(m => busyStates.has(m.state))));
@@ -166,6 +167,7 @@
   function applyState(next) {
     if(!next)return;
     if(state && Number(next.version)<Number(state.version))return;
+    if(pendingSelection && next.selectedConversationId!==pendingSelection)next.selectedConversationId=pendingSelection;
     const previousId=state && state.selectedConversationId;
     next=window.ShiYanPhotoStatus.mergeSnapshot(next,state);
     state=next;state.conversations=state.conversations || [];state.history=state.history || [];state.settings=state.settings || {};state.photoJobs=state.photoJobs || [];
@@ -285,6 +287,12 @@
 
   function renderMessages(force=false) {
     const c=current(),messages=c && c.messages || [],conversationId=c?.id||'';
+    if(c && c.messagesSummarized){
+      if(lastRenderedConversation && lastRenderedConversation!==conversationId)saveReadingPosition(lastRenderedConversation);
+      lastRenderedConversation='';lastMessagesSignature='';
+      $('messages').innerHTML='<div class="messages-loading" role="status" aria-label="正在加载对话"><span></span><span></span><span></span></div>';
+      return;
+    }
     const signature=conversationId+':'+JSON.stringify(messages);
     if(!force && signature===lastMessagesSignature)return;
     const scroller=$('messagesScroller'),list=$('messages'),oldTop=scroller.scrollTop;
@@ -515,10 +523,15 @@
   }
 
   async function selectConversation(id) {
-    cancelSpeech();const c=current();if(c && c.id!==id)await flushDraft(c.id);
-    ui.editing=null;notice('');
-    await api('/api/conversations/'+encodeURIComponent(id)+'/select','POST',{});
+    cancelSpeech();const c=current(),previous=c && c.id!==id?c.id:null;
+    ui.editing=null;notice('');pendingSelection=id;
+    // Switch locally first; the server confirmation and full messages arrive in the background.
+    if(state && state.selectedConversationId!==id){state.selectedConversationId=id;renderSessions();renderMessages(true);renderComposer(true);}
     setDrawer(false);setView('agent');
+    try {
+      if(previous)await flushDraft(previous);
+      await api('/api/conversations/'+encodeURIComponent(id)+'/select','POST',{});
+    } finally {if(pendingSelection===id)pendingSelection=null;}
   }
   async function newConversation(projectId) {
     cancelSpeech();const c=current();if(c)await flushDraft(c.id);

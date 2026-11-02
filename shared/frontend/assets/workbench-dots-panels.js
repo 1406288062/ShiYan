@@ -67,7 +67,6 @@
     if (value.connection && !['已连接','定时同步'].includes(value.connection)) return value.connection;
     if (value.uploading) return '正在上传…';
     if (value.busy) return '正在发送…';
-    if (value.pendingMessage) return '发送结果未知，请重试';
     if (value.manager?.status === 'paused') return '已暂停';
     if (value.manager?.status === 'cancelled') return '已停止';
     const approvalTasks=tasks.filter(t=>['waiting_approval','awaiting_approval'].includes(t.status));
@@ -166,9 +165,9 @@
     const newest = Math.max(0, ...activities.map(a => a.updatedAt || a.createdAt || 0));
     const signature = JSON.stringify([name(),profile.petId,profile.accent,recent,files,loading,activityError,expanded,outputExpanded,profile.seenActivities]);
     if (savedSignature === signature) { positionPanel(); C.voiceUpdated?.(); return; }
-    const top = panel.scrollTop, voiceFocus = $('dotsVoiceCard')?.contains(document.activeElement) ? document.activeElement : null; savedSignature = signature;
+    const scrollArea = panel.querySelector('.dots-panel-scroll'), top = scrollArea?.scrollTop || 0, voiceFocus = $('dotsVoiceCard')?.contains(document.activeElement) ? document.activeElement : null; savedSignature = signature;
     panel.innerHTML = '<div class="dots-profile-identity">'+'<span class="dots-pet-anchor" aria-hidden="true"></span>'+'<div><strong>'+esc(name())+'</strong><span>上次活跃：'+esc(ago(newest))+'</span><div class="dots-panel-status" role="status" aria-live="polite" hidden></div></div></div>'+
-      '<section class="dots-panel-section"><header><h3>最近活动</h3><button type="button" class="dots-mini-button" data-dots-new-schedule aria-label="新建定时任务" title="新建定时任务">'+icon('add')+'</button></header><div class="dots-activity-rows">'+
+      '<div class="dots-panel-scroll"><section class="dots-panel-section"><header><h3>最近活动</h3><button type="button" class="dots-mini-button" data-dots-new-schedule aria-label="新建定时任务" title="新建定时任务">'+icon('add')+'</button></header><div class="dots-activity-rows">'+
       recent.map(a => {
         const isSchedule = a.type === 'schedule', id = isSchedule ? (a.scheduleId || a.schedule?.id || String(a.id).replace(/^schedule:/,'')) : (a.taskId || a.id);
         const key = a.type+':'+id, unread = (a.updatedAt || a.createdAt || 0) > (profile.seenActivities?.[key] || 0);
@@ -176,8 +175,9 @@
       }).join('')+(recent.length?'':'<p class="dots-panel-empty">'+(loading?'正在读取…':'还没有活动')+'</p>')+'</div>'+
       (activities.length>5?'<button class="dots-show-more" type="button" data-dots-show-more>'+icon('more')+(expanded?'收起':'显示更多')+'</button>':'')+'</section>'+
       '<section class="dots-panel-section dots-output-section"><header><h3>输出内容</h3></header>'+files.map(o=>'<button type="button" class="dots-activity-row dots-output-row" data-dots-panel-output="'+esc(o.id)+'" title="'+esc(o.filename || o.title || o.summary || '')+'">'+icon(String(o.mimeType || '').startsWith('image/')?'image':'file')+'<span><strong>'+esc(o.filename || o.title || '任务结果')+'</strong></span></button>').join('')+(files.length?'':'<p class="dots-panel-empty">任务产出会显示在这里</p>')+(outputs.length>3?'<button class="dots-show-more" type="button" data-dots-show-outputs>'+icon('more')+(outputExpanded?'收起':'显示更多')+'</button>':'')+'</section>'+
-      (activityError?'<p class="dots-dialog-error" role="alert">'+esc(activityError)+'</p>':'');
-    panel.scrollTop = top; positionPanel(); C.voiceUpdated?.(voiceFocus);
+      (activityError?'<p class="dots-dialog-error" role="alert">'+esc(activityError)+'</p>':'')+'</div>';
+    const nextScrollArea = panel.querySelector('.dots-panel-scroll'); if (nextScrollArea) nextScrollArea.scrollTop = top;
+    positionPanel(); C.voiceUpdated?.(voiceFocus);
   }
   function scheduleDescription(s) {
     const repeats = {once:'仅一次',daily:'每天',weekdays:'工作日',weekly:'每周',monthly:'每月'};
@@ -261,7 +261,7 @@
   // 连接器：微信 + MCP（常用插件一键授权，或手动填写地址绑定）。目录和状态由服务器给出，三端一致。
   async function openConnectors(focusId) {
     const dialog = makeDialog('dotsConnectorsDialog','dots-conversation-overlay');
-    dialog.innerHTML = '<section class="dots-conversation-card dots-sources-card"><header><div><h2>连接器</h2><small data-connectors-summary>正在读取…</small></div><button type="button" class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button></header><p class="dots-src-notice" data-connector-notice hidden></p><div class="dots-src-body" data-connector-body><div class="dots-src-skeleton"></div><div class="dots-src-skeleton"></div><div class="dots-src-skeleton"></div></div><p role="alert" class="dots-dialog-error" data-connector-error hidden></p></section>';
+    dialog.innerHTML = '<section class="dots-conversation-card dots-sources-card"><header><div><h2>连接器</h2><small data-connectors-summary>正在读取…</small></div><button type="button" class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button></header><p class="dots-src-notice" data-connector-notice hidden></p><div class="dots-src-body" data-connector-body></div><p role="alert" class="dots-dialog-error" data-connector-error hidden></p></section>';
     showDialog(dialog, dialog);
     let data, expanded = focusId || '', adding = false, busy = '', pollTimer = null, pollUntil = 0, confirming = '', showTools = '', noticeTimer = null;
     let spongeStatus = null, spongeBusy = false, spongeError = '', spongeFallback = '', spongePendingUntil = 0, spongePollTimer = null, spongeConfirm = false;
@@ -327,7 +327,7 @@
         : '<button type="button" class="dots-src-button is-primary" data-sponge-act="connect">连接海绵宝宝</button><button type="button" class="dots-src-button" data-sponge-act="refresh">刷新状态</button>';
       const confirm = spongeConfirm ? '<div class="dots-src-confirm" role="group" aria-label="确认断开"><span>断开后，拾燕将无法再访问已授权的设备。</span><div class="dots-src-actions"><button type="button" class="dots-src-button" data-sponge-act="cancel">取消</button><button type="button" class="dots-src-button is-danger" data-sponge-act="disconnect">确定断开</button></div></div>' : '';
       const more = open ? '<p class="dots-src-label">插件功能</p><p class="dots-src-howto">连接后，Dots 可以通过海绵宝宝访问你授权的电脑和设备。</p><div class="dots-src-actions">'+(spongeBusy?'<span class="dots-src-state"><i></i>正在处理…</span>':actions)+'</div>'+(spongeError?'<p class="dots-sponge-error" role="alert">'+esc(spongeError)+'</p>':'')+(spongeFallback?'<p class="dots-sponge-fallback"><a href="'+esc(spongeFallback)+'" data-sponge-fallback target="_blank" rel="noopener noreferrer">继续授权</a></p>':'')+confirm : '';
-      return '<li class="dots-src is-'+(connected?'connected':'available')+(open?' is-open':'')+'" data-src="sponge"><div class="dots-src-row" data-src-toggle role="button" tabindex="0" aria-expanded="'+open+'"><span class="dots-src-icon dots-src-logo"><img src="/assets/connector-logos/sponge.svg" alt="" loading="lazy"></span><span class="dots-src-text"><strong>海绵宝宝</strong><small>'+esc(line)+'</small></span><span class="dots-src-side">'+(connected?stateLabel('已连接','connected')+chevron:open?chevron:'<button type="button" class="dots-src-button is-primary" data-sponge-act="open">连接</button>')+'</span></div>'+(more?'<div class="dots-src-more">'+more+'</div>':'')+'</li>';
+      return '<li class="dots-src is-'+(connected?'connected':'available')+(open?' is-open':'')+'" data-src="sponge"><div class="dots-src-row" data-src-toggle role="button" tabindex="0" aria-expanded="'+open+'"><span class="dots-src-icon dots-src-logo"><img src="/assets/connector-logos/sponge.svg" alt="" loading="lazy"></span><span class="dots-src-text"><strong>海绵宝宝</strong><small>'+esc(line)+'</small></span><span class="dots-src-side">'+(connected?stateLabel('已连接','connected')+chevron:open?chevron:'<button type="button" class="dots-src-button is-primary" data-sponge-act="connect">连接</button>')+'</span></div>'+(more?'<div class="dots-src-more">'+more+'</div>':'')+'</li>';
     };
     const draw = () => {
       const plugins = data.plugins||[], custom = data.custom||[], weixin = data.connectors||[];
@@ -809,8 +809,7 @@
       (conversationFull?'<form class="dots-child-composer" id="dotsChildComposer"><textarea rows="1" maxlength="16000" placeholder="'+(ended?'补充要求…':'发送消息…')+'" aria-label="给任务发送消息" required></textarea><button type="submit" class="send-button" aria-label="发送">↑</button><p class="dots-dialog-error" role="alert" hidden></p></form>':'<button type="button" class="dots-white-button" data-dots-open-chat>'+icon('chat')+'打开聊天</button>')+'</section>';
     if(conversationFull) {
       const form=$('dotsChildComposer');form.onsubmit=submitChildMessage;
-      const pending=C.pending()['dotsChild:'+data.id];
-      if(pending){form.querySelector('textarea').value=pending.message;form.querySelector('textarea').readOnly=true;form.querySelector('button').setAttribute('aria-label','重试发送');}
+      const input=form.querySelector('textarea');if(input){input.readOnly=false;input.disabled=false;}
     }
     syncReadButtons();positionPanel();
     requestAnimationFrame(()=>{const scroller=conversationDialog.querySelector('.dots-conversation-messages');if(scroller)scroller.scrollTop=scroller.scrollHeight;});
@@ -852,12 +851,13 @@
   }
   async function submitChildMessage(e) {
     e.preventDefault();const form=e.target,input=form.querySelector('textarea'),button=form.querySelector('button'),error=form.querySelector('.dots-dialog-error');const message=input.value.trim();if(!message)return;
-    const id=currentConversation.id,slot='dotsChild:'+id,prior=C.pending()[slot],ended=prior?!!prior.taskId:['done','completed','cancelled','failed'].includes(currentConversation.goal.status),route=ended?'/manager/messages':'/goals/'+id+'/instruct';
-    const payload=C.request(slot,ended?{message,taskId:Number(id),host:'shiyan_desktop'}:{message});button.disabled=true;input.readOnly=true;error.hidden=true;
+    const id=currentConversation.id,slot='dotsChild:'+id+':'+crypto.randomUUID(),ended=['done','completed','cancelled','failed'].includes(currentConversation.goal.status),route=ended?'/manager/messages':'/goals/'+id+'/instruct';
+    const payload=C.request(slot,ended?{message,taskId:Number(id),host:'shiyan_desktop'}:{message});button.disabled=true;error.hidden=true;
     try { await C.persist();await api(route,'POST',payload);await C.releaseRequest(slot);input.value='';await C.refresh();await openConversation(id,true); }
     catch(cause){if(rejected(cause))await C.releaseRequest(slot);error.textContent=cause.message;error.hidden=false;}
-    finally{button.disabled=false;input.readOnly=!!C.pending()[slot];button.setAttribute('aria-label',input.readOnly?'重试发送':'发送');}
+    finally{button.disabled=false;input.readOnly=false;input.disabled=false;button.setAttribute('aria-label','发送');}
   }
+
   function today() { const d=new Date();return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); }
   async function openSchedule(id) {
     try {
@@ -912,6 +912,7 @@
         const preview=outputRaw.length>12000?outputRaw.slice(0,8000)+'\n… 可复制完整结果 …\n'+outputRaw.slice(-4000):outputRaw;
         content+='<details class="dots-raw-result"><summary>原始结果</summary><pre><code>'+esc(preview)+'</code></pre><button type="button" data-dots-panel-copy-output>复制完整结果</button></details>';
       }
+      else if(output.attachmentId)content='<p>'+esc(output.summary || output.filename)+'</p><p><a class="dots-output-download" href="'+esc(url)+'" download="'+esc(output.filename || '')+'">下载 '+esc(output.filename || '文件')+'</a></p>';
       else content='<p>'+esc(output.summary || output.title || output.filename || '文件已生成')+'</p>';
     } catch(cause){error=cause.message;}
     outputDialog.innerHTML='<section class="dots-output-card"><header><h2>'+esc(output.filename || output.title || '任务结果')+'</h2><button type="button" class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button></header><div class="dots-output-body message-body">'+content+(error?'<p class="dots-dialog-error">'+esc(error)+'</p>':'')+'</div><a class="dots-white-button" download href="'+esc(url)+'">'+icon('download')+'保存文件</a></section>';showDialog(outputDialog);

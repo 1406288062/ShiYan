@@ -39,6 +39,7 @@ import { createWorkspaceHandler } from './workspace-http.mjs';
 import { createSpongeHTTPHandler } from './sponge-http.mjs';
 import { MemberScheduleWorker } from './member-schedules.mjs';
 import { loadRuntimeState } from './runtime-state.mjs';
+import { mcpConnectors } from './mcp-connectors.mjs';
 
 const ROOT = process.env.SHIYAN_ROOT || '/home/ubuntu/boss-codex-service/shiyan-v2';
 const PORT = Number(process.env.SHIYAN_PORT || 4323);
@@ -302,6 +303,15 @@ async function runJob(job){
     const inputToken=userInputs.registerJob(job);
     // 单轮能力令牌只经子进程环境传递（secretEnv），不进入命令行、序列化任务或模型上下文。
     const mcpServers={'shiyan-input':{command:process.execPath,args:[path.join(ROOT,'user-input-mcp.mjs')],env:{SHIYAN_INPUT_JOB:job.id,SHIYAN_INPUT_URL:process.env.SHIYAN_INPUT_URL||'http://127.0.0.1:4327'},secretEnv:{SHIYAN_INPUT_TOKEN:inputToken},timeoutSec:7200}};
+    // 管理员服务器权限会话使用当前账号已连接的远程 MCP；普通账号仍走隔离执行链路。
+    if(privileged){
+      const connected=await mcpConnectors().runtimeServers(job.owner);
+      for(const server of connected){
+        if(server.transport!=='streamable'||!server.url)continue;
+        const name='connector-'+String(server.id||server.name).toLowerCase().replace(/[^a-z0-9_-]+/g,'-').slice(0,48);
+        mcpServers[name]={url:server.url,headers:server.headers||{}};
+      }
+    }
     if(session){job.threadId=session;if(watchImages)stopWatch=await monitorGenerated(job);}
     emit(job,'phase',{phase:'processing',label:'拾燕 处理中',reasoning:job.reasoning});
     const input=inputs.length===1&&inputs[0].type==='text'?inputs[0].text:inputs;

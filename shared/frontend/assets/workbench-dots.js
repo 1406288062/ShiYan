@@ -9,6 +9,8 @@
  let C,view,active=false,monitorReady=false,hydration,saveChain=Promise.resolve(),refreshFlight=null,refreshQueuedForce=false,events=Promise.resolve();
  let persistedSnapshot=null,savingSnapshot=null,savingTask=null;
  let manager=saved.manager||null,messages=saved.messages||[],tasks=saved.tasks||[],goals=saved.goals||[],details=saved.details||{},drafts=saved.drafts||{},pending=saved.pending||{},cursor=Number(saved.cursor)||0;
+ if(!Array.isArray(pending.managerMessages))pending.managerMessages=pending.managerMessage?[{...pending.managerMessage,state:'failed',error:'上次发送未确认，请重试'}]:[];delete pending.managerMessage;
+ const sendingManagerMessages=new Set();pending.managerMessages.forEach(item=>{if(item.state==='sending'){item.state='failed';item.error='上次发送中断，请重试';}});
   
  let readState=normalizeReadState(saved.readState,messages);
  const messageId=m=>Number.isSafeInteger(Number(m?.id))&&Number(m.id)>0?Number(m.id):0;
@@ -52,8 +54,8 @@
  }
  const rawOutputs=new Map(),approvalVersions=new Map(),approvalErrors=new Map(),approvalBusy=new Set();let uploading=false;
  const attachments=()=>drafts.managerAttachments||[];
- const fileChip=(a,removable=false)=>'<span class="dots-file-chip"><span aria-hidden="true">'+C.icon('file')+'</span>'+(!removable?'<a download href="/api/dots/attachments/'+encodeURIComponent(a.id)+'">'+esc(a.filename)+'</a>':'<span>'+esc(a.filename)+'</span><button type="button" data-dots-remove-file="'+esc(a.id)+'" aria-label="移除 '+esc(a.filename)+'"'+(busy||pending.managerMessage?' disabled':'')+'>×</button>')+'</span>';
- async function uploadFiles(files){if(uploading||busy||pending.managerMessage)return;uploading=true;refreshContent();try{for(const file of files){if(attachments().length>=8)throw Error('最多添加 8 个文件');if(!file.size||file.size>20*1024*1024)throw Error('文件不能为空，单个文件不能超过 20 MB');const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(Error('无法读取文件'));reader.readAsDataURL(file);});const result=await api('/attachments','POST',{id:crypto.randomUUID(),filename:file.name,mimeType:file.type||'application/octet-stream',data});drafts.managerAttachments=[...attachments(),result.attachment];await persist();refreshContent();}}finally{uploading=false;refreshContent();}}
+ const fileChip=(a,removable=false)=>'<span class="dots-file-chip"><span aria-hidden="true">'+C.icon('file')+'</span>'+(!removable?'<a download href="/api/dots/attachments/'+encodeURIComponent(a.id)+'">'+esc(a.filename)+'</a>':'<span>'+esc(a.filename)+'</span><button type="button" data-dots-remove-file="'+esc(a.id)+'" aria-label="移除 '+esc(a.filename)+'">×</button>')+'</span>';
+ async function uploadFiles(files){if(uploading)return;uploading=true;refreshContent();try{for(const file of files){if(attachments().length>=8)throw Error('最多添加 8 个文件');if(!file.size||file.size>20*1024*1024)throw Error('文件不能为空，单个文件不能超过 20 MB');const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(Error('无法读取文件'));reader.readAsDataURL(file);});const result=await api('/attachments','POST',{id:crypto.randomUUID(),filename:file.name,mimeType:file.type||'application/octet-stream',data});drafts.managerAttachments=[...attachments(),result.attachment];await persist();refreshContent();}}finally{uploading=false;refreshContent();}}
  let managerIME=null;
  let busy=false,historyLoading=false,historyChecked=false,hasMoreMessages=true,error='',drawerOpen=false,selected=null,source,reconnectTimer,recoveryTimer,reconnectAttempt=0,streamEpoch=0;
   
@@ -184,7 +186,7 @@
  }
  function toggleVoice(){
   if(voice.active){stopVoice();return;}
-  if(busy||uploading||pending.managerMessage||attachments().length||$('dotsManagerInput')?.value.trim())return;
+  if(busy||uploading||attachments().length||$('dotsManagerInput')?.value.trim())return;
   if(manager?.status==='paused'||manager?.status==='cancelled'){showError('请先在更多菜单中继续总管，再开启语音聊天。');return;}
    if(window.ShiYanPlatform?.mode==='web'){
     const browserVoice=window.ShiYanPlatform.adapter('voice');
@@ -434,7 +436,7 @@
   }
   messages=[...merged.values()].sort((a,b)=>Number(a.id)-Number(b.id));
  }
- function adopt(data){const version=Number(data.activityCursor??data.manager?.activityCursor)||0,current=Number(manager?.activityCursor)||0,fresh=version>=current;const incoming=[...(data.messages||data.manager?.messages||[])];if(messageId(data.message)&&typeof data.message.content==='string')incoming.push(data.message);const cachedOldest=messages.length?Number(messages[0].id):Infinity,remoteOldest=incoming.length?Math.min(...incoming.map(m=>Number(m.id))):Infinity;if(fresh){if(data.manager){const {messages:embeddedMessages,tasks:embeddedTasks,...metadata}=data.manager;manager=metadata;}if(!historyChecked||cachedOldest>=remoteOldest)hasMoreMessages=!!(data.hasMoreMessages??data.manager?.hasMoreMessages);tasks=data.tasks||data.manager?.tasks||tasks;}mergeMessages(incoming);observeReplies(incoming);if(voice.active&&['paused','cancelled'].includes(manager?.status))stopVoice('总管已暂停或停止，语音聊天已结束。');else checkVoiceReply();}
+ function adopt(data){const version=Number(data.activityCursor??data.manager?.activityCursor)||0,current=Number(manager?.activityCursor)||0,fresh=version>=current;const incoming=[...(data.messages||data.manager?.messages||[])];if(messageId(data.message)&&typeof data.message.content==='string')incoming.push(data.message);const cachedOldest=messages.length?Number(messages[0].id):Infinity,remoteOldest=incoming.length?Math.min(...incoming.map(m=>Number(m.id))):Infinity;if(fresh){if(data.manager){const {messages:embeddedMessages,tasks:embeddedTasks,...metadata}=data.manager;manager=metadata;}if(!historyChecked||cachedOldest>=remoteOldest)hasMoreMessages=!!(data.hasMoreMessages??data.manager?.hasMoreMessages);tasks=data.tasks||data.manager?.tasks||tasks;}mergeMessages(incoming);const acceptedIds=new Set(incoming.filter(m=>m.role==='user'&&m.requestId).map(m=>m.requestId));if(acceptedIds.size){const before=(pending.managerMessages||[]).length;pending.managerMessages=(pending.managerMessages||[]).filter(item=>!acceptedIds.has(item.requestId));if(pending.managerMessages.length!==before)persist().catch(showError);}observeReplies(incoming);if(voice.active&&['paused','cancelled'].includes(manager?.status))stopVoice('总管已暂停或停止，语音聊天已结束。');else checkVoiceReply();}
  async function earlier(){if(historyLoading||!messages.length)return;historyLoading=true;const records=$('dotsRecords'),height=records.scrollHeight,top=records.scrollTop;refreshContent();try{const batch=await api('/manager/messages?before='+messages[0].id+'&limit=100');mergeMessages(batch.messages||[]);hasMoreMessages=!!batch.hasMore;historyChecked=true;await persist();}finally{historyLoading=false;refreshContent();const updated=$('dotsRecords');if(updated)updated.scrollTop=top+updated.scrollHeight-height;}}
  const needsApproval=task=>task.legacyImported!==true&&['waiting_approval','awaiting_approval'].includes(task.status);
  const approvalSlot=(goalId,id)=>'approval:'+goalId+':'+id;
@@ -474,14 +476,14 @@
   return '<div class="dots-message-time"><time datetime="'+esc(time.toISOString())+'">'+esc(label)+'</time></div>';
  }
  // 回复：以 Markdown 引用的形式放进消息正文，三端与模型看到的一致。
- let replyTo=null,sentAfterId=null;
+ let replyTo=null,sentAfterId=null,replyInterruptedBefore=0;
  function quoteExcerpt(text){const plain=String(text||'').split('\n').map(l=>l.replace(/^(\s*>)+/,'').replace(/^[#*\-`\s]+/,'').trim()).filter(Boolean).join(' ');return plain.length>160?plain.slice(0,160)+'…':plain;}
  function composeQuote(quote,body){return quote.split('\n').filter(Boolean).slice(0,4).map(l=>'> '+l.trim()).join('\n')+'\n\n'+body;}
  function blankReply(m){return m.role==='assistant'&&!String(m.content||'').trim()&&!(m.attachments||[]).length&&!m.card;}
- function awaitingReply(){
-  if(voice.active)return false;if(pending.managerMessage&&!busy)return false;
+ function awaitingReply(){if((pending.managerMessages||[]).some(p=>p.state==='sending'))return true;
+  if(voice.active)return false;
   if(sentAfterId!==null){if(!messages.some(m=>Number(m.id)>sentAfterId&&m.role==='assistant'&&!blankReply(m)))return true;sentAfterId=null;}
-  if(busy)return false;const last=messages[messages.length-1];if(!last)return false;
+  if(busy)return false;const last=messages[messages.length-1];if(!last)return false;if(last.role==='user'&&Number(last.id)<=replyInterruptedBefore)return false;
   if(last.role==='assistant')return last.deliveryState==='streaming'&&blankReply(last);
   if(last.role!=='user'||['paused','cancelled'].includes(manager?.status))return false;
   const t=Number(last.createdAt)||0,ms=t>1e12?t:t*1000;return Date.now()-ms<300000;
@@ -513,7 +515,7 @@
  // 整体重绘时沿用已加载的图片节点，避免图片反复加载造成闪烁和跳动。
  function renderMessagesRaw(records){const loaded=new Map([...records.querySelectorAll('.dots-images img')].map(img=>[img.getAttribute('src'),img]));renderMessagesHTML(records);for(const img of records.querySelectorAll('.dots-images img')){const old=loaded.get(img.getAttribute('src'));if(old){img.replaceWith(old);loaded.delete(img.getAttribute('src'));}}}
  function renderMessagesHTML(records){records.innerHTML=(hasMoreMessages&&messages.length?'<button type="button" class="dots-history-more" data-dots-earlier'+(historyLoading?' disabled':'')+'>'+(historyLoading?'正在读取…':'查看更早消息')+'</button>':'')+(messages.length?messages.filter(m=>!blankReply(m)||m.card).map(m=>managerTime(m)+'<article class="dots-manager-message '+(m.role==='user'?'is-user':m.role==='system'?'is-system':'is-assistant')+'" data-dots-message="'+esc(m.id)+'">'+(m.role==='system'?'<header>状态</header>':'')+'<div class="message-body">'+markdown(m.content||'')+'</div>'+subscriptionCard(m)+attachmentsHTML(m.attachments||[])+messageActions(m)+'</article>').join(''):'')+optimisticHTML()+(awaitingReply()?thinkingHTML():(thinkingSince=0,''));}
- function optimisticHTML(){const p=pending.managerMessage;if(!busy||!p||messages.some(m=>m.requestId===p.requestId))return '';return '<article class="dots-manager-message is-user is-optimistic"><div class="message-body">'+markdown(p.message||'')+'</div></article>';}
+ function optimisticHTML(){return (pending.managerMessages||[]).filter(p=>!messages.some(m=>m.requestId===p.requestId)).map(p=>{const failed=p.state==='failed';return '<article class="dots-manager-message is-user is-optimistic'+(failed?' is-send-failed':'')+'" data-dots-pending-send="'+esc(p.requestId)+'"><div class="message-body">'+markdown(p.message||'')+'</div>'+(p.attachments?.length?attachmentsHTML(p.attachments):'')+'</article>'+(failed?'<div class="dots-send-note dots-send-failure"><span>❗发送失败</span><button type="button" class="dots-send-retry" aria-label="重试" title="重试" data-dots-retry-send="'+esc(p.requestId)+'"><span class="wb-icon wb-ios-icon" style="--ios-symbol:url(\'/assets/symbols/arrow.clockwise.png\')" aria-hidden="true"></span></button></div>':'');}).join('');}
  // 重新渲染时保留卡片里已经输入的内容和焦点（轮询刷新不会清空用户正在填写的值）。
  function renderMessages(){const records=$('dotsRecords');if(!records)return;
   const kept={},active=document.activeElement,focusKey=active?.closest?.('[data-dots-sub-card]')&&active.name?active.closest('[data-dots-sub-card]').dataset.dotsSubCard+':'+active.name:'';
@@ -532,7 +534,7 @@
   box.hidden=!html;if(box.__html!==html){box.__html=html;box.innerHTML=html;}
  }
  function syncApprovalState(){renderApprovals();window.ShiYanDotsPanels?.syncApprovalState();}
- function renderDrawer(){renderApprovals();window.ShiYanDotsPanels?.render({manager,messages,tasks,goals,details,drawerOpen,selected,busy,uploading,loading:!monitorReady,notice:error,connection:$('dotsConnection')?.textContent||'',pendingMessage:!!pending.managerMessage});renderVoice();}
+ function renderDrawer(){renderApprovals();window.ShiYanDotsPanels?.render({manager,messages,tasks,goals,details,drawerOpen,selected,busy,uploading,loading:!monitorReady,notice:error,connection:$('dotsConnection')?.textContent||'',pendingMessage:(pending.managerMessages||[]).length>0});renderVoice();}
  function controlIcon(action){const path=action==='pause'?'M9 5v14M15 5v14':action==='resume'?'M7 4l13 8-13 8Z':'M6 6h12v12H6Z';return '<svg class="wb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+path+'"/></svg>';}
  function renderToolbar(){
   const status=manager?.status==='paused'?'已暂停':manager?.status==='cancelled'?'已停止':Number(manager?.runningWorkers)>0?'正在处理 '+Number(manager.runningWorkers)+' 件事':'';
@@ -546,7 +548,7 @@
   if(!tall&&(input.scrollHeight>46||input.value.includes('\n'))){next=true;surface.dataset.tallAt=String(length);}
   else if(tall&&(!input.value.trim()||(!input.value.includes('\n')&&length<Number(surface.dataset.tallAt||0)*0.6)))next=false;
   if(next!==tall){surface.classList.toggle('is-tall',next);input.style.height='auto';input.style.height=Math.min(160,Math.max(36,input.scrollHeight))+'px';}}
- function resizeComposer(){const input=$('dotsManagerInput'),button=$('dotsSendButton');if(!input||!button)return;input.style.height='auto';input.style.height=Math.min(160,Math.max(36,input.scrollHeight))+'px';layoutComposer(input);const empty=!input.value.trim()&&!attachments().length&&!pending.managerMessage,isVoice=empty&&(voice.active||!busy);button.disabled=isVoice&&voice.active?false:busy||uploading;button.classList.toggle('is-empty',empty&&!isVoice);button.classList.toggle('is-voice',isVoice);button.classList.toggle('is-voice-active',isVoice&&voice.active);button.setAttribute('aria-label',isVoice&&voice.active?'结束语音聊天':isVoice?'语音实时聊天':busy?'发送中':pending.managerMessage?'重试发送':'发送');button.title=button.getAttribute('aria-label');button.innerHTML=isVoice?(voice.active?'<span class="dots-voice-stop" aria-hidden="true"></span>':voiceGlyph):pending.managerMessage&&!busy?C.icon('refresh'):'<span class="dots-send-icon" aria-hidden="true"></span>';positionCompactVoiceCard();}
+ function resizeComposer(){const input=$('dotsManagerInput'),button=$('dotsSendButton');if(!input||!button)return;input.style.height='auto';input.style.height=Math.min(160,Math.max(36,input.scrollHeight))+'px';layoutComposer(input);syncSendButton();positionCompactVoiceCard();}
    
    
   function managerIMEBlocksSend(){
@@ -561,7 +563,7 @@
    queueMicrotask(()=>{if(managerIME===ime&&!ime.composing&&!ime.ending&&!ime.confirmingEnter)refreshContent();});
   }
   function bindManagerComposer(input,form){
-   const ime=managerIME={input,composing:false,ending:false,confirmingEnter:false,deferred:false,epoch:0};
+   const ime=managerIME={input,composing:false,ending:false,confirmingEnter:false,deferred:false,epoch:0};input.addEventListener('input',syncSendButton);
    input.addEventListener('compositionstart',()=>{ime.epoch++;ime.composing=true;ime.ending=false;ime.confirmingEnter=false;});
    input.addEventListener('compositionend',()=>{
     ime.composing=false;ime.ending=true;const epoch=++ime.epoch;
@@ -585,16 +587,21 @@
    };
    form.onsubmit=e=>{
     e.preventDefault();if(managerIMEBlocksSend())return;
-    if(!input.value.trim()&&!attachments().length&&!pending.managerMessage)toggleVoice();
+    if(!input.value.trim()&&!attachments().length){if(awaitingReply())void interruptReply();else toggleVoice();}
     else submit().catch(showError);
    };
   }
- function render(){if(!view)return;const frozen=!!pending.managerMessage;
+ function render(){if(!view)return;
   renderToolbar();
-  $('dotsDetail').innerHTML='<div id="dotsRecords" class="dots-records"></div><section id="dotsApprovals" class="dots-manager-approvals" aria-label="需要你批准的操作" hidden></section><form id="dotsManagerForm" class="dots-composer">'+replyPreviewHTML()+'<div class="dots-files">'+(frozen?pending.managerMessage.attachments||[]:attachments()).map(a=>fileChip(a,!frozen)).join('')+'</div><input id="dotsFileInput" type="file" multiple hidden><div class="dots-composer-surface"><button id="dotsAddFile" class="dots-add-file" type="button" aria-label="添加文件" title="添加文件"'+(frozen||busy||uploading?' disabled':'')+'>'+(uploading?'<span aria-hidden="true">…</span>':'<svg width="20" height="20" viewBox="0 0 24 24" style="display:block" aria-hidden="true" focusable="false"><path d="M12 4v16M4 12h16" fill="none" stroke="currentColor" stroke-width="2.4"/></svg>')+'</button><textarea id="dotsManagerInput" rows="1" maxlength="20000" aria-label="发送消息" placeholder="交给我…"'+(frozen?' readonly':'')+'>'+esc(frozen?pending.managerMessage.message:drafts.manager||'')+'</textarea><button id="dotsSendButton" class="send-button dots-send'+(busy?' is-busy':'')+'" type="submit"'+(busy?' disabled':'')+' aria-label="'+(frozen?'重试发送':'发送')+'"><span class="dots-send-icon" aria-hidden="true"></span></button></div>'+'</form>';
-  renderMessages();renderDrawer();renderVoice();$('dotsAddFile').onclick=()=>$('dotsFileInput').click();$('dotsFileInput').onchange=e=>uploadFiles(Array.from(e.target.files||[])).catch(showError);view.querySelectorAll('[data-dots-remove-file]').forEach(button=>button.onclick=()=>{drafts.managerAttachments=attachments().filter(a=>a.id!==button.dataset.dotsRemoveFile);persist().catch(showError);view.__signature=null;refreshContent();});$('dotsManagerInput').oninput=e=>{drafts.manager=e.target.value;resizeComposer();persist().catch(showError);};bindManagerComposer($('dotsManagerInput'),$('dotsManagerForm'));
+  const detail=$('dotsDetail'),existingForm=$('dotsManagerForm'),hadComposer=!!existingForm;
+  detail.innerHTML='<div id="dotsRecords" class="dots-records"></div><section id="dotsApprovals" class="dots-manager-approvals" aria-label="需要你批准的操作" hidden></section><form id="dotsManagerForm" class="dots-composer">'+replyPreviewHTML()+'<div class="dots-files"></div><input id="dotsFileInput" type="file" multiple hidden><div class="dots-composer-surface"><button id="dotsAddFile" class="dots-add-file" type="button" aria-label="添加文件" title="添加文件"></button><textarea id="dotsManagerInput" rows="1" maxlength="20000" aria-label="发送消息" placeholder="交给我…"></textarea><button id="dotsSendButton" class="send-button dots-send" type="submit" aria-label="发送"><span class="dots-send-icon" aria-hidden="true"></span></button></div></form>';
+  const form=$('dotsManagerForm');if(hadComposer)form.replaceWith(existingForm);else{bindManagerComposer($('dotsManagerInput'),form);$('dotsManagerInput').value=drafts.manager||'';$('dotsManagerInput').oninput=e=>{drafts.manager=e.target.value;resizeComposer();persist().catch(showError);};}
+  const liveForm=$('dotsManagerForm'),input=$('dotsManagerInput');liveForm.querySelector('.dots-files').innerHTML=attachments().map(a=>fileChip(a,true)).join('');
+  const add=$('dotsAddFile'),file=$('dotsFileInput');add.disabled=uploading;add.innerHTML=uploading?'<span aria-hidden="true">…</span>':'<svg width="20" height="20" viewBox="0 0 24 24" style="display:block" aria-hidden="true"><path d="M12 4v16M4 12h16" fill="none" stroke="currentColor" stroke-width="2.4"/></svg>';add.onclick=()=>file.click();file.onchange=e=>uploadFiles(Array.from(e.target.files||[])).catch(showError);
+  liveForm.querySelectorAll('[data-dots-remove-file]').forEach(button=>button.onclick=()=>{drafts.managerAttachments=attachments().filter(a=>a.id!==button.dataset.dotsRemoveFile);persist().catch(showError);view.__signature=null;refreshContent();});input.readOnly=false;input.disabled=false;resizeComposer();renderMessages();renderDrawer();renderVoice();
  }
- function refreshContent(){renderUnread();if(!active||document.hidden)return;const records=$('dotsRecords'),scroll=records?.scrollTop||0,atBottom=!records||records.scrollHeight-scroll-records.clientHeight<60;const focused=document.activeElement?.id,start=document.activeElement?.selectionStart,end=document.activeElement?.selectionEnd;const sig=JSON.stringify([manager,messages,tasks,goals,details,drawerOpen,selected,busy,pending,hasMoreMessages,historyLoading,uploading,attachments(),replyTo&&replyTo.id,sentAfterId]);if(view.__signature===sig){if(!voiceOrb?.drag)voiceComposerDeferred=false;markVisibleRepliesRead();return;}
+
+ function refreshContent(){renderUnread();syncSendButton();if(!active||document.hidden)return;const records=$('dotsRecords'),scroll=records?.scrollTop||0,atBottom=!records||records.scrollHeight-scroll-records.clientHeight<60;const focused=document.activeElement?.id,start=document.activeElement?.selectionStart,end=document.activeElement?.selectionEnd;const sig=JSON.stringify([manager,messages,tasks,goals,details,drawerOpen,selected,busy,pending,hasMoreMessages,historyLoading,uploading,attachments(),replyTo&&replyTo.id,sentAfterId]);if(view.__signature===sig){if(!voiceOrb?.drag)voiceComposerDeferred=false;markVisibleRepliesRead();return;}
     
     
    // Keep the captured input lip mounted for the entire pointer gesture. A
@@ -609,7 +616,42 @@
     const updated=$('dotsRecords');if(updated)updated.scrollTop=atBottom?updated.scrollHeight:scroll;markVisibleRepliesRead();return;
    }
    voiceComposerDeferred=false;view.__signature=sig;render();const updated=$('dotsRecords');if(updated)updated.scrollTop=atBottom?updated.scrollHeight:scroll;if(focused&&$(focused)){$(focused).focus({preventScroll:true});if(typeof start==='number')$(focused).setSelectionRange(start,end);}markVisibleRepliesRead();}
- async function submit(){if(busy||uploading||managerIMEBlocksSend())return;const text=$('dotsManagerInput')?.value?.trim();if(!text&&!attachments().length&&!pending.managerMessage)return;const body=text||'请处理这些附件。',quoted=replyTo&&!pending.managerMessage?composeQuote(quoteExcerpt(replyTo.content),body):body;sentAfterId=messages.reduce((a,m)=>Math.max(a,Number(m.id)||0),0);replyTo=null;const payload=request('managerMessage',{message:quoted,host:'shiyan_desktop',attachments:attachments().map(a=>({...a}))});let acceptedResponse=null;busy=true;showError('');refreshContent();try{await persist();const response=await api('/manager/messages','POST',{...payload,attachments:(payload.attachments||[]).map(a=>a.id)});if(response.accepted!==true)throw Error('总管未确认接收此消息');acceptedResponse=response;adopt(response);delete pending.managerMessage;if(drafts.manager?.trim()===body||(!drafts.manager?.trim()&&payload.attachments?.length))delete drafts.manager;drafts.managerAttachments=attachments().filter(a=>!(payload.attachments||[]).some(sent=>sent.id===a.id));await persist();await refresh();return response;}catch(e){showError(e);return acceptedResponse;}finally{busy=false;refreshContent();if(voice.active&&pending.voiceMessage)sendVoicePending().catch(showError);}}
+ async function sendPendingManagerMessage(item){
+  if(sendingManagerMessages.has(item.requestId))return;
+  sendingManagerMessages.add(item.requestId);item.state='sending';item.error='';refreshContent();
+  try{
+   void persist().catch(showError);
+   const wire={...item};delete wire.state;delete wire.error;delete wire.replyAfterId;
+   const response=await api('/manager/messages','POST',{...wire,attachments:(item.attachments||[]).map(a=>a.id)});
+   if(response.accepted!==true)throw Error('总管未确认接收此消息');
+   adopt(response);sentAfterId=Number(response.message?.id)||messages.reduce((a,m)=>Math.max(a,Number(m.id)||0),0);const sendButton=$('dotsSendButton');sendButton?.classList.remove('is-busy');pending.managerMessages=(pending.managerMessages||[]).filter(p=>p.requestId!==item.requestId);
+   await persist();await refresh();return response;
+  }catch(e){item.state='failed';item.error=e?.message||String(e);showError(e);await persist().catch(()=>{});refreshContent();return null;}
+  finally{sendingManagerMessages.delete(item.requestId);refreshContent();}
+ }
+ async function submit(){if(uploading||managerIMEBlocksSend())return;const input=$('dotsManagerInput'),text=input?.value?.trim();if(!text&&!attachments().length)return;const body=text||'请处理这些附件。',quoted=replyTo?composeQuote(quoteExcerpt(replyTo.content),body):body;const replyAfterId=messages.reduce((a,m)=>Math.max(a,Number(m.id)||0),0);replyTo=null;
+  const item={message:quoted,host:'shiyan_desktop',attachments:attachments().map(a=>({...a})),requestId:crypto.randomUUID(),replyAfterId,state:'sending'};
+  pending.managerMessages=pending.managerMessages||[];pending.managerMessages.push(item);
+  drafts.manager='';drafts.managerAttachments=[];if(input)input.value='';showError('');void persist().catch(showError);refreshContent();void sendPendingManagerMessage(item);return item;
+ }
+ async function retryPendingManagerMessage(id){const item=(pending.managerMessages||[]).find(p=>p.requestId===id);if(!item||sendingManagerMessages.has(id))return;void sendPendingManagerMessage(item);}
+
+ function syncSendButton(){
+  const button=$('dotsSendButton');if(!button)return;
+  const empty=!$('dotsManagerInput')?.value?.trim()&&!attachments().length;
+  const mode=!empty?'send':voice.active?'voice-active':awaitingReply()?'stop':'voice';
+  button.disabled=mode==='voice-active'||mode==='stop'?false:uploading;
+  if(button.dataset.mode===mode)return;
+  button.dataset.mode=mode;
+  button.classList.toggle('is-voice',mode==='voice'||mode==='voice-active');
+  button.classList.toggle('is-voice-active',mode==='voice-active');
+  button.classList.toggle('is-stop',mode==='stop');
+  button.classList.remove('is-empty');
+  const label={send:'发送',voice:'语音实时聊天','voice-active':'结束语音聊天',stop:'中断'}[mode];
+  button.innerHTML=mode==='voice'?voiceGlyph:mode==='send'?'<span class="dots-send-icon" aria-hidden="true"></span>':'<span class="dots-voice-stop" aria-hidden="true"></span>';
+  button.setAttribute('aria-label',label);button.title=label;
+ }
+ async function interruptReply(){const payload=request('managerInterrupt',{action:'interrupt'}),before=messages.reduce((a,m)=>Math.max(a,Number(m.id)||0),0);try{adopt(await api('/manager/control','POST',payload));delete pending.managerInterrupt;replyInterruptedBefore=before;sentAfterId=null;await persist();}catch(e){showError(e);}finally{refreshContent();}}
  async function managerControl(action){if(busy)return;if(voice.active)stopVoice();const slot='managerControl',payload=request(slot,{action});busy=true;try{await persist();adopt(await api('/manager/control','POST',payload));delete pending[slot];await persist();}finally{busy=false;refreshContent();}}
  async function taskControl(action){if(busy||!selected)return;const slot='taskControl:'+selected,payload=request(slot,{action});busy=true;try{await persist();await api('/goals/'+selected+'/control','POST',payload);delete pending[slot];await persist();await refresh();}finally{busy=false;refreshContent();}}
  async function decide(goalId,id,decision,shownCommand,scope='once'){
@@ -638,7 +680,7 @@
   }finally{approvalBusy.delete(slot);syncApprovalState();}
  }
  async function showOutput(id){const box=view.querySelector('[data-dots-output-body="'+CSS.escape(String(id))+'"]');if(!box)return;if(!box.hidden){box.hidden=true;return;}const data=await api('/outputs/'+id);let raw=data.output?.raw_result||data.output?.summary||'';if(typeof raw!=='string')raw=JSON.stringify(raw,null,2);let readable=raw;try{const parsed=JSON.parse(raw);readable=parsed.result||parsed.message||parsed.summary||JSON.stringify(parsed,null,2);}catch{}rawOutputs.set(String(id),raw);while(rawOutputs.size>20)rawOutputs.delete(rawOutputs.keys().next().value);const preview=raw.length>12000?raw.slice(0,8000)+'\n… 可复制完整结果 …\n'+raw.slice(-4000):raw;box.innerHTML='<div class="dots-result-readable">'+markdown(typeof readable==='string'?readable:JSON.stringify(readable,null,2))+'</div><details class="dots-raw-result"><summary>原始结果</summary><pre><code>'+esc(preview)+'</code></pre><button data-dots-copy-output="'+esc(id)+'">复制完整结果</button></details>';box.hidden=false;}
- let eventFlushTimer=0,eventPendingCursor=0,eventRefreshNeeded=false,messageRenderTimer=0;
+ let eventFlushTimer=0,eventPendingCursor=0,eventRefreshNeeded=false,eventPersistNeeded=false,messageRenderTimer=0;
  function renderStreamMessages(){
   clearTimeout(messageRenderTimer);messageRenderTimer=0;if(!active||document.hidden)return;
   const records=$('dotsRecords');if(!records)return;
@@ -652,6 +694,15 @@
   const user=snapshot||activity?.kind==='user_message';
   if((user?message?.role!=='user':!['assistant_delta','assistant_message','proactive_message'].includes(activity?.kind)||message?.role!=='assistant')||!messageId(message)||typeof message.content!=='string')return false;
   mergeMessages([message]);
+  if(user&&message.requestId){
+   const before=(pending.managerMessages||[]).length;
+   const local=(pending.managerMessages||[]).find(item=>item.requestId===message.requestId);
+   if(local){sentAfterId=Number(message.id)||sentAfterId;pending.managerMessages=(pending.managerMessages||[]).filter(item=>item.requestId!==message.requestId);persist().catch(showError);}
+   // The server's user_message event is the acceptance boundary. Stop any
+   // stale submit spinner immediately; the transcript thinking indicator may
+   // now take over while the assistant starts responding.
+   $('dotsSendButton')?.classList.remove('is-busy');syncSendButton();
+  }
   if(user){
    // User activities precede their assistant deltas, so commit their visible
    // transcript synchronously rather than waiting behind GET/save/ack work.
@@ -673,7 +724,15 @@
     if(needsRefresh)await refresh();
     if(epoch!==streamEpoch||!monitorAllowed())return;
     const before=cursor;cursor=target;
-    try{await persist();}catch(error){cursor=before;throw error;}
+    const saveSnapshot=eventPersistNeeded;eventPersistNeeded=false;
+    // The event cursor is tiny and independent of the transcript snapshot.
+    // Persist it locally immediately, then update only this field remotely.
+    try{
+     const snapshot=JSON.stringify({manager,messages,tasks,goals,details,drafts,pending,cursor,readState});
+     localStorage.setItem(key,snapshot);
+     await api('/local-state','PATCH',{cursor:target});
+     if(saveSnapshot)await persist();
+    }catch(error){cursor=before;eventPersistNeeded=eventPersistNeeded||saveSnapshot;throw error;}
     if(epoch!==streamEpoch||!monitorAllowed())return;
     await api('/notifications/ack','POST',{cursor:target});markVisibleRepliesRead();
    }).catch(error=>{
@@ -682,24 +741,32 @@
   },120);
  }
  function disconnect(){streamEpoch++;source?.close();source=null;clearTimeout(reconnectTimer);clearInterval(recoveryTimer);clearTimeout(eventFlushTimer);clearTimeout(messageRenderTimer);eventFlushTimer=0;messageRenderTimer=0;eventPendingCursor=cursor;eventRefreshNeeded=false;}
- function reconnect(){source?.close();source=null;setConnection('连接中断，正在重连');clearTimeout(reconnectTimer);const epoch=streamEpoch;reconnectTimer=setTimeout(()=>{if(monitorAllowed()&&epoch===streamEpoch)connect();},Math.min(15000,1000*2**Math.min(4,reconnectAttempt++)));}
+ function reconnect(){
+  source?.close();source=null;setConnection('连接中断，正在重连');clearTimeout(reconnectTimer);
+  // Only use a slow snapshot fallback while SSE is unavailable.
+  if(!recoveryTimer)recoveryTimer=setInterval(()=>{if(monitorAllowed()&&!source)refresh().catch(showError);},30000);
+  const epoch=streamEpoch;reconnectTimer=setTimeout(()=>{if(monitorAllowed()&&epoch===streamEpoch)connect();},Math.min(15000,1000*2**Math.min(4,reconnectAttempt++)));
+ }
  function connect(){
   if(!monitorAllowed())return;
   if(window.ShiYanPlatform?.deferUntilLoaded?.(connect))return;
   const epoch=++streamEpoch;source?.close();clearTimeout(eventFlushTimer);eventFlushTimer=0;eventPendingCursor=cursor;eventRefreshNeeded=false;
   source=new EventSource('/api/dots/events?after='+cursor);
-  source.addEventListener('connected',()=>{if(epoch!==streamEpoch)return;reconnectAttempt=0;setConnection('已连接');});
+  source.addEventListener('connected',()=>{if(epoch!==streamEpoch)return;reconnectAttempt=0;clearInterval(recoveryTimer);recoveryTimer=0;setConnection('已连接');});
   source.addEventListener('update',e=>{
    if(epoch!==streamEpoch||!monitorAllowed())return;
    let event;try{event=JSON.parse(e.data);}catch{reconnect();return;}
    const seq=Number(event.seq);if(!Number.isSafeInteger(seq)||seq<=cursor)return;
    receiveVoiceActivity(event);
    const incremental=adoptMessageEvent(event);
+   const kind=event.type==='manager_snapshot'?'manager_snapshot':event.payload?.activity?.kind;
+   if(['manager_snapshot','user_message','assistant_message','proactive_message'].includes(kind))eventPersistNeeded=true;
    eventPendingCursor=Math.max(eventPendingCursor,seq);eventRefreshNeeded=eventRefreshNeeded||!incremental;
    scheduleEventFlush(epoch);
   });
   source.addEventListener('connection-error',()=>{if(epoch===streamEpoch)reconnect();});source.onerror=()=>{if(epoch===streamEpoch)reconnect();};
-  clearInterval(recoveryTimer);recoveryTimer=setInterval(()=>{if(monitorAllowed())refresh().catch(showError);},10000);
+  // A healthy SSE stream is the live source; do not poll full manager snapshots.
+  clearInterval(recoveryTimer);recoveryTimer=0;
  }
  function handleUploadPriorityChange(){
   if(window.ShiYanUploadPriority?.active){disconnect();return;}
@@ -715,7 +782,7 @@
   if(!document.hidden){refreshContent();refresh().catch(showError);}
  }
  function activate(){active=window.shiyan.getView()==='dots';document.body.classList.toggle('dots-is-current-view',active);view.hidden=!active;$('dotsToolbar').hidden=!active;if(!active)$('dotsToolbar').querySelector('.dots-menu').open=false;$('openDotsButton').classList.toggle('is-selected',active);if(active){$('workspaceTitle').replaceChildren();$('railHome').classList.add('is-active');hydration.then(()=>{if(!active)return;refreshContent();if(!source)connect();refresh().catch(showError);}).catch(showError);}renderVoice();renderUnread();C.scheduleNative();}
- function install(context){if(!window.ShiYanAccount.user)return;C=context;hydration=hydrate();hydration.catch(showError);const button=document.createElement('button');button.id='openDotsButton';button.type='button';button.className='sidebar-new-chat sidebar-dots';button.innerHTML=identityIcon()+'<span>'+esc(window.ShiYanDotsPanels?.name()||'Dots')+'</span>';button.title='Dots · 你的专属助手';button.setAttribute('aria-label','Dots 个人助手');button.onclick=()=>window.shiyan.navigate('dots');$('newConversationButton').after(button);$('agentSidebar')?.classList.add('has-dots-navigation');view=document.createElement('section');view.id='dotsView';view.className='dots-view dots-manager-view';view.hidden=true;view.setAttribute('aria-label','Dots 私人助手');view.innerHTML='<header id="dotsToolbar" class="dots-toolbar" hidden><span id="dotsStatus" class="dots-status" role="status" hidden></span><small id="dotsConnection" role="status" hidden></small><div class="dots-menu"><button type="button" data-dots-more class="wb-icon-button dots-icon-button" aria-label="更多" aria-expanded="false" title="更多">'+C.toolbarIcon('more')+'</button><div id="dotsMenuContent" class="dots-menu-content"></div></div><button id="dotsTasksButton" type="button" class="wb-icon-button dots-icon-button dots-tasks-button" data-dots-drawer aria-label="任务与活动" aria-expanded="false" title="任务与活动">'+C.toolbarIcon('tasks')+'</button><span class="dots-toolbar-divider" aria-hidden="true"></span></header><p id="dotsError" class="dots-error" role="alert" hidden></p><div class="dots-layout"><div id="dotsDetail" class="dots-detail"></div><aside id="dotsActivity" class="dots-activity" hidden></aside></div>';$('centerContent').appendChild(view);if($('toggleRightWorkspace'))$('toggleRightWorkspace').before($('dotsToolbar'));else if($('desktopToolbar'))$('desktopToolbar').appendChild($('dotsToolbar'));window.ShiYanDotsPanels.install({icon:C.icon,api,markdown,refresh,showError,sendText:async text=>{const input=$('dotsManagerInput');if(!input||busy||pending.managerMessage)return;input.value=text;drafts.manager=text;resizeComposer();await submit();},snapshot:()=>({manager,messages,tasks,goals,details,drawerOpen,selected,busy}),decideApproval:decide,approvalState,request,persist,pending:()=>pending,releaseRequest:async slot=>{delete pending[slot];await persist();},closePanel:()=>{drawerOpen=false;renderDrawer();},nameChanged:()=>{const name=window.ShiYanDotsPanels.name();renderUnread();if(active)$('workspaceTitle').replaceChildren();},scheduleNative:C.scheduleNative,voiceUpdated:focus=>{renderVoice();if(focus?.isConnected)focus.focus({preventScroll:true});}});const dotsMenu=$('dotsToolbar').querySelector('.dots-menu');Object.defineProperty(dotsMenu,'open',{get(){return this.hasAttribute('open');},set(value){this.toggleAttribute('open',!!value);this.querySelector('[data-dots-more]').setAttribute('aria-expanded',String(!!value));}});const moreSummary=$('dotsToolbar').querySelector('[data-dots-more]');moreSummary.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();const menu=moreSummary.parentElement;menu.open=!menu.open;moreSummary.setAttribute('aria-expanded',String(menu.open));C.scheduleNative?.();});const handleAction=async e=>{try{if(e.target.closest('.dots-menu-content button'))$('dotsToolbar').querySelector('.dots-menu').removeAttribute('open');const task=e.target.closest('[data-dots-task]'),mc=e.target.closest('[data-dots-manager-control]'),tc=e.target.closest('[data-dots-task-control]'),decision=e.target.closest('[data-dots-decision]');if(e.target.closest('[data-dots-earlier]'))await earlier();else if(e.target.closest('[data-dots-subscriptions]')){await window.ShiYanDotsPanels.openSubscriptions();}else if(e.target.closest('[data-dots-connectors]')){await window.ShiYanDotsPanels.openConnectors();}else if(e.target.closest('[data-dots-settings]')){await window.ShiYanDotsPanels.openDotsSettings();}else if(e.target.closest('[data-dots-audit]')){await window.ShiYanDotsPanels.openAudit();}else if(e.target.closest('[data-dots-rename]')){window.ShiYanDotsPanels.openProfile();}else if(e.target.closest('[data-dots-drawer]')){drawerOpen=!drawerOpen;renderDrawer();C.scheduleNative?.();if(drawerOpen)refresh().catch(showError);}else if(e.target.closest('[data-dots-refresh]')){showError('');await refresh();if(!source)connect();}else if(task){selected=Number(task.dataset.dotsTask);const d=await api('/goals/'+selected);details[String(selected)]=d.goal;await persist();refreshContent();}else if(mc)await managerControl(mc.dataset.dotsManagerControl);else if(tc)await taskControl(tc.dataset.dotsTaskControl);else if(e.target.closest('[data-dots-refresh-approvals]'))await refresh(true);else if(decision){const card=decision.closest('[data-dots-approval]');await decide(card.dataset.dotsApprovalGoal,card.dataset.dotsApproval,decision.dataset.dotsDecision,decodeURIComponent(card.dataset.dotsApprovalCommand),window.ShiYanDotsPanels.approvalScope(Number(card.dataset.dotsApprovalGoal),Number(card.dataset.dotsApproval)));}else if(e.target.closest('[data-dots-output]'))await showOutput(e.target.closest('[data-dots-output]').dataset.dotsOutput);else if(e.target.closest('[data-dots-copy-output]'))await window.shiyan.copyText(rawOutputs.get(e.target.closest('[data-dots-copy-output]').dataset.dotsCopyOutput)||'');}catch(e){showError(e);}};view.addEventListener('click',handleAction);view.addEventListener('change',e=>{const select=e.target.closest('[data-dots-approval-scope]');if(!select)return;const card=select.closest('[data-dots-approval]');window.ShiYanDotsPanels.setApprovalScope(Number(card.dataset.dotsApprovalGoal),Number(card.dataset.dotsApproval),select.value);const hint=select.closest('.dots-approval-scope')?.querySelector('small');if(hint)hint.textContent=select.value==='once'?'只执行上面这条命令。':'同类操作之后自动执行，可在 Dots 设置里随时撤销。';});$('dotsToolbar').addEventListener('click',handleAction);document.addEventListener('click',e=>{if(!e.target.closest('.dots-menu'))$('dotsToolbar').querySelector('.dots-menu')?.removeAttribute('open');});document.addEventListener('keydown',e=>{if(active&&e.key==='Escape'){const menu=$('dotsToolbar').querySelector('.dots-menu');if(menu?.open){menu.open=false;menu.querySelector('[data-dots-more]').focus();e.preventDefault();}}});window.addEventListener('shiyan-view',activate);window.addEventListener('shiyan-state',()=>{if(active)queueMicrotask(()=>{$('workspaceTitle').replaceChildren();$('railHome').classList.add('is-active');});});document.addEventListener('visibilitychange',handleVisibilityChange);window.addEventListener('pagehide',()=>{stopVoice();disconnect();persist().catch(()=>{});});window.addEventListener('online',()=>{if(monitorAllowed()){connect();refresh().catch(showError);}});view.addEventListener('scroll',e=>{if(e.target.id==='dotsRecords')markVisibleRepliesRead();},true);hydration.then(()=>{monitorReady=true;renderUnread();connect();refresh().catch(showError);}).catch(showError);}
+ function install(context){if(!window.ShiYanAccount.user)return;C=context;setInterval(syncSendButton,1000);hydration=hydrate();hydration.catch(showError);const button=document.createElement('button');button.id='openDotsButton';button.type='button';button.className='sidebar-new-chat sidebar-dots';button.innerHTML=identityIcon()+'<span>'+esc(window.ShiYanDotsPanels?.name()||'Dots')+'</span>';button.title='Dots · 你的专属助手';button.setAttribute('aria-label','Dots 个人助手');button.onclick=()=>window.shiyan.navigate('dots');$('newConversationButton').after(button);$('agentSidebar')?.classList.add('has-dots-navigation');view=document.createElement('section');view.id='dotsView';view.className='dots-view dots-manager-view';view.hidden=true;view.setAttribute('aria-label','Dots 私人助手');view.innerHTML='<header id="dotsToolbar" class="dots-toolbar" hidden><span id="dotsStatus" class="dots-status" role="status" hidden></span><small id="dotsConnection" role="status" hidden></small><div class="dots-menu"><button type="button" data-dots-more class="wb-icon-button dots-icon-button" aria-label="更多" aria-expanded="false" title="更多">'+C.toolbarIcon('more')+'</button><div id="dotsMenuContent" class="dots-menu-content"></div></div><button id="dotsTasksButton" type="button" class="wb-icon-button dots-icon-button dots-tasks-button" data-dots-drawer aria-label="任务与活动" aria-expanded="false" title="任务与活动">'+C.toolbarIcon('tasks')+'</button><span class="dots-toolbar-divider" aria-hidden="true"></span></header><p id="dotsError" class="dots-error" role="alert" hidden></p><div class="dots-layout"><div id="dotsDetail" class="dots-detail"></div><aside id="dotsActivity" class="dots-activity" hidden></aside></div>';$('centerContent').appendChild(view);if($('toggleRightWorkspace'))$('toggleRightWorkspace').before($('dotsToolbar'));else if($('desktopToolbar'))$('desktopToolbar').appendChild($('dotsToolbar'));window.ShiYanDotsPanels.install({icon:C.icon,api,markdown,refresh,showError,sendText:async text=>{const input=$('dotsManagerInput');if(!input)return;input.value=text;drafts.manager=text;resizeComposer();await submit();},snapshot:()=>({manager,messages,tasks,goals,details,drawerOpen,selected,busy}),decideApproval:decide,approvalState,request,persist,pending:()=>pending,releaseRequest:async slot=>{delete pending[slot];await persist();},closePanel:()=>{drawerOpen=false;renderDrawer();},nameChanged:()=>{const name=window.ShiYanDotsPanels.name();renderUnread();if(active)$('workspaceTitle').replaceChildren();},scheduleNative:C.scheduleNative,voiceUpdated:focus=>{renderVoice();if(focus?.isConnected)focus.focus({preventScroll:true});}});const dotsMenu=$('dotsToolbar').querySelector('.dots-menu');Object.defineProperty(dotsMenu,'open',{get(){return this.hasAttribute('open');},set(value){this.toggleAttribute('open',!!value);this.querySelector('[data-dots-more]').setAttribute('aria-expanded',String(!!value));}});const moreSummary=$('dotsToolbar').querySelector('[data-dots-more]');moreSummary.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();const menu=moreSummary.parentElement;menu.open=!menu.open;moreSummary.setAttribute('aria-expanded',String(menu.open));C.scheduleNative?.();});const handleAction=async e=>{try{if(e.target.closest('.dots-menu-content button'))$('dotsToolbar').querySelector('.dots-menu').removeAttribute('open');const task=e.target.closest('[data-dots-task]'),mc=e.target.closest('[data-dots-manager-control]'),tc=e.target.closest('[data-dots-task-control]'),decision=e.target.closest('[data-dots-decision]');const retrySend=e.target.closest('[data-dots-retry-send]');if(retrySend){await retryPendingManagerMessage(retrySend.dataset.dotsRetrySend);return;}if(e.target.closest('[data-dots-earlier]'))await earlier();else if(e.target.closest('[data-dots-subscriptions]')){await window.ShiYanDotsPanels.openSubscriptions();}else if(e.target.closest('[data-dots-connectors]')){await window.ShiYanDotsPanels.openConnectors();}else if(e.target.closest('[data-dots-settings]')){await window.ShiYanDotsPanels.openDotsSettings();}else if(e.target.closest('[data-dots-audit]')){await window.ShiYanDotsPanels.openAudit();}else if(e.target.closest('[data-dots-rename]')){window.ShiYanDotsPanels.openProfile();}else if(e.target.closest('[data-dots-drawer]')){drawerOpen=!drawerOpen;renderDrawer();C.scheduleNative?.();if(drawerOpen)refresh().catch(showError);}else if(e.target.closest('[data-dots-refresh]')){showError('');await refresh();if(!source)connect();}else if(task){selected=Number(task.dataset.dotsTask);const d=await api('/goals/'+selected);details[String(selected)]=d.goal;await persist();refreshContent();}else if(mc)await managerControl(mc.dataset.dotsManagerControl);else if(tc)await taskControl(tc.dataset.dotsTaskControl);else if(e.target.closest('[data-dots-refresh-approvals]'))await refresh(true);else if(decision){const card=decision.closest('[data-dots-approval]');await decide(card.dataset.dotsApprovalGoal,card.dataset.dotsApproval,decision.dataset.dotsDecision,decodeURIComponent(card.dataset.dotsApprovalCommand),window.ShiYanDotsPanels.approvalScope(Number(card.dataset.dotsApprovalGoal),Number(card.dataset.dotsApproval)));}else if(e.target.closest('[data-dots-output]'))await showOutput(e.target.closest('[data-dots-output]').dataset.dotsOutput);else if(e.target.closest('[data-dots-copy-output]'))await window.shiyan.copyText(rawOutputs.get(e.target.closest('[data-dots-copy-output]').dataset.dotsCopyOutput)||'');}catch(e){showError(e);}};view.addEventListener('click',handleAction);view.addEventListener('change',e=>{const select=e.target.closest('[data-dots-approval-scope]');if(!select)return;const card=select.closest('[data-dots-approval]');window.ShiYanDotsPanels.setApprovalScope(Number(card.dataset.dotsApprovalGoal),Number(card.dataset.dotsApproval),select.value);const hint=select.closest('.dots-approval-scope')?.querySelector('small');if(hint)hint.textContent=select.value==='once'?'只执行上面这条命令。':'同类操作之后自动执行，可在 Dots 设置里随时撤销。';});$('dotsToolbar').addEventListener('click',handleAction);document.addEventListener('click',e=>{if(!e.target.closest('.dots-menu'))$('dotsToolbar').querySelector('.dots-menu')?.removeAttribute('open');});document.addEventListener('keydown',e=>{if(active&&e.key==='Escape'){const menu=$('dotsToolbar').querySelector('.dots-menu');if(menu?.open){menu.open=false;menu.querySelector('[data-dots-more]').focus();e.preventDefault();}}});window.addEventListener('shiyan-view',activate);window.addEventListener('shiyan-state',()=>{if(active)queueMicrotask(()=>{$('workspaceTitle').replaceChildren();$('railHome').classList.add('is-active');});});document.addEventListener('visibilitychange',handleVisibilityChange);window.addEventListener('pagehide',()=>{stopVoice();disconnect();persist().catch(()=>{});});window.addEventListener('online',()=>{if(monitorAllowed()){connect();refresh().catch(showError);}});view.addEventListener('scroll',e=>{if(e.target.id==='dotsRecords')markVisibleRepliesRead();},true);hydration.then(()=>{monitorReady=true;renderUnread();connect();refresh().catch(showError);}).catch(showError);}
  window.addEventListener('focus',markVisibleRepliesRead);
  window.addEventListener('resize',positionCompactVoiceCard);
  window.addEventListener('shiyan-native',event=>receiveVoiceEvent(event.detail||{}));

@@ -47,6 +47,17 @@ def register_dots(app):
             data = await request.json()
         except (ValueError, UnicodeDecodeError):
             raise ValueError("Dots 本地状态格式无效")
+        if isinstance(data, dict) and "cursor" in data and "state" not in data:
+            cursor = data.get("cursor")
+            if isinstance(cursor, bool) or not isinstance(cursor, int) or cursor < 0 or cursor > 9007199254740991:
+                raise ValueError("Dots 活动游标无效")
+            storage = request.app.state.runtime.storage
+            state = storage.setting("dotsLocalState", {})
+            if not isinstance(state, dict):
+                state = {}
+            state["cursor"] = cursor
+            storage.set_setting("dotsLocalState", state)
+            return {"ok": True}
         state = data.get("state") if isinstance(data, dict) else None
         if not isinstance(state, dict):
             raise ValueError("Dots 本地状态格式无效")

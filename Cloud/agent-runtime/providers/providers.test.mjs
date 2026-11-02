@@ -193,3 +193,12 @@ test('streamClaude：会话意外结束与中止', async () => {
   const controller = new AbortController(); controller.abort(new Error('已停止处理'));
   await assert.rejects(async () => { for await (const _ of streamClaude({ content: [], options: {}, signal: controller.signal, sdk: empty })); }, /已停止处理/);
 });
+
+
+test('HTTP MCP 配置映射到 Codex 与 Claude provider', () => {
+  const remote = { 'tencent-docs': { url: 'https://docs.qq.com/openapi/mcp', headers: { authorization: 'Bearer test-token' } } };
+  const codex = codexMcpConfig(remote);
+  assert.deepEqual(codex.servers['tencent-docs'], { url: 'https://docs.qq.com/openapi/mcp', http_headers: { authorization: 'Bearer test-token' } });
+  const claude = claudeMcpConfig(remote);
+  assert.deepEqual(claude['tencent-docs'], { type: 'http', url: 'https://docs.qq.com/openapi/mcp', headers: { authorization: 'Bearer test-token' } });
+});

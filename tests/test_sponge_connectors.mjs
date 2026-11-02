@@ -60,6 +60,8 @@ test('device management opens the fixed provider account page',()=>{
 test('Dots Connectors owns the Sponge management UI and image-only messages have no gray bubble',()=>{
   assert.match(panel,/data-sponge-act="manage"/);
   assert.match(panel,/data-sponge-act="connect"/);
+  assert.match(panel,/data-sponge-act="connect">连接<\/button>/);
+  assert.doesNotMatch(panel,/data-sponge-act="open">连接<\/button>/);
   assert.match(panel,/data-sponge-act="disconnect"/);
   assert.match(panel,/window\.ShiYanSpongeIntegration/);
   assert.doesNotMatch(source,/settings-devices-page|settings-section-title/);
