@@ -53,6 +53,20 @@ test('Claude 推理：纯文本，无工具、不落盘会话、替换系统提�
   assert.equal(blocks[0].text, '问候一下');
 });
 
+test('Claude 推理：当前模型直接获得账号 MCP 工具，不切换 Codex', async () => {
+  const { sdk, seen } = scripted(['已通过腾讯文档工具完成']);
+  const mcpServers = { 'shiyan_tencent-docs': { command: 'node', args: ['/bridge.mjs'], env: { SHIYAN_MCP_OWNER: 'shiyan-private-owner' } } };
+  const mcpToolAllowlist = ['mcp__shiyan_tencent-docs__create_doc', 'mcp__shiyan_tencent-docs__get_doc'];
+  const out = await inferClaude({ model: 'claude-sonnet-5-5', prompt: '创建文档', mcpServers, mcpToolAllowlist, sdk, credentials: creds });
+  assert.match(out.text, /腾讯文档工具/);
+  const options = seen[0].options;
+  assert.deepEqual(options.mcpServers, { 'shiyan_tencent-docs': { type: 'stdio', ...mcpServers['shiyan_tencent-docs'] } });
+  assert.deepEqual(options.allowedTools, mcpToolAllowlist);
+  assert.equal(options.permissionMode, 'dontAsk');
+  assert.equal(options.maxTurns, 20);
+  assert.match(options.systemPrompt, /MCP 服务/);
+});
+
 test('Claude 推理：历史、图片与 schema 提示进入内容块', async () => {
   const { sdk, seen } = scripted(['{"summary":"ok","score":2}']);
   const out = await inferClaude({ model: 'm', reasoning: 'default', prompt: '评分', schema: SCHEMA, history: [{ role: 'user', text: '上一页' }, { role: 'assistant', text: '上一页结果' }],

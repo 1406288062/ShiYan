@@ -159,7 +159,7 @@ async function collectClaudeText({ content, options, signal, sdk }) {
 }
 
 // 纯推理（无工具）。history: [{role,text}] 作为上下文带入；schema: 按完整 JSON Schema 校验，不通过时带着错误重试一次。
-export async function inferClaude({ model, reasoning, prompt, images = [], schema, history = [], system, webSearch = false, signal, sdk = loadClaudeSdk, credentials = claudeCredentialsConfigured }) {
+export async function inferClaude({ model, reasoning, prompt, images = [], schema, history = [], system, webSearch = false, mcpServers = {}, mcpToolAllowlist = [], signal, sdk = loadClaudeSdk, credentials = claudeCredentialsConfigured }) {
   if (!credentials()) throw Object.assign(new Error('Claude 未配置认证'), { status: 503, code: 'unavailable' });
   const base = [transcriptText(history), String(prompt || '').trim(), schema ? schemaInstruction(schema) : ''].filter(Boolean).join('\n\n');
   const imageBlocks = [];
@@ -170,8 +170,11 @@ export async function inferClaude({ model, reasoning, prompt, images = [], schem
   if (!base && !imageBlocks.length) throw Object.assign(new Error('prompt or image is required'), { status: 400 });
   // 仅在调用方明确依赖联网核验时开放检索与网页读取；其余情况一律无工具。
   const web = webSearch === true ? ['WebSearch', 'WebFetch'] : [];
-  const options = { model, ...effortOption(reasoning), cwd: isolatedCwd(), tools: web, ...(web.length ? { allowedTools: web } : {}), settingSources: [], persistSession: false,
-    permissionMode: 'dontAsk', maxTurns: web.length ? 10 : 2, systemPrompt: system || INFER_SYSTEM, env: claudeEnv() };
+  const mcpNames = Object.keys(mcpServers || {});
+  const allowedMcp = Array.isArray(mcpToolAllowlist) ? mcpToolAllowlist.filter(name => typeof name === 'string' && /^mcp__[A-Za-z0-9_-]{1,64}__[A-Za-z0-9_.-]{1,128}$/.test(name)) : [];
+  const allowedTools = [...new Set([...web, ...allowedMcp])];
+  const options = { model, ...effortOption(reasoning), cwd: isolatedCwd(), tools: web, ...(allowedTools.length ? { allowedTools } : {}), ...(mcpNames.length ? { mcpServers: claudeMcpConfig(mcpServers) } : {}), settingSources: [], persistSession: false,
+    permissionMode: 'dontAsk', maxTurns: mcpNames.length ? 20 : (web.length ? 10 : 2), systemPrompt: system || (mcpNames.length ? '你是拾燕 Dots 助手。你可以使用当前账号已连接的 MCP 服务。每个 MCP 服务都提供 mcp_list_tools 和 mcp_call_tool：先用 mcp_list_tools 按用户意图搜索真实工具，阅读返回的工具说明与参数 Schema，再用 mcp_call_tool 调用对应工具；工具结果返回后继续推理。不要臆造工具名或参数，也不得声称完成未实际成功的操作。' : INFER_SYSTEM), env: claudeEnv() };
   let usage = null, problem = '', previous = '';
   for (let attempt = 0; attempt < 2; attempt++) {
     const text = attempt ? `${base}\n\n你上一次的输出没有通过校验：${problem}\n上一次的输出：\n${previous.slice(0, 6000)}\n请只输出修正后的 JSON。` : base;

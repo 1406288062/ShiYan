@@ -3,7 +3,7 @@ import { normalizeMailPresentationLinks } from '../../dots-runtime/qq-mail-conte
 // Device owners never receive the private Dots capability or webhook signing key.
 import http from 'node:http';
 import path from 'node:path';
-import { mkdirSync, chmodSync, readFileSync, realpathSync } from 'node:fs';
+import { mkdirSync, chmodSync, readFileSync, realpathSync, readdirSync, statSync } from 'node:fs';
 import { DotsAttachments } from './dots-attachments.mjs';
 import { createDotsActivityReader, millis, readableResult } from './dots-activity.mjs';
 import { DotsSchedules } from './dots-schedules.mjs';
@@ -131,6 +131,7 @@ export class DotsStore {
   managerSnapshot(owner,manager){this.db.prepare('INSERT INTO dots_managers(owner,manager_id,snapshot,updated_at) VALUES(?,?,?,?) ON CONFLICT(owner) DO UPDATE SET snapshot=excluded.snapshot,updated_at=excluded.updated_at').run(owner,manager.id,encoded(manager),Date.now());}
   latestCursor(owner){return Number(this.db.prepare('SELECT MAX(seq) AS cursor FROM dots_events WHERE owner=?').get(owner)?.cursor||0);}
   receipt(owner,requestId){return this.db.prepare('SELECT * FROM dots_requests WHERE owner=? AND request_id=?').get(owner,requestId);}
+  recentManagerRequestIds(owner){return this.db.prepare("SELECT request_id FROM dots_requests WHERE owner=? AND operation='manager:message' ORDER BY rowid DESC LIMIT 500").all(owner).map(row=>row.request_id);}
   reserve(owner,requestId,operation,payload){
     const fingerprint=hash(encoded(payload));const prior=this.receipt(owner,requestId);
     if(prior){if(prior.operation!==operation||prior.fingerprint!==fingerprint)throw fail('此请求标识已用于不同内容',409,'request_conflict');return prior;}
@@ -187,9 +188,53 @@ export function weixinDisplay(message,shownImages=[]){
   const shown=shownImages.length?[files?'[文件'+(files>1?' ×'+files:'')+']':''].filter(Boolean).join(''):tag;
   return {...message,content:[head,shown].filter(Boolean).join('\n'),...(shownImages.length?{attachments:shownImages}:{})};
 }
+
+// 任务工作目录里由模型生成的文件，登记为 Dots 附件后在“输出内容”里展示。
+const ARTIFACT_MIME={'.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.gif':'image/gif','.webp':'image/webp','.svg':'image/svg+xml','.pdf':'application/pdf','.txt':'text/plain','.md':'text/markdown','.csv':'text/csv','.json':'application/json','.html':'text/html','.docx':'application/vnd.openxmlformats-officedocument.wordprocessingml.document','.xlsx':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','.pptx':'application/vnd.openxmlformats-officedocument.presentationml.presentation','.zip':'application/zip'};
+const SCRIPT_EXTENSIONS=new Set(['.py','.sh','.bash','.zsh','.js','.mjs','.cjs','.ts','.rb','.pl','.ps1','.bat','.cmd']);
+const PRIVATE_TASK_ROOT=path.resolve(process.env.DOTS_TASK_WORKSPACES||'/home/ubuntu/dots-runtime/workspaces');
+const MEMBER_TASK_ROOT=path.resolve(process.env.SHIYAN_MEMBER_SANDBOX_ROOT||path.join(process.env.SHIYAN_ROOT||'/home/ubuntu/boss-codex-service/shiyan-v2','data','member-workspaces'));
+export function taskArtifactFiles(dir,{maxDepth=3,limit=20}={}){
+  const found=[];
+  const walk=(current,depth)=>{
+    let entries=[];try{entries=readdirSync(current,{withFileTypes:true});}catch{return;}
+    for(const entry of entries){
+      if(entry.name.startsWith('.')||['node_modules','__pycache__','venv','.venv'].includes(entry.name)||entry.isSymbolicLink())continue;
+      const full=path.join(current,entry.name);
+      if(entry.isDirectory()){if(depth<maxDepth)walk(full,depth+1);continue;}
+      if(!entry.isFile())continue;
+      if(SCRIPT_EXTENSIONS.has(path.extname(entry.name).toLowerCase()))continue;
+      try{const stat=statSync(full);if(stat.size>0&&stat.size<=20*1024*1024)found.push({file:full,relative:path.relative(dir,full),size:stat.size,mtimeMs:stat.mtimeMs});}catch{}
+    }
+  };
+  walk(dir,0);
+  return found.sort((a,b)=>b.mtimeMs-a.mtimeMs).slice(0,limit);
+}
+export function taskArtifactOutputs(attachments,owner,taskIds,{privateOwner=false,limit=40}={}){
+  const roots=privateOwner?[PRIVATE_TASK_ROOT]:[path.join(MEMBER_TASK_ROOT,createHash('sha256').update(owner).digest('hex'),'workspace','dots')];
+  const out=[];
+  for(const taskId of taskIds){
+    if(!Number.isSafeInteger(Number(taskId))||Number(taskId)<1)continue;
+    for(const root of roots){
+      const dir=path.join(root,String(Number(taskId)));
+      let real;try{real=realpathSync(dir);}catch{continue;}
+      if(real!==dir)continue;
+      for(const item of taskArtifactFiles(dir)){
+        try{
+          const h=createHash('sha256').update(owner+'\0'+item.file+'\0'+item.size+'\0'+Math.floor(item.mtimeMs)).digest('hex'),id=[h.slice(0,8),h.slice(8,12),h.slice(12,16),h.slice(16,20),h.slice(20,32)].join('-');
+          const filename=path.basename(item.file),mimeType=ARTIFACT_MIME[path.extname(filename).toLowerCase()]||'application/octet-stream';
+          const known=attachments.db.prepare('SELECT * FROM dots_attachments WHERE owner=? AND id=?').get(owner,id);
+          const attachment=known?attachments.public(known):attachments.upload(owner,{id,filename,mimeType,data:readFileSync(item.file).toString('base64')});
+          out.push({id:'file:'+attachment.id,attachmentId:attachment.id,type:'file',taskId:Number(taskId),filename:attachment.filename,title:attachment.filename,summary:item.relative,mimeType:attachment.mimeType,bytes:attachment.bytes,downloadPath:'/api/dots/attachments/'+attachment.id,createdAt:Math.floor(item.mtimeMs),updatedAt:Math.floor(item.mtimeMs)});
+        }catch{}
+      }
+    }
+  }
+  return out.sort((a,b)=>b.createdAt-a.createdAt).slice(0,limit);
+}
 export class DotsAdapter {
   weixinView(owner,message){if(message?.role!=='user'||typeof message.content!=='string'||!message.content.includes('[用户从微信发来的附件]'))return message;return weixinDisplay(message,owner===this.allowedOwner?weixinImageAttachments(this.attachments,owner,message):[]);}
-  constructor({root,store=new DotsStore(root),client=createLocalDotsClient(),eventReader=createDotsEventReader(),activityReader=createDotsActivityReader(),allowedOwner='shiyan-private-owner',callbackURL='',importPrivateGoals=false,recoverIntervalMs=30000,subscriptionRefreshMs=4*3600000,managerPollMs=350,schedulePollMs=15000}={}) {
+  constructor({root,store=new DotsStore(root),client=createLocalDotsClient(),eventReader=createDotsEventReader(),activityReader=createDotsActivityReader(),allowedOwner='shiyan-private-owner',callbackURL='',importPrivateGoals=false,recoverIntervalMs=30000,subscriptionRefreshMs=4*3600000,managerPollMs=1000,schedulePollMs=15000}={}) {
     this.store=store;this.attachments=new DotsAttachments(root,store.db);this.client=client;this.eventReader=eventReader;this.allowedOwner=allowedOwner;this.callbackURL=callbackURL;this.importPrivateGoals=importPrivateGoals;this.listeners=new Map();this.inflight=new Map();this.subscriptionInflight=new Map();this.managerSyncInflight=new Map();this.recovering=false;this.managerPollMs=managerPollMs;
     this.activityReader=activityReader;this.schedules=new DotsSchedules(this,{pollMs:schedulePollMs});
     this.timer=recoverIntervalMs>0?setInterval(()=>void this.recover().catch(()=>{}),recoverIntervalMs):null;this.timer?.unref();
@@ -307,7 +352,7 @@ export class DotsAdapter {
     if(message.feedback!=null&&!['useful','not_useful'].includes(message.feedback))throw fail('消息反馈格式无效',502,'runtime_rejected');
     const metadata=this.attachments.message(owner,message.requestId);
     const projected=message.role==='assistant'?{...message,content:normalizeMailPresentationLinks(message.content)}:this.weixinView(owner,message);
-    return {...fields(projected,managerMessageKeys),...(Array.isArray(projected.attachments)&&projected.attachments.length?{attachments:projected.attachments}:{}),...(metadata?{content:metadata.text,attachments:metadata.attachments}:{}),id:integer(message.id,1),taskId:message.taskId==null?null:integer(message.taskId,1),respondsToMessageIds:[...new Set(message.respondsToMessageIds||[])]};
+    return {...fields(projected,managerMessageKeys),requestId:this.localRequestId(owner,message.requestId),...(Array.isArray(projected.attachments)&&projected.attachments.length?{attachments:projected.attachments}:{}),...(metadata?{content:metadata.text,attachments:metadata.attachments}:{}),id:integer(message.id,1),taskId:message.taskId==null?null:integer(message.taskId,1),respondsToMessageIds:[...new Set(message.respondsToMessageIds||[])]};
   }
   managerResponse(owner,manager,extra={}){return {ok:true,manager,messages:manager.messages||[],tasks:manager.tasks||[],...fields(manager,['hasMoreMessages','oldestMessageId','hasMoreTasks']),cursor:this.store.latestCursor(owner),...extra};}
   async managerSnapshot(owner){
@@ -353,7 +398,7 @@ export class DotsAdapter {
   }
   async controlManager(owner,input){
     this.authorize(owner);only(input,['requestId','action']);
-    if(!['pause','resume','cancel','wake'].includes(input.action))throw fail('总管操作不支持');
+    if(!['pause','resume','cancel','wake','interrupt'].includes(input.action))throw fail('总管操作不支持');
     return this.mutation(owner,input.requestId,'manager:control',{action:input.action},async()=>{
       const result=await this.clientFor(owner).tool('dots_control_manager',{owner_id:owner,action:input.action,request_id:this.remoteRequestId(owner,input.requestId)});
       const manager=this.presentManager(owner,result.manager);
@@ -423,6 +468,12 @@ export class DotsAdapter {
     return {ok:true,goals,cursor:selected.slice(0,limit).at(-1)?.goal_id??after,hasMore:selected.length>limit,sourceTruncated:Boolean(this.importSourceTruncated)};
   }
   remoteRequestId(owner,requestId){return 'shiyan:'+hash(owner+':'+requestId);}
+  localRequestId(owner,remote){
+    if(!remote||!String(remote).startsWith('shiyan:'))return remote??null;
+    let map=this.requestIdMaps?.get(owner);
+    if(!map?.has(remote)){map=new Map(this.store.recentManagerRequestIds(owner).map(id=>[this.remoteRequestId(owner,id),id]));(this.requestIdMaps??=new Map()).set(owner,map);}
+    return map.get(remote)??null;
+  }
   async mutation(owner,requestId,operation,payload,execute,{replaySafe=false,reconcile}={}) {
     this.authorize(owner);identifier(requestId);const key=owner+':'+requestId;
     const hadReceipt=Boolean(this.store.receipt(owner,requestId));const receipt=this.store.reserve(owner,requestId,operation,payload);
@@ -486,6 +537,7 @@ export class DotsAdapter {
     const conversations=groupIssueTasks(tasks,memberships).map(group=>({id:group.key,type:'conversation',taskId:group.task.id,title:group.title,status:group.task.status,createdAt:millis(group.createdAt),updatedAt:millis(group.updatedAt),lastSummary:group.task.lastSummary||'',runCount:group.tasks.reduce((n,t)=>n+Number(t.runCount||0),0),relatedTaskIds:group.tasks.map(t=>t.id),unread:false,isNew:false}));
     const scheduled=schedules.schedules.map(schedule=>({id:'schedule:'+schedule.id,type:'schedule',scheduleId:schedule.id,taskId:schedule.lastTaskId,title:schedule.title,status:schedule.status,createdAt:schedule.createdAt,updatedAt:schedule.updatedAt,lastSummary:'',schedule,unread:false,isNew:false}));
     let outputs=[];try{outputs=await this.activityReader?.outputs(tasks.map(t=>t.id),owner,{limit})||[];}catch{}
+    try{const files=taskArtifactOutputs(this.attachments,owner,tasks.map(t=>t.id),{privateOwner:owner===this.allowedOwner});if(files.length)outputs=[...files,...outputs].sort((a,b)=>(Number(b.createdAt)||0)-(Number(a.createdAt)||0)).slice(0,limit);}catch{}
     const reads=new Map(this.store.db.prepare('SELECT activity_id,seen_at FROM dots_activity_reads WHERE owner=?').all(owner).map(row=>[row.activity_id,row.seen_at]));
     const activities=[...conversations,...scheduled].sort((a,b)=>b.updatedAt-a.updatedAt).slice(0,limit).map(item=>({...item,unread:!reads.has(item.id)||item.updatedAt>reads.get(item.id),isNew:!reads.has(item.id)}));
     return {ok:true,activities,outputs,cursor:current.cursor,scheduler:schedules.scheduler,...(current.stale?{stale:true}:{}),hasMore:conversations.length+scheduled.length>limit};
