@@ -106,3 +106,6 @@ backup-*/
 /iOS/ShiYan/Untitled Project/Assets.xcassets/animeEnhancementIcon.imageset/animeEnhancementIconDark 21.50.18.png
 /iOS/ShiYan/Untitled Project/Assets.xcassets/animeEnhancementIcon.imageset/animeEnhancementIconLight 21.50.18.png
 
+
+# Runtime-installed Node dependencies
+/Cloud/agent-runtime/node_modules/
