@@ -1,5 +1,5 @@
 import { PRIVATE_OWNER } from './accounts.mjs';
-import { normalizeMailPresentationLinks } from '../../dots-runtime/qq-mail-content.mjs';
+import { normalizeMailPresentationLinks } from '../dots-runtime/qq-mail-content.mjs';
 // Device owners never receive the private Dots capability or webhook signing key.
 import http from 'node:http';
 import path from 'node:path';
