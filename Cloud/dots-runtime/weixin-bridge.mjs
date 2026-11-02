@@ -267,8 +267,8 @@ export function createWeixinBridge({ store, ingest, owner, saveInbound = null, o
   async function pushProactive() {
     const r = row(); if (!r?.token || !r.context_token) return;
     const pending = db.prepare(`SELECT m.id,m.content,m.origin FROM manager_messages m WHERE m.manager_id=? AND m.role='assistant' AND m.id>? AND m.delivery_state='completed'
-      AND ((m.origin='proactive' AND ?=1) OR (COALESCE(m.responds_to_message_ids,'[]')='[]' AND COALESCE(m.origin,'')<>'proactive'
-        AND (SELECT u.host FROM manager_messages u WHERE u.manager_id=m.manager_id AND u.role='user' AND u.id<m.id ORDER BY u.id DESC LIMIT 1)='weixin'))
+      AND ((m.origin='proactive' AND ?=1) OR (COALESCE(m.origin,'')<>'proactive'
+        AND (COALESCE((SELECT u.host FROM manager_messages u WHERE u.manager_id=m.manager_id AND u.role='user' AND u.id<m.id ORDER BY u.id DESC LIMIT 1),'')<>'weixin' OR COALESCE(m.responds_to_message_ids,'[]')='[]')))
       ORDER BY m.id LIMIT 5`).all(managerId, r.last_pushed_id, r.push_proactive ? 1 : 0);
     for (const item of pending) {
       // 拆成多条的长邮件（如英文原文 + 中文翻译）先拼回一封，再做精简版。

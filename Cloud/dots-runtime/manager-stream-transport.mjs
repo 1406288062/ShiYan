@@ -73,6 +73,9 @@ export function createManagerThread({threadId=null,options={},codexPath=process.
     try{
       await rpc('initialize',{clientInfo:{name:'shiyan-dots-manager',version:'1.0'},capabilities:{experimentalApi:true}});send({method:'initialized'});
       const config={web_search:options.webSearchMode||'disabled','sandbox_workspace_write.network_access':false};
+      // Account-scoped connectors are supplied by the Dots runtime. Never read
+      // a global user's connector config: each MCP bridge carries its owner/id.
+      if(options.mcpServers&&typeof options.mcpServers==='object')config.mcp_servers=options.mcpServers;
       if(options.modelReasoningEffort)config.model_reasoning_effort=options.modelReasoningEffort;
       if(privateReview){
         // Per-thread overrides use actual App Server config fields. Explicitly

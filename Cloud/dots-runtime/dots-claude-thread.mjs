@@ -19,7 +19,7 @@ export function hubAwareThread({ hub, owner, consumer, threadId = null, options 
   async function hubRun(prompt, { outputSchema, signal, images } = {}) {
     try {
       const attached = hubImages(images);
-      const out = await hub.infer(consumer, { prompt, outputSchema, account: owner, threadKey: consumer + ':' + key, ...(attached.length ? { images: attached } : {}) }, { signal, timeoutMs: 360000 });
+      const out = await hub.infer(consumer, { prompt, outputSchema, account: owner, threadKey: consumer + ':' + key, ...(attached.length ? { images: attached } : {}), ...(options.mcpServers && Object.keys(options.mcpServers).length ? { mcpServers: options.mcpServers } : {}), ...(Array.isArray(options.mcpToolAllowlist) && options.mcpToolAllowlist.length ? { mcpToolAllowlist: options.mcpToolAllowlist } : {}) }, { signal, timeoutMs: 360000 });
       return { finalResponse: out.finalResponse, usage: out.usage || null, items: [] };
     } finally { lastHubCall.set(owner + '|' + consumer, Date.now()); }
   }

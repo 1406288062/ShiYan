@@ -1,0 +1,98 @@
+#!/usr/bin/env node
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const envText = readFileSync(path.join(here, ".env"), "utf8");
+const cfg = {};
+for (const line of envText.split(/\r?\n/)) {
+  const s = line.trim();
+  if (!s || s.startsWith("#")) continue;
+  const i = s.indexOf("=");
+  if (i > 0) cfg[s.slice(0, i)] = s.slice(i + 1);
+}
+const token = cfg.DOTS_TOKEN;
+const host = cfg.DOTS_HOST || "127.0.0.1";
+const port = cfg.DOTS_PORT || "4330";
+const base = `http://${host}:${port}`;
+
+async function api(method, route, body) {
+  const response = await fetch(base + route, {
+    method,
+    headers: {
+      "authorization": `Bearer ${token}`,
+      ...(body === undefined ? {} : { "content-type": "application/json" })
+    },
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+  const data = await response.json().catch(() => ({ ok: false, error: `HTTP ${response.status}` }));
+  if (!response.ok) process.exitCode = 1;
+  console.log(JSON.stringify(data, null, 2));
+}
+
+const [cmd, ...args] = process.argv.slice(2);
+
+switch (cmd) {
+  case "health":
+    await api("GET", "/health");
+    break;
+  case "list":
+  case "goals":
+    await api("GET", "/v1/goals");
+    break;
+  case "show":
+    await api("GET", `/v1/goals/${Number(args[0])}`);
+    break;
+  case "create": {
+    const title = args[0];
+    const instruction = args.slice(1).join(" ");
+    if (!title || !instruction) {
+      console.error('Usage: dotsctl create "Title" "Instruction..."');
+      process.exit(2);
+    }
+    await api("POST", "/v1/goals", { title, instruction, runNow: true });
+    break;
+  }
+  case "wake":
+    await api("POST", `/v1/goals/${Number(args[0])}/wake`, { reason: args.slice(1).join(" ") || "manual wake" });
+    break;
+  case "instruct":
+    await api("POST", `/v1/goals/${Number(args[0])}/instruct`, { message: args.slice(1).join(" ") });
+    break;
+  case "pause":
+  case "resume":
+  case "cancel":
+    await api("POST", `/v1/goals/${Number(args[0])}/${cmd}`, {});
+    break;
+  case "notifications":
+    await api("GET", "/v1/notifications?unread=1");
+    break;
+  case "approvals":
+    await api("GET", "/v1/approvals?status=pending");
+    break;
+  case "approve":
+    await api("POST", `/v1/approvals/${Number(args[0])}/decision`, { decision: "approve" });
+    break;
+  case "reject":
+    await api("POST", `/v1/approvals/${Number(args[0])}/decision`, { decision: "reject" });
+    break;
+  case "timeline": {
+    const goalId = Number(args[0] || 0);
+    await api("GET", goalId ? `/v1/timeline?goalId=${goalId}&limit=100` : "/v1/timeline?limit=100");
+    break;
+  }
+  default:
+    console.log(`dotsctl commands:
+  health
+  list
+  show <goalId>
+  create "Title" "Instruction..."
+  wake <goalId> [reason]
+  instruct <goalId> <message>
+  pause|resume|cancel <goalId>
+  notifications
+  approvals
+  approve|reject <approvalId>
+  timeline [goalId]`);
+}
