@@ -37,6 +37,7 @@ final class DotsStore: ObservableObject {
     private var durableEventCursor = 0
     private var available = true
     private var refreshing = false
+    private var inFlightManagerRequests = Set<String>()
     private var refreshingIdentity = false
     private var active = false
     private var readingLatest = false
@@ -91,6 +92,7 @@ final class DotsStore: ObservableObject {
     var draft: String { state.drafts[draftKey] ?? "" }
     var attachments: [DotsAttachment] { state.draftAttachments ?? [] }
     var hasPending: Bool { state.pending != nil }
+    var queuedManagerMessages: [DotsPendingOperation] { state.managerQueue ?? [] }
     var hasPendingVoice: Bool {
         guard let operation = state.pending else { return false }
         return operation.route == "manager/messages" && operation.draftKey == nil &&
@@ -98,7 +100,7 @@ final class DotsStore: ObservableObject {
     }
     var canStartVoice: Bool { !sending && !uploading && (!hasPending || hasPendingVoice) }
     var canSend: Bool {
-        available && !sending && !uploading && !hasPending &&
+        available && !uploading &&
             (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty)
     }
 
@@ -122,6 +124,10 @@ final class DotsStore: ObservableObject {
            cached.version == 1, cached.identity == identity { state = cached }
         else { state = DotsSavedState(identity: identity) }
         durableEventCursor = state.cursor
+        // 上次退出时仍在发送的消息：标记为可重试，requestId 保证不会重复入库。
+        for operation in state.managerQueue ?? [] where operation.sendFailed != true {
+            state.markManagerMessage(operation.requestId, failed: true, error: "上次发送中断，请重试")
+        }
         if state.readState == nil, let latest = state.managerMessages?.map(\.id).max() {
             state.readState = DotsMessageReadState(baseline: latest)
         }
@@ -409,8 +415,42 @@ final class DotsStore: ObservableObject {
         let text = quote.map { DotsQuote.compose(quote: $0, body: body) } ?? body
         let operation = DotsPendingOperation(requestId: UUID().uuidString,
             route: "manager/messages", text: text, draftKey: draftKey, attachments: attachments)
-        await perform(operation)
+        do { try configure() } catch { notice = error.localizedDescription; return }
+        let before = state
+        state.enqueueManagerMessage(operation)
+        state.drafts[draftKey] = ""
+        state.draftAttachments = []
+        do { try save() } catch { state = before; notice = "消息保存失败，请重试"; return }
+        await sendManagerMessage(operation)
     }
+    /// 文字消息与网页端一致：立即入队，每条独立发送，不等待上一条。
+    func retryManagerMessage(_ requestId: String) async {
+        guard let operation = queuedManagerMessages.first(where: { $0.requestId == requestId }) else { return }
+        state.markManagerMessage(requestId, failed: false, error: nil)
+        try? save()
+        await sendManagerMessage(operation)
+    }
+    private func sendManagerMessage(_ operation: DotsPendingOperation) async {
+        guard !inFlightManagerRequests.contains(operation.requestId) else { return }
+        inFlightManagerRequests.insert(operation.requestId)
+        defer { inFlightManagerRequests.remove(operation.requestId) }
+        do {
+            try configure()
+            let id = try await client.dotsMutate(operation)
+            mergeAcceptedUserMessage(operation, id: id)
+            state.completeManagerMessage(operation.requestId)
+            try save()
+            scheduleRefresh()
+        } catch let error as DotsRejectedRequest {
+            state.markManagerMessage(operation.requestId, failed: true, error: error.localizedDescription)
+            try? save()
+            notice = error.localizedDescription
+        } catch {
+            state.markManagerMessage(operation.requestId, failed: true, error: "未确认发送结果，内容已保留")
+            try? save()
+        }
+    }
+
     /// Voice uses the same durable request and transport as typed messages.
     /// Acknowledgement releases sending immediately; refresh is independent.
     func submitVoice(_ text: String, requestID: String) async throws -> Int {

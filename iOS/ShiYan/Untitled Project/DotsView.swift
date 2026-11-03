@@ -128,6 +128,28 @@ struct DotsView: View {
                                     .id("dots-optimistic-\(operation.requestId)")
                                     .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .bottomTrailing)))
                             }
+                            ForEach(store.queuedManagerMessages, id: \.requestId) { operation in
+                                if !store.messages.contains(where: { $0.requestId == operation.requestId }) {
+                                    VStack(alignment: .trailing, spacing: 6) {
+                                        managerMessage(DotsManagerMessage(id: -1, role: "user", content: operation.text ?? "",
+                                            attachments: operation.attachments, requestId: operation.requestId))
+                                            .opacity(operation.sendFailed == true ? 1 : 0.72)
+                                        if operation.sendFailed == true {
+                                            Button {
+                                                Task { await store.retryManagerMessage(operation.requestId) }
+                                            } label: {
+                                                Label(operation.sendError ?? "发送失败，点按重试", systemImage: "arrow.clockwise")
+                                                    .font(.caption)
+                                            }
+                                            .buttonStyle(.plain).foregroundStyle(.red)
+                                            .accessibilityIdentifier("dots-send-retry-\(operation.requestId)")
+                                        }
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .trailing)
+                                    .id("dots-queued-\(operation.requestId)")
+                                    .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .bottomTrailing)))
+                                }
+                            }
                             if awaitingReply {
                                 DotsThinkingIndicator()
                                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -488,7 +510,7 @@ struct DotsView: View {
             (item.attachments ?? []).allSatisfy { $0.mimeType.hasPrefix("image/") }
         HStack(alignment: .top) {
             if item.role == "user" { Spacer(minLength: 28) }
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: imageOnly ? .trailing : .leading, spacing: 8) {
                 if item.role == "system" {
                     Text("状态").font(.caption).foregroundStyle(.secondary)
                 }
@@ -526,6 +548,7 @@ struct DotsView: View {
             }
             .padding(item.role == "system" || imageOnly ? 0 : 14)
             .background { if item.role != "system" && !imageOnly { DotsBubbleBackground(isUser: item.role == "user") } }
+            .frame(maxWidth: imageOnly ? CGFloat.infinity : nil, alignment: .trailing)
             .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 20, style: .continuous))
             .agentLongPressMenu(isLong: AgentLongMessage.isLong(item.content)) {
                 if item.role != "system" {
@@ -727,7 +750,7 @@ struct DotsView: View {
                     .lineLimit(1...(inputFocused ? 8 : 1)).font(.body).focused($inputFocused)
                     .foregroundStyle(inputInk)
                     .frame(minHeight: 36)
-                    .disabled(store.hasPending).accessibilityIdentifier("dots-composer")
+                    .accessibilityIdentifier("dots-composer")
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
                         // 变成多行后：文字在上占满整行，按钮放到底部一行；明显变短才切回，避免来回跳。
                         if !composerTall && height > 44 { composerTallAt = store.draft.count; withAnimation(.easeOut(duration: 0.18)) { composerTall = true } }
@@ -749,11 +772,8 @@ struct DotsView: View {
                             }
                         } label: {
                             Group {
-                                if store.sending && !voiceButtonMode { ProgressView() }
-                                else {
-                                    Image(systemName: voiceButtonMode ? (voice.active ? "stop.fill" : "waveform") : "arrow.up")
+                                Image(systemName: voiceButtonMode ? (voice.active ? "stop.fill" : "waveform") : "arrow.up")
                                         .font(.system(size: 19, weight: .bold))
-                                }
                             }.foregroundStyle(.white)
                                 .frame(width: 36, height: 36)
                                 .background(sendFill, in: Circle())
@@ -794,11 +814,8 @@ struct DotsView: View {
                         }
                     } label: {
                         Group {
-                            if store.sending && !voiceButtonMode { ProgressView() }
-                            else {
-                                Image(systemName: voiceButtonMode ? (voice.active ? "stop.fill" : "waveform") : "arrow.up")
+                            Image(systemName: voiceButtonMode ? (voice.active ? "stop.fill" : "waveform") : "arrow.up")
                                     .font(.system(size: 19, weight: .bold))
-                            }
                         }.foregroundStyle(.white)
                             .frame(width: 36, height: 36)
                             .background(sendFill, in: Circle())

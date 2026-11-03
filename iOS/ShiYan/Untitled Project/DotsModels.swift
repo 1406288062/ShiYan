@@ -187,6 +187,9 @@ struct DotsPendingOperation: Codable, Equatable {
     var draftKey: String?
     var attachments: [DotsAttachment]?
     var schedule: DotsSchedule?
+    /// 待发队列里的文字消息：发送失败后保留内容，允许点按重试。
+    var sendFailed: Bool? = nil
+    var sendError: String? = nil
     var body: [String: Any] {
         var value: [String: Any] = ["requestId": requestId]
         if let conversationId { value["conversationId"] = conversationId }
@@ -247,6 +250,8 @@ struct DotsSavedState: Codable {
     var draftAttachments: [DotsAttachment]?
     var profile: DotsProfile?
     var panel: DotsPanelResponse?
+    /// 与网页端 pending.managerMessages 对应：每条文字消息独立入队、独立发送。
+    var managerQueue: [DotsPendingOperation]?
 
     mutating func accept(_ event: DotsEvent) {
         guard event.seq > cursor else { return }
@@ -269,6 +274,26 @@ struct DotsSavedState: Codable {
             merged[message.id] = message
         }
         managerMessages = merged.values.sorted { $0.id < $1.id }
+        pruneManagerQueue()
+    }
+    mutating func enqueueManagerMessage(_ operation: DotsPendingOperation) {
+        managerQueue = (managerQueue ?? []) + [operation]
+    }
+    mutating func completeManagerMessage(_ requestId: String) {
+        managerQueue?.removeAll { $0.requestId == requestId }
+        if managerQueue?.isEmpty == true { managerQueue = nil }
+    }
+    mutating func markManagerMessage(_ requestId: String, failed: Bool, error: String?) {
+        guard let index = managerQueue?.firstIndex(where: { $0.requestId == requestId }) else { return }
+        managerQueue?[index].sendFailed = failed
+        managerQueue?[index].sendError = error
+    }
+    /// 服务端已经收到（同一 requestId 的消息出现在对话里）后，移出队列。
+    mutating func pruneManagerQueue() {
+        guard let queue = managerQueue, !queue.isEmpty else { return }
+        let delivered = Set((managerMessages ?? []).compactMap(\.requestId))
+        let rest = queue.filter { !delivered.contains($0.requestId) }
+        managerQueue = rest.isEmpty ? nil : rest
     }
     mutating func acknowledged(_ operation: DotsPendingOperation) {
         guard pending?.requestId == operation.requestId else { return }
