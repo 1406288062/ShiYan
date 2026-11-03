@@ -20,7 +20,7 @@ const ISOLATED_SERVER = 'workspace';
 const IMAGE_TYPES = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif' };
 const PRIVILEGED_APPEND = [
   '你在拾燕中为用户工作。使用用户的语言回答。',
-  '生成或修改的文件保存在当前工作目录内；需要交付给用户的文件，用 Markdown 链接引用其路径，拾燕会据此展示和提供下载。',
+  '生成或修改的文件保存在当前工作目录内；只有用户明确要求交付文件时才创建文件；不要为了展示内容而生成 TXT、JSON、MD 等文件，回答直接写在回复里。需要交付的文件保存在当前工作目录内，并用 Markdown 链接引用其路径。',
 ].join('\n');
 let sdkPromise;
 export const loadClaudeSdk = () => (sdkPromise ||= import(SDK));

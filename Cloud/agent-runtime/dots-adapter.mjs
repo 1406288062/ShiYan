@@ -191,6 +191,7 @@ export function weixinDisplay(message,shownImages=[]){
 
 // 任务工作目录里由模型生成的文件，登记为 Dots 附件后在“输出内容”里展示。
 const ARTIFACT_MIME={'.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.gif':'image/gif','.webp':'image/webp','.svg':'image/svg+xml','.pdf':'application/pdf','.txt':'text/plain','.md':'text/markdown','.csv':'text/csv','.json':'application/json','.html':'text/html','.docx':'application/vnd.openxmlformats-officedocument.wordprocessingml.document','.xlsx':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','.pptx':'application/vnd.openxmlformats-officedocument.presentationml.presentation','.zip':'application/zip'};
+const NOISE_EXTENSIONS=new Set(['.txt','.md','.json']);
 const SCRIPT_EXTENSIONS=new Set(['.py','.sh','.bash','.zsh','.js','.mjs','.cjs','.ts','.rb','.pl','.ps1','.bat','.cmd']);
 const PRIVATE_TASK_ROOT=path.resolve(process.env.DOTS_TASK_WORKSPACES||'/home/ubuntu/dots-runtime/workspaces');
 const MEMBER_TASK_ROOT=path.resolve(process.env.SHIYAN_MEMBER_SANDBOX_ROOT||path.join(process.env.SHIYAN_ROOT||'/home/ubuntu/boss-codex-service/shiyan-v2','data','member-workspaces'));
@@ -203,7 +204,7 @@ export function taskArtifactFiles(dir,{maxDepth=3,limit=20}={}){
       const full=path.join(current,entry.name);
       if(entry.isDirectory()){if(depth<maxDepth)walk(full,depth+1);continue;}
       if(!entry.isFile())continue;
-      if(SCRIPT_EXTENSIONS.has(path.extname(entry.name).toLowerCase()))continue;
+      if(SCRIPT_EXTENSIONS.has(path.extname(entry.name).toLowerCase())||NOISE_EXTENSIONS.has(path.extname(entry.name).toLowerCase()))continue;
       try{const stat=statSync(full);if(stat.size>0&&stat.size<=20*1024*1024)found.push({file:full,relative:path.relative(dir,full),size:stat.size,mtimeMs:stat.mtimeMs});}catch{}
     }
   };

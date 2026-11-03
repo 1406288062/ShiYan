@@ -17,6 +17,8 @@ export function readableResult(value){
   return String(value||'');
 }
 const within=(root,file)=>file===root||file.startsWith(root+path.sep);
+// 面板只展示用户要的文件：自动生成的 TXT/MD/JSON 不进入“输出内容”。
+const NOISE_EXTENSIONS=new Set(['.txt','.md','.json']);
 const mime=file=>({'.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.gif':'image/gif','.webp':'image/webp','.svg':'image/svg+xml','.pdf':'application/pdf','.txt':'text/plain; charset=utf-8','.md':'text/markdown; charset=utf-8','.json':'application/json','.csv':'text/csv; charset=utf-8','.html':'text/html; charset=utf-8','.zip':'application/zip'})[path.extname(file).toLowerCase()]||'application/octet-stream';
 
 // This projection only reads runtime records and visible assistant messages.
@@ -65,6 +67,7 @@ export function createDotsActivityReader({databasePath='/home/ubuntu/dots-runtim
           inspected++;if(entry.name.startsWith('.')||['node_modules','__pycache__','venv'].includes(entry.name))continue;
           const full=path.join(dir,entry.name);if(entry.isSymbolicLink())continue;
           if(entry.isDirectory()){walk(full,depth+1);continue;}if(!entry.isFile())continue;
+          if(NOISE_EXTENSIONS.has(path.extname(entry.name).toLowerCase()))continue;
           const stat=statSync(full);if(!stat.size||stat.size>32*1024*1024)continue;
           const relative=path.relative(workspace,full),key=Buffer.from(relative).toString('base64url');
           found.push({id:'file:'+id+':'+key,kind:'file',taskId:Number(id),filename:entry.name,relativePath:relative,mimeType:mime(full),bytes:stat.size,createdAt:stat.mtimeMs,downloadPath:'/v1/dots/artifacts/'+id+'/'+key});
@@ -82,6 +85,7 @@ export function createDotsActivityReader({databasePath='/home/ubuntu/dots-runtim
     for(const file of snapshot.files||[]){
       const match=String(file.path||'').match(/^\/workspace\/dots\/(\d+)\/(.+)$/);if(!match||!allowed.has(Number(match[1])))continue;
       const relative=match[2];if(relative.split('/').some(part=>part.startsWith('.')||['node_modules','__pycache__','venv'].includes(part)))continue;
+      if(NOISE_EXTENSIONS.has(path.posix.extname(relative).toLowerCase()))continue;
       if(!file.size||file.size>32*1024*1024)continue;
       const id=Number(match[1]),key=Buffer.from(relative).toString('base64url');
       result.push({id:'file:'+id+':'+key,kind:'file',taskId:id,filename:path.posix.basename(relative),relativePath:relative,mimeType:mime(relative),bytes:file.size,createdAt:file.modifiedAt||0,downloadPath:'/v1/dots/artifacts/'+id+'/'+key});
@@ -117,8 +121,9 @@ export function createDotsActivityReader({databasePath='/home/ubuntu/dots-runtim
     outputs(ids,owner,{limit=100}={}){
       if(!ids.length)return [];
       const rows=database().prepare('SELECT o.id,o.goal_id,o.run_number,o.status,o.summary,o.notification,o.created_at FROM agent_outputs o JOIN goals g ON g.id=o.goal_id WHERE g.manager_id=? AND o.goal_id IN ('+ids.map(()=>'?').join(',')+') ORDER BY o.id DESC LIMIT ?').all('manager:'+owner,...ids,limit);
-      const texts=rows.map(row=>({id:'output:'+row.id,outputId:row.id,kind:'text',taskId:row.goal_id,filename:'任务-'+row.goal_id+'-第'+row.run_number+'次回复.txt',mimeType:'text/plain; charset=utf-8',summary:row.notification||row.summary,createdAt:millis(row.created_at),status:row.status,downloadPath:'/v1/dots/outputs/'+row.id+'/file'}));
-      const combine=files=>[...files,...texts].sort((a,b)=>b.createdAt-a.createdAt).slice(0,limit);
+      // Run replies are no longer listed as .txt outputs.
+      const unusedTexts=rows.map(row=>({id:'output:'+row.id,outputId:row.id,kind:'text',taskId:row.goal_id,filename:'任务-'+row.goal_id+'-第'+row.run_number+'次回复.txt',mimeType:'text/plain; charset=utf-8',summary:row.notification||row.summary,createdAt:millis(row.created_at),status:row.status,downloadPath:'/v1/dots/outputs/'+row.id+'/file'}));
+      const combine=files=>[...files].sort((a,b)=>b.createdAt-a.createdAt).slice(0,limit);
       return privateOwner(owner)?combine(files(ids,owner,{limit})):memberFiles(ids,owner,{limit}).then(combine);
     },
     artifact(id,key,owner){
