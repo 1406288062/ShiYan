@@ -537,7 +537,7 @@ struct DotsView: View {
                         }
                     } label: {
                         if attachment.mimeType.hasPrefix("image/") {
-                            DotsAttachmentThumbnail(attachment: attachment)
+                            DotsAttachmentThumbnail(attachment: attachment, alignment: item.role == "user" ? .trailing : .leading)
                         } else {
                             Label(attachment.filename, systemImage: "doc")
                                 .font(.subheadline).lineLimit(2).padding(10)
@@ -2589,6 +2589,8 @@ enum DotsHubTab: CaseIterable {
 /// 消息里的图片附件（比如微信发来的图片）直接显示缩略图；点按仍打开完整预览。
 private struct DotsAttachmentThumbnail: View {
     let attachment: DotsAttachment
+    /// Resizable images fill their 220pt box and center by default; user images sit on the trailing edge.
+    var alignment: Alignment = .leading
     @State private var image: UIImage?
     @State private var failed = false
 
@@ -2596,7 +2598,7 @@ private struct DotsAttachmentThumbnail: View {
         Group {
             if let image {
                 Image(uiImage: image).resizable().scaledToFit()
-                    .frame(maxWidth: 220, maxHeight: 220)
+                    .frame(maxWidth: 220, maxHeight: 220, alignment: alignment)
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             } else if failed {
                 Label(attachment.filename, systemImage: "photo")
