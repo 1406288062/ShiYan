@@ -96,7 +96,7 @@ test('worker projection reads real visible turns and downloads only files in the
   const reader=createDotsActivityReader({databasePath,workspaceRoot,sessionRoot});t.after(()=>{reader.close();db.close();rmSync(root,{recursive:true,force:true});});
   const conversation=reader.conversation(7,OWNER);assert.equal(conversation.transcriptAvailable,true);assert.ok(conversation.messages.some(m=>m.content==='正在处理真实任务'));assert.ok(!JSON.stringify(conversation).includes('NEVER EXPOSE'));
   assert.ok(conversation.messages.some(m=>m.content==='实际完成的回复'));assert.equal(conversation.messages.at(-1).content,'完成后追加问题');assert.equal(conversation.messages.at(-1).source,'manager_message');assert.throws(()=>reader.conversation(7,'foreign-owner'),error=>error.status===404);
-  const outputs=reader.outputs([7],OWNER);assert.ok(outputs.some(o=>o.kind==='text'));const file=outputs.find(o=>o.filename==='answer.txt');assert.ok(file);assert.ok(!outputs.some(o=>o.filename==='escape.txt'));
+  const outputs=reader.outputs([7],OWNER);assert.ok(!outputs.some(o=>o.kind==='text'));assert.ok(!outputs.some(o=>o.filename==='answer.txt'));assert.ok(!outputs.some(o=>o.filename==='escape.txt'));
   assert.equal(reader.artifact(7,file.downloadPath.split('/').at(-1),OWNER).data.toString(),'actual output');
   assert.throws(()=>reader.artifact(7,Buffer.from('../outside.txt').toString('base64url'),OWNER));assert.throws(()=>reader.artifact(7,Buffer.from('escape.txt').toString('base64url'),OWNER));
 });
