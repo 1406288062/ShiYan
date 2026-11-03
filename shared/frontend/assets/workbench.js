@@ -527,6 +527,8 @@
       if(!link||event.defaultPrevented||event.button>0)return;
       let url;try{url=new URL(link.getAttribute('href'),location.href);}catch{return;}
       if(!['http:','https:'].includes(url.protocol))return;
+      // Web browsers: let the anchor (target=_blank) open in the user's own browser. The right toolbar is desktop-only.
+      if(!window.webkit?.messageHandlers?.native)return;
       // Route Dots links directly; do not depend on WKWebView target=_blank forwarding.
       event.preventDefault();
       openTab({type:'browser',title:url.hostname,url:url.href});

@@ -548,7 +548,7 @@ final class DotsStore: ObservableObject {
         } catch { notice = "历史消息暂不可用，请重试" }
     }
     func managerControl(_ action: String) async {
-        guard ["pause", "resume", "cancel", "wake"].contains(action) else { return }
+        guard ["pause", "resume", "cancel", "wake", "interrupt"].contains(action) else { return }
         await perform(DotsPendingOperation(requestId: UUID().uuidString, route: "manager/control", action: action))
     }
     func loadRelationship() async {

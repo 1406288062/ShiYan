@@ -759,7 +759,7 @@ struct DotsView: View {
                 if !tallLayout {
                         Button {
                             inputFocused = false
-                            if voiceButtonMode { Task { await voice.toggle() } }
+                            if voiceButtonMode { if stopMode { Task { await store.managerControl("interrupt") } } else { Task { await voice.toggle() } } }
                             else {
                                 // Show the thinking state on the same frame as the tap.
                                 let quote = replyTarget.map { DotsQuote.excerpt($0.content) }
@@ -772,15 +772,15 @@ struct DotsView: View {
                             }
                         } label: {
                             Group {
-                                Image(systemName: voiceButtonMode ? (voice.active ? "stop.fill" : "waveform") : "arrow.up")
+                                Image(systemName: voiceButtonMode ? (voice.active || stopMode ? "stop.fill" : "waveform") : "arrow.up")
                                         .font(.system(size: 19, weight: .bold))
                             }.foregroundStyle(.white)
                                 .frame(width: 36, height: 36)
                                 .background(sendFill, in: Circle())
                         }
                         .buttonStyle(.plain)
-                        .disabled(voiceButtonMode ? (!voice.active && !store.canStartVoice) : !store.canSend)
-                        .accessibilityLabel(voiceButtonMode ? (voice.active ? "结束语音聊天" : "语音实时聊天") : "发送")
+                        .disabled(voiceButtonMode ? (!voice.active && !stopMode && !store.canStartVoice) : !store.canSend)
+                        .accessibilityLabel(voiceButtonMode ? (voice.active ? "结束语音聊天" : (stopMode ? "中断" : "语音实时聊天")) : "发送")
                         .accessibilityIdentifier("dots-send")
                 }
             }
@@ -801,7 +801,7 @@ struct DotsView: View {
                     Spacer(minLength: 0)
                     Button {
                         inputFocused = false
-                        if voiceButtonMode { Task { await voice.toggle() } }
+                        if voiceButtonMode { if stopMode { Task { await store.managerControl("interrupt") } } else { Task { await voice.toggle() } } }
                         else {
                             // Show the thinking state on the same frame as the tap.
                             let quote = replyTarget.map { DotsQuote.excerpt($0.content) }
@@ -814,15 +814,15 @@ struct DotsView: View {
                         }
                     } label: {
                         Group {
-                            Image(systemName: voiceButtonMode ? (voice.active ? "stop.fill" : "waveform") : "arrow.up")
+                            Image(systemName: voiceButtonMode ? (voice.active || stopMode ? "stop.fill" : "waveform") : "arrow.up")
                                     .font(.system(size: 19, weight: .bold))
                         }.foregroundStyle(.white)
                             .frame(width: 36, height: 36)
                             .background(sendFill, in: Circle())
                     }
                     .buttonStyle(.plain)
-                    .disabled(voiceButtonMode ? (!voice.active && !store.canStartVoice) : !store.canSend)
-                    .accessibilityLabel(voiceButtonMode ? (voice.active ? "结束语音聊天" : "语音实时聊天") : "发送")
+                    .disabled(voiceButtonMode ? (!voice.active && !stopMode && !store.canStartVoice) : !store.canSend)
+                    .accessibilityLabel(voiceButtonMode ? (voice.active ? "结束语音聊天" : (stopMode ? "中断" : "语音实时聊天")) : "发送")
                     .accessibilityIdentifier("dots-send")
                 }
                 .transition(.opacity)
@@ -848,6 +848,8 @@ struct DotsView: View {
     private var voiceButtonMode: Bool {
         store.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && store.attachments.isEmpty
     }
+    /// Empty composer while Dots is replying: the send slot becomes the interrupt button.
+    private var stopMode: Bool { voiceButtonMode && !voice.active && awaitingReply }
     private var taskSheet: some View {
         GeometryReader { geometry in
             NavigationStack {
@@ -1663,7 +1665,7 @@ struct DotsBubbleBackground: View {
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
         if isUser {
-            shape.fill(Color(uiColor: .systemBackground)).overlay(shape.fill(Color.primary.opacity(0.045)))
+            shape.fill(Color(red: 0.04, green: 0.52, blue: 1.0))
         } else {
             shape.fill(scheme == .dark ? Color.white.opacity(0.06) : Color(red: 0.965, green: 0.968, blue: 0.985))
                 .overlay(shape.strokeBorder(Color.primary.opacity(scheme == .dark ? 0.07 : 0.05), lineWidth: 0.5))
