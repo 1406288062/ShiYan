@@ -3,6 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { randomUUID, createHash } from 'node:crypto';
 import { mkdirSync, chmodSync } from 'node:fs';
 import path from 'node:path';
+import { worthExtracting } from './memory-filter.mjs';
 
 const DAY=86400000;
 export const MAX_MEMORIES=500;
@@ -36,6 +37,36 @@ export class MemoryStore {
       CREATE INDEX IF NOT EXISTS memory_queue_pending ON memory_queue(state,available_at);
       CREATE TABLE IF NOT EXISTS memory_tombstones(owner TEXT NOT NULL,scope TEXT NOT NULL,project_id TEXT NOT NULL,conversation_id TEXT NOT NULL,semantic_key TEXT NOT NULL,deleted_at INTEGER NOT NULL,PRIMARY KEY(owner,scope,project_id,conversation_id,semantic_key));`);
     if(!this.db.prepare('PRAGMA table_info(memory_settings)').all().some(column=>column.name==='forget_before'))this.db.exec('ALTER TABLE memory_settings ADD COLUMN forget_before INTEGER NOT NULL DEFAULT 0');
+  }
+  // Persistent candidate cache: identical turn + identical existing memories => reuse the model result.
+  cacheKey(job,existing){return digest(job.user_text+'\0'+(job.project_id||'')+'\0'+(job.conversation_id||'')+'\0'+JSON.stringify(existing));}
+  cacheGet(owner,key){
+    this.db.exec('CREATE TABLE IF NOT EXISTS memory_extract_cache(owner TEXT NOT NULL,cache_key TEXT NOT NULL,result TEXT NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(owner,cache_key))');
+    const row=this.db.prepare('SELECT result,created_at FROM memory_extract_cache WHERE owner=? AND cache_key=?').get(owner,key);
+    if(!row||Number(row.created_at)<this.now()-30*DAY)return null;
+    try{return JSON.parse(row.result);}catch{return null;}
+  }
+  cachePut(owner,key,result){
+    this.db.exec('CREATE TABLE IF NOT EXISTS memory_extract_cache(owner TEXT NOT NULL,cache_key TEXT NOT NULL,result TEXT NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(owner,cache_key))');
+    this.db.prepare('INSERT OR REPLACE INTO memory_extract_cache VALUES(?,?,?,?)').run(owner,key,JSON.stringify(result),this.now());
+    this.db.prepare('DELETE FROM memory_extract_cache WHERE owner=? AND (created_at<? OR cache_key NOT IN (SELECT cache_key FROM memory_extract_cache WHERE owner=? ORDER BY created_at DESC LIMIT 500))').run(owner,this.now()-30*DAY,owner);
+  }
+  // Batch claim: merge pending turns of one owner+project+conversation into a single extraction call.
+  // Waits until minBatch turns are queued (default 20); maxAgeMs is unlimited by default.
+  claimBatch({minBatch=20,maxAgeMs=Number.POSITIVE_INFINITY,maxRows=20}={}){
+    return this.transaction(()=>{const now=this.now();
+      this.db.prepare("UPDATE memory_queue SET state='failed',user_text='',assistant_text='',lease_until=0 WHERE state='processing' AND attempt>=3 AND lease_until<?").run(now);
+      this.db.prepare("DELETE FROM memory_queue WHERE state IN ('done','failed','discarded') AND created_at<?").run(now-30*DAY);
+      const head=this.db.prepare("SELECT q.* FROM memory_queue q JOIN memory_settings s ON s.owner=q.owner WHERE s.enabled=1 AND s.generation=q.generation AND q.attempt<3 AND ((q.state='pending' AND q.available_at<=?) OR (q.state='processing' AND q.lease_until<?)) ORDER BY q.created_at,q.id LIMIT 1").get(now,now);
+      if(!head)return null;
+      const rows=this.db.prepare("SELECT q.* FROM memory_queue q JOIN memory_settings s ON s.owner=q.owner WHERE s.enabled=1 AND s.generation=q.generation AND q.owner=? AND q.project_id=? AND q.conversation_id=? AND q.attempt<3 AND ((q.state='pending' AND q.available_at<=?) OR (q.state='processing' AND q.lease_until<?)) ORDER BY q.created_at,q.id LIMIT ?").all(head.owner,head.project_id,head.conversation_id,now,now,maxRows);
+      if(rows.length<minBatch&&now-Number(head.created_at)<maxAgeMs)return null;
+      const attempt=Math.max(...rows.map(row=>Number(row.attempt)))+1,lease=now+90000;
+      for(const row of rows)this.db.prepare("UPDATE memory_queue SET state='processing',attempt=?,lease_until=? WHERE id=?").run(attempt,lease,row.id);
+      const turns=rows.length===1?[head.user_text]:rows.map(row=>String(row.user_text).slice(0,3000));
+      const replies=rows.map(row=>row.assistant_text).filter(Boolean).map(text=>String(text).slice(0,300));
+      return {...head,ids:rows.map(row=>row.id),attempt,lease_until:lease,user_text:turns.join('\n\n---\n\n'),assistant_text:replies.join('\n---\n').slice(0,1600),source_at:Math.max(...rows.map(row=>Number(row.source_at))),batchSize:rows.length};
+    });
   }
   close(){if(!this.closed){this.closed=true;this.db.close();}}
   transaction(action){this.db.exec('BEGIN IMMEDIATE');try{const result=action();this.db.exec('COMMIT');return result;}catch(error){this.db.exec('ROLLBACK');throw error;}}
@@ -93,7 +124,7 @@ export class MemoryStore {
   }
   enqueue(input){
     if(!input||!ownerValid(input.owner)||!['chat','dots'].includes(input.source)||!identifier(input.sourceId))return false;
-    const original=clean(input.userText);if(original.length<3||unsafeMemory(original)||/(?:不要|别|不用|不必)(?:把)?(?:本轮|这轮|这次|这段|此次|当前)(?:对话|聊天|内容|消息)?(?:保存|记住|记入|加入|存入)|(?:不要|别)(?:记住|保存|记录)(?:本轮|这轮|这次|这段|此次|当前)|don.t (?:remember|save) (?:this|the current) (?:message|turn|chat)/i.test(original))return false;
+    const original=clean(input.userText);if(original.length<3||!worthExtracting(original)||unsafeMemory(original)||/(?:不要|别|不用|不必)(?:把)?(?:本轮|这轮|这次|这段|此次|当前)(?:对话|聊天|内容|消息)?(?:保存|记住|记入|加入|存入)|(?:不要|别)(?:记住|保存|记录)(?:本轮|这轮|这次|这段|此次|当前)|don.t (?:remember|save) (?:this|the current) (?:message|turn|chat)/i.test(original))return false;
     // A long paste is not an invitation to retain the entire document.
     const userText=original.length>14000?original.slice(0,10000)+'\n[…中间内容省略…]\n'+original.slice(-4000):original;
     const sourceAt=Number(input.sourceAt);if(!Number.isSafeInteger(sourceAt)||sourceAt<1||sourceAt>this.now()+300000)return false;
@@ -152,10 +183,11 @@ export class MemoryStore {
         saved++;
       }
       if(saved)this.bump(job.owner);
-      this.db.prepare("UPDATE memory_queue SET state='done',user_text='',assistant_text='',lease_until=0 WHERE id=?").run(job.id);return saved;
+      for(const id of (job.ids||[job.id]))this.db.prepare("UPDATE memory_queue SET state='done',user_text='',assistant_text='',lease_until=0 WHERE id=?").run(id);return saved;
     });
   }
   fail(job){
+    if(job.ids&&job.ids.length>1){for(const id of job.ids)this.fail({...job,id,ids:undefined});return;}
     const current=this.db.prepare('SELECT state,attempt FROM memory_queue WHERE id=?').get(job.id);if(current?.state!=='processing'||current.attempt!==job.attempt)return;
     if(job.attempt>=3)this.db.prepare("UPDATE memory_queue SET state='failed',user_text='',assistant_text='',lease_until=0 WHERE id=? AND state='processing' AND attempt=?").run(job.id,job.attempt);
     else this.db.prepare("UPDATE memory_queue SET state='pending',available_at=?,lease_until=0 WHERE id=? AND state='processing' AND attempt=?").run(this.now()+60000*job.attempt,job.id,job.attempt);

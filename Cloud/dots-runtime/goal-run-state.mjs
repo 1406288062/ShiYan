@@ -35,12 +35,18 @@ export function mayActivateGoalForEvent(goal, { resumeAfterApproval = false, has
     (goal?.status === "waiting_approval" && resumeAfterApproval);
 }
 
+// Goals whose title or instruction describes ongoing monitoring (监测/监控/盯盘/走势) wait at least one hour between self-scheduled runs.
+export function monitoringMinIntervalSec(goal) {
+  return /监测|监控|盯盘|走势/.test(`${goal?.title || ''} ${goal?.instruction || ''}`) ? 3600 : 0;
+}
+
 export function resolveGoalRunState(goal, {
   requestedStatus,
   actionCount = 0,
   hasPendingEvents = false,
   nowSec,
-  wakeAfterSeconds = 900
+  wakeAfterSeconds = 900,
+  minIntervalSec = 0
 }) {
   if (!canApplyGoalActions(goal)) {
     return {
@@ -61,19 +67,38 @@ export function resolveGoalRunState(goal, {
     : effectiveStatus === "blocked" ? "blocked"
     : effectiveStatus === "needs_approval" ? "waiting_approval"
     : "active";
+  // Monitoring goals wait at least minIntervalSec between self-scheduled runs; the 2s action path does not apply to them.
+  const selfWake = minIntervalSec > 0 ? Math.max(wakeAfterSeconds, minIntervalSec) : (actionCount ? 2 : wakeAfterSeconds);
   const nextWakeAt = goalStatus !== "active" ? null
     : hasPendingEvents ? nowSec
-    : actionCount ? nowSec + 2
-    : nowSec + wakeAfterSeconds;
+    : nowSec + selfWake;
 
   return { goalStatus, effectiveStatus, nextWakeAt, controlPreserved: false, newInputPending: hasPendingEvents };
 }
 
-export function resolveGoalRunFailure(goal, { nowSec, hasPendingEvents = false }) {
+export function classifyGoalRunFailure(errorMessage = "") {
+  const message = String(errorMessage);
+  if (/(?:network access (?:is )?disabled|network disabled|permission denied|unauthorized|forbidden|invalid api key|authentication failed|configuration error)/i.test(message)) return "non_retryable";
+  if (/(?:network|fetch failed|econn(?:reset|refused|aborted)|etimedout|eai_again|enotfound|enetunreach|ehostunreach|socket hang up|connection (?:reset|refused|timed out)|tls handshake|dns lookup|gateway timeout|bad gateway|service unavailable|HTTP.?50[234])/i.test(message)) return "network";
+  if (/(?:timed out|timeout|temporarily unavailable|rate limit|too many requests|limit exceeded|limit reached|you.ve hit your .*limit|HTTP.?429)/i.test(message)) return "transient";
+  return "non_retryable";
+}
+
+export function resolveGoalRunFailure(goal, { nowSec, hasPendingEvents = false, errorMessage = "" }) {
+  const retryKind = classifyGoalRunFailure(errorMessage);
+  const networkHours = [1, 2, 4, 8, 24];
+  const failureCount = Math.max(0, Number(goal?.failure_count) || 0);
+  const retrySeconds = retryKind === "network" ? networkHours[Math.min(failureCount, networkHours.length - 1)] * 60 * 60
+    : retryKind === "transient" ? 60 * 60
+    : hasPendingEvents ? 0 : null;
   return {
     nextWakeAt: canApplyGoalActions(goal)
-      ? nowSec + (hasPendingEvents ? 0 : 120)
+      ? retrySeconds === null ? null : nowSec + retrySeconds
       : goal?.next_wake_at ?? null,
-    controlPreserved: !canApplyGoalActions(goal)
+    controlPreserved: !canApplyGoalActions(goal),
+    cooldown: 0,
+    retryKind,
+    retrySeconds,
+    nextFailureCount: retryKind === "network" ? failureCount + 1 : 0
   };
 }

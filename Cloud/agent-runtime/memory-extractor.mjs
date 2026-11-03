@@ -78,10 +78,12 @@ async function codexExtract(job,existing,{binary,timeoutMs,model,effort}){
   }finally{await rm(directory,{recursive:true,force:true});}
 }
 
-export function createMemoryWorker(store,{extract=extractMemories,intervalMs=2000,logger=console}={}){
+export function createMemoryWorker(store,{extract=extractMemories,intervalMs=2000,logger=console,batch={minBatch:20,maxAgeMs:Number.POSITIVE_INFINITY,maxRows:20}}={}){
   let busy=false,closed=false,closedResolve;
-  async function tick(){if(busy||closed)return false;const job=store.claimNext();if(!job)return false;busy=true;
-    try{const result=await extract(job,store.candidates(job.owner,job));if(!closed)store.complete(job,result);return true;}
+  async function tick(){if(busy||closed)return false;const job=store.claimBatch(batch);if(!job)return false;busy=true;
+    try{const existing=store.candidates(job.owner,job);const key=store.cacheKey(job,existing);let result=store.cacheGet(job.owner,key);
+      if(!result){result=await extract(job,existing);store.cachePut(job.owner,key,result);}
+      if(!closed)store.complete(job,result);return true;}
     catch{if(!closed){store.fail(job);logger.warn?.('[MemoryExtraction] deferred source; attempt',job.attempt);}return false;}
     finally{busy=false;closedResolve?.();}
   }

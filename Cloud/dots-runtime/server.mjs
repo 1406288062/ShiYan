@@ -23,7 +23,7 @@ import { mcpConnectors } from "../boss-codex-service/shiyan-v2/mcp-connectors.mj
 import { createMcpBridge } from "./mcp-events.mjs";
 // 2026-10-29：Mac 本机 Codex 执行（mac_codex）已停用，只在云端执行。
 import { startLocalMcpSocket } from "./local-mcp-socket.mjs";
-import { canApplyGoalActions, resolveGoalRunState, resolveGoalRunFailure, assertGoalActionAllowed, mayActivateGoalForEvent } from "./goal-run-state.mjs";
+import { canApplyGoalActions, resolveGoalRunState, monitoringMinIntervalSec, resolveGoalRunFailure, assertGoalActionAllowed, mayActivateGoalForEvent } from "./goal-run-state.mjs";
 import { createRuntimeRequestStore } from "./runtime-requests.mjs";
 import { createManagerStore } from "./manager-store.mjs";
 import {createDotsCognition} from "./dots-cognition.mjs";
@@ -82,7 +82,8 @@ CREATE TABLE IF NOT EXISTS goals (
   next_wake_at INTEGER,
   last_run_at INTEGER,
   last_summary TEXT NOT NULL DEFAULT '',
-  run_count INTEGER NOT NULL DEFAULT 0
+  run_count INTEGER NOT NULL DEFAULT 0,
+  failure_count INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS memories (
@@ -167,6 +168,9 @@ if (!goalColumns.some((c) => c.name === "mac_thread_id")) {
 }
 if (!goalColumns.some((c) => c.name === "mac_last_route")) {
   db.exec("ALTER TABLE goals ADD COLUMN mac_last_route TEXT");
+}
+if (!goalColumns.some((c) => c.name === "failure_count")) {
+  db.exec("ALTER TABLE goals ADD COLUMN failure_count INTEGER NOT NULL DEFAULT 0");
 }
 
 const PRIVATE_OWNER=process.env.DOTS_OWNER_ID||'shiyan-private-owner';
@@ -880,7 +884,7 @@ async function runGoal(goalId, trigger = "scheduler") {
       const writeback = resolveGoalRunState(getGoal(goal.id), {
         requestedStatus: status, actionCount: actionResults.length,
         hasPendingEvents: db.prepare("SELECT id FROM events WHERE goal_id=? AND consumed_at IS NULL").all(goal.id).some(event => !generatedEventIds.has(Number(event.id))),
-        nowSec: now(), wakeAfterSeconds: wakeAfter
+        nowSec: now(), wakeAfterSeconds: wakeAfter, minIntervalSec: monitoringMinIntervalSec(goal)
       });
       const {goalStatus, nextWakeAt, effectiveStatus} = writeback;
       let autoApproved=false;
@@ -894,7 +898,7 @@ async function runGoal(goalId, trigger = "scheduler") {
       const notificationText = String(result.notification || summary || nextStep || effectiveStatus).trim().slice(0, 800);
       const output = db.prepare(`INSERT INTO agent_outputs(goal_id,run_number,thread_id,status,raw_result,summary,notification,created_at) VALUES(?,?,?,?,?,?,?,?)`).run(goal.id, Number(getGoal(goal.id).run_count || 0)+1, threadId||null, effectiveStatus, String(turn.finalResponse||""), summary, notificationText, ts);
       const outputId = Number(output.lastInsertRowid);
-      db.prepare(`UPDATE goals SET status=?,thread_id=?,updated_at=?,last_run_at=?,next_wake_at=?,last_summary=?,run_count=run_count+1 WHERE id=?`).run(goalStatus,threadId||null,ts,ts,nextWakeAt,summary,goal.id);
+      db.prepare(`UPDATE goals SET status=?,thread_id=?,updated_at=?,last_run_at=?,next_wake_at=?,last_summary=?,run_count=run_count+1,failure_count=0 WHERE id=?`).run(goalStatus,threadId||null,ts,ts,nextWakeAt,summary,goal.id);
       addTimeline(goal.id,"run",summary||"(no summary)",{outputId,status:effectiveStatus,requestedStatus:status,nextStep,wakeAfter,actions:actionResults,usage:turn.usage||null});
       const mustNotify = !writeback.controlPreserved && !writeback.newInputPending && (Boolean(result.notify)||["done","blocked"].includes(effectiveStatus)||effectiveStatus==="needs_approval"&&!autoApproved);
       const level = effectiveStatus==="done"?"success":effectiveStatus==="needs_approval"?"approval":effectiveStatus==="blocked"?"warning":"info";
@@ -923,16 +927,16 @@ async function runGoal(goalId, trigger = "scheduler") {
     const ts=now(),message=String(cause?.message||cause).slice(0,12000);
     if (run && !durableStore.isCurrent(run)) durableStore.finishRun(run,{status:'superseded',summary:message});
     else {
-      const failureState=resolveGoalRunFailure(getGoal(goal.id),{nowSec:ts,hasPendingEvents:db.prepare("SELECT id FROM events WHERE goal_id=? AND consumed_at IS NULL AND id>? LIMIT 1").get(goal.id,eventIds.at(-1)||0)!==undefined});
+      const failureState=resolveGoalRunFailure(getGoal(goal.id),{nowSec:ts,hasPendingEvents:db.prepare("SELECT id FROM events WHERE goal_id=? AND consumed_at IS NULL AND id>? LIMIT 1").get(goal.id,eventIds.at(-1)||0)!==undefined,errorMessage:message});
       const update=()=>{
-        db.prepare("UPDATE goals SET updated_at=?,last_run_at=?,next_wake_at=?,last_summary=? WHERE id=?").run(ts,ts,failureState.nextWakeAt,`Run failed: ${message}`,goal.id);
+        db.prepare("UPDATE goals SET updated_at=?,last_run_at=?,next_wake_at=?,last_summary=?,failure_count=? WHERE id=?").run(ts,ts,failureState.nextWakeAt,`Run failed: ${message}`,failureState.nextFailureCount,goal.id);
         addTimeline(goal.id,"error",message);
         if (run) durableStore.activityEvent('worker_error',message,{runId:run.id},goal.id);
         return {summary:message};
       };
       if(run)durableStore.commitRun(run,update);else update();
       if(!failureState.controlPreserved){
-        const retryText=failureState.nextWakeAt<=ts?"New input is queued for immediate retry.":"Retry scheduled in 2 minutes.";
+        const retryText=failureState.retryKind==="network"?`Network failure. Automatic retry scheduled in ${failureState.retrySeconds/3600} hour(s).`:failureState.retryKind==="transient"?`Temporary service failure. Automatic retry scheduled in ${failureState.retrySeconds/3600} hour.`:failureState.nextWakeAt!==null&&failureState.nextWakeAt<=ts?"New input is queued for immediate retry.":"This error is not automatically retried; resolve the underlying issue and retry manually.";
         await addNotification(goal.id,"error",goal.title,`Agent run failed. ${retryText} ${message.slice(0,1200)}`).catch(()=>{});
       }
     }
@@ -957,7 +961,7 @@ function scheduleGoalNow(goalId, type, payload, { resumeAfterApproval = false } 
   if (mayActivateGoalForEvent(goal, { resumeAfterApproval, hasPendingApproval })) {
     db.prepare(
       "UPDATE goals SET status='active', next_wake_at=?, updated_at=? WHERE id=?"
-    ).run(ts, ts, goal.id);
+    ).run(Math.max(ts, Number(goal.next_wake_at) || ts), ts, goal.id);
   }
   return true;
 }

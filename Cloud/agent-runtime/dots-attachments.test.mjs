@@ -70,5 +70,11 @@ test('signed upload/download HTTP routes retain exact bytes and reject wrong bod
   const {attachment}=await uploaded.json(),download=await fetch(base+'/attachments/'+attachment.id,{headers});
   assert.equal(download.status,200);assert.equal(await download.text(),'这是上传文件的实际内容');
   assert.equal(download.headers.get('x-content-sha256'),attachment.sha256);
+  const imageInput={id:randomUUID(),filename:'wechat.png',mimeType:'image/png',data:Buffer.from('fake-png-bytes').toString('base64')};
+  const imageRaw=JSON.stringify(imageInput),imageHeaders={...headers,'x-shiyan-body-sha':createHash('sha256').update(imageRaw).digest('hex')};
+  const imageUpload=await fetch(base+'/attachments',{method:'POST',body:imageRaw,headers:imageHeaders});
+  const {attachment:imageAttachment}=await imageUpload.json(),imageResponse=await fetch(base+'/attachments/'+imageAttachment.id,{headers});
+  assert.equal(imageResponse.headers.get('content-type'),'image/png');
+  assert.match(imageResponse.headers.get('content-disposition')||'',/^inline;/);
   assert.equal((await fetch(base+'/attachments/'+attachment.id)).status,401);
 });

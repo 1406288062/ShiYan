@@ -54,7 +54,7 @@ test('shared database lease prevents duplicate workers and stale completion',t=>
 });
 
 test('background extraction is serialized, failures retry then scrub raw data',async t=>{
- const f=fixture(t);let finish,calls=0;f.store.enqueue({owner:OWNER,source:'chat',sourceId:'worker',userText:'我长期偏好简短回答',sourceAt:f.now()});const worker=createMemoryWorker(f.store,{intervalMs:999999,extract:async()=>{calls++;return new Promise(resolve=>finish=resolve);}});t.after(()=>worker.close());const running=worker.tick();assert.equal(await worker.tick(),false);assert.equal(calls,1);finish({memories:[candidate('我长期偏好简短回答')]});await running;assert.equal(f.store.list(OWNER).memories.length,1);
+ const f=fixture(t);let finish,calls=0;f.store.enqueue({owner:OWNER,source:'chat',sourceId:'worker',userText:'我长期偏好简短回答',sourceAt:f.now()});const worker=createMemoryWorker(f.store,{batch:{minBatch:1},intervalMs:999999,extract:async()=>{calls++;return new Promise(resolve=>finish=resolve);}});t.after(()=>worker.close());const running=worker.tick();assert.equal(await worker.tick(),false);assert.equal(calls,1);finish({memories:[candidate('我长期偏好简短回答')]});await running;assert.equal(f.store.list(OWNER).memories.length,1);
  const failing=enqueue(f,{sourceId:'retry'});f.store.fail(failing);f.advance(60001);const retry=f.store.claimNext();assert.equal(retry.attempt,2);f.store.fail(retry);f.advance(120001);const last=f.store.claimNext();assert.equal(last.attempt,3);f.store.fail(last);const row=f.store.db.prepare('SELECT state,user_text FROM memory_queue WHERE id=?').get(last.id);assert.equal(row.state,'failed');assert.equal(row.user_text,'');
 });
 

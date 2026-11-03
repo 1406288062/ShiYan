@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { DatabaseSync } from "node:sqlite";
 import vm from "node:vm";
-import { canApplyGoalActions, resolveGoalRunState, resolveGoalRunFailure, assertGoalActionAllowed, mayActivateGoalForEvent } from "./goal-run-state.mjs";
+import { canApplyGoalActions, resolveGoalRunState, resolveGoalRunFailure, classifyGoalRunFailure, assertGoalActionAllowed, mayActivateGoalForEvent } from "./goal-run-state.mjs";
 import { createRuntimeRequestStore } from "./runtime-requests.mjs";
 
 // Exercise the actual runtime functions with an isolated in-memory database and
@@ -18,11 +18,11 @@ function fixture({ onPlan = () => {}, onActions, plannerError, status = "done", 
   const db = new DatabaseSync(":memory:");
   db.exec(`
     CREATE TABLE goals(id INTEGER PRIMARY KEY,title TEXT,instruction TEXT,status TEXT,thread_id TEXT,
-      workspace TEXT,updated_at INTEGER,last_run_at INTEGER,next_wake_at INTEGER,last_summary TEXT,run_count INTEGER);
+      workspace TEXT,updated_at INTEGER,last_run_at INTEGER,next_wake_at INTEGER,last_summary TEXT,run_count INTEGER,failure_count INTEGER DEFAULT 0);
     CREATE TABLE events(id INTEGER PRIMARY KEY,goal_id INTEGER,type TEXT,payload TEXT,created_at INTEGER,consumed_at INTEGER);
     CREATE TABLE agent_outputs(id INTEGER PRIMARY KEY,goal_id INTEGER,run_number INTEGER,thread_id TEXT,
       status TEXT,raw_result TEXT,summary TEXT,notification TEXT,created_at INTEGER);
-    INSERT INTO goals VALUES(1,'test','test','active',NULL,'/isolated-test',100,NULL,100,'',0);
+    INSERT INTO goals VALUES(1,'test','test','active',NULL,'/isolated-test',100,NULL,100,'',0,0);
   `);
   const notifications = [];
   const timeline = [];
@@ -108,6 +108,26 @@ for (const status of ["done", "blocked", "needs_approval"]) {
   });
 }
 
+test("generic usage-limit errors use the common transient retry policy", () => {
+  const state = resolveGoalRunFailure({ status: "active" }, { nowSec: 100, hasPendingEvents: true, errorMessage: "You have hit your usage limit" });
+  assert.equal(state.cooldown, 0);
+  assert.equal(state.retryKind, "transient");
+  assert.equal(state.retrySeconds, 60 * 60);
+  assert.equal(state.nextWakeAt, 100 + 60 * 60);
+});
+
+test("network failures use an hourly exponential backoff capped at 24 hours", () => {
+  const expectedHours = [1, 2, 4, 8, 24, 24, 24];
+  for (let failure_count = 0; failure_count < expectedHours.length; failure_count++) {
+    const state = resolveGoalRunFailure({ status: "active", failure_count }, { nowSec: 100, errorMessage: "network error" });
+    assert.equal(state.nextWakeAt, 100 + expectedHours[failure_count] * 3600);
+    assert.equal(state.retrySeconds, expectedHours[failure_count] * 3600);
+    assert.equal(state.nextFailureCount, failure_count + 1);
+  }
+  assert.equal(classifyGoalRunFailure("ECONNRESET"), "network");
+  assert.equal(classifyGoalRunFailure("network access disabled"), "non_retryable");
+});
+
 test("new input after planner failure keeps immediate wake", async () => {
   const f = fixture({ plannerError: "stub error", onPlan: ({ addEvent }) => addEvent() });
   try {
@@ -118,12 +138,12 @@ test("new input after planner failure keeps immediate wake", async () => {
   } finally { f.db.close(); }
 });
 
-test("old input after planner failure still receives the normal retry delay", async () => {
+test("non-retryable planner errors do not schedule blind automatic retries", async () => {
   const f = fixture({ plannerError: "stub error" });
   try {
     f.addEvent();
     await f.run();
-    assert.equal(f.getGoal(1).next_wake_at, 220);
+    assert.equal(f.getGoal(1).next_wake_at, null);
   } finally { f.db.close(); }
 });
 
@@ -145,13 +165,13 @@ test("the run's own tool result retains a short verification wake", async () => 
   } finally { f.db.close(); }
 });
 
-test("ordinary completion and ordinary retry retain prior behavior", async () => {
+test("ordinary completion remains unchanged and non-retryable errors stop retrying", async () => {
   for (const fail of [false, true]) {
     const f = fixture({ plannerError: fail ? "stub error" : undefined });
     try {
       await f.run();
       assert.equal(f.getGoal(1).status, fail ? "active" : "done");
-      assert.equal(f.getGoal(1).next_wake_at, fail ? 220 : null);
+      assert.equal(f.getGoal(1).next_wake_at, null);
       assert.equal(f.notifications.length, 1);
     } finally { f.db.close(); }
   }

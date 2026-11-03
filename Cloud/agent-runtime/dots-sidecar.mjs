@@ -96,7 +96,7 @@ export function createDotsSidecar({root=ROOT,authenticate=authenticateDevice,ada
       const attachment=pathname.match(/^\/v1\/dots\/attachments\/([A-Za-z0-9-]{1,64})$/);
       if(req.method==='GET'&&attachment){
         const file=adapter.attachments.download(owner,attachment[1]);
-        res.writeHead(200,{'Content-Type':'application/octet-stream','Content-Disposition':"attachment; filename*=UTF-8''"+encodeURIComponent(file.filename),'X-Content-SHA256':file.sha256,'Cache-Control':'no-store','Content-Length':file.data.length});res.end(file.data);return;
+        const inline=['image/jpeg','image/png','image/gif','image/webp'].includes(file.mimeType);res.writeHead(200,{'Content-Type':inline?file.mimeType:'application/octet-stream','Content-Disposition':(inline?'inline':'attachment')+"; filename*=UTF-8''"+encodeURIComponent(file.filename),'X-Content-SHA256':file.sha256,'X-Content-Type-Options':'nosniff','Cache-Control':'no-store','Content-Length':file.data.length});res.end(file.data);return;
       }
       if(req.method==='GET'&&pathname==='/v1/dots/manager')return json(res,200,await adapter.manager(owner));
       if(req.method==='GET'&&pathname==='/v1/dots/manager/messages')return json(res,200,await adapter.managerMessages(owner,{before:url.searchParams.get('before')||0,limit:url.searchParams.get('limit')||100}));
