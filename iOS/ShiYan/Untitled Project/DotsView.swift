@@ -2597,7 +2597,7 @@ private struct DotsAttachmentThumbnail: View {
     var body: some View {
         Group {
             if let image {
-                Image(uiImage: image).resizable().scaledToFit()
+                Image(uiImage: image).resizable().aspectRatio(contentMode: .fit)
                     .frame(maxWidth: 220, maxHeight: 220, alignment: alignment)
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             } else if failed {
