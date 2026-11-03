@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { generateKeyPairSync, createHash, randomUUID, sign } from 'node:crypto';
 import { mobileSyncChange } from './sync-mobile-projection.mjs';
-import { SyncStore, hydrateMutation, hydrateStoredMutation, materializeJob, readSyncAsset } from './sync-store.mjs';
+import { SyncStore, hydrateMutation, hydrateStoredMutation, materializeJob, readSyncAsset, jobMessageData } from './sync-store.mjs';
 
 const fixture=()=>{const root=mkdtempSync(path.join(os.tmpdir(),'shiyan-sync-'));const store=new SyncStore(root);return {root,store,done(){store.close();rmSync(root,{recursive:true,force:true});}};};
 const mutation=(kind,id,data,baseRevision=0,deleted=false)=>({mutationId:randomUUID(),kind,id,data,baseRevision,deleted});
@@ -41,6 +41,15 @@ test('batch transaction rolls back malformed later mutation and never accepts lo
     f.store.apply('owner-a',[mutation('conversations',cid,{id:cid,title:'标题',draft:'草稿',queuedMessages:['x'],pendingJobId:'local',lastEventId:99,fileChangeRoots:['/local'],projectId:null})]);
     const data=f.store.get('owner-a','conversations',cid).data;assert.equal(data.title,'标题');assert.equal(data.draft,undefined);assert.equal(data.pendingJobId,undefined);assert.equal(data.lastEventId,undefined);
   }finally{f.done();}
+});
+
+test('worker start timestamp never replaces the original message request timestamp',()=>{
+  const createdAt=1791710000000,requestStartedAt=new Date(createdAt).toISOString();
+  const base={id:randomUUID(),conversationId:randomUUID(),role:'assistant',createdAt:requestStartedAt,requestStartedAt,state:'running'};
+  const snapshot=jobMessageData(job({createdAt,startedAt:createdAt+25000,status:'running'}),base);
+  assert.equal(snapshot.requestStartedAt,requestStartedAt);
+  const fallback=jobMessageData(job({createdAt,startedAt:createdAt+25000,status:'running'}),{...base,requestStartedAt:undefined});
+  assert.equal(fallback.requestStartedAt,requestStartedAt);
 });
 
 test('legacy request binding uses real model reply, preserves user text and strips local asset URLs',()=>{

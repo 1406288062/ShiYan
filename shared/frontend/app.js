@@ -258,7 +258,7 @@
     if(!user && busy)inner+='<div class="thinking" aria-live="polite">'+esc(m.phase || '正在回复…')+'</div>';
     if(m.error)inner+='<div class="message-error">'+esc(m.error)+'</div>';
     if(!user && !busy && !m.text && !attachments.length && !m.error)inner+='<div class="message-empty">'+(m.state==='cancelled'?'已停止':'本次没有可展示的内容')+'</div>';
-    const elapsed=!user&&m.requestStartedAt?'<div class="v22-elapsed" data-start="'+esc(m.requestStartedAt)+'" '+(m.completedAt?'data-end="'+esc(m.completedAt)+'"':'')+'><span></span></div>':'';
+    const elapsed=!user&&m.requestStartedAt?'<div class="v22-elapsed" data-message-id="'+esc(m.id)+'" data-start="'+esc(m.requestStartedAt)+'" '+(m.completedAt?'data-end="'+esc(m.completedAt)+'"':'')+'><span></span></div>':'';
     const imageOnly=user&&!String(m.text||'').trim()&&images.length>0&&images.length===attachments.length;
     return (user&&at?'<div class="v23-message-time"><time datetime="'+esc(at)+'">'+esc(dateText(at))+'</time></div>':'')+'<article class="message '+(user?'is-user':'is-assistant')+(imageOnly?' is-image-only':'')+'" data-message-id="'+esc(m.id)+'">'+elapsed+'<div class="message-content">'+inner+'</div>'+changeSummary+(user||!busy||retry?tools:'')+'</article>';
   }
@@ -1092,8 +1092,8 @@
     const matches=candidates.filter(a=>a.filename===filename);
     return matches.length===1?matches[0]:null;
   }
-  async function openPreview(a) {
-    if(!a)return;ui.preview=a;ui.zoom=1;ui.panX=ui.panY=0;ui.previewPointer=null;
+  async function openPreview(a, galleryAssets=null) {
+    if(!a)return;ui.preview=a;ui.previewGalleryAssets=Array.isArray(galleryAssets)?galleryAssets:null;ui.zoom=1;ui.panX=ui.panY=0;ui.previewPointer=null;
     const image=(a.mimeType || '').startsWith('image/');
     if(!image && native('preview',{url:new URL(assetUrl(a,true),location.href).href,filename:a.filename || '文件'}))return;
     show('imagePreview');show('previewImage',image);show('filePreview',!image);show('previewControls');setText('previewCaption',a.filename || '');
@@ -1104,14 +1104,15 @@
     }
     updateZoom();$('closePreviewButton').focus();
   }
-  function closePreview() {show('imagePreview',false);$('filePreview').src='about:blank';ui.preview=null;ui.zoom=1;ui.panX=ui.panY=0;}
+  function closePreview() {show('imagePreview',false);$('filePreview').src='about:blank';ui.preview=null;ui.previewGalleryAssets=null;ui.zoom=1;ui.panX=ui.panY=0;}
   function previewGallery() {
     const image=a=>a&&(a.mimeType||'').startsWith('image/');
+    if(Array.isArray(ui.previewGalleryAssets))return [...new Map([...ui.previewGalleryAssets.filter(image),ui.preview].filter(image).map(a=>[a.id,a])).values()];
     const conversation=state?.conversations?.find(c=>(c.messages||[]).some(m=>(m.assets||[]).some(a=>a.id===ui.preview?.id)));
     const source=conversation?(conversation.messages||[]).flatMap(m=>m.assets||[]):(state?.history||[]).map(h=>h.asset);
     return [...new Map([...(source.filter(image)),ui.preview].filter(image).map(a=>[a.id,a])).values()];
   }
-  function stepPreview(direction) {const gallery=previewGallery(),i=gallery.findIndex(a=>a.id===ui.preview?.id),next=gallery[i+direction];if(next)openPreview(next);}
+  function stepPreview(direction) {const gallery=previewGallery(),i=gallery.findIndex(a=>a.id===ui.preview?.id),next=gallery[i+direction];if(next)openPreview(next,ui.previewGalleryAssets);}
   function previewFit() {const image=$('previewImage'),box=$('previewViewport').getBoundingClientRect();return image.naturalWidth?Math.min(1,(box.width-120)/image.naturalWidth,(box.height-12)/image.naturalHeight):1;}
   function updateZoom() {
     const image=$('previewImage');image.style.transform='translate('+ui.panX+'px,'+ui.panY+'px) scale('+ui.zoom+')';

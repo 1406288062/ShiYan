@@ -157,6 +157,25 @@ test('left cloud project selection restores the selected remote device tab', asy
   assert.deepEqual(selected, ['cloud-select', 'device-tab']);
 });
 
+test('web project files and device files collapse into one remote file pane', () => {
+  const {window, originalApiCalls} = loadAdapter();
+  const tabs = [
+    {id:'project-files', type:'files', title:'项目文件'},
+    {id:'device-files', type:'files', title:'设备文件', webDevicePane:true, projectId:'web-device-123'}
+  ];
+  const C = makeContext(window, originalApiCalls, {
+    tabs,
+    closeTab: async id => { const index=C.tabs.findIndex(tab=>tab.id===id); if(index>=0)C.tabs.splice(index,1); },
+    selectTab() {}
+  });
+  window.ShiYanV2.install(C);
+  const selected = C.workspaceTool('files');
+  assert.equal(selected.id, 'device-files');
+  assert.equal(C.tabs.length, 1);
+  assert.equal(C.tabs[0].webDevicePane, true);
+  assert.equal(C.tabs[0].title, '项目文件');
+});
+
 test('web adapter uses bounded document sandboxing and no global cleanup/fetch/link interception', () => {
   assert.equal(source.includes('window.fetch ='), false);
   assert.equal(source.includes('localStorage'), false);

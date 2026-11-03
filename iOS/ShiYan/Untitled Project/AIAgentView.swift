@@ -1117,6 +1117,7 @@ struct AIAgentView: View {
                 }
             }
             .font(.body)
+            .foregroundStyle(colorScheme == .dark ? Color(red: 197.0 / 255, green: 212.0 / 255, blue: 232.0 / 255) : Color.primary)
             .lineSpacing(5)
             .lineLimit(previewLineLimit)
             .truncationMode(.tail)
@@ -1125,9 +1126,9 @@ struct AIAgentView: View {
             .background {
                 shape
                      
-                    .fill(colorScheme == .dark ? Color(white: 0.065) : Color.white)
+                    .fill(colorScheme == .dark ? Color(red: 33.0 / 255, green: 50.0 / 255, blue: 71.0 / 255) : Color.white)
                     .overlay {
-                        shape.fill(Color.accentColor.opacity(0.09))
+                        if colorScheme != .dark { shape.fill(Color.accentColor.opacity(0.09)) }
                     }
             }
             .clipShape(shape)

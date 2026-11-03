@@ -18,7 +18,7 @@ def install(app, repository_root: Path):
     existing = tuple(app.router.routes)
     assets = Path(__file__).resolve().parent
     page = (repository_root / 'shared/frontend/index.html').read_text(encoding='utf-8')
-    tag = '<script type="text/plain" data-account-src="/assets/web-workspace.js?v=12" defer></script>'
+    tag = '<script type="text/plain" data-account-src="/assets/web-workspace.js?v=13" defer></script>'
     anchor = re.search(r'<script\b[^>]*data-account-src="/assets/workbench\.js\?[^\"]*"[^>]*></script>', page)
     if not anchor:
         raise RuntimeError('找不到现有工作区加载入口')

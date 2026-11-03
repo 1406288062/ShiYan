@@ -38,6 +38,7 @@ body.workbench-v22.workbench-v2 .sidebar-dots.is-selected { background:var(--v22
 .dots-manager-message>header { font-size:11px;color:var(--secondary);margin-bottom:7px; }
 .dots-manager-message.is-user { width:fit-content;max-width:85%;margin-left:auto;margin-right:0;padding:12px 16px;border-radius:20px;background:color-mix(in srgb, var(--accent) 9%, var(--canvas)); }
 .dots-manager-message.is-user.is-image-only { padding:0 !important;background:transparent !important;border:0 !important;border-radius:0 !important;box-shadow:none !important; }
+.dots-manager-message.is-user:not(.is-image-only) { background:var(--message-bubble,var(--soft-fill));color:var(--message-ink,var(--text)); }
 .dots-manager-message.is-user.is-image-only .dots-images { margin-top:0; }
 .dots-manager-message .message-body>:first-child { margin-top:0; }
 .dots-manager-message .message-body>:last-child { margin-bottom:0; }
@@ -207,7 +208,7 @@ body.workbench-v22 :is(.message-body,.dots-manager-message) a.message-reference:
 .dots-msg-actions { position:absolute;bottom:-26px;left:6px;display:flex;gap:2px;opacity:0;transform:translateY(-3px);transition:opacity .16s ease,transform .16s ease;pointer-events:none; }
 .dots-manager-message.is-user .dots-msg-actions { left:auto;right:6px; }
 .dots-manager-message:hover .dots-msg-actions,.dots-msg-actions:focus-within { opacity:1;transform:none;pointer-events:auto; }
-.dots-msg-actions button { width:26px;height:24px;display:grid;place-items:center;border:0;border-radius:7px;background:transparent;color:var(--secondary);cursor:pointer; }
+.dots-msg-actions button { width:28px;height:28px;display:grid;place-items:center;border:0;border-radius:7px;background:transparent;color:var(--secondary);cursor:pointer; }
 .dots-msg-actions button:hover { background:var(--soft-fill);color:inherit; }
 .dots-msg-actions button.is-done { color:#34a853; }
 .dots-thinking { display:flex;align-items:center;gap:10px;width:fit-content;max-width:760px;margin:0 auto 28px 0;padding:12px 16px;border-radius:20px;background:var(--dots-reply-fill,#f6f7fb);border:.5px solid color-mix(in srgb,currentColor 6%,transparent);transform-origin:bottom left;animation:dots-pop-in .34s cubic-bezier(.2,.9,.3,1.2) both; }
@@ -477,7 +478,7 @@ body.workbench-v22 :is(.message-body,.dots-manager-message) a.message-reference:
 .dots-sources-card { height:auto;min-height:0; }
 
 /* Dots 消息操作：与普通对话工具栏同一套图标，同尺寸同颜色 */
-.dots-msg-actions .symbol { width:14px;height:14px; }
+.dots-msg-actions .symbol { width:18px;height:18px; }
 .dots-menu-content .wb-ios-icon { width:17px;height:17px;flex:none; }
 /* 确认对话框总在 Dots 弹窗之上 */
 #confirmDialog.modal-overlay { z-index:2000; }

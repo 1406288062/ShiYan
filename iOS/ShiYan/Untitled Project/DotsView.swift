@@ -548,6 +548,7 @@ struct DotsView: View {
             }
             .padding(item.role == "system" || imageOnly ? 0 : 14)
             .background { if item.role != "system" && !imageOnly { DotsBubbleBackground(isUser: item.role == "user") } }
+            .foregroundStyle(item.role == "user" && scheme == .dark ? Color(red: 197.0 / 255, green: 212.0 / 255, blue: 232.0 / 255) : Color.primary)
             .frame(maxWidth: imageOnly ? CGFloat.infinity : nil, alignment: .trailing)
             .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 20, style: .continuous))
             .agentLongPressMenu(isLong: AgentLongMessage.isLong(item.content)) {
@@ -1665,7 +1666,7 @@ struct DotsBubbleBackground: View {
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
         if isUser {
-            shape.fill(Color.accentColor.opacity(0.09))
+            shape.fill(scheme == .dark ? Color(red: 33.0 / 255, green: 50.0 / 255, blue: 71.0 / 255) : Color.accentColor.opacity(0.09))
         } else {
             shape.fill(scheme == .dark ? Color.white.opacity(0.06) : Color(red: 0.965, green: 0.968, blue: 0.985))
                 .overlay(shape.strokeBorder(Color.primary.opacity(scheme == .dark ? 0.07 : 0.05), lineWidth: 0.5))

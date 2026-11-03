@@ -257,7 +257,7 @@ export function jobMessageData(job,base){
   return {...base,requestId:job.requestId,remoteJobId:job.id,reasoning:job.reasoning,model:job.model,
     ...(assistant?{text:job.text||'',state,phase:terminalJobStatus(job.status)?'':phase?.label||base.phase||'',error:job.error||null,
       displayItems:displayItemsForJob(job),usage:projectUsage(job.usage),
-      requestStartedAt:iso(job.startedAt||job.createdAt),completedAt:['completed','cancelled','failed'].includes(state)?iso(job.updatedAt):null,
+      requestStartedAt:base.requestStartedAt||base.createdAt||iso(job.createdAt),completedAt:['completed','cancelled','failed'].includes(state)?iso(job.updatedAt):null,
       assets:generatedOutputs(job.assets).map(asset=>({...asset,syncAssetId:asset.id})),...(job.fileChanges?{fileChanges:job.fileChanges}:{})}:{state:'completed'}),
     ...(assistant?{updatedAt:iso(job.updatedAt)}:{})};
 }

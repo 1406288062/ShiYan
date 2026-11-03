@@ -86,7 +86,7 @@ body.workbench-v2 #desktopToolbar #dotsToolbar { position:relative;height:32px;f
 .dots-child-message { margin:0 0 28px;font-size:15px;line-height:1.7;overflow-wrap:anywhere; }
 .dots-child-message .message-body>:first-child { margin-top:0; }
 .dots-child-message .message-body>:last-child { margin-bottom:0; }
-.dots-child-message.is-user { width:fit-content;max-width:88%;margin-left:auto;padding:13px 17px;border-radius:20px;background:var(--soft-fill); }
+.dots-child-message.is-user { width:fit-content;max-width:88%;margin-left:auto;padding:13px 17px;border-radius:20px;background:var(--message-bubble,var(--soft-fill));color:var(--message-ink,var(--text)); }
 .dots-child-message time { display:block;margin-top:9px;color:var(--secondary);font-size:11px; }
 .dots-message-source { display:block;color:var(--secondary);font-size:11px;margin:0 0 6px; }
 .dots-conversation-messages .message-body code { border-radius:6px; }

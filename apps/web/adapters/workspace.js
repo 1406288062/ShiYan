@@ -111,6 +111,20 @@
       C.openTab = (options = {}, reuse = false) => {
         if (!options.type) options = {type:'files', title:'项目文件', webDevicePane:true, ...options};
         if (BLOCKED_TOOLS.has(options.type)) return null;
+        // The web client has one remote project-file workspace. Older entry
+        // points used to create a second tab named “设备文件” for the same pane.
+        if ((options.type === 'files' || options.type === 'file') && !options.webAttachment) {
+          const existing = C.tabs?.find(tab => (tab.type === 'files' || tab.type === 'file') && !tab.webAttachment);
+          if (existing) {
+            const projectId = isRemoteProjectId(options.projectId) ? options.projectId : existing.projectId;
+            Object.assign(existing, options, {type:'files', webDevicePane:true, ...(projectId ? {projectId, webDeviceId:options.webDeviceId || this.project(projectId)?.deviceId || existing.webDeviceId} : {})});
+            if (existing.title === '设备文件') existing.title = '项目文件';
+            C.selectTab(existing.id);
+            queueMicrotask(() => this.decorateTab(existing.id));
+            return existing;
+          }
+          options = {...options, type:'files', webDevicePane:true, title:options.title === '设备文件' ? '项目文件' : (options.title || '项目文件')};
+        }
         if (options.type === 'execution' || options.type === 'changes') {
           const existing = C.tabs?.find(tab => tab.type === options.type);
           if (existing) {
@@ -147,7 +161,7 @@
       };
       C.workspaceTool = type => {
         if (BLOCKED_TOOLS.has(type)) return null;
-        if (type === 'files') { this.ensureFilesTab(); const tab=C.tabs.find(t=>t.webDevicePane || isRemoteProjectId(t.projectId)); if(tab)C.selectTab(tab.id); return tab; }
+        if (type === 'files') { this.ensureFilesTab(); const tab=C.tabs.find(t=>(t.type==='files'||t.type==='file')&&!t.webAttachment); if(tab)C.selectTab(tab.id); return tab; }
         return originalTool(type);
       };
     }
@@ -190,7 +204,7 @@
         await this.refreshProjects();
         const savedActive = this.C.tabs.find(t=>t.id===this.C.activeTab);
         this.ensureFilesTab();
-        const filesTab = this.C.tabs.find(t => t.webDevicePane || isRemoteProjectId(t.projectId));
+        const filesTab = this.C.tabs.find(t => (t.type === 'files' || t.type === 'file') && !t.webAttachment);
         if (!this.C.tabs.some(t => t.type === 'execution')) this.C.openTab({type:'execution',title:'执行过程',conversationId:window.shiyan?.getState()?.selectedConversationId},true);
         const keepActive = savedActive && (isRemoteProjectId(savedActive.projectId) || savedActive.assetId || ['execution','changes'].includes(savedActive.type));
         if (keepActive && this.C.tabs.some(t=>t.id===savedActive.id)) this.C.selectTab(savedActive.id);
@@ -344,10 +358,20 @@
     availableDevice() { return this.connected ? this.devices.find(device => this.online(device.deviceId)) || null : null; }
 
     ensureFilesTab() {
-      if (!this.C.tabs) return;
-      if (this.C.tabs.some(tab => (tab.type === 'files' || tab.type === 'file') && (tab.webDevicePane || tab.webDeviceId || isRemoteProjectId(tab.projectId)))) return;
+      if (!this.C.tabs) return null;
+      const fileTabs = this.C.tabs.filter(tab => (tab.type === 'files' || tab.type === 'file') && !tab.webAttachment);
       const project = this.projects.find(item => this.online(item.deviceId));
-      this.C.openTab({type:'files', title:project?.name || '设备文件', webDevicePane:true, ...(project ? {projectId:project.id, webDeviceId:project.deviceId} : {})}, false);
+      let tab = fileTabs.find(item => item.webDevicePane || item.webDeviceId || isRemoteProjectId(item.projectId)) || fileTabs[0];
+      if (tab) {
+        tab.type = 'files';
+        tab.webDevicePane = true;
+        if (!isRemoteProjectId(tab.projectId) && project) { tab.projectId = project.id; tab.webDeviceId = project.deviceId; }
+        else if (isRemoteProjectId(tab.projectId)) tab.webDeviceId = this.project(tab.projectId)?.deviceId || tab.webDeviceId;
+        if (tab.title === '设备文件' || !tab.title) tab.title = this.project(tab.projectId)?.name || '项目文件';
+        for (const duplicate of fileTabs) if (duplicate.id !== tab.id) this.C.closeTab(duplicate.id);
+        return tab;
+      }
+      return this.C.openTab({type:'files', title:project?.name || '项目文件', webDevicePane:true, ...(project ? {projectId:project.id, webDeviceId:project.deviceId} : {})}, false);
     }
 
     decorateTab(tabId) {
@@ -517,7 +541,7 @@
     openProject(projectId) {
       const project = this.project(projectId);
       if (!project) return;
-      let tab = this.C.tabs.find(item => (item.type === 'files' || item.type === 'file') && !item.webAttachment && (item.webDevicePane || item.webDeviceId));
+      let tab = this.C.tabs.find(item => (item.type === 'files' || item.type === 'file') && !item.webAttachment);
       if (tab) {
         tab.type = 'files'; tab.title = project.name; tab.projectId = project.id; tab.webDeviceId = project.deviceId; tab.webDevicePane = true;
         tab.selectedPath = undefined; tab.path = undefined; tab.fileId = undefined; tab.file = undefined; tab.directoryPath = '';
