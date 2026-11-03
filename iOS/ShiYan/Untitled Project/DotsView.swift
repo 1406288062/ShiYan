@@ -508,7 +508,7 @@ struct DotsView: View {
             item.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
             !(item.attachments ?? []).isEmpty &&
             (item.attachments ?? []).allSatisfy { $0.mimeType.hasPrefix("image/") }
-        HStack(alignment: .top) {
+        return HStack(alignment: .top) {
             if item.role == "user" { Spacer(minLength: 28) }
             VStack(alignment: imageOnly ? .trailing : .leading, spacing: 8) {
                 if item.role == "system" {
