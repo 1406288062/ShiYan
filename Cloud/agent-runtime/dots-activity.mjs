@@ -60,12 +60,12 @@ export function createDotsActivityReader({databasePath='/home/ubuntu/dots-runtim
     return workspace;
   };
   const replyCache=new Map();
-  const replyText=id=>{if(!replyCache.has(id))replyCache.set(id,database().prepare('SELECT raw_result,summary,notification FROM agent_outputs WHERE goal_id=? ORDER BY id DESC LIMIT 20').all(id).map(row=>[row.raw_result,row.summary,row.notification].filter(Boolean).join(' ')).join(' '));return replyCache.get(id);};
+  const replyText=id=>{if(!replyCache.has(id))replyCache.set(id,database().prepare('SELECT summary,notification FROM agent_outputs WHERE goal_id=? ORDER BY id DESC LIMIT 20').all(id).map(row=>[row.summary,row.notification].filter(Boolean).join(' ')).join(' '));return replyCache.get(id);};
   const wantedFile=(id,relative,name)=>{
     const ext=path.posix.extname(name).toLowerCase();
     if(SCRIPT_EXTENSIONS.has(ext)||TEST_NAME.test(name)||relative.split('/').some(part=>TEST_DIRS.has(part)))return false;
     const reply=replyText(Number(id));
-    if(reply.includes(relative)||reply.includes(name))return true;
+    if(reply.includes('](' + relative)||reply.includes('](./' + relative))return true;
     return DELIVERABLE_EXTENSIONS.has(ext);
   };
   const files=(ids,owner,{limit=100}={})=>{
