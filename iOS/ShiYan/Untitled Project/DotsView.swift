@@ -1665,7 +1665,7 @@ struct DotsBubbleBackground: View {
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
         if isUser {
-            shape.fill(Color(red: 0.04, green: 0.52, blue: 1.0))
+            shape.fill(Color.accentColor.opacity(0.09))
         } else {
             shape.fill(scheme == .dark ? Color.white.opacity(0.06) : Color(red: 0.965, green: 0.968, blue: 0.985))
                 .overlay(shape.strokeBorder(Color.primary.opacity(scheme == .dark ? 0.07 : 0.05), lineWidth: 0.5))
