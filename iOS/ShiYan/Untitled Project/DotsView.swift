@@ -2591,14 +2591,20 @@ private struct DotsAttachmentThumbnail: View {
     let attachment: DotsAttachment
     /// Resizable images fill their 220pt box and center by default; user images sit on the trailing edge.
     var alignment: Alignment = .leading
+    /// Explicit display size: the image is never stretched to a greedy box, so the rounded clip matches its real edges.
+    static func fittedSize(_ size: CGSize, in limit: CGFloat) -> CGSize {
+        guard size.width > 0, size.height > 0 else { return CGSize(width: limit, height: limit) }
+        let scale = min(limit / size.width, limit / size.height, 1)
+        return CGSize(width: size.width * scale, height: size.height * scale)
+    }
     @State private var image: UIImage?
     @State private var failed = false
 
     var body: some View {
         Group {
             if let image {
-                Image(uiImage: image).resizable().aspectRatio(contentMode: .fit)
-                    .frame(maxWidth: 220, maxHeight: 220, alignment: alignment)
+                Image(uiImage: image).resizable()
+                    .frame(width: Self.fittedSize(image.size, in: 220).width, height: Self.fittedSize(image.size, in: 220).height)
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             } else if failed {
                 Label(attachment.filename, systemImage: "photo")
