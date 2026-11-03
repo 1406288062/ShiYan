@@ -718,3 +718,8 @@ button .symbol { pointer-events: none; }
   #latestButton { translate: none; transition: opacity 0.16s ease-out, visibility 0s linear !important; }
   #latestButton[data-visible="false"] { translate: none; transition: opacity 0.16s ease-out, visibility 0s linear 0.16s !important; }
 }
+
+.message.is-user.is-image-only .message-content { gap: 0; }
+.message.is-user.is-image-only .message-content > .message-assets { gap: 8px; }
+.message.is-user.is-image-only .message-content > .message-assets .asset-card.is-image { padding: 0 !important; border: 0 !important; background: transparent !important; box-shadow: none !important; filter: none !important; border-radius: 12px; }
+.message.is-user.is-image-only .message-content > .message-assets .asset-image { border-radius: 12px; }

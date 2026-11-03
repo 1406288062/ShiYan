@@ -259,7 +259,8 @@
     if(m.error)inner+='<div class="message-error">'+esc(m.error)+'</div>';
     if(!user && !busy && !m.text && !attachments.length && !m.error)inner+='<div class="message-empty">'+(m.state==='cancelled'?'已停止':'本次没有可展示的内容')+'</div>';
     const elapsed=!user&&m.requestStartedAt?'<div class="v22-elapsed" data-start="'+esc(m.requestStartedAt)+'" '+(m.completedAt?'data-end="'+esc(m.completedAt)+'"':'')+'><span></span></div>':'';
-    return (user&&at?'<div class="v23-message-time"><time datetime="'+esc(at)+'">'+esc(dateText(at))+'</time></div>':'')+'<article class="message '+(user?'is-user':'is-assistant')+'" data-message-id="'+esc(m.id)+'">'+elapsed+'<div class="message-content">'+inner+'</div>'+changeSummary+(user||!busy||retry?tools:'')+'</article>';
+    const imageOnly=user&&!String(m.text||'').trim()&&images.length>0&&images.length===attachments.length;
+    return (user&&at?'<div class="v23-message-time"><time datetime="'+esc(at)+'">'+esc(dateText(at))+'</time></div>':'')+'<article class="message '+(user?'is-user':'is-assistant')+(imageOnly?' is-image-only':'')+'" data-message-id="'+esc(m.id)+'">'+elapsed+'<div class="message-content">'+inner+'</div>'+changeSummary+(user||!busy||retry?tools:'')+'</article>';
   }
   let lastMessagesSignature='',lastRenderedConversation='',messageFollowFrame=0,messageAutoFollow=true,messageLastScrollTop=0;
   const readingPositions=new Map(),pendingReadingPositions=new Map();let readingSaveTimer=0,restoringReadingPosition=false,readingRestoreGeneration=0,messageUserScrollUntil=0;
