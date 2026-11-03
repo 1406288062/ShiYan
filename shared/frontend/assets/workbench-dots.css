@@ -529,7 +529,7 @@ body.workbench-v22 :is(.message-body,.dots-manager-message) a.message-reference:
 /* 消息里的图片缩略图（例如微信发来的图片） */
 .dots-images { display:flex;flex-wrap:wrap;gap:8px;margin-top:6px; }
 .dots-manager-message.is-user .dots-images { justify-content:flex-end; }
-.dots-image { display:block;border-radius:10px;overflow:hidden;line-height:0;background:transparent;box-shadow:none;filter:none; }
+.dots-image { display:block;margin:0;padding:0;border:0!important;outline:0;appearance:none;-webkit-appearance:none;border-radius:10px;overflow:hidden;line-height:0;background:transparent!important;box-shadow:none!important;filter:none;cursor:pointer; }
 .dots-image img { display:block;max-width:min(260px,100%);max-height:240px;width:auto;height:auto;object-fit:contain;border:0;border-radius:inherit;box-shadow:none!important;filter:none!important; }
 .dots-manager-message .message-body:empty { display:none; }
 

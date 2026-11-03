@@ -156,6 +156,15 @@ function eventDefinition() {
 export function createMcpBridge({ db, pathSecret, runtimeToken, runtimeBase = "http://127.0.0.1:4330", deliver = signedPost, verify = verifyCallback, retryIntervalMs = 5000,defaultOwner='shiyan-private-owner',getOwner=null,subscriptions=null,registrationNotice=null,settings=null,feedback=null,weixin=null,grants=null,audit:auditView=null,lifeGoals=null }) {
   const currentOwner=()=>getOwner?.()||defaultOwner;
   const scoped=getOwner!==null;
+  db.exec(`CREATE TABLE IF NOT EXISTS dots_weixin_web_message_sync(owner TEXT NOT NULL,request_id TEXT NOT NULL,state TEXT NOT NULL,updated_at INTEGER NOT NULL,PRIMARY KEY(owner,request_id))`);
+  async function mirrorWebMessage(owner,requestId,content){
+    const text=String(content||'').trim();if(!text)return;
+    const now=Date.now(),prior=db.prepare('SELECT state,updated_at FROM dots_weixin_web_message_sync WHERE owner=? AND request_id=?').get(owner,requestId);
+    if(prior?.state==='sent'||(prior?.state==='sending'&&now-Number(prior.updated_at)<120000))return;
+    db.prepare(`INSERT INTO dots_weixin_web_message_sync(owner,request_id,state,updated_at) VALUES(?,?,'sending',?) ON CONFLICT(owner,request_id) DO UPDATE SET state='sending',updated_at=excluded.updated_at`).run(owner,requestId,now);
+    try{const bridge=weixin?.();const sent=await bridge?.send?.(text);if(sent)db.prepare(`UPDATE dots_weixin_web_message_sync SET state='sent',updated_at=? WHERE owner=? AND request_id=?`).run(Date.now(),owner,requestId);else db.prepare('DELETE FROM dots_weixin_web_message_sync WHERE owner=? AND request_id=?').run(owner,requestId);}
+    catch(error){db.prepare('DELETE FROM dots_weixin_web_message_sync WHERE owner=? AND request_id=?').run(owner,requestId);console.warn('[weixin] web message mirror failed:',error?.message||error);}
+  }
   const ownGoal=id=>!scoped||Boolean(db.prepare('SELECT id FROM goals WHERE id=? AND manager_id=?').get(Number(id),'manager:'+currentOwner()));
   const cursorRow=id=>currentOwner()===defaultOwner?db.prepare('SELECT last_notification_id FROM mcp_notification_cursors WHERE consumer_id=?').get(id):db.prepare('SELECT last_notification_id FROM mcp_scoped_notification_cursors WHERE owner=? AND consumer_id=?').get(currentOwner(),id);
   const subscriptionIdentity=()=>currentOwner()===defaultOwner?effectivePathSecret:effectivePathSecret+':'+currentOwner();
@@ -270,7 +279,7 @@ export function createMcpBridge({ db, pathSecret, runtimeToken, runtimeBase = "h
       if(name==='dots_get_manager')return runtime(base);
       if(name==='dots_get_manager_messages')return runtime(base+'/messages?limit='+(args.limit||50)+(args.before_id?'&beforeId='+args.before_id:''));
       if(name==='dots_get_manager_activity')return runtime(base+'/activity?afterId='+(args.after_id||0)+'&limit='+(args.limit||50));
-      if(name==='dots_message_manager')return runtime(base+'/messages',{method:'POST',body:JSON.stringify({message:args.message,requestId:args.request_id,...(args.host?{host:args.host}:{}),...(args.task_id?{taskId:args.task_id}:{})})});
+      if(name==='dots_message_manager'){const result=await runtime(base+'/messages',{method:'POST',body:JSON.stringify({message:args.message,requestId:args.request_id,...(args.host?{host:args.host}:{}),...(args.task_id?{taskId:args.task_id}:{})})});if(args.host==='shiyan_web')void mirrorWebMessage(owner,args.request_id,args.display_message||args.message);return result;}
       return runtime(base+'/control',{method:'POST',body:JSON.stringify({action:args.action,...(args.request_id?{requestId:args.request_id}:{})})});
     }
     if (name === "dots_create_goal") {

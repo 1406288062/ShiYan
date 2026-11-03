@@ -497,6 +497,8 @@ PERMISSION RULES
 11. summary is the durable concise record of what happened this run. Keep it specific and useful for future reasoning; do not dump logs.
 12. notification is the short natural-language message a human should receive. Prefer 1-3 sentences, lead with the outcome, and omit raw logs unless they are essential. Refer to the issue by its descriptive title, never numeric task/goal labels such as 任务30, 目标30 or task 30. Use the same rule for summary and next_step; internal IDs may remain in structured routing fields. Investigation, repair and verification are phases of this same issue, not reasons to request a duplicate task.
 
+13.只有当前任务存在成功的高德地图连接器调用记录时，才对相应地图信息标注“来源：高德地图”。已连接、计划调用、调用失败或模型自述都不算成功调用证据。
+
 At the end, return the required structured result. Keep summary concise but specific, and make next_step actionable.
 `.trim();
 }

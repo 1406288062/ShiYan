@@ -630,7 +630,7 @@
   finally{sendingManagerMessages.delete(item.requestId);refreshContent();}
  }
  async function submit(){if(uploading||managerIMEBlocksSend())return;const input=$('dotsManagerInput'),text=input?.value?.trim();if(!text&&!attachments().length)return;const body=text||'请处理这些附件。',quoted=replyTo?composeQuote(quoteExcerpt(replyTo.content),body):body;const replyAfterId=messages.reduce((a,m)=>Math.max(a,Number(m.id)||0),0);replyTo=null;
-  const item={message:quoted,host:'shiyan_desktop',attachments:attachments().map(a=>({...a})),requestId:crypto.randomUUID(),replyAfterId,state:'sending'};
+  const item={message:quoted,host:window.ShiYanPlatform?.mode==='web'?'shiyan_web':'shiyan_desktop',attachments:attachments().map(a=>({...a})),requestId:crypto.randomUUID(),replyAfterId,state:'sending'};
   pending.managerMessages=pending.managerMessages||[];pending.managerMessages.push(item);
   drafts.manager='';drafts.managerAttachments=[];if(input)input.value='';showError('');void persist().catch(showError);refreshContent();void sendPendingManagerMessage(item);return item;
  }

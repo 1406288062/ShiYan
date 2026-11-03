@@ -742,7 +742,7 @@
     const panel=$('dotsActivity');
     conversationDialog.classList.toggle('is-inline',!full);if(full)conversationDialog.style.height='';
     panel?.classList.toggle('is-conversation-preview',!full);
-    conversationDialog.innerHTML='<section class="dots-conversation-card"><button type="button" class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button><p class="dots-panel-empty">正在读取对话…</p></section>';
+    conversationDialog.innerHTML='<section class="dots-conversation-card"><p class="dots-panel-empty">正在读取对话…</p></section>';
     if(full){
       document.body.appendChild(conversationDialog);savedSignature='';renderPanel();showDialog(conversationDialog);
     }else{
@@ -758,7 +758,7 @@
       clearInterval(conversationTimer);conversationTimer=setInterval(refreshConversation,4000);
     }catch(error){
       if(version!==conversationVersion)return;
-      conversationDialog.innerHTML='<section class="dots-conversation-card"><button class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button><p class="dots-dialog-error">'+esc(error.message)+'</p></section>';
+      conversationDialog.innerHTML='<section class="dots-conversation-card"><p class="dots-dialog-error">'+esc(error.message)+'</p></section>';
     }
   }
   function conversationBody(data) {
@@ -804,7 +804,7 @@
   function renderConversation() {
     const data=currentConversation, goal=data.goal || {}, ended=['done','completed','cancelled','failed'].includes(goal.status);
     conversationDialog.classList.toggle('is-full',conversationFull);
-    conversationDialog.innerHTML='<section class="dots-conversation-card"><header><button type="button" class="dots-conversation-back" '+(conversationFull?'data-dots-preview-chat':'data-dots-close-dialog')+'>'+icon('back')+'<strong>'+esc(goal.title || '任务对话')+'</strong></button><button type="button" class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button></header><p class="dots-dialog-error dots-read-error" role="alert" hidden></p><div class="dots-conversation-messages">'+
+    conversationDialog.innerHTML='<section class="dots-conversation-card"><header><button type="button" class="dots-conversation-back" '+(conversationFull?'data-dots-preview-chat':'data-dots-close-dialog')+'>'+icon('back')+'<strong>'+esc(goal.title || '任务对话')+'</strong></button></header><p class="dots-dialog-error dots-read-error" role="alert" hidden></p><div class="dots-conversation-messages">'+
       conversationBody(data)+'</div>'+
       (conversationFull?'<form class="dots-child-composer" id="dotsChildComposer"><textarea rows="1" maxlength="16000" placeholder="'+(ended?'补充要求…':'发送消息…')+'" aria-label="给任务发送消息" required></textarea><button type="submit" class="send-button" aria-label="发送">↑</button><p class="dots-dialog-error" role="alert" hidden></p></form>':'<button type="button" class="dots-white-button" data-dots-open-chat>'+icon('chat')+'打开聊天</button>')+'</section>';
     if(conversationFull) {

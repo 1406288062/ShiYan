@@ -482,6 +482,10 @@ struct DotsView: View {
         return prefix + " " + formatter.string(from: date)
     }
     private func managerMessage(_ item: DotsManagerMessage) -> some View {
+        let imageOnly = item.role == "user" &&
+            item.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            !(item.attachments ?? []).isEmpty &&
+            (item.attachments ?? []).allSatisfy { $0.mimeType.hasPrefix("image/") }
         HStack(alignment: .top) {
             if item.role == "user" { Spacer(minLength: 28) }
             VStack(alignment: .leading, spacing: 8) {
@@ -491,9 +495,11 @@ struct DotsView: View {
                 if item.role == "user" {
                     let parts = DotsQuote.split(item.content)
                     if let quote = parts.quote { DotsQuoteBlock(text: quote) }
-                    Text(parts.body).font(.body).lineSpacing(5)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("dots-user-bubble-\(item.id)")
+                    if !parts.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text(parts.body).font(.body).lineSpacing(5)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("dots-user-bubble-\(item.id)")
+                    }
                 } else if let prose = Self.plainProse(item.content) {
                     Text(prose).font(.body).lineSpacing(5)
                         .fixedSize(horizontal: false, vertical: true)
@@ -518,8 +524,8 @@ struct DotsView: View {
                     }.buttonStyle(.plain).foregroundStyle(.primary)
                 }
             }
-            .padding(item.role == "system" ? 0 : 14)
-            .background { if item.role != "system" { DotsBubbleBackground(isUser: item.role == "user") } }
+            .padding(item.role == "system" || imageOnly ? 0 : 14)
+            .background { if item.role != "system" && !imageOnly { DotsBubbleBackground(isUser: item.role == "user") } }
             .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 20, style: .continuous))
             .agentLongPressMenu(isLong: AgentLongMessage.isLong(item.content)) {
                 if item.role != "system" {
@@ -544,9 +550,9 @@ struct DotsView: View {
             } preview: {
                 Text(item.role == "user" ? DotsQuote.split(item.content).body : item.content)
                     .font(.body).lineSpacing(5).fixedSize(horizontal: false, vertical: true)
-                    .padding(14).frame(maxWidth: .infinity, alignment: .leading)
-                    .background(DotsBubbleBackground(isUser: item.role == "user"))
-                    .padding(12)
+                    .padding(imageOnly ? 0 : 14).frame(maxWidth: .infinity, alignment: .leading)
+                    .background { if !imageOnly { DotsBubbleBackground(isUser: item.role == "user") } }
+                    .padding(imageOnly ? 0 : 12)
             }
             .overlay(alignment: .bottomTrailing) {
                 if item.isProactive, let feedback = item.feedback {

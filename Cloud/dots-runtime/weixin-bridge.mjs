@@ -89,6 +89,11 @@ export function createWeixinBridge({ store, ingest, owner, saveInbound = null, o
   db.exec(`CREATE TABLE IF NOT EXISTS dots_weixin(manager_id TEXT PRIMARY KEY,bot_id TEXT,token TEXT,base_url TEXT,user_id TEXT,sync_buf TEXT NOT NULL DEFAULT '',
     state TEXT NOT NULL DEFAULT 'unbound',context_token TEXT,last_error TEXT NOT NULL DEFAULT '',push_proactive INTEGER NOT NULL DEFAULT 1,last_pushed_id INTEGER NOT NULL DEFAULT 0,
     bound_at INTEGER,last_message_at INTEGER,updated_at INTEGER NOT NULL)`);
+  // 失败的推送留在 manager_messages 队列中；记录失败时的入站序号，避免每 10 秒重复撞同一个错误。
+  const columns = new Set(db.prepare('PRAGMA table_info(dots_weixin)').all().map(column => column.name));
+  if (!columns.has('inbound_seq')) db.exec('ALTER TABLE dots_weixin ADD COLUMN inbound_seq INTEGER NOT NULL DEFAULT 0');
+  if (!columns.has('push_failed_message_id')) db.exec('ALTER TABLE dots_weixin ADD COLUMN push_failed_message_id INTEGER');
+  if (!columns.has('push_failed_inbound_seq')) db.exec('ALTER TABLE dots_weixin ADD COLUMN push_failed_inbound_seq INTEGER');
   const row = () => db.prepare('SELECT * FROM dots_weixin WHERE manager_id=?').get(managerId);
   const save = fields => {
     const keys = Object.keys(fields);
@@ -172,20 +177,79 @@ export function createWeixinBridge({ store, ingest, owner, saveInbound = null, o
       const entry = kind === 'image' ? item.image_item : kind === 'file' ? item.file_item : null;
       const media = entry?.media;
       if (!kind || (!media?.encrypt_query_param && !media?.full_url)) continue;
+      const startedAt = Date.now();
+      let phase = 'prepare', filename = entry.file_name || '';
       try {
         const url = media.full_url || `${CDN_BASE}/download?encrypted_query_param=${encodeURIComponent(media.encrypt_query_param)}`;
-        const response = await fetchImpl(url, { signal: AbortSignal.timeout(30_000) });
-        if (!response.ok) throw new Error('weixin_cdn_' + response.status);
-        const raw = Buffer.from(await response.arrayBuffer());
+        const urlType = media.full_url ? 'full_url' : 'encrypted_query_param';
+        let raw = null, lastError = null;
+        // CDN GET 可安全重试：60 秒超时，最多两次；不对解密和写盘做盲目重试。
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          const attemptStartedAt = Date.now();
+          let response = null;
+          try {
+            phase = 'cdn_request';
+            response = await fetchImpl(url, { signal: AbortSignal.timeout(60_000) });
+            logger.info?.('[weixin] media response ' + JSON.stringify({
+              kind, urlType, attempt, status: response.status,
+              contentLength: response.headers?.get?.('content-length') || null,
+              elapsedMs: Date.now() - attemptStartedAt,
+            }));
+            if (!response.ok) {
+              const error = Object.assign(new Error('weixin_cdn_' + response.status), { status: response.status });
+              throw error;
+            }
+            phase = 'cdn_body';
+            raw = Buffer.from(await response.arrayBuffer());
+            logger.info?.('[weixin] media body ' + JSON.stringify({
+              kind, attempt, bytes: raw.length, elapsedMs: Date.now() - attemptStartedAt,
+            }));
+            lastError = null;
+            break;
+          } catch (error) {
+            lastError = error;
+            const status = error?.status || response?.status || null;
+            const retryable = error?.name === 'TimeoutError' || error?.name === 'AbortError'
+              || error?.name === 'TypeError' || [408, 425, 429].includes(status) || status >= 500;
+            logger.warn?.('[weixin] media download failed ' + JSON.stringify({
+              kind, urlType, phase, attempt, status,
+              error: error?.message || String(error), errorName: error?.name || null,
+              code: error?.code || null, elapsedMs: Date.now() - attemptStartedAt,
+              retrying: attempt < 2 && retryable,
+            }));
+            if (attempt >= 2 || !retryable) throw error;
+            await sleep(1200);
+          }
+        }
+        if (lastError || !raw) throw lastError || new Error('weixin_media_empty');
         if (raw.length > MEDIA_MAX_BYTES + 16) throw new Error('weixin_media_too_large');
+        phase = 'decrypt';
+        const decryptStartedAt = Date.now();
         const key = kind === 'image' && entry.aeskey ? Buffer.from(entry.aeskey, 'hex').toString('base64') : media.aes_key;
         const data = key ? decryptMedia(raw, key) : raw;
+        logger.info?.('[weixin] media decrypted ' + JSON.stringify({
+          kind, encryptedBytes: raw.length, bytes: data.length, elapsedMs: Date.now() - decryptStartedAt,
+        }));
         const stamp = new Date(now()).toISOString().replace(/\D/g, '').slice(0, 14);
-        const filename = kind === 'image' ? `weixin-${stamp}-${index + 1}.${imageExtension(data)}`
+        filename = kind === 'image' ? `weixin-${stamp}-${index + 1}.${imageExtension(data)}`
           : `${stamp}-` + String(entry.file_name || 'weixin.bin').replace(/[\\/\x00-\x1f\x7f]/g, '_').slice(0, 120);
+        phase = 'save';
+        const saveStartedAt = Date.now();
         const saved = await saveInbound({ data, filename, kind });
+        logger.info?.('[weixin] media saved ' + JSON.stringify({
+          kind, filename, bytes: data.length, saved: Boolean(saved),
+          elapsedMs: Date.now() - saveStartedAt, totalElapsedMs: Date.now() - startedAt,
+        }));
         if (saved) out.push({ kind, filename, path: saved, bytes: data.length });
-      } catch (error) { logger.warn?.('[weixin] media ' + (error?.message || error)); out.push({ kind, filename: entry.file_name || '', failed: true }); }
+        else throw new Error('weixin_media_save_empty');
+      } catch (error) {
+        logger.warn?.('[weixin] media processing failed ' + JSON.stringify({
+          kind, phase, filename, error: error?.message || String(error),
+          errorName: error?.name || null, code: error?.code || null,
+          status: error?.status || null, totalElapsedMs: Date.now() - startedAt,
+        }));
+        out.push({ kind, filename, failed: true });
+      }
     }
     return out;
   }
@@ -237,7 +301,7 @@ export function createWeixinBridge({ store, ingest, owner, saveInbound = null, o
     const r = row(); if (!r) return;
     if (message.message_type !== 1) return;
     if (r.user_id && message.from_user_id && message.from_user_id !== r.user_id) return; // 只接受绑定者本人
-    if (message.context_token) save({ context_token: message.context_token, last_message_at: Math.floor(now() / 1000) });
+    save({ ...(message.context_token ? { context_token: message.context_token } : {}), last_message_at: Math.floor(now() / 1000), inbound_seq: (r.inbound_seq || 0) + 1 });
     const typed = typing(true, { fresh: true });
     const text = textOf(message), media = await mediaOf(message);
     const saved = media.filter(m => !m.failed);
@@ -266,7 +330,9 @@ export function createWeixinBridge({ store, ingest, owner, saveInbound = null, o
   // 以及微信里发起的对话之后 Dots 的跟进消息（任务进展、分析结果等；它们不是对某条消息的直接回复，handle 不会发）。
   async function pushProactive() {
     const r = row(); if (!r?.token || !r.context_token) return;
-    const pending = db.prepare(`SELECT m.id,m.content,m.origin FROM manager_messages m WHERE m.manager_id=? AND m.role='assistant' AND m.id>? AND m.delivery_state='completed'
+    // 上次失败的消息仍停在 last_pushed_id 之后；只有收到新的微信入站消息后才再试一次。
+    if (r.push_failed_message_id && (r.inbound_seq || 0) <= (r.push_failed_inbound_seq || 0)) return;
+    const pending = db.prepare(`SELECT m.id,m.content,m.origin,m.role FROM manager_messages m WHERE m.manager_id=? AND m.id>? AND m.role='assistant' AND m.delivery_state='completed'
       AND ((m.origin='proactive' AND ?=1) OR (COALESCE(m.origin,'')<>'proactive'
         AND (COALESCE((SELECT u.host FROM manager_messages u WHERE u.manager_id=m.manager_id AND u.role='user' AND u.id<m.id ORDER BY u.id DESC LIMIT 1),'')<>'weixin' OR COALESCE(m.responds_to_message_ids,'[]')='[]')))
       ORDER BY m.id LIMIT 5`).all(managerId, r.last_pushed_id, r.push_proactive ? 1 : 0);
@@ -276,9 +342,14 @@ export function createWeixinBridge({ store, ingest, owner, saveInbound = null, o
       const whole = part ? [item.content, ...db.prepare("SELECT content FROM manager_messages WHERE manager_id=? AND role='assistant' AND id>? AND content LIKE '收到一封 QQ 邮件（%' ORDER BY id LIMIT ?").all(managerId, item.id, Number(part[1]) - 1)
         .map(next => next.content.slice(next.content.indexOf('\n\n', next.content.indexOf('收件时间')) + 2))].join('\n\n') : item.content;
       const content = /^收到一封 QQ 邮件/.test(item.content) ? weixinMailDigest(whole) : item.content;
-      try { if (content) await send(content); } catch (error) { logger.warn?.('[weixin] push ' + error.message); return; }
-      if (content) onAudit('weixin_push', '把一条主动消息推送到了微信');
-      save({ last_pushed_id: item.id });
+      try { if (content) await send(content); }
+      catch (error) {
+        save({ push_failed_message_id: item.id, push_failed_inbound_seq: r.inbound_seq || 0, last_error: String(error?.message || error).slice(0, 200) });
+        logger.warn?.('[weixin] push 暂存消息 ' + item.id + '，等待下一条微信入站消息后重试：' + error.message);
+        return;
+      }
+      if (content) onAudit('weixin_push', '把一条 Dots 回复/主动消息推送到了微信');
+      save({ last_pushed_id: item.id, push_failed_message_id: null, push_failed_inbound_seq: null, last_error: '' });
     }
   }
 

@@ -152,6 +152,10 @@ class CosClient:
             self.request("PUT", key, body=source, headers={"Content-Type": mime,
                          "Content-Length": str(os.fstat(source.fileno()).st_size), "x-cos-acl": "private"})
 
+    def upload_bytes(self, key, data, mime):
+        self.request("PUT", key, body=data, headers={"Content-Type": mime,
+                     "Content-Length": str(len(data)), "x-cos-acl": "private"})
+
 
 class CosTransfer:
     def __init__(self, config, client=None, clock=time.time):
@@ -180,6 +184,7 @@ class CosTransfer:
         os.chmod(filename, 0o600)
         db.execute("CREATE TABLE IF NOT EXISTS tickets (id TEXT PRIMARY KEY, owner TEXT NOT NULL, data TEXT NOT NULL)")
         db.execute("CREATE TABLE IF NOT EXISTS mirrors (id TEXT PRIMARY KEY, owner TEXT NOT NULL, data TEXT NOT NULL)")
+        db.execute("CREATE TABLE IF NOT EXISTS dots_files (id TEXT NOT NULL, owner TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(owner,id))")
         try:
             yield db
         finally:
@@ -195,6 +200,45 @@ class CosTransfer:
         db.execute(f"INSERT INTO {table} (id,owner,data) VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET owner=excluded.owner,data=excluded.data",
                    (identifier, owner, json.dumps(value, ensure_ascii=False)))
         db.commit()
+
+    def dots_file_info(self, runtime, identifier):
+        owner = self._scope(runtime)
+        with self._database(runtime) as db:
+            return self._row(db, "dots_files", identifier, owner)
+
+    def mirror_dots_file(self, runtime, identifier, filename, mime, data):
+        if not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", str(identifier), re.I):
+            raise ValueError("文件标识无效")
+        filename = Path(str(filename).replace("\\", "/")).name
+        filename = re.sub(r"[\x00-\x1f\x7f]", "", filename)[:180]
+        if not filename or filename in {".", ".."}:
+            raise ValueError("文件名无效")
+        if not isinstance(data, bytes) or not 0 < len(data) <= MAX_INPUT:
+            raise ValueError("文件大小无效")
+        mime = str(mime or "application/octet-stream").split(";")[0][:150]
+        digest = hashlib.sha256(data).hexdigest()
+        owner = self._scope(runtime)
+        with self._database(runtime) as db:
+            prior = self._row(db, "dots_files", identifier, owner)
+            if prior and prior.get("sha256") == digest:
+                return prior
+            key = f"dots/{owner}/{identifier}/{digest}"
+            self.client.upload_bytes(key, data, mime)
+            value = {"key": key, "filename": filename, "mime": mime, "bytes": len(data), "sha256": digest}
+            db.execute("INSERT INTO dots_files(id,owner,data) VALUES(?,?,?) ON CONFLICT(owner,id) DO UPDATE SET data=excluded.data", (identifier, owner, json.dumps(value, ensure_ascii=False)))
+            db.commit()
+            return value
+
+    def read_dots_file(self, runtime, identifier):
+        owner = self._scope(runtime)
+        with self._database(runtime) as db:
+            value = self._row(db, "dots_files", identifier, owner)
+        if not value:
+            raise FileNotFoundError("文件不存在")
+        data = self.client.request("GET", value["key"], limit=MAX_INPUT, expected_size=int(value["bytes"]))
+        if hashlib.sha256(data).hexdigest() != value["sha256"]:
+            raise CosUnavailable("文件校验失败")
+        return {**value, "data": data}
 
     def _cleanup(self, db, owner):
         now = self.clock()

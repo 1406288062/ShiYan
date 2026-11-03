@@ -382,12 +382,12 @@ export class DotsAdapter {
     this.authorize(owner);only(input,['requestId','message','host','taskId','attachments']);
     const attachments=this.attachments.resolve(owner,input.attachments||[]);
     const payload={message:text(input.message,20000,'总管指令'),host:input.host,...(attachments.length?{attachments:attachments.map(a=>a.id)}:{}),...(input.taskId==null?{}:{taskId:integer(input.taskId,1)})};
-    if(!['shiyan_desktop','shiyan_mobile'].includes(payload.host))throw fail('指令来源无效');
+    if(!['shiyan_web','shiyan_desktop','shiyan_mobile'].includes(payload.host))throw fail('指令来源无效');
     if(payload.taskId)this.requireGoal(owner,payload.taskId);
     return this.mutation(owner,input.requestId,'manager:message',payload,async()=>{
       const remoteId=this.remoteRequestId(owner,input.requestId);
       const instruction=await this.attachments.bindRuntimeMessage(owner,remoteId,payload.message,attachments,{privateOwner:this.allowedOwner});
-      const result=await this.clientFor(owner).tool('dots_message_manager',{owner_id:owner,message:instruction,host:payload.host,request_id:remoteId,...(payload.taskId?{task_id:payload.taskId}:{})});
+      const result=await this.clientFor(owner).tool('dots_message_manager',{owner_id:owner,message:instruction,display_message:payload.message,host:payload.host,request_id:remoteId,...(payload.taskId?{task_id:payload.taskId}:{})});
       const manager=this.presentManager(owner,result.manager);
       const message=manager.messages.find(m=>m.id===result.message?.id)||this.presentManagerMessage(result.message||{},owner);
       if(result.accepted!==true||!Number.isSafeInteger(message.id)||message.role!=='user'||message.content!==payload.message)throw fail('总管未确认接收此指令',502,'runtime_rejected');

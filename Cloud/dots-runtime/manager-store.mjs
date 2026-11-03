@@ -142,7 +142,7 @@ export function createManagerStore({ db, ownerId = 'shiyan-private-owner', works
     if(!content||content.length>20000)throw error('message must contain 1–20000 characters',400);
     const taskId=input.taskId==null?null:Number(input.taskId);
     if(taskId!==null)requireGoal(taskId);
-    const host=input.host||'other';if(!['shiyan_desktop','shiyan_mobile','chatgpt','weixin','other'].includes(host))throw error('Invalid host',400);
+    const host=input.host||'other';if(!['shiyan_web','shiyan_desktop','shiyan_mobile','chatgpt','weixin','other'].includes(host))throw error('Invalid host',400);
     return receipt(input.requestId,'manager:message',{content,taskId,host},()=>{
       const result=db.prepare("INSERT INTO manager_messages(manager_id,role,content,task_id,request_id,host,created_at) VALUES(?,'user',?,?,?,?,?)").run(managerId,content,taskId,input.requestId,host,now());
       const row=messageRow(db.prepare('SELECT * FROM manager_messages WHERE id=?').get(Number(result.lastInsertRowid)));

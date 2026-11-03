@@ -336,7 +336,59 @@ def register_dots(app):
 
     @app.get("/api/dots/activity")
     async def activity(request: Request):
-        return await remote(request, "GET", "activity")
+        result = await remote(request, "GET", "activity")
+        transfer = getattr(request.app.state, "cos_transfer", None)
+        outputs = result.get("outputs", []) if isinstance(result, dict) else []
+        if transfer is not None and isinstance(outputs, list):
+            runtime = request.app.state.runtime
+            gateway = runtime.gateway
+            for output in outputs:
+                if not isinstance(output, dict) or not output.get("attachmentId"):
+                    continue
+                attachment_id = str(output["attachmentId"])
+                try:
+                    info = await asyncio.to_thread(transfer.dots_file_info, runtime, attachment_id)
+                    if info is None:
+                        _, headers, content = await gateway.raw("GET", "dots/attachments/" + str(uuid.UUID(attachment_id)))
+                        mime = str(headers.get("content-type", output.get("mimeType", "application/octet-stream"))).split(";")[0]
+                        await asyncio.to_thread(transfer.mirror_dots_file, runtime, attachment_id,
+                                                output.get("filename") or "任务文件", mime, content)
+                    output["downloadPath"] = "/api/dots/files/" + attachment_id
+                except (ValueError, GatewayError):
+                    # Preserve the existing authenticated download path if a mirror cannot be completed.
+                    continue
+                except Exception:
+                    continue
+        return result
+
+    @app.get("/api/dots/files/{file_id}")
+    async def dots_file(file_id: str, request: Request):
+        file_id = str(uuid.UUID(file_id))
+        transfer = getattr(request.app.state, "cos_transfer", None)
+        if transfer is None:
+            raise ValueError("文件暂时不可用")
+        runtime = request.app.state.runtime
+        try:
+            item = await asyncio.to_thread(transfer.read_dots_file, runtime, file_id)
+        except FileNotFoundError:
+            gateway = runtime.gateway
+            await gateway.ensure_enrolled()
+            _, headers, content = await gateway.raw("GET", "dots/attachments/" + file_id)
+            mime = str(headers.get("content-type", "application/octet-stream")).split(";")[0]
+            item = await asyncio.to_thread(transfer.mirror_dots_file, runtime, file_id,
+                                           headers.get("x-filename") or "任务文件", mime, content)
+            item = await asyncio.to_thread(transfer.read_dots_file, runtime, file_id)
+        except Exception:
+            raise ValueError("文件读取失败，请稍后重试") from None
+        filename = quote(item["filename"], safe="")
+        kind = item["mime"] if item["mime"].startswith("image/") else "application/octet-stream"
+        disposition = "inline" if kind.startswith("image/") else "attachment"
+        return Response(item["data"], media_type=kind, headers={
+            "Content-Disposition": disposition + "; filename*=UTF-8''" + filename,
+            "Content-Security-Policy": "sandbox; default-src 'none'",
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "private, no-store",
+        })
 
     @app.get("/api/dots/goals/{goal_id}/conversation")
     async def conversation(goal_id: int, request: Request):

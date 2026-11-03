@@ -574,6 +574,18 @@ test('manager tools preserve stable ownership, target and idempotency keys', asy
   assert.equal(caps.hard_budgets,false);
 });
 
+test('web-originated Dots messages are mirrored to the bound WeChat exactly once', async t => {
+  const sent=[];
+  const f=await fixture(t,{weixin:()=>({send:async text=>{sent.push(text);return true;}})});
+  const input={message:'内部附件路径不应发给微信',display_message:'帮我整理今天的计划',request_id:'web-message-001',host:'shiyan_web'};
+  await f.result('dots_message_manager',input);
+  await new Promise(resolve=>setTimeout(resolve,30));
+  assert.deepEqual(sent,['帮我整理今天的计划']);
+  await f.result('dots_message_manager',input);
+  await new Promise(resolve=>setTimeout(resolve,30));
+  assert.deepEqual(sent,['帮我整理今天的计划']);
+});
+
 test('manager history pagination and explicit reconciliation keep their exact contracts',async t=>{
  const f=await fixture(t);
  const page=await f.result('dots_get_manager_messages',{before_id:8,limit:2});
