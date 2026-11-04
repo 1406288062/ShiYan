@@ -577,6 +577,7 @@ struct DotsView: View {
                     .padding(imageOnly ? 0 : 14).frame(maxWidth: .infinity, alignment: .leading)
                     .background { if !imageOnly { DotsBubbleBackground(isUser: item.role == "user") } }
                     .padding(imageOnly ? 0 : 12)
+                    .background(item.role == "user" ? (scheme == .dark ? Color(white: 0.065) : Color.white) : Color(uiColor: .systemBackground))
             }
             .overlay(alignment: .bottomTrailing) {
                 if item.isProactive, let feedback = item.feedback {
