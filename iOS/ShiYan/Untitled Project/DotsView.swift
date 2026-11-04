@@ -572,12 +572,24 @@ struct DotsView: View {
                     }
                 }
             } preview: {
-                Text(item.role == "user" ? DotsQuote.split(item.content).body : item.content)
-                    .font(.body).lineSpacing(5).fixedSize(horizontal: false, vertical: true)
-                    .padding(imageOnly ? 0 : 14).frame(maxWidth: .infinity, alignment: .leading)
-                    .background { if !imageOnly { DotsBubbleBackground(isUser: item.role == "user") } }
-                    .padding(imageOnly ? 0 : 12)
-                    .background(item.role == "user" ? (scheme == .dark ? Color(white: 0.065) : Color.white) : Color(uiColor: .systemBackground))
+                if item.role == "user" {
+                    Text(DotsQuote.split(item.content).body)
+                        .font(.body).lineSpacing(5).fixedSize(horizontal: false, vertical: true)
+                        .padding(imageOnly ? 0 : 14)
+                        .background { if !imageOnly { DotsBubbleBackground(isUser: true) } }
+                        .foregroundStyle(scheme == .dark
+                            ? Color(red: 197.0 / 255, green: 212.0 / 255, blue: 232.0 / 255)
+                            : Color.primary)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .padding(imageOnly ? 0 : 12)
+                } else {
+                    Text(item.content)
+                        .font(.body).lineSpacing(5).fixedSize(horizontal: false, vertical: true)
+                        .padding(imageOnly ? 0 : 14).frame(maxWidth: .infinity, alignment: .leading)
+                        .background { if !imageOnly { DotsBubbleBackground(isUser: false) } }
+                        .padding(imageOnly ? 0 : 12)
+                        .background(Color(uiColor: .systemBackground))
+                }
             }
             .overlay(alignment: .bottomTrailing) {
                 if item.isProactive, let feedback = item.feedback {
