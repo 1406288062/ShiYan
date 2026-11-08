@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "source": "Codex Pets",
-  "active_pet_id": "pet_6ac34fca9ed8819191d26a7488e27b61",
+  "active_pet_id": "codex",
   "pets": [
     {
       "id": "codex",
@@ -706,84 +706,6 @@
       ]
     },
     {
-      "id": "pet_6ac34fca9ed8819191d26a7488e27b61",
-      "name": "小莓·卡通",
-      "description": "戴草帽、双马尾，穿粉色水手风裙装与白袜乐福鞋的卡通桌宠，拥有九种动作和十六向视线。",
-      "is_active": true,
-      "is_custom": true,
-      "filename": "pet_6ac34fca9ed8819191d26a7488e27b61.png",
-      "preview_filename": "pet_6ac34fca9ed8819191d26a7488e27b61-idle.webp",
-      "thumbnail_filename": "pet_6ac34fca9ed8819191d26a7488e27b61-thumb.png",
-      "sprite_url": "/static/dots-pets/pet_6ac34fca9ed8819191d26a7488e27b61.png",
-      "preview_url": "/static/dots-pets/pet_6ac34fca9ed8819191d26a7488e27b61-idle.webp",
-      "thumbnail_url": "/static/dots-pets/pet_6ac34fca9ed8819191d26a7488e27b61-thumb.png",
-      "width": 1536,
-      "height": 2288,
-      "cell_width": 192,
-      "cell_height": 208,
-      "columns": 8,
-      "rows": 11,
-      "sprite_version": 2,
-      "bytes": 2937950,
-      "has_alpha": true,
-      "states": [
-        {
-          "name": "idle",
-          "row": 0,
-          "frames": 6,
-          "fps": 6
-        },
-        {
-          "name": "running-right",
-          "row": 1,
-          "frames": 8,
-          "fps": 8
-        },
-        {
-          "name": "running-left",
-          "row": 2,
-          "frames": 8,
-          "fps": 8
-        },
-        {
-          "name": "waving",
-          "row": 3,
-          "frames": 4,
-          "fps": 8
-        },
-        {
-          "name": "jumping",
-          "row": 4,
-          "frames": 5,
-          "fps": 8
-        },
-        {
-          "name": "failed",
-          "row": 5,
-          "frames": 8,
-          "fps": 8
-        },
-        {
-          "name": "waiting",
-          "row": 6,
-          "frames": 6,
-          "fps": 8
-        },
-        {
-          "name": "running",
-          "row": 7,
-          "frames": 6,
-          "fps": 8
-        },
-        {
-          "name": "review",
-          "row": 8,
-          "frames": 6,
-          "fps": 8
-        }
-      ]
-    },
-    {
       "id": "pet_6ac10fef41608191a5e2a87e3e9f97f3",
       "name": "yu-B",
       "description": "Baby black kitten with a tilted head, round paws, glossy eyes and the approved broad-crown fur. Variant B.",
@@ -1037,84 +959,6 @@
       "rows": 11,
       "sprite_version": 2,
       "bytes": 3573526,
-      "has_alpha": true,
-      "states": [
-        {
-          "name": "idle",
-          "row": 0,
-          "frames": 6,
-          "fps": 6
-        },
-        {
-          "name": "running-right",
-          "row": 1,
-          "frames": 8,
-          "fps": 8
-        },
-        {
-          "name": "running-left",
-          "row": 2,
-          "frames": 8,
-          "fps": 8
-        },
-        {
-          "name": "waving",
-          "row": 3,
-          "frames": 4,
-          "fps": 8
-        },
-        {
-          "name": "jumping",
-          "row": 4,
-          "frames": 5,
-          "fps": 8
-        },
-        {
-          "name": "failed",
-          "row": 5,
-          "frames": 8,
-          "fps": 8
-        },
-        {
-          "name": "waiting",
-          "row": 6,
-          "frames": 6,
-          "fps": 8
-        },
-        {
-          "name": "running",
-          "row": 7,
-          "frames": 6,
-          "fps": 8
-        },
-        {
-          "name": "review",
-          "row": 8,
-          "frames": 6,
-          "fps": 8
-        }
-      ]
-    },
-    {
-      "id": "pet_6abd0eab12a48191b7fbf8d7f68d393d",
-      "name": "桃桃水手",
-      "description": "A polished sailor-themed desktop companion inspired by a pink-and-navy school-uniform outfit and lace straw hat.",
-      "is_active": false,
-      "is_custom": true,
-      "filename": "pet_6abd0eab12a48191b7fbf8d7f68d393d.png",
-      "preview_filename": "pet_6abd0eab12a48191b7fbf8d7f68d393d-idle.webp",
-      "thumbnail_filename": "pet_6abd0eab12a48191b7fbf8d7f68d393d-thumb.png",
-      "sprite_url": "/static/dots-pets/pet_6abd0eab12a48191b7fbf8d7f68d393d.png",
-      "preview_url": "/static/dots-pets/pet_6abd0eab12a48191b7fbf8d7f68d393d-idle.webp",
-      "thumbnail_url": "/static/dots-pets/pet_6abd0eab12a48191b7fbf8d7f68d393d-thumb.png",
-      "width": 1536,
-      "height": 2288,
-      "cell_width": 192,
-      "cell_height": 208,
-      "columns": 8,
-      "rows": 11,
-      "sprite_version": 2,
-      "bytes": 2775605,
       "has_alpha": true,
       "states": [
         {

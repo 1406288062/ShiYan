@@ -93,6 +93,8 @@
   window.ShiYanChanges.install(C);
   window.ShiYanExecution.install(C);
   window.ShiYanDots.install(C);
+  window.__SHIYAN_DOTS_INSTALLED__=true;
+  window.dispatchEvent(new Event('shiyan-dots-installed'));
   window.ShiYanV22.showChanges=async reference=>{try{const data=(await C.api('/files/changes','POST',reference)).changes;window.ShiYanChanges.openFiles([{...data,path:reference.path||data.name}]);}catch(e){toast(e);}};
    
   const bar=document.createElement('div');bar.id='v22SelectionBar';bar.className='v22-selection-bar';bar.hidden=true;bar.innerHTML='<button type="button" data-selection-add>添加到对话</button><button type="button" data-selection-edit>编辑</button>';$('app').appendChild(bar);

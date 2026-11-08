@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 import QuickLook
 import PhotosUI
 import AVFoundation
+import WebKit
 
 struct DotsIdentityIcon: View {
     @ObservedObject private var store = DotsStore.shared
@@ -44,6 +45,7 @@ struct DotsView: View {
     @State private var showSubscriptions = false
     @State private var showConnectors = false
     @State private var showSettings = false
+    @State private var showDigitalPeople = false
     @State private var hubTab: DotsHubTab = .tasks
     @Namespace private var hubTabSpace
     @Namespace private var petZoom
@@ -341,6 +343,7 @@ struct DotsView: View {
             }
         }
         .sheet(isPresented: $showSettings) { DotsSettingsView() }
+        .sheet(isPresented: $showDigitalPeople) { DigitalPeopleView() }
         .sheet(item: $selectingText) { DotsSelectTextSheet(text: $0.text) }
         .onChange(of: showTasks) { _, visible in
             onTaskSheetPresented(visible)
@@ -407,6 +410,7 @@ struct DotsView: View {
                 Task { await store.managerControl("cancel") }
             }
             Divider()
+            Button("影子人", systemImage: "person.2") { showDigitalPeople = true }
             Button("刷新", systemImage: "arrow.clockwise") { Task { await store.refresh() } }
         }
         .accessibilityIdentifier("dots-more-menu")
@@ -881,6 +885,7 @@ struct DotsView: View {
                             }.padding(.horizontal, store.selected == nil ? 16 : 24).padding(.vertical, 12).frame(maxWidth: .infinity, alignment: .leading)
                         }.scrollIndicators(.hidden).refreshable { await store.loadActivity() }
                     case .subscriptions: DotsSubscriptionsView(embedded: true)
+                    case .computer: DotsServerBrowserView()
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -2587,18 +2592,75 @@ struct DotsWeixinLoginView: View {
 
 /// Dots 面板（点宠物打开）的分页。
 enum DotsHubTab: CaseIterable {
-    case tasks, subscriptions
+    case tasks, subscriptions, computer
     var symbol: String {
         switch self {
         case .tasks: return "list.bullet"
         case .subscriptions: return "bell.badge"
+        case .computer: return "desktopcomputer"
         }
     }
     var title: String {
         switch self {
         case .tasks: return "任务"
         case .subscriptions: return "事件订阅"
+        case .computer: return "电脑"
         }
+    }
+}
+
+private struct DotsServerBrowserView: View {
+    @State private var ticket: String?
+    @State private var errorMessage: String?
+    @State private var loading = false
+
+    var body: some View {
+        Group {
+            if let ticket, let url = URL(string: "https://yandot.ai/assets/dots-browser.html?v=20261105-4#ticket=\(ticket)") {
+                DotsBrowserWebView(url: url)
+            } else if let errorMessage {
+                VStack(spacing: 12) {
+                    Image(systemName: "desktopcomputer").font(.system(size: 30)).foregroundStyle(.secondary)
+                    Text("无法连接服务器电脑").font(.headline)
+                    Text(errorMessage).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    Button("重试") { Task { await loadTicket() } }.buttonStyle(.borderedProminent)
+                }.frame(maxWidth: .infinity, maxHeight: .infinity).padding(24)
+            } else {
+                ProgressView(loading ? "正在连接服务器电脑…" : "准备服务器 Chrome…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .task { if ticket == nil && errorMessage == nil { await loadTicket() } }
+    }
+
+    @MainActor private func loadTicket() async {
+        guard !loading else { return }
+        loading = true; errorMessage = nil; ticket = nil
+        defer { loading = false }
+        do { ticket = try await CodexClient.shared.dotsBrowserTicket() }
+        catch { errorMessage = error.localizedDescription }
+    }
+}
+
+private struct DotsBrowserWebView: UIViewRepresentable {
+    let url: URL
+
+    func makeUIView(context: Context) -> WKWebView {
+        let configuration = WKWebViewConfiguration()
+        configuration.allowsInlineMediaPlayback = true
+        configuration.mediaTypesRequiringUserActionForPlayback = []
+        let view = WKWebView(frame: .zero, configuration: configuration)
+        view.isOpaque = false
+        view.backgroundColor = .systemBackground
+        view.scrollView.backgroundColor = .systemBackground
+        view.scrollView.isScrollEnabled = false
+        view.scrollView.contentInsetAdjustmentBehavior = .never
+        view.load(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 25))
+        return view
+    }
+
+    func updateUIView(_ view: WKWebView, context: Context) {
+        if view.url != url { view.load(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 25)) }
     }
 }
 
@@ -2639,4 +2701,512 @@ private struct DotsAttachmentThumbnail: View {
             } catch { failed = true }
         }
     }
+}
+
+// MARK: - Digital people / private memory spaces
+
+private struct ParsedDigitalChatMessage: Identifiable {
+    let id: Int
+    let speaker: String
+    let content: String
+    let timestamp: Int64
+}
+
+// 影子人：导入和某个人的微信聊天记录，Dots 在主页对话里用 Ta 的方式回复。
+// 这里只负责导入和开关，不提供单独的人物对话窗口。
+struct DigitalPeopleView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var people: [DigitalPerson] = []
+    @State private var activeId: String?
+    @State private var target: DigitalPerson?
+    @State private var loading = false
+    @State private var working = false
+    @State private var importing = false
+    @State private var notice: String?
+    @State private var showCreate = false
+    @State private var showImporter = false
+    @State private var showImportReview = false
+    @State private var deleting: DigitalPerson?
+    @State private var pendingMessages: [ParsedDigitalChatMessage] = []
+    @State private var pendingSpeakers: [String] = []
+    @State private var speakerMapping: [String: String] = [:]
+    @State private var importFormat = "txt"
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text("导入你和某个人的微信聊天记录，Dots 会学习 Ta 的说话方式。之后在 Dots 主页聊天，回复就像 Ta 在和你说话。同一时间只启用一个影子人，停用后 Dots 恢复原样。")
+                        .font(.footnote).foregroundStyle(.secondary)
+                    Button { showCreate = true } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "plus.circle.fill").foregroundStyle(Color.accentColor).frame(width: 24)
+                            Text("新的影子人").foregroundStyle(.primary)
+                        }
+                    }
+                    .disabled(working || importing)
+                }.dotsCardRow()
+                ForEach(orderedPeople) { person in
+                    Section { personRows(person) }.dotsCardRow()
+                }
+            }
+            .scrollContentBackground(.hidden).background(Color(uiColor: .systemBackground))
+            .navigationTitle("影子人")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) { ShiyanCloseButton(action: { dismiss() }, inToolbar: true) }
+            }
+            .overlay {
+                if loading && people.isEmpty { ProgressView("正在加载…") }
+            }
+            .safeAreaInset(edge: .bottom) {
+                if let notice {
+                    Text(notice).font(.footnote).foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity).padding(.vertical, 8).padding(.horizontal, 16)
+                        .background(.bar)
+                }
+            }
+            .task { await loadPeople() }
+            .sheet(isPresented: $showCreate) {
+                DigitalPersonCreateSheet { name, relationship in
+                    Task { await createPerson(name: name, relationship: relationship) }
+                }
+                .presentationDetents([.medium])
+            }
+            .sheet(isPresented: $showImportReview) {
+                DigitalPersonImportReviewView(personName: target?.name ?? "Ta",
+                    messages: pendingMessages, speakers: pendingSpeakers,
+                    mapping: $speakerMapping, importing: importing,
+                    onCancel: { showImportReview = false },
+                    onConfirm: { Task { await importPendingMessages() } })
+            }
+            .fileImporter(isPresented: $showImporter,
+                          allowedContentTypes: [.plainText, .commaSeparatedText, .json, .html, .xml],
+                          allowsMultipleSelection: false) { result in
+                switch result {
+                case .success(let urls):
+                    guard let url = urls.first else { return }
+                    Task { await readImportFile(url) }
+                case .failure(let error): notice = error.localizedDescription
+                }
+            }
+            .confirmationDialog("删除\(deleting?.name ?? "")？", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible) {
+                Button("删除聊天记录和学到的说话方式", role: .destructive) {
+                    if let person = deleting { Task { await deletePerson(person) } }
+                }
+                Button("取消", role: .cancel) { deleting = nil }
+            } message: {
+                Text("删除后 Dots 会恢复原来的说话方式。")
+            }
+        }
+    }
+
+    private var orderedPeople: [DigitalPerson] {
+        people.sorted { ($0.id == activeId ? 1 : 0) > ($1.id == activeId ? 1 : 0) }
+    }
+
+    @ViewBuilder private func personRows(_ person: DigitalPerson) -> some View {
+        let isOn = person.id == activeId
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(person.name).font(.body.weight(.semibold))
+                Spacer()
+                Text(isOn ? "使用中" : "未启用").font(.caption2.weight(.medium))
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .foregroundStyle(isOn ? Color.accentColor : Color.secondary)
+                    .background((isOn ? Color.accentColor : Color.secondary).opacity(0.12), in: Capsule())
+            }
+            Text(statusText(person, isOn: isOn)).font(.caption).foregroundStyle(.secondary)
+            if let error = person.learnError, !error.isEmpty {
+                Text(error).font(.caption2).foregroundStyle(.orange)
+            }
+            if !person.summary.isEmpty {
+                Text(person.summary).font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 2)
+        Toggle("在 Dots 主页对话中使用", isOn: Binding(get: { isOn }, set: { value in Task { await setActive(person, value) } }))
+            .disabled(working || importing)
+        Button { target = person; showImporter = true } label: { Label("追加聊天记录", systemImage: "square.and.arrow.down").foregroundStyle(.primary) }
+            .disabled(working || importing)
+        if (person.personMessages ?? 0) > 0 {
+            Button { Task { await relearn(person) } } label: { Label("重新学习", systemImage: "arrow.clockwise").foregroundStyle(.primary) }
+                .disabled(working || importing)
+        }
+        Button(role: .destructive) { deleting = person } label: { Label("删除", systemImage: "trash") }
+            .disabled(working || importing)
+    }
+
+    private func statusText(_ person: DigitalPerson, isOn: Bool) -> String {
+        var parts: [String] = []
+        if !person.relationship.isEmpty { parts.append(person.relationship) }
+        let count = person.personMessages ?? 0
+        if person.learnedAt != nil { parts.append("已学习 \(count) 条 Ta 的消息") }
+        else if count > 0 { parts.append("已导入 \(count) 条，尚未完成学习") }
+        else { parts.append("还没有导入聊天记录") }
+        return parts.joined(separator: " · ")
+    }
+
+    private func loadPeople() async {
+        loading = true; defer { loading = false }
+        do {
+            let list = try await CodexClient.shared.digitalPeopleList()
+            people = list.people
+            activeId = list.activePersonId ?? list.people.first(where: { $0.active == true })?.id
+        } catch { notice = error.localizedDescription }
+    }
+    private func createPerson(name: String, relationship: String) async {
+        do {
+            let person = try await CodexClient.shared.createDigitalPerson(name: name, relationship: relationship)
+            target = person
+            await loadPeople()
+            // 等创建表单收起后再打开文件选择器。
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            showImporter = true
+        } catch { notice = error.localizedDescription }
+    }
+    private func setActive(_ person: DigitalPerson, _ value: Bool) async {
+        working = true; defer { working = false }
+        do {
+            try await CodexClient.shared.setDigitalPersonActive(person.id, active: value)
+            await loadPeople()
+            notice = value ? "已启用，回到 Dots 主页聊天就是 Ta 的方式了。" : "已停用，Dots 恢复原来的说话方式。"
+        } catch { notice = error.localizedDescription }
+    }
+    private func relearn(_ person: DigitalPerson) async {
+        working = true; notice = "正在重新学习，大约需要一两分钟…"
+        defer { working = false }
+        do {
+            let error = try await CodexClient.shared.relearnDigitalPerson(person.id)
+            await loadPeople()
+            notice = error ?? "重新学习完成。"
+        } catch { notice = error.localizedDescription }
+    }
+    private func deletePerson(_ person: DigitalPerson) async {
+        deleting = nil
+        do {
+            try await CodexClient.shared.deleteDigitalPerson(person.id)
+            await loadPeople()
+            notice = "已删除。"
+        } catch { notice = error.localizedDescription }
+    }
+    private func readImportFile(_ url: URL) async {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        do {
+            let data = try Data(contentsOf: url)
+            guard data.count <= 100 * 1024 * 1024 else { throw AgentClientError.message("文件不能超过100MB") }
+            guard let text = String(data: data, encoding: .utf8) ?? String(data: data, encoding: String.Encoding(rawValue: 0x80000632)) else {
+                throw AgentClientError.message("无法识别文件编码")
+            }
+            let ext = url.pathExtension.lowercased()
+            pendingMessages = try parseDigitalChat(text, format: ext)
+            guard !pendingMessages.isEmpty, let person = target else { return }
+            // 发言最多的排前面：名字匹配的是 Ta（否则取发言最多的人），其次是“我”，其余默认“其他人”。
+            var counts: [String: Int] = [:]
+            for message in pendingMessages { counts[message.speaker, default: 0] += 1 }
+            pendingSpeakers = counts.keys.sorted { counts[$0, default: 0] > counts[$1, default: 0] }
+            let personSpeaker = pendingSpeakers.first(where: { $0.localizedCaseInsensitiveContains(person.name) }) ?? pendingSpeakers.first
+            let ownerSpeaker = pendingSpeakers.first(where: { $0 != personSpeaker })
+            speakerMapping = [:]
+            for speaker in pendingSpeakers {
+                speakerMapping[speaker] = speaker == personSpeaker ? "person" : (speaker == ownerSpeaker ? "owner" : "other")
+            }
+            importFormat = ext.isEmpty ? "txt" : ext
+            showImportReview = true
+            notice = nil
+        } catch { notice = error.localizedDescription }
+    }
+    private func importPendingMessages() async {
+        guard let person = target, !pendingMessages.isEmpty, !importing else { return }
+        let importId = UUID().uuidString
+        let values = pendingMessages.enumerated().compactMap { index, item -> DigitalPersonImportMessage? in
+            let role = speakerMapping[item.speaker] ?? "other"
+            guard role != "other" else { return nil }
+            return DigitalPersonImportMessage(sourceId: importId + ":" + String(index),
+                speaker: role, speakerName: item.speaker, content: item.content, timestamp: item.timestamp)
+        }
+        guard values.contains(where: { $0.speaker == "person" }) else { notice = "请至少把一个发送人标记为 \(person.name)。"; return }
+        importing = true; notice = "正在上传聊天记录…"
+        defer { importing = false }
+        do {
+            var learnError: String?
+            for start in stride(from: 0, to: values.count, by: 40) {
+                let end = min(start + 40, values.count)
+                let final = end == values.count
+                if final { notice = "正在学习 Ta 的说话方式，大约需要一两分钟…" }
+                let reply = try await CodexClient.shared.importDigitalPersonBatch(person.id, importId: importId,
+                    format: importFormat, messages: Array(values[start..<end]), final: final)
+                if final { learnError = reply.learnError }
+                else { notice = "正在上传聊天记录… \(end) / \(values.count)" }
+            }
+            if activeId != person.id { try await CodexClient.shared.setDigitalPersonActive(person.id, active: true) }
+            showImportReview = false; pendingMessages = []; target = nil
+            await loadPeople()
+            notice = learnError ?? "学习完成。回到 Dots 主页直接聊天就可以了。"
+        } catch { notice = error.localizedDescription }
+    }
+}
+
+private struct DigitalPersonCreateSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+    @State private var relationship = ""
+    let onCreate: (String, String) -> Void
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("新的影子人") {
+                    TextField("例如：妈妈、小美、老王", text: $name)
+                    TextField("和你的关系（可选）", text: $relationship)
+                }
+                Section {
+                    Text("下一步选择从微信导出的聊天记录（TXT、CSV、JSON 或 HTML）。文件在手机上解析，手机号、证件号、银行卡号、邮箱、密码、验证码等会先隐藏，只上传你们两人的聊天文字。")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("新的影子人")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("下一步") {
+                        onCreate(name.trimmingCharacters(in: .whitespacesAndNewlines),
+                                 relationship.trimmingCharacters(in: .whitespacesAndNewlines))
+                        dismiss()
+                    }.disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+    }
+}
+
+private struct DigitalPersonEditSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var name: String
+    @State private var relationship: String
+    let onSave: (String, String) -> Void
+    init(person: DigitalPerson, onSave: @escaping (String, String) -> Void) {
+        _name = State(initialValue: person.name)
+        _relationship = State(initialValue: person.relationship)
+        self.onSave = onSave
+    }
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("人物信息") {
+                    TextField("人物称呼", text: $name)
+                    TextField("与你的关系", text: $relationship)
+                }
+            }
+            .navigationTitle("编辑人物")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("保存") {
+                        onSave(name.trimmingCharacters(in: .whitespacesAndNewlines),
+                               relationship.trimmingCharacters(in: .whitespacesAndNewlines))
+                        dismiss()
+                    }.disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+    }
+}
+
+private struct DigitalPersonImportReviewView: View {
+    let personName: String
+    let messages: [ParsedDigitalChatMessage]
+    let speakers: [String]
+    @Binding var mapping: [String: String]
+    let importing: Bool
+    let onCancel: () -> Void
+    let onConfirm: () -> Void
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text("原始文件只在这台设备上读取，不会上传文件本身，也不会进入拾燕附件。确认后，你们两人的聊天文字会分批发送到拾燕云端，用于让 Dots 学习 Ta 的说话方式。标记为“其他人”的消息不会发送。")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+                Section("确认聊天双方") {
+                    ForEach(speakers, id: \.self) { speaker in
+                        Picker(speaker, selection: Binding(get: { mapping[speaker] ?? "other" }, set: { mapping[speaker] = $0 })) {
+                            Text(personName).tag("person")
+                            Text("我").tag("owner")
+                            Text("其他人").tag("other")
+                        }
+                    }
+                }
+                Section("本地解析预览（共\(messages.count)条）") {
+                    ForEach(messages.prefix(5)) { message in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(message.speaker).font(.caption).foregroundStyle(.secondary)
+                            Text(message.content).font(.footnote).lineLimit(3)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("确认导入")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("取消", action: onCancel).disabled(importing) }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(importing ? "正在学习…" : "开始学习", action: onConfirm).disabled(importing || messages.isEmpty)
+                }
+            }
+        }
+    }
+}
+
+private struct DigitalPersonMemoriesView: View {
+    let personName: String
+    let memories: [DigitalPersonMemory]
+    let onDelete: (String) -> Void
+    let onUpdate: (String, String) -> Void
+    @State private var editingMemory: DigitalPersonMemory?
+    @State private var editedContent = ""
+    var body: some View {
+        NavigationStack {
+            List {
+                if memories.isEmpty {
+                    ContentUnavailableView("还没有人物记忆", systemImage: "brain",
+                        description: Text("导入聊天记录后，系统会自动整理重要经历和人物特征。"))
+                } else {
+                    ForEach(memories) { memory in
+                        VStack(alignment: .leading, spacing: 7) {
+                            HStack {
+                                Text(memory.category).font(.caption.weight(.medium)).foregroundStyle(.tint)
+                                Spacer()
+                                Button { editingMemory = memory; editedContent = memory.content } label: {
+                                    Image(systemName: "pencil").font(.caption)
+                                }.buttonStyle(.plain)
+                                Button(role: .destructive) { onDelete(memory.id) } label: {
+                                    Image(systemName: "trash").font(.caption)
+                                }.buttonStyle(.plain)
+                            }
+                            Text(memory.content).font(.body)
+                            if !memory.evidence.isEmpty {
+                                Text("来源：“\(memory.evidence)”").font(.caption).foregroundStyle(.secondary)
+                            }
+                        }.padding(.vertical, 4)
+                    }
+                }
+            }
+            .navigationTitle("\(personName)的记忆")
+            .navigationBarTitleDisplayMode(.inline)
+            .alert("修正人物记忆", isPresented: Binding(get: { editingMemory != nil }, set: { if !$0 { editingMemory = nil } })) {
+                TextField("记忆内容", text: $editedContent)
+                Button("保存") {
+                    if let editingMemory { onUpdate(editingMemory.id, editedContent) }
+                    editingMemory = nil
+                }
+                Button("取消", role: .cancel) { editingMemory = nil }
+            } message: { Text("修正后会重新生成这条记忆的检索向量。") }
+        }
+    }
+}
+
+// 与服务器端一致的脱敏规则（服务器还会再处理一次）；证件号要在卡号之前匹配。
+private let digitalChatRedactions: [(String, String, Bool)] = [
+    (#"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}"#, "[邮箱已隐藏]", true),
+    (#"(?:支付密码|登录密码|密码|口令|password|passwd|pwd)\s*(?:是|为|:|：|=)?\s*(?=[^\s,，。;；]*[A-Za-z0-9])[^\s,，。;；]{3,}"#, "[凭据已隐藏]", true),
+    (#"(?:验证码|校验码|动态码|取件码)\s*(?:是|为|:|：)?\s*[A-Za-z0-9]{4,8}"#, "[验证码已隐藏]", false),
+    (#"https?://[^\s]*[?&](?:token|access_token|key|code|ticket|sig|sign|auth|session|sid)=[^\s]*"#, "[链接已隐藏]", true),
+    (#"(?<![\dA-Za-z])\d{6}(?:18|19|20)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])\d{3}[\dXx](?![\dA-Za-z])"#, "[证件号已隐藏]", false),
+    (#"(?:护照|通行证|passport)\s*号?\s*(?:是|为|:|：)?\s*[A-Za-z]{1,2}\d{7,8}"#, "[证件号已隐藏]", true),
+    (#"(?<!\d)(?:\d[ -]?){15,18}\d(?!\d)"#, "[卡号已隐藏]", false),
+    (#"(?:卡号|账号|帐号|银行卡|账户|户号)\s*(?:是|为|:|：)?\s*\d[\d -]{7,}\d"#, "[账号已隐藏]", false),
+    (#"(?<!\d)(?:\+?86[ -]?)?1[3-9]\d(?:[ -]?\d{4}){2}(?!\d)"#, "[手机号已隐藏]", false),
+    (#"(?<!\d)0\d{2,3}-\d{7,8}(?!\d)"#, "[电话已隐藏]", false),
+    (#"(?:微信号|wxid_?|QQ号?|支付宝账?号?)\s*(?:是|为|:|：)?\s*[A-Za-z0-9_@.-]{5,}"#, "[账号已隐藏]", true),
+]
+
+private func parseDigitalChat(_ text: String, format: String) throws -> [ParsedDigitalChatMessage] {
+    func timestamp(_ value: String) -> Int64 {
+        if let numeric = Double(value), numeric > 0 { return Int64(numeric < 1e12 ? numeric * 1000 : numeric) }
+        let normalized = value.replacingOccurrences(of: "年", with: "-").replacingOccurrences(of: "月", with: "-").replacingOccurrences(of: "日", with: " ")
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        for pattern in ["yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm", "yyyy/M/d HH:mm:ss", "yyyy/M/d HH:mm", "yyyy.MM.dd HH:mm:ss"] {
+            formatter.dateFormat = pattern
+            if let date = formatter.date(from: normalized) { return Int64(date.timeIntervalSince1970 * 1000) }
+        }
+        return 0
+    }
+    func record(_ speaker: String, _ content: String, _ time: String, _ index: Int) -> ParsedDigitalChatMessage? {
+        var body = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        for (pattern, mark, caseless) in digitalChatRedactions {
+            body = body.replacingOccurrences(of: pattern, with: mark, options: caseless ? [.regularExpression, .caseInsensitive] : .regularExpression)
+        }
+        guard !body.isEmpty else { return nil }
+        return ParsedDigitalChatMessage(id: index, speaker: speaker.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "未知" : speaker,
+            content: body, timestamp: timestamp(time))
+    }
+    if format == "json",
+       let data = text.data(using: .utf8),
+       let object = try? JSONSerialization.jsonObject(with: data) {
+        let root = object as? [String: Any]
+        let rows = (object as? [[String: Any]]) ?? (root?["messages"] as? [[String: Any]]) ??
+            (root?["chatRecords"] as? [[String: Any]]) ?? (root?["records"] as? [[String: Any]]) ?? []
+        let result = rows.enumerated().compactMap { index, row -> ParsedDigitalChatMessage? in
+            let speaker = String(describing: row["speakerName"] ?? row["speaker"] ?? row["sender"] ?? row["from"] ?? row["nickname"] ?? "未知")
+            let content = String(describing: row["content"] ?? row["text"] ?? row["message"] ?? row["msg"] ?? "")
+            let time = String(describing: row["timestamp"] ?? row["time"] ?? row["createTime"] ?? row["datetime"] ?? "")
+            return record(speaker, content, time, index)
+        }
+        if !result.isEmpty { return result }
+    }
+    if format == "csv" {
+        let lines = text.components(separatedBy: .newlines).filter { !$0.isEmpty }
+        if lines.count > 1 {
+            let headers = lines[0].split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            func column(_ keys: [String]) -> Int? { headers.firstIndex(where: { keys.contains($0) }) }
+            let sender = column(["sender", "speaker", "from", "nickname", "name"])
+            let content = column(["content", "text", "message", "msg"])
+            let time = column(["time", "timestamp", "datetime", "date"])
+            if let content {
+                let result = lines.dropFirst().enumerated().compactMap { index, line -> ParsedDigitalChatMessage? in
+                    let cells = line.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
+                    let value = { (i: Int?) in i.flatMap { cells.indices.contains($0) ? cells[$0] : nil } ?? "" }
+                    return record(value(sender).isEmpty ? "未知" : value(sender), value(content), value(time), index)
+                }
+                if !result.isEmpty { return result }
+            }
+        }
+    }
+    let normalizedText: String
+    if ["html", "htm", "xml"].contains(format) {
+        normalizedText = text.replacingOccurrences(of: "<[^>]+>", with: "\n", options: .regularExpression)
+            .replacingOccurrences(of: "&nbsp;", with: " ").replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&lt;", with: "<").replacingOccurrences(of: "&gt;", with: ">")
+    } else { normalizedText = text }
+    let datePattern = try NSRegularExpression(pattern: #"^\s*\[?(\d{4}(?:[./-]\d{1,2}[./-]\d{1,2}|年\d{1,2}月\d{1,2}日)[ T]\d{1,2}:\d{2}(?::\d{2})?)\]?\s+([^:：]{1,80})[:：]\s*(.*)$"#)
+    let simplePattern = try NSRegularExpression(pattern: #"^\s*([^:：]{1,50})[:：]\s+(.+)$"#)
+    var result: [ParsedDigitalChatMessage] = [], currentSpeaker = "", currentTime = "", currentContent = ""
+    func flush() {
+        if let item = record(currentSpeaker, currentContent, currentTime, result.count) { result.append(item) }
+        currentSpeaker = ""; currentTime = ""; currentContent = ""
+    }
+    for line in normalizedText.replacingOccurrences(of: "\r", with: "").components(separatedBy: "\n") {
+        let range = NSRange(line.startIndex..<line.endIndex, in: line)
+        if let match = datePattern.firstMatch(in: line, range: range),
+           let timeRange = Range(match.range(at: 1), in: line),
+           let speakerRange = Range(match.range(at: 2), in: line),
+           let contentRange = Range(match.range(at: 3), in: line) {
+            flush(); currentTime = String(line[timeRange]); currentSpeaker = String(line[speakerRange]); currentContent = String(line[contentRange])
+        } else if let match = simplePattern.firstMatch(in: line, range: range),
+                  let speakerRange = Range(match.range(at: 1), in: line),
+                  let contentRange = Range(match.range(at: 2), in: line) {
+            flush(); currentSpeaker = String(line[speakerRange]); currentContent = String(line[contentRange])
+        } else if !currentSpeaker.isEmpty {
+            currentContent += "\n" + line
+        }
+    }
+    flush()
+    guard !result.isEmpty else {
+        throw AgentClientError.message("没有识别到聊天消息。请使用包含发送人和消息内容的 TXT、CSV 或 JSON 导出文件。")
+    }
+    return result
 }

@@ -102,6 +102,53 @@ struct AgentEvent: Decodable {
     var isTerminal: Bool { ["completed", "failed", "cancelled", "interrupted"].contains(type) }
 }
 
+struct DigitalPerson: Decodable, Identifiable, Sendable {
+    let id: String
+    let name: String
+    let relationship: String
+    let summary: String
+    let createdAt: Int64
+    let updatedAt: Int64
+    var active: Bool?
+    var learnedAt: Int64?
+    var learnError: String?
+    var personMessages: Int?
+}
+struct DigitalPersonList: Decodable, Sendable { let people: [DigitalPerson]; var activePersonId: String? }
+struct DigitalPersonMessage: Decodable, Identifiable, Sendable {
+    let id: Int
+    let role: String
+    let content: String
+    let createdAt: Int64
+    var memoryRefs: [String]?
+}
+struct DigitalPersonMessages: Decodable, Sendable { let messages: [DigitalPersonMessage] }
+struct DigitalPersonMemory: Decodable, Identifiable, Sendable {
+    let id: String
+    let category: String
+    let content: String
+    let evidence: String
+    let sourceMessageIds: [String]
+    let occurredAt: Int64?
+    let createdAt: Int64
+}
+struct DigitalPersonMemories: Decodable, Sendable { let memories: [DigitalPersonMemory] }
+struct DigitalPersonMessageReply: Decodable, Sendable { let message: DigitalPersonMessage }
+struct DigitalPersonImportMessage: Encodable, Sendable {
+    let sourceId: String
+    let speaker: String
+    let speakerName: String
+    let content: String
+    let timestamp: Int64
+}
+struct DigitalPersonImportReply: Decodable, Sendable {
+    let accepted: Int
+    let importedMessages: Int
+    let status: String
+    let memoryCount: Int
+    var learnError: String?
+}
+
 @MainActor
 final class CodexClient {
     private static var instance: CodexClient?
@@ -250,6 +297,78 @@ final class CodexClient {
         try await prepareConnection()
         let bytes = try await send(request(method: "PATCH", route: "memory/settings", object: ["enabled": enabled]))
         return try JSONDecoder().decode(ShiyanMemorySettings.self, from: bytes)
+    }
+
+    func digitalPeople() async throws -> [DigitalPerson] {
+        try await prepareConnection()
+        let bytes = try await response(request(method: "GET", route: "dots/people"), rejectDotsErrors: true).body
+        return try JSONDecoder().decode(DigitalPersonList.self, from: bytes).people
+    }
+    func digitalPeopleList() async throws -> DigitalPersonList {
+        try await prepareConnection()
+        let bytes = try await response(request(method: "GET", route: "dots/people"), rejectDotsErrors: true).body
+        return try JSONDecoder().decode(DigitalPersonList.self, from: bytes)
+    }
+    /// 启用后 Dots 主页对话用这个人的方式回复；同一时间只启用一个人。
+    func setDigitalPersonActive(_ id: String, active: Bool) async throws {
+        try await prepareConnection()
+        _ = try await response(request(method: "PATCH", route: "dots/people/" + id, object: ["active": active]), rejectDotsErrors: true)
+    }
+    /// 用已导入的聊天记录重新学习说话方式，返回学习失败时的提示。
+    func relearnDigitalPerson(_ id: String) async throws -> String? {
+        try await prepareConnection()
+        let bytes = try await response(request(method: "PATCH", route: "dots/people/" + id, object: ["relearn": true]), timeout: 240, rejectDotsErrors: true).body
+        struct Reply: Decodable { let learnError: String? }
+        return try? JSONDecoder().decode(Reply.self, from: bytes).learnError
+    }
+    func createDigitalPerson(name: String, relationship: String) async throws -> DigitalPerson {
+        try await prepareConnection()
+        let bytes = try await response(request(method: "POST", route: "dots/people", object: ["name": name, "relationship": relationship]), rejectDotsErrors: true).body
+        struct Reply: Decodable { let person: DigitalPerson }
+        return try JSONDecoder().decode(Reply.self, from: bytes).person
+    }
+    func updateDigitalPerson(_ id: String, name: String, relationship: String) async throws -> DigitalPerson {
+        try await prepareConnection()
+        let bytes = try await response(request(method: "PATCH", route: "dots/people/" + id, object: ["name": name, "relationship": relationship]), rejectDotsErrors: true).body
+        struct Reply: Decodable { let person: DigitalPerson }
+        return try JSONDecoder().decode(Reply.self, from: bytes).person
+    }
+    func deleteDigitalPerson(_ id: String) async throws {
+        try await prepareConnection()
+        _ = try await response(request(method: "DELETE", route: "dots/people/" + id, object: [String: Any]()), rejectDotsErrors: true)
+    }
+    func digitalPersonMessages(_ id: String) async throws -> [DigitalPersonMessage] {
+        try await prepareConnection()
+        let bytes = try await response(request(method: "GET", route: "dots/people/" + id + "/messages?limit=200"), rejectDotsErrors: true).body
+        return try JSONDecoder().decode(DigitalPersonMessages.self, from: bytes).messages
+    }
+    func sendDigitalPersonMessage(_ id: String, requestId: String, message: String) async throws -> DigitalPersonMessage {
+        try await prepareConnection()
+        let bytes = try await response(request(method: "POST", route: "dots/people/" + id + "/messages", object: ["requestId": requestId, "message": message]), timeout: 240, rejectDotsErrors: true).body
+        return try JSONDecoder().decode(DigitalPersonMessageReply.self, from: bytes).message
+    }
+    func digitalPersonMemories(_ id: String) async throws -> [DigitalPersonMemory] {
+        try await prepareConnection()
+        let bytes = try await response(request(method: "GET", route: "dots/people/" + id + "/memories"), rejectDotsErrors: true).body
+        return try JSONDecoder().decode(DigitalPersonMemories.self, from: bytes).memories
+    }
+    func updateDigitalPersonMemory(_ personId: String, memoryId: String, content: String) async throws {
+        try await prepareConnection()
+        _ = try await response(request(method: "PATCH", route: "dots/people/" + personId + "/memories/" + memoryId, object: ["content": content]), rejectDotsErrors: true)
+    }
+    func deleteDigitalPersonMemory(_ personId: String, memoryId: String) async throws {
+        try await prepareConnection()
+        _ = try await response(request(method: "DELETE", route: "dots/people/" + personId + "/memories/" + memoryId, object: [String: Any]()), rejectDotsErrors: true)
+    }
+    func importDigitalPersonBatch(_ personId: String, importId: String, format: String,
+                                  messages: [DigitalPersonImportMessage], final: Bool) async throws -> DigitalPersonImportReply {
+        try await prepareConnection()
+        let encoded = try JSONEncoder().encode(messages)
+        let values = try JSONSerialization.jsonObject(with: encoded)
+        let object: [String: Any] = ["importId": importId, "source": "wechat", "format": format,
+                                     "messages": values, "final": final]
+        let bytes = try await response(request(method: "POST", route: "dots/people/" + personId + "/import", object: object), timeout: 240, rejectDotsErrors: true).body
+        return try JSONDecoder().decode(DigitalPersonImportReply.self, from: bytes)
     }
 
     func accountQuota() async throws -> CodexQuota {
@@ -649,6 +768,15 @@ extension CodexClient: DotsTransport {
         try await prepareConnection()
         let data = try await send(request(method: "GET", route: "dots/" + route))
         return try JSONDecoder().decode(type, from: data)
+    }
+    func dotsBrowserTicket() async throws -> String {
+        try await prepareConnection()
+        let bytes = try await response(request(method: "POST", route: "dots/browser/session", object: [:]), rejectDotsErrors: true).body
+        guard let payload = try JSONSerialization.jsonObject(with: bytes) as? [String: Any],
+              let ticket = payload["ticket"] as? String, !ticket.isEmpty else {
+            throw AgentClientError.message("服务器没有返回电脑入口凭证")
+        }
+        return ticket
     }
     func dotsSubscriptions(_ provider: String? = nil, method: String = "GET", fields: [String: Any]? = nil) async throws -> DotsSubscriptionsResponse {
         try await prepareConnection()

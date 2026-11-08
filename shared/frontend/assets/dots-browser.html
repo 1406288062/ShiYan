@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss: stun: turn: turns:; frame-ancestors 'self'; base-uri 'none'; form-action 'none'">
+<title>拾燕浏览器</title>
+<style>
+:root{color-scheme:light dark;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#fff;color:#202124}*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#fff}body{display:flex;flex-direction:column;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
+.tab-strip{height:48px;flex:0 0 48px;display:flex;align-items:center;gap:7px;padding:3px 8px;background:#e8e8e8;border-bottom:1px solid #dadce0}.tab{height:42px;max-width:480px;min-width:190px;display:flex;align-items:center;gap:12px;padding:0 14px;border-radius:17px;background:#fff;box-shadow:0 1px 3px #00000012;color:#202124}.tab img{width:26px;height:26px;border-radius:50%;object-fit:cover}.tab strong{font-size:16px;font-weight:600;flex:1;white-space:nowrap}.tab-close,.tab-add,.tab-menu{border:0;background:transparent;color:#5f6368;display:grid;place-items:center}.tab-close{width:26px;height:26px;font-size:23px;border-radius:50%}.modal-close{margin-left:2px;font-size:22px}.tab-close:active,.tab-add:active,.tab-menu:active{background:#dce1e7}.tab-add{width:32px;height:36px;font-size:30px}.tab-spacer{flex:1}.tab-menu{width:32px;height:32px;font-size:22px}.toolbar{height:58px;flex:0 0 58px;display:flex;align-items:center;gap:7px;padding:5px 12px;background:#fff;border-bottom:1px solid #e6e6e6}.tool{width:36px;height:36px;flex:0 0 36px;display:grid;place-items:center;border:0;border-radius:50%;background:transparent;color:#5f6368;font-size:27px}.tool:disabled{opacity:.35}.tool:active{background:#e8eaed}.address{height:44px;min-width:0;flex:1;display:flex;align-items:center;gap:12px;padding:0 18px;border:2px solid #6477e8;border-radius:20px;background:#fff;box-shadow:0 1px 3px #0000000b}.address:focus-within{border-color:#536dfe}.google-g{font:700 25px Arial,sans-serif;background:conic-gradient(from -45deg,#4285f4 0 25%,#34a853 0 45%,#fbbc05 0 65%,#ea4335 0 82%,#4285f4 0);color:transparent;background-clip:text}.address input{width:100%;min-width:0;border:0;outline:0;background:transparent;color:#202124;font:17px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.address input::placeholder{color:#8b9097}.address button{display:none}.menu-pop{position:absolute;z-index:20;right:12px;top:108px;min-width:170px;padding:8px;background:#fff;border:1px solid #dadce0;border-radius:12px;box-shadow:0 8px 30px #0002}.menu-pop button{display:block;width:100%;padding:11px 13px;border:0;border-radius:8px;background:#fff;text-align:left;color:#202124;font-size:14px}.menu-pop button:active{background:#f1f3f4}.screen-wrap{position:relative;flex:1;min-height:0;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#fff;touch-action:none}.screen{display:block;max-width:100%;max-height:100%;width:100%;height:100%;object-fit:contain;background:#fff;outline:0;touch-action:none;user-select:none;-webkit-user-drag:none}.home-screen{position:absolute;inset:0;z-index:2;display:grid;place-items:start center;padding-top:12vh;background:#fff;pointer-events:none}.home-screen[hidden]{display:none}.home-avatar{width:min(190px,30vw,24vh);height:auto;aspect-ratio:1;object-fit:contain;border-radius:28%;background:#fff;box-shadow:0 0 0 2px #f1f3f4;padding:12px}.state{display:none}.hint{position:absolute;inset:0;z-index:3;display:grid;place-items:center;padding:24px;text-align:center;color:#5f6368;font-size:14px;line-height:1.6;pointer-events:none;background:#fff}.hint[hidden]{display:none}.hint strong{display:block;margin-bottom:5px;color:#202124;font-size:15px}.keyboard-input{position:fixed;left:-10000px;top:0;width:1px;height:1px;opacity:0}.error{color:#d93025}.footer{display:none}.sound-on{color:#1a73e8!important;background:#e8f0fe!important}@media(max-width:520px){.tab-strip{height:46px;flex-basis:46px;padding:3px 6px;gap:5px}.tab{height:40px;min-width:0;flex:0 1 74%;padding:0 11px;gap:9px}.tab img{width:24px;height:24px}.tab strong{font-size:15px}.tab-add{width:30px}.toolbar{height:52px;flex-basis:52px;padding:4px 8px;gap:4px}.tool{width:30px;height:34px;flex-basis:30px;font-size:24px}.address{height:42px;padding:0 10px;gap:7px;border-radius:18px}.google-g{font-size:23px}.address input{font-size:16px}.home-screen{padding-top:10vh}.home-avatar{width:min(170px,34vw,22vh)}.menu-pop{top:98px}}
+.tabs{display:flex;align-items:center;gap:6px;min-width:0;flex:1 1 auto;overflow-x:auto;scrollbar-width:none}.tabs::-webkit-scrollbar{display:none}
+.tabs .tab{flex:0 1 230px;min-width:96px;max-width:240px;height:38px;gap:8px;padding:0 6px 0 12px;border:0;border-radius:12px;background:transparent;box-shadow:none;cursor:default;font:inherit;text-align:left}
+.tabs .tab.is-active{background:#fff;box-shadow:0 1px 3px #00000014}.tabs .tab:not(.is-active):hover{background:#ffffff80}
+.tabs .tab img{width:20px;height:20px}.tabs .tab strong{font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.tabs .tab .tab-x{width:22px;height:22px;flex:0 0 22px;border:0;border-radius:50%;background:transparent;color:#5f6368;font-size:17px;line-height:1;display:grid;place-items:center}.tabs .tab .tab-x:hover{background:#0000001a}
+.tab-strip .tab-add{flex:0 0 32px}
+@media (prefers-color-scheme:dark){
+ :root,html,body{background:#202124;color:#e8eaed}
+ .tab-strip{background:#202124;border-bottom-color:#3c4043}.tabs .tab{color:#e8eaed}.tabs .tab.is-active{background:#35363a;box-shadow:none}.tabs .tab:not(.is-active):hover{background:#ffffff14}
+ .tabs .tab .tab-x,.tab-close,.tab-add,.tab-menu,.tool{color:#bdc1c6}.tabs .tab .tab-x:hover,.tool:active,.tab-close:active,.tab-add:active{background:#ffffff1f}
+ .toolbar{background:#35363a;border-bottom-color:#3c4043}.address{background:#202124;border-color:#8ab4f8;box-shadow:none}.address input{color:#e8eaed}.address input::placeholder{color:#9aa0a6}
+ .menu-pop{background:#2d2e31;border-color:#3c4043}.menu-pop button{background:#2d2e31;color:#e8eaed}.menu-pop button:active{background:#3c4043}
+ .screen-wrap,.screen,.home-screen,.hint{background:#202124}.hint{color:#bdc1c6}.hint strong{color:#e8eaed}.home-avatar{background:#2d2e31;box-shadow:0 0 0 2px #3c4043}
+ .sound-on{color:#8ab4f8!important;background:#8ab4f81f!important}
+}
+</style>
+</head>
+<body>
+<div class="tab-strip" role="tablist" aria-label="浏览器标签页">
+  <div class="tabs" id="tabs"><div class="tab is-active" role="tab" aria-selected="true"><img src="/assets/logo.png?v=20261107-cache-v1" alt=""><strong>新标签页</strong></div></div>
+  <button class="tab-add" id="tabAdd" type="button" title="新建标签页" aria-label="新建标签页">+</button><button class="tab-close modal-close" id="closeBrowser" title="关闭浏览器" aria-label="关闭浏览器">×</button>
+</div>
+<div class="toolbar" role="toolbar" aria-label="浏览器工具栏">
+  <button class="tool" id="back" title="后退" aria-label="后退">‹</button><button class="tool" id="forward" title="前进" aria-label="前进">›</button><button class="tool" id="reload" title="刷新" aria-label="刷新">↻</button>
+  <form class="address" id="addressForm"><span class="google-g" aria-hidden="true">G</span><input id="address" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="搜索 Google 或输入网址"><button type="submit">前往</button></form>
+  <button class="tool" id="toolbarMenu" title="菜单" aria-label="菜单">☰</button>
+</div>
+<div class="menu-pop" id="menuPop" hidden><button type="button" id="menuNewTab">新建标签页</button><button type="button" id="menuHome">首页</button><button type="button" id="menuReload">刷新页面</button><button type="button" id="sound">开启声音</button></div>
+<div class="state" aria-hidden="true"><span id="connection"></span></div>
+<div class="screen-wrap" id="screenWrap">
+  <video class="screen" id="screen" autoplay muted playsinline tabindex="0"></video>
+  <img class="screen" id="fallbackScreen" alt="" hidden style="position:absolute;inset:0;pointer-events:none;z-index:1">
+  <div class="home-screen" id="homeScreen"><img class="home-avatar" src="/assets/logo.png?v=20261107-cache-v1" alt="拾燕"></div>
+  <div class="hint" id="hint" hidden><div><strong>正在启动 Google Chrome</strong>首次连接可能需要几秒钟</div></div>
+</div>
+<audio id="remoteAudio" autoplay playsinline></audio>
+
+<textarea class="keyboard-input" id="keyboardInput" aria-label="向服务器浏览器输入文字" autocapitalize="off" autocomplete="off" spellcheck="false"></textarea>
+<script>
+(()=>{
+'use strict';
+const $=id=>document.getElementById(id),screen=$('screen'),wrap=$('screenWrap'),hint=$('hint'),home=$('homeScreen'),address=$('address'),connection=$('connection'),keyboard=$('keyboardInput'),audio=$('remoteAudio'),sound=$('sound'),menu=$('menuPop');
+let pc=null,iceServers=[],audioEnabled=false,resizeTimer=0,pointer=null,closed=false,rtcStarted=false,sessionToken=null,pendingNavigation=null,flushTimer=0,moveTimer=0,lastMoveAt=0,deferredMove=null,flushing=false,keepaliveFlushPending=false;
+const outgoing=[];let pollDiag='',controlFailures=0,pollFailures=0,tabsState={active:null,tabs:[]},sentView={width:1120,height:720};
+const fallbackScreen=$('fallbackScreen');let fallbackMode=false,frameSeq=0,rtcConnected=false,rtcWatchdog=0;
+// If WebRTC cannot connect (e.g. UDP blocked on the user's network), keep showing the page as
+// still frames over the authenticated poll instead of leaving a blank screen. No audio in this mode.
+function diag(stage,detail=''){try{send({type:'client-diag',stage,detail:String(detail).slice(0,240)});}catch(_){}}
+window.addEventListener('error',event=>diag('js-error',(event.message||'')+' @'+(event.lineno||'')));
+window.addEventListener('unhandledrejection',event=>diag('js-rejection',event.reason?.message||String(event.reason||'')));
+document.addEventListener('visibilitychange',()=>diag('visibility',document.visibilityState));
+function enterFallback(reason){pollDiag=pollDiag||('fallback '+reason+' fallback='+fallbackMode+' rtc='+rtcConnected+' queued='+outgoing.length+' flushing='+flushing);diag('fallback-request',reason+' fallback='+fallbackMode+' closed='+closed+' rtc='+rtcConnected);if(fallbackMode||closed||rtcConnected)return;fallbackMode=true;fallbackScreen.hidden=false;hint.hidden=false;hint.innerHTML='<div><strong>正在切换画面兼容模式</strong>正在获取浏览器画面，请稍候…</div>';setState('画面兼容模式（无声音）'+(reason?'：'+reason:''));}
+function leaveFallback(){if(!fallbackMode)return;fallbackMode=false;fallbackScreen.hidden=true;fallbackScreen.removeAttribute('src');}
+// The WebRTC transport can connect yet paint no video frame: under headless Chrome tab-capture
+// stalls on a static page, so the <video> shows its white background while clicks still work. Watch
+// the decoded frame size; if nothing paints, overlay the JPEG poll frames (they sit above the blank
+// video and let clicks through) until real frames resume.
+let paintWatchTimer=0,probeCanvas=null;
+// Sample the decoded video: a real page always has some non-white pixels (text/logo/chrome), while a
+// stalled or blank-captured stream decodes as a uniform white frame. videoWidth alone can't tell them
+// apart (a white frame still has width), so read the actual pixels.
+function videoHasContent(){
+  if(screen.videoWidth===0||screen.readyState<2)return false;
+  try{
+    if(!probeCanvas){probeCanvas=document.createElement('canvas');probeCanvas.width=80;probeCanvas.height=45;}
+    const g=probeCanvas.getContext('2d',{willReadFrequently:true});
+    g.drawImage(screen,0,0,80,45);
+    const d=g.getImageData(0,0,80,45).data;
+    for(let i=0;i<d.length;i+=4){if(d[i]<246||d[i+1]<246||d[i+2]<246)return true;}
+    return false; // every sampled pixel is near-white -> treat as blank
+  }catch(e){return true;} // unreadable -> assume content, don't force fallback
+}
+function startPaintWatch(){
+  clearInterval(paintWatchTimer);let blankMs=0;
+  paintWatchTimer=setInterval(()=>{
+    if(closed){clearInterval(paintWatchTimer);return;}
+    if(videoHasContent()){blankMs=0;if(fallbackMode){leaveFallback();setState('WebRTC 已连接 · 浏览器音视频');}}
+    else{blankMs+=700;if(blankMs>=2100&&!fallbackMode&&!closed){fallbackMode=true;fallbackScreen.hidden=false;diag('blank-video-fallback','whiteframe vw='+screen.videoWidth+' rs='+screen.readyState+' paused='+screen.paused);setState('画面加载中 · 已启用兼容画面');}}
+  },700);
+}
+function send(value){
+  if(!sessionToken||closed)return;
+  if(value.type==='mouse'&&value.eventType==='mouseMoved'){
+    const now=Date.now();
+    if(now-lastMoveAt<35){deferredMove=value;if(!moveTimer)moveTimer=setTimeout(()=>{const next=deferredMove;deferredMove=null;moveTimer=0;if(next)send(next);},35);return;}
+    lastMoveAt=now;
+  }
+  outgoing.push(value);if(outgoing.length>120)outgoing.splice(0,outgoing.length-120);
+  if(!flushTimer)flushTimer=setTimeout(()=>void flush(),25);
+}
+async function flush(keepalive=false){
+  if(flushing){flushTimer=0;if(keepalive)keepaliveFlushPending=true;return;}
+  if(!sessionToken||!outgoing.length)return;
+  clearTimeout(flushTimer);flushTimer=0;flushing=true;
+  const batch=outgoing.splice(0,50);
+  try{
+    const response=await fetch('/api/dots/browser/control',{method:'POST',headers:{'Content-Type':'application/json','X-Shiyan-Local':'1'},credentials:'same-origin',cache:'no-store',keepalive,body:JSON.stringify({sessionToken,messages:batch})});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(data.error||data.message||'浏览器操作发送失败');
+  }catch(error){
+    controlFailures++;pollDiag='control-fail#'+controlFailures+' '+(error?.name||'')+': '+(error?.message||'')+' types='+batch.map(m=>m.type).slice(0,8).join(',');
+    outgoing.unshift(...batch);if(outgoing.length>120)outgoing.length=120;
+    if(!closed){setState(error.message||'浏览器控制连接中断',true);if(!flushTimer)flushTimer=setTimeout(()=>void flush(),350);}
+  }finally{
+    flushing=false;flushTimer=0;
+    if(keepaliveFlushPending){keepaliveFlushPending=false;void flush(true);}
+    else if(outgoing.length&&!flushTimer&&!closed)flushTimer=setTimeout(()=>void flush(),25);
+  }
+}
+function handleMessage(data){
+  if(data.type==='status'){if(data.url&&home.hidden&&!navigationInFlight&&document.activeElement!==address)address.value=data.url;if(!rtcStarted)setState('Chrome 已启动 · 正在连接音视频');}
+  if(data.type==='rtc-offer')startRtc(data.sdp).catch(error=>{diag('rtc-exception',error?.name+': '+error?.message);enterFallback('音视频启动失败');});
+  if(data.type==='rtc-ready')setState('WebRTC 正在连接…');
+  if(data.type==='tabs')renderTabs(data);
+  // The picture is already live (WebRTC playing or fallback frames): once the server reports the
+  // navigation/page, drop the "正在打开网页" overlay. Before, only the first video track hid it, so a
+  // URL typed after the connection was up stayed covered forever.
+  if((data.type==='navigation'||(data.type==='status'&&/^https?:/i.test(data.url||'')))&&(rtcConnected||(fallbackMode&&fallbackScreen.naturalWidth))&&!/网页打开失败/.test(hint.textContent))hint.hidden=true;
+  if(data.type==='error'){setState(data.message||'浏览器操作失败',true);hint.hidden=false;hint.innerHTML='<div><strong>网页打开失败</strong>'+escapeHTML(data.message||'请重试')+'</div>'; }
+}
+async function poll(){
+  while(!closed&&sessionToken){
+    try{
+      const response=await fetch('/api/dots/browser/poll',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','X-Shiyan-Local':'1'},
+        credentials:'same-origin',
+        cache:'no-store',
+        signal:AbortSignal.timeout(10000),
+        body:JSON.stringify(Object.assign(fallbackMode?{sessionToken,wantFrames:true,frameSeq}:{sessionToken},pollDiag?{clientDiag:pollDiag}:{}))
+      });
+      pollDiag='';
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok){
+        const error=new Error(data.error||data.message||'服务器浏览器会话已断开');
+        error.status=response.status;
+        throw error;
+      }
+      pollFailures=0;
+      for(const message of data.messages||[])handleMessage(message);
+      if(fallbackMode&&typeof data.frame==='string'&&data.frame){
+        frameSeq=Number(data.frameSeq)||0;
+        fallbackScreen.onload=()=>{hint.hidden=true;};
+        fallbackScreen.onerror=()=>{
+          hint.hidden=false;
+          hint.innerHTML='<div><strong>画面加载失败</strong>正在重新获取浏览器画面…</div>';
+        };
+        fallbackScreen.src='data:image/jpeg;base64,'+data.frame;
+      }
+    }catch(error){
+      if(closed)break;
+      pollFailures++;
+      const status=Number(error?.status)||0;
+      pollDiag='poll-retry#'+pollFailures+' '+(error?.name||'')+': '+(error?.message||error);
+      diag('poll-error',pollDiag);
+      if([400,401,403,404].includes(status)){
+        setState(error.message||'服务器浏览器会话已断开',true);
+        hint.hidden=false;
+        hint.innerHTML='<div><strong>服务器浏览器连接中断</strong>'+escapeHTML(error.message||'请关闭后重新打开电脑')+'</div>';
+        break;
+      }
+      setState('画面数据连接暂时中断，正在重试…',true);
+      const retryDelay=Math.min(3000,250*Math.pow(2,Math.min(4,pollFailures-1)));
+      await new Promise(resolve=>setTimeout(resolve,retryDelay));
+      continue;
+    }
+    await new Promise(resolve=>setTimeout(resolve,fallbackMode?15:250));
+  }
+}
+const setState=(text,isError=false)=>{connection.textContent=text;connection.classList.toggle('error',isError);};
+function tabLabel(tab){const url=String(tab.url||'');if(!url||url==='about:blank')return '新标签页';if(tab.title)return tab.title;try{return new URL(url).host||url;}catch(_){return url;}}
+function renderTabs(data){
+  const switched=tabsState.active!==(data.active||null);
+  tabsState={active:data.active||null,tabs:Array.isArray(data.tabs)?data.tabs:[]};
+  const box=$('tabs');box.textContent='';
+  for(const tab of tabsState.tabs){
+    const item=document.createElement('div');item.className='tab'+(tab.id===tabsState.active?' is-active':'');item.setAttribute('role','tab');item.setAttribute('aria-selected',String(tab.id===tabsState.active));item.dataset.tab=tab.id;item.title=tabLabel(tab);
+    const icon=document.createElement('img');icon.src='/assets/logo.png?v=20261107-cache-v1';icon.alt='';
+    const label=document.createElement('strong');label.textContent=tabLabel(tab);
+    const close=document.createElement('button');close.type='button';close.className='tab-x';close.dataset.closeTab=tab.id;close.setAttribute('aria-label','关闭标签页');close.textContent='×';
+    item.append(icon,label,close);box.append(item);
+  }
+  const active=tabsState.tabs.find(tab=>tab.id===tabsState.active);
+  // Only an explicit tab switch may change the new-tab overlay; late tab updates must never cover a loaded page.
+  if(active){const blank=!active.url||active.url==='about:blank';if(switched){home.hidden=!blank;address.value=blank?'':active.url;if(!blank&&document.activeElement===address)address.blur();}else if(!blank&&home.hidden&&!navigationInFlight&&document.activeElement!==address)address.value=active.url;}
+  box.querySelector('.is-active')?.scrollIntoView({block:'nearest',inline:'nearest'});
+}
+function escapeHTML(value){return String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function waitForIce(peer,timeout=5000){
+  diag('ice-gathering-start',peer.iceGatheringState);
+  if(peer.iceGatheringState==='complete'){diag('ice-gathering-complete','already-complete');return Promise.resolve();}
+  return new Promise(resolve=>{let finished=false;const done=timedOut=>{if(finished)return;finished=true;clearTimeout(timer);peer.removeEventListener('icegatheringstatechange',check);diag(timedOut?'ice-gathering-timeout':'ice-gathering-complete',peer.iceGatheringState);resolve();};const check=()=>{diag('ice-gathering-state',peer.iceGatheringState);if(peer.iceGatheringState==='complete')done(false);};let grace=0;const onCandidate=event=>{if(event.candidate&&/ typ relay /.test(event.candidate.candidate)&&!grace){diag('ice-relay-ready','');grace=setTimeout(()=>done(false),700);}};peer.addEventListener('icecandidate',onCandidate);const timer=setTimeout(()=>done(true),timeout);peer.addEventListener('icegatheringstatechange',check);check();});
+}
+async function startRtc(offer){
+  if(rtcStarted)return;rtcStarted=true;setState('正在建立 WebRTC 音视频连接…');
+  pc=new RTCPeerConnection({iceServers,iceTransportPolicy:'relay',bundlePolicy:'max-bundle'});
+  screen.addEventListener('resize',()=>diag('video-resize',screen.videoWidth+'x'+screen.videoHeight+' box='+screen.offsetWidth+'x'+screen.offsetHeight+' sent='+sentView.width+'x'+sentView.height));
+  pc.ontrack=event=>{
+    if(event.track.kind==='video'){
+      screen.srcObject=event.streams[0]||new MediaStream([event.track]);
+      screen.play().catch(()=>{});
+      hint.hidden=true;startPaintWatch();
+    }else if(event.track.kind==='audio'){
+      audio.srcObject=new MediaStream([event.track]);
+      audio.muted=!audioEnabled;
+      if(audioEnabled)audio.play().catch(()=>{});
+    }
+  };
+  pc.onconnectionstatechange=()=>{
+    diag('rtc-state',pc.connectionState+' ice='+pc.iceConnectionState);
+    if(pc.connectionState==='connected'&&!window.__statsTimer){let n=0;window.__statsTimer=setInterval(async()=>{if(closed||n++>12){clearInterval(window.__statsTimer);return;}try{let v=null,a=null;(await pc.getStats()).forEach(r=>{if(r.type==='inbound-rtp'&&r.kind==='video')v=r;if(r.type==='inbound-rtp'&&r.kind==='audio')a=r;});diag('play-stats','vw='+screen.videoWidth+'x'+screen.videoHeight+' rs='+screen.readyState+' paused='+screen.paused+' src='+!!screen.srcObject+' hidden='+getComputedStyle(screen).visibility+'/'+screen.offsetWidth+' hint='+hint.hidden+' home='+home.hidden+' fb='+fallbackMode+' vDec='+(v?.framesDecoded??'-')+' vBytes='+(v?.bytesReceived??'-')+' vLost='+(v?.packetsLost??'-')+' fps='+(v?.framesPerSecond??'-')+' aBytes='+(a?.bytesReceived??'-')+' audioOn='+audioEnabled);}catch(e){diag('play-stats-error',e.message);}},4000);}
+    if(pc.connectionState==='connected'){rtcConnected=true;clearTimeout(rtcWatchdog);leaveFallback();setState('WebRTC 已连接 · 浏览器音视频');hint.hidden=true;}
+    else if(pc.connectionState==='failed'){rtcConnected=false;enterFallback('音视频中继不可用');}
+    else if(pc.connectionState==='disconnected'){rtcConnected=false;setState('WebRTC 连接中断，正在重连…',true);clearTimeout(rtcWatchdog);rtcWatchdog=setTimeout(()=>{if(!rtcConnected)enterFallback('音视频连接中断');},5000);}
+  };
+  pc.oniceconnectionstatechange=()=>{if(pc.iceConnectionState==='failed')enterFallback('中继连接失败');};
+  clearTimeout(rtcWatchdog);rtcWatchdog=setTimeout(()=>{if(!rtcConnected)enterFallback('音视频连接超时');},6000);
+  pc.onicecandidateerror=event=>diag('ice-error',(event.errorCode||'')+' '+(event.errorText||'')+' '+(event.url||''));
+  diag('offer-received',navigator.userAgent);
+  await pc.setRemoteDescription({type:'offer',sdp:offer});
+  const answer=await pc.createAnswer();await pc.setLocalDescription(answer);diag('answer-created','gathering='+pc.iceGatheringState);
+  await waitForIce(pc);
+  const sdp=pc.localDescription?.sdp||'';const cands=(sdp.match(/a=candidate/g)||[]).length;diag('answer-queued','candidates='+cands+' gathering='+pc.iceGatheringState+' bytes='+sdp.length);
+  // No relay candidate gathered (TURN allocation failed, e.g. the client network drops UDP): the
+  // video will never connect, so switch to JPEG frames at once instead of waiting out the watchdog.
+  if(!cands&&!rtcConnected)enterFallback('没有可用的音视频中继候选');
+  if(!sdp.startsWith('v=0'))throw new Error('WebRTC Answer SDP 为空');
+  const tuned=sdp.replace(/^(a=fmtp:(\d+) .*)$/gm,(line,whole,pt)=>/x-google-/.test(line)||!new RegExp('^a=rtpmap:'+pt+' (VP8|VP9|H264|AV1)/','m').test(sdp)?line:line+';x-google-start-bitrate=2500;x-google-min-bitrate=1500;x-google-max-bitrate=5000').replace(/^(a=rtpmap:(\d+) (VP8|VP9)\/90000)$/gm,(line,whole,pt)=>new RegExp('^a=fmtp:'+pt+' ','m').test(sdp)?line:line+'\r\na=fmtp:'+pt+' x-google-start-bitrate=2500;x-google-min-bitrate=1500;x-google-max-bitrate=5000');
+  send({type:'rtc-answer',sdp:tuned});
+  await flush();diag('answer-posted','queued='+outgoing.some(item=>item.type==='rtc-answer')+' flushing='+flushing);
+}
+function connect(){
+  const hash=new URLSearchParams(location.hash.slice(1)),ticket=hash.get('ticket');
+  history.replaceState(null,'',location.pathname+location.search);
+  if(!ticket){setState('电脑入口已过期，请重新打开',true);hint.innerHTML='<div><strong>连接凭证已失效</strong>请关闭窗口后重新打开电脑入口</div>';return;}
+  fetch('/api/dots/browser/exchange',{method:'POST',headers:{'Content-Type':'application/json','X-Shiyan-Local':'1'},credentials:'same-origin',cache:'no-store',body:JSON.stringify({ticket})})
+    .then(async response=>{const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||data.message||'无法启动服务器浏览器');return data;})
+    .then(data=>{if(!data.sessionToken||!Array.isArray(data.iceServers))throw new Error('服务器没有返回完整的浏览器连接配置');iceServers=data.iceServers;openTransport(data.sessionToken);})
+    .catch(error=>{setState(error.message,true);hint.hidden=false;hint.innerHTML='<div><strong>无法连接服务器电脑</strong>'+escapeHTML(error.message)+'</div>';});
+}
+const darkQuery=matchMedia('(prefers-color-scheme: dark)');
+const sendScheme=()=>send({type:'color-scheme',value:darkQuery.matches?'dark':'light'});
+try{darkQuery.addEventListener('change',sendScheme);}catch(_){}
+window.addEventListener('pagehide',()=>{if(!sessionToken||closed)return;try{fetch('/api/dots/browser/control',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json','X-Shiyan-Local':'1'},credentials:'same-origin',body:JSON.stringify({sessionToken,messages:[{type:'close'}]})});}catch(_){}});
+function openTransport(token){
+  sessionToken=token;sendScheme();setState('已连接 · 正在启动音视频');hint.hidden=false;resize();
+  void poll();send({type:'rtc-start'});diag('transport-open',navigator.userAgent+' visibility='+document.visibilityState);
+  setTimeout(()=>{if(!rtcConnected)enterFallback('音视频连接超时');},8000);
+  if(pendingNavigation){const url=pendingNavigation;pendingNavigation=null;void executeNavigation(url);}
+}
+function resize(){if(!sessionToken)return;const rect=wrap.getBoundingClientRect();const width=Math.max(320,Math.min(1400,Math.round(rect.width)));const height=Math.max(420,Math.min(1000,Math.round(rect.height)));sentView={width,height};diag('resize-sent',width+'x'+height+' dpr='+(window.devicePixelRatio||1));send({type:'resize',width,height,scale:Math.min(2,window.devicePixelRatio||1)});}
+function scheduleResize(){clearTimeout(resizeTimer);resizeTimer=setTimeout(resize,180);}
+new ResizeObserver(scheduleResize).observe(wrap);window.addEventListener('orientationchange',scheduleResize);
+try{matchMedia('(resolution: 2dppx)').addEventListener('change',scheduleResize);}catch(_){}
+let navigationInFlight=false,lastRequestedUrl='';
+async function executeNavigation(value){
+  if(!sessionToken){pendingNavigation=value;return;}
+  if(navigationInFlight)return;
+  navigationInFlight=true;lastRequestedUrl=value;home.hidden=true;menu.hidden=true;
+  setState('正在打开 '+value);hint.hidden=false;hint.innerHTML='<div><strong>正在打开网页</strong>'+escapeHTML(value)+'</div>';
+  try{
+    const response=await fetch('/api/dots/browser/control',{method:'POST',headers:{'Content-Type':'application/json','X-Shiyan-Local':'1'},credentials:'same-origin',cache:'no-store',body:JSON.stringify({sessionToken,messages:[{type:'navigate',url:value}]})});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(data.error||data.message||'网页导航请求失败');
+    setState('已提交导航，正在等待画面：'+value);
+  }catch(error){
+    setState(error.message||'网页打开失败',true);hint.hidden=false;hint.innerHTML='<div><strong>网页打开失败</strong>'+escapeHTML(error.message||'请重试')+'</div>';
+    address.value=value;
+  }finally{navigationInFlight=false;}
+}
+function navigateFromAddress(){const value=address.value.trim();if(!value)return;void executeNavigation(value);}
+$('addressForm').addEventListener('submit',event=>{event.preventDefault();navigateFromAddress();keyboard.blur();});
+address.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();navigateFromAddress();keyboard.blur();}});
+function showHome(){home.hidden=false;address.value='';menu.hidden=true;}
+$('closeBrowser').addEventListener('click',()=>{try{parent.postMessage({type:'shiyan-browser-close'},location.origin);}catch(_){}});$('toolbarMenu').addEventListener('click',()=>{menu.hidden=!menu.hidden;});const newTab=()=>{menu.hidden=true;address.value='';home.hidden=false;send({type:'tab-new'});setTimeout(()=>address.focus(),60);};
+$('menuNewTab').addEventListener('click',newTab);$('tabAdd').addEventListener('click',newTab);
+$('tabs').addEventListener('click',event=>{const close=event.target.closest('[data-close-tab]');if(close){event.stopPropagation();send({type:'tab-close',id:close.dataset.closeTab});return;}const item=event.target.closest('[data-tab]');if(item&&item.dataset.tab!==tabsState.active){send({type:'tab-switch',id:item.dataset.tab});}});
+$('tabs').addEventListener('auxclick',event=>{const item=event.target.closest('[data-tab]');if(event.button===1&&item)send({type:'tab-close',id:item.dataset.tab});});$('menuHome').addEventListener('click',showHome);$('menuReload').addEventListener('click',()=>{menu.hidden=true;home.hidden=true;send({type:'reload'});});$('sound').addEventListener('click',()=>{menu.hidden=true;});
+$('back').addEventListener('click',()=>{home.hidden=true;send({type:'back'});});$('forward').addEventListener('click',()=>{home.hidden=true;send({type:'forward'});});$('reload').addEventListener('click',()=>{home.hidden=true;send({type:'reload'});});
+sound.addEventListener('click',()=>{
+  audioEnabled=!audioEnabled;audio.muted=!audioEnabled;sound.classList.toggle('sound-on',audioEnabled);
+  sound.textContent=audioEnabled?'◖))':'◖))';sound.title=audioEnabled?'关闭声音':'开启声音';sound.setAttribute('aria-label',sound.title);
+  if(audioEnabled)audio.play().then(()=>setState('WebRTC 已连接 · 声音已开启')).catch(()=>{setState('请再次点击声音按钮以播放',true);});
+  else setState('WebRTC 已连接 · 声音已关闭');
+});
+function point(event){
+  const useImg=fallbackMode&&fallbackScreen.naturalWidth;
+  const rect=screen.getBoundingClientRect(),vw=(useImg?fallbackScreen.naturalWidth:screen.videoWidth)||1120,vh=(useImg?fallbackScreen.naturalHeight:screen.videoHeight)||720;
+  const scale=Math.min(rect.width/vw,rect.height/vh),displayWidth=vw*scale,displayHeight=vh*scale;
+  const offsetX=(rect.width-displayWidth)/2,offsetY=(rect.height-displayHeight)/2;
+  const kx=sentView.width/vw,ky=sentView.height/vh;
+  return{x:Math.max(0,Math.min(sentView.width,Math.round((event.clientX-rect.left-offsetX)/scale*kx))),y:Math.max(0,Math.min(sentView.height,Math.round((event.clientY-rect.top-offsetY)/scale*ky)))};
+}
+screen.addEventListener('contextmenu',event=>event.preventDefault());
+screen.addEventListener('pointerdown',event=>{
+  if(event.pointerType==='mouse'&&![0,1,2].includes(event.button))return;
+  event.preventDefault();screen.setPointerCapture?.(event.pointerId);const p=point(event),button=event.pointerType==='mouse'?(['left','middle','right'][event.button]||'left'):'left';
+  pointer={...p,lastX:p.x,lastY:p.y,scrolling:false,type:event.pointerType,button};
+  send({type:'mouse',eventType:'mousePressed',x:p.x,y:p.y,button,clickCount:event.detail===2?2:1});
+  keyboard.focus({preventScroll:true});
+});
+screen.addEventListener('pointermove',event=>{const p=point(event);if(pointer&&pointer.type==='touch'){
+  const distance=Math.abs(p.x-pointer.x)+Math.abs(p.y-pointer.y);
+  if(!pointer.scrolling&&distance>8){pointer.scrolling=true;send({type:'mouse',eventType:'mouseReleased',x:pointer.x,y:pointer.y,button:pointer.button});}
+  if(pointer.scrolling)send({type:'wheel',x:p.x,y:p.y,deltaX:pointer.lastX-p.x,deltaY:pointer.lastY-p.y});
+  else send({type:'mouse',eventType:'mouseMoved',x:p.x,y:p.y,button:'none'});
+  pointer.lastX=p.x;pointer.lastY=p.y;
+}else send({type:'mouse',eventType:'mouseMoved',x:p.x,y:p.y,button:'none'});});
+function release(event){if(!pointer)return;const p=point(event);if(!pointer.scrolling)send({type:'mouse',eventType:'mouseReleased',x:p.x,y:p.y,button:pointer.button});pointer=null;}
+screen.addEventListener('pointerup',release);screen.addEventListener('pointercancel',release);
+wrap.addEventListener('wheel',event=>{event.preventDefault();const p=point(event);send({type:'wheel',x:p.x,y:p.y,deltaX:event.deltaX,deltaY:event.deltaY});},{passive:false});
+function modifiers(event){return(event.altKey?1:0)|(event.ctrlKey?2:0)|(event.metaKey?4:0)|(event.shiftKey?8:0);}
+keyboard.addEventListener('input',()=>{const value=keyboard.value;if(value){send({type:'insertText',text:value});keyboard.value='';}});
+keyboard.addEventListener('keydown',event=>{
+  if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='l'){event.preventDefault();address.focus();address.select();return;}
+  if(['Backspace','Enter','Tab','Escape','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Delete','Home','End','PageUp','PageDown'].includes(event.key)){
+    event.preventDefault();const payload={type:'key',eventType:'keyDown',key:event.key,code:event.code,modifiers:modifiers(event)};send(payload);send({...payload,eventType:'keyUp'});
+  }
+});
+function close(){if(closed)return;send({type:'close'});void flush(true);closed=true;clearTimeout(flushTimer);clearTimeout(moveTimer);clearInterval(paintWatchTimer);try{pc?.close();}catch{}try{audio.pause();audio.srcObject=null;}catch{}try{screen.pause();screen.srcObject=null;}catch{}}
+window.addEventListener('pagehide',close,{once:true});
+connect();
+})();
+</script>
+</body>
+</html>

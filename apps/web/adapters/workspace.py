@@ -47,8 +47,10 @@ def install(app, repository_root: Path):
     }
     def static_handler(filename, media_type):
         async def handler(request: Request):
+            cache = ('public, max-age=31536000, immutable'
+                     if request.query_params.get('v') else 'no-cache')
             return FileResponse(assets / filename, media_type=media_type,
-                                headers={'Cache-Control':'no-cache'})
+                                headers={'Cache-Control':cache})
         return handler
     for url, (filename, mime) in static.items():
         app.router.routes.append(Route(url, static_handler(filename, mime), methods=['GET']))

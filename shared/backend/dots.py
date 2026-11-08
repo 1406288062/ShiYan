@@ -24,10 +24,39 @@ def register_dots(app):
             raise ValueError("缺少请求标识，请重新打开 Dots")
         return value
 
-    async def remote(request, method, route, value=None):
+    async def remote(request, method, route, value=None, timeout=40):
         gateway = request.app.state.runtime.gateway
         await gateway.ensure_enrolled()
-        return await gateway.json(method, "dots/" + route, value)
+        return await gateway.json(method, "dots/" + route, value, timeout=timeout)
+
+    async def browser_local(request, method, route, value=None, timeout=12):
+        payload = json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode() if value is not None else None
+        headers = {"Content-Type": "application/json"} if payload is not None else {}
+        origin = request.headers.get("origin")
+        if origin:
+            if origin in {"http://127.0.0.1:17861", "http://localhost:17861"}:
+                scheme = request.headers.get("x-forwarded-proto", "https")
+                host = request.headers.get("x-forwarded-host", "yandot.ai").split(":", 1)[0]
+                origin = scheme + "://" + host
+            if origin not in {"https://yandot.ai", "https://www.yandot.ai", "https://129.226.81.110"}:
+                raise ValueError("浏览器请求来源无效")
+            headers["Origin"] = origin
+        def perform():
+            connection = http.client.HTTPConnection("127.0.0.1", 4325, timeout=timeout)
+            try:
+                connection.request(method, "/v1/dots/browser/" + route, body=payload, headers=headers)
+                response = connection.getresponse()
+                raw = response.read(4 * 1024 * 1024)
+                try:
+                    result = json.loads(raw or b"{}")
+                except (ValueError, UnicodeDecodeError):
+                    result = {}
+                if not 200 <= response.status < 300:
+                    raise GatewayError(result.get("error") or "服务器电脑请求失败", response.status)
+                return result
+            finally:
+                connection.close()
+        return await asyncio.to_thread(perform)
 
     def identifier(value):
         if value <= 0:
@@ -271,19 +300,73 @@ def register_dots(app):
     async def delete_relationship_topic(topic_id: str, request: Request):
         return await remote(request, "DELETE", "relationship/topics/" + topic_identifier(topic_id))
 
+    @app.post("/api/dots/browser/session")
+    async def create_browser_session(request: Request):
+        return await remote(request, "POST", "browser/session", await plain(request))
+
+    @app.delete("/api/dots/browser/session")
+    async def close_browser_session(request: Request):
+        return await remote(request, "DELETE", "browser/session")
+
+    @app.post("/api/dots/browser/exchange")
+    async def exchange_browser_ticket(request: Request):
+        data = await plain(request)
+        if request.app.state.platform.mode == "web":
+            return await browser_local(request, "POST", "exchange", data, timeout=75)
+        return await remote(request, "POST", "browser/exchange", data)
+
+    @app.post("/api/dots/browser/poll")
+    async def poll_browser_messages(request: Request):
+        data = await plain(request)
+        token = data.get("sessionToken")
+        if not isinstance(token, str) or not token or len(token) > 128:
+            raise ValueError("浏览器会话凭证无效")
+        forwarded = {"sessionToken": token}
+        # Fallback picture mode: the page asks for JPEG frames over the poll. These fields must be
+        # forwarded or the page waits forever on "正在获取浏览器画面".
+        if data.get("wantFrames") is True:
+            forwarded["wantFrames"] = True
+            seq = data.get("frameSeq")
+            forwarded["frameSeq"] = seq if isinstance(seq, int) and not isinstance(seq, bool) and 0 <= seq < 2**31 else 0
+        diag = data.get("clientDiag")
+        if isinstance(diag, str) and diag:
+            forwarded["clientDiag"] = diag[:240]
+        if request.app.state.platform.mode == "web":
+            return await browser_local(request, "POST", "poll", forwarded, timeout=8)
+        return await remote(request, "POST", "browser/poll", forwarded)
+
+    @app.post("/api/dots/browser/control")
+    async def control_browser(request: Request):
+        data = await plain(request)
+        if not isinstance(data.get("sessionToken"), str) or not isinstance(data.get("messages"), list):
+            raise ValueError("浏览器操作格式无效")
+        if request.app.state.platform.mode == "web":
+            return await browser_local(request, "POST", "control", data, timeout=12)
+        return await remote(request, "POST", "browser/control", data)
+
     @app.get("/api/dots/profile")
     async def profile(request: Request):
         storage = request.app.state.runtime.storage
         value = storage.setting("dotsProfile", {})
+        hidden_pet_ids = {"pet_6ac34fca9ed8819191d26a7488e27b61", "pet_6abd0eab12a48191b7fbf8d7f68d393d"}
+        if value.get("petId") in hidden_pet_ids:
+            value.pop("petId", None)
+            storage.set_setting("dotsProfile", value)
         try:
             shared = (await remote(request, "GET", "profile")).get("profile", {})
+            if shared.get("petId") in hidden_pet_ids:
+                shared.pop("petId", None)
             if not shared.get("petId") and value.get("petId"):
                 initial = {k: value[k] for k in ("name", "accent", "petId") if k in value}
                 shared = (await remote(request, "PATCH", "profile", initial)).get("profile", {})
+                if shared.get("petId") in hidden_pet_ids:
+                    shared.pop("petId", None)
             value.update({k: shared[k] for k in ("name", "accent", "petId") if k in shared})
+            if value.get("petId") in hidden_pet_ids:
+                value.pop("petId", None)
             storage.set_setting("dotsProfile", value)
         except GatewayError:
-            pass   
+            pass
         return {"ok": True, "profile": value}
 
     @app.patch("/api/dots/profile")
@@ -324,6 +407,10 @@ def register_dots(app):
         if not file.is_file():
             return {"pets": [], "active_pet_id": None}
         manifest = json.loads(file.read_text())
+        hidden_pet_ids = {"pet_6ac34fca9ed8819191d26a7488e27b61", "pet_6abd0eab12a48191b7fbf8d7f68d393d"}
+        manifest["pets"] = [pet for pet in manifest.get("pets", []) if pet.get("id") not in hidden_pet_ids]
+        if manifest.get("active_pet_id") in hidden_pet_ids:
+            manifest["active_pet_id"] = "codex"
         for pet in manifest.get("pets", []):
             for key in ["preview_url", "thumbnail_url", "sprite_url"]:
                 if key in pet:
@@ -432,6 +519,60 @@ def register_dots(app):
         if not artifact_path or len(artifact_path) > 2048 or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_" for c in artifact_path):
             raise ValueError("作品标识无效")
         return await remote_file(request, "artifacts/" + identifier(goal_id) + "/" + artifact_path)
+
+    # Dots 学习对象：导入和某个人的聊天记录，让 Dots 在主页对话里用 Ta 的方式回复。
+    def person_identifier(value):
+        try:
+            return str(uuid.UUID(value))
+        except (ValueError, TypeError, AttributeError):
+            raise ValueError("人物标识无效")
+
+    @app.get("/api/dots/people")
+    async def digital_people(request: Request):
+        return await remote(request, "GET", "people")
+
+    @app.post("/api/dots/people")
+    async def create_digital_person(request: Request):
+        data = await plain(request)
+        return await remote(request, "POST", "people", data)
+
+    @app.get("/api/dots/people/{person_id}")
+    async def digital_person(person_id: str, request: Request):
+        return await remote(request, "GET", "people/" + person_identifier(person_id))
+
+    @app.patch("/api/dots/people/{person_id}")
+    async def update_digital_person(person_id: str, request: Request):
+        return await remote(request, "PATCH", "people/" + person_identifier(person_id), await plain(request), timeout=240)
+
+    @app.delete("/api/dots/people/{person_id}")
+    async def delete_digital_person(person_id: str, request: Request):
+        return await remote(request, "DELETE", "people/" + person_identifier(person_id), {})
+
+    @app.post("/api/dots/people/{person_id}/import")
+    async def import_digital_person_chat(person_id: str, request: Request):
+        data = await plain(request)
+        return await remote(request, "POST", "people/" + person_identifier(person_id) + "/import", data, timeout=240)
+
+    @app.get("/api/dots/people/{person_id}/messages")
+    async def digital_person_messages(person_id: str, request: Request, before: int = 0, limit: int = 100):
+        return await remote(request, "GET", "people/" + person_identifier(person_id) + "/messages?before=" + str(max(0, before)) + "&limit=" + str(min(200, max(1, limit))))
+
+    @app.post("/api/dots/people/{person_id}/messages")
+    async def send_digital_person_message(person_id: str, request: Request):
+        data = await plain(request)
+        return await remote(request, "POST", "people/" + person_identifier(person_id) + "/messages", data, timeout=240)
+
+    @app.get("/api/dots/people/{person_id}/memories")
+    async def digital_person_memories(person_id: str, request: Request):
+        return await remote(request, "GET", "people/" + person_identifier(person_id) + "/memories")
+
+    @app.patch("/api/dots/people/{person_id}/memories/{memory_id}")
+    async def update_digital_person_memory(person_id: str, memory_id: str, request: Request):
+        return await remote(request, "PATCH", "people/" + person_identifier(person_id) + "/memories/" + person_identifier(memory_id), await plain(request))
+
+    @app.delete("/api/dots/people/{person_id}/memories/{memory_id}")
+    async def delete_digital_person_memory(person_id: str, memory_id: str, request: Request):
+        return await remote(request, "DELETE", "people/" + person_identifier(person_id) + "/memories/" + person_identifier(memory_id), {})
 
     @app.get("/api/dots/manager")
     async def manager(request: Request):

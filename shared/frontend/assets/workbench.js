@@ -100,7 +100,7 @@
     $('mainWorkspace').appendChild($('connectionBanner'));
     const side=$('agentSidebar'); $('leftContainer').appendChild(side);
     const sidebarHeader=side.querySelector('.sidebar-header');
-    sidebarHeader.innerHTML=`<img class="sidebar-logo" src="/assets/logo.png" alt="" width="30" height="30"><h2>拾燕</h2>${button('sidebarSearch','search','搜索聊天')}`;
+    sidebarHeader.innerHTML=`<img class="sidebar-logo" src="/assets/logo.png?v=20261107-cache-v1" alt="" width="30" height="30"><h2>拾燕</h2>${button('sidebarSearch','search','搜索聊天')}`;
     side.querySelector('.workspace-navigation')?.remove();
     const newChat=$('newConversationButton');
     newChat.className='sidebar-new-chat';newChat.title='新聊天';newChat.setAttribute('aria-label','新聊天');

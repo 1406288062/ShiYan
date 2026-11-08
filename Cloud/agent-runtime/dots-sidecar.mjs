@@ -14,6 +14,7 @@ import { getAccountStore, requestBearer } from './accounts.mjs';
 import { startRegistrationReceiver } from './registration-events.mjs';
 import { createStepSummaries } from './step-summary.mjs';
 import { mcpConnectors } from './mcp-connectors.mjs';
+import { BrowserSessionManager } from './browser-session.mjs';
 
 const ROOT=process.env.SHIYAN_ROOT||'/home/ubuntu/boss-codex-service/shiyan-v2';
 const json=(res,status,value)=>{const data=JSON.stringify(value);res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Content-Length':Buffer.byteLength(data)});res.end(data);};
@@ -22,16 +23,21 @@ const download=(res,file)=>{res.writeHead(200,{'Content-Type':file.mimeType||'ap
 async function bytes(req,max=256*1024){let size=0;const chunks=[];for await(const chunk of req){size+=chunk.length;if(size>max)throw failure('请求内容过大',413);chunks.push(chunk);}return Buffer.concat(chunks);}
 async function body(req,max){const raw=await bytes(req,max);if(digest(raw)!==req.headers['x-shiyan-body-sha'])throw failure('请求校验失败',401);try{return JSON.parse(raw.toString()||'{}');}catch{throw failure('请求格式无效');}}
 
-export function createDotsSidecar({root=ROOT,authenticate=authenticateDevice,adapter=new DotsAdapter({root:path.join(root,'data'),allowedOwner:process.env.SHIYAN_DOTS_OWNER||'shiyan-private-owner',callbackURL:process.env.SHIYAN_DOTS_CALLBACK_URL||'',importPrivateGoals:process.env.SHIYAN_DOTS_IMPORT_PRIVATE_GOALS==='1'}),recover=true,registrationSocket=recover?(process.env.DOTS_REGISTRATION_SOCKET||path.join(root,'data','registration-events.sock')):null}={}) {
+export function createDotsSidecar({root=ROOT,authenticate=authenticateDevice,adapter=new DotsAdapter({root:path.join(root,'data'),allowedOwner:process.env.SHIYAN_DOTS_OWNER||'shiyan-private-owner',callbackURL:process.env.SHIYAN_DOTS_CALLBACK_URL||'',importPrivateGoals:process.env.SHIYAN_DOTS_IMPORT_PRIVATE_GOALS==='1'}),recover=true,registrationSocket=recover?(process.env.DOTS_REGISTRATION_SOCKET||path.join(root,'data','registration-events.sock')):null,browser=new BrowserSessionManager({validateAccountToken:token=>Boolean(getAccountStore().authenticate(token))})}={}) {
   const profile=createDotsProfile(adapter,root);
   const stepSummaries=createStepSummaries(adapter.store.db);
   const server=http.createServer(async(req,res)=>{
     try{
       const url=new URL(req.url||'/','http://localhost'),pathname=url.pathname.replace(/^\/shiyan/,'');
       if(req.method==='POST'&&pathname==='/v1/dots/webhook')return json(res,200,await adapter.webhook(req.headers,await bytes(req)));
+      if(req.method==='POST'&&pathname==='/v1/dots/browser/exchange'){const input=JSON.parse((await bytes(req,2048)).toString()||'{}');return json(res,200,await browser.exchangeTicket(input.ticket,req.headers.origin||''));}
+      if(req.method==='POST'&&pathname==='/v1/dots/browser/poll'){const input=JSON.parse((await bytes(req,2048)).toString()||'{}');if(typeof input.clientDiag==='string'&&input.clientDiag)process.stderr.write('[browser-client-poll] '+input.clientDiag.replace(/[\r\n]+/g,' ').slice(0,240)+'\n');return json(res,200,await browser.pollMessagesForToken(input.sessionToken,{wantFrames:input.wantFrames===true,frameSeq:Number(input.frameSeq)||0}));}
+      if(req.method==='POST'&&pathname==='/v1/dots/browser/control'){const input=JSON.parse((await bytes(req,64*1024)).toString()||'{}');return json(res,200,await browser.handleHttpMessagesForToken(input.sessionToken,input.messages));}
       // 连接器 OAuth 回调（浏览器跳回，经 hub.yandot.ai 转发）：用 state 找到账号，不需要设备凭据。
       if(req.method==='GET'&&pathname==='/v1/dots/connectors/oauth/callback'){const out=await mcpConnectors().callback(url.searchParams);res.writeHead(out.status,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'});return res.end(out.html);}
       const auth=authenticate(req);if(!auth)return json(res,401,{ok:false,error:'服务连接未获授权'});const owner=auth.owner;adapter.authorize(owner);
+      if(req.method==='POST'&&pathname==='/v1/dots/browser/session'){await body(req,1024);const accountToken=auth.accountSession?requestBearer(req):null;return json(res,201,{ok:true,...(await browser.createTicket(owner,{accountToken}))});}
+      if(req.method==='DELETE'&&pathname==='/v1/dots/browser/session'){await browser.closeOwner(owner);return json(res,200,{ok:true});}
 
       if(req.method==='POST'&&pathname==='/v1/dots/rounds/summary'){const input=await body(req,512*1024);return json(res,200,{ok:true,rounds:await stepSummaries.rounds(input.rounds)});}
       if(req.method==='POST'&&pathname==='/v1/dots/steps/summary'){const input=await body(req,512*1024);return json(res,200,{ok:true,steps:await stepSummaries.summarize(input.steps)});}
@@ -98,6 +104,21 @@ export function createDotsSidecar({root=ROOT,authenticate=authenticateDevice,ada
         const file=adapter.attachments.download(owner,attachment[1]);
         const inline=['image/jpeg','image/png','image/gif','image/webp'].includes(file.mimeType);res.writeHead(200,{'Content-Type':inline?file.mimeType:'application/octet-stream','Content-Disposition':(inline?'inline':'attachment')+"; filename*=UTF-8''"+encodeURIComponent(file.filename),'X-Content-SHA256':file.sha256,'X-Content-Type-Options':'nosniff','Cache-Control':'no-store','Content-Length':file.data.length});res.end(file.data);return;
       }
+      if(req.method==='GET'&&pathname==='/v1/dots/people')return json(res,200,await adapter.digitalPeople(owner));
+      if(req.method==='POST'&&pathname==='/v1/dots/people')return json(res,201,await adapter.createDigitalPerson(owner,await body(req,16*1024)));
+      const digitalPerson=pathname.match(/^\/v1\/dots\/people\/([0-9a-f-]{36})(?:\/(import|messages|memories)(?:\/([0-9a-f-]{36}))?)?$/i);
+      if(digitalPerson){
+        const [,personId,operation,childId]=digitalPerson;
+        if(!operation&&req.method==='GET')return json(res,200,await adapter.digitalPerson(owner,personId));
+        if(!operation&&req.method==='PATCH')return json(res,200,await adapter.updateDigitalPerson(owner,personId,await body(req,16*1024)));
+        if(!operation&&req.method==='DELETE')return json(res,200,await adapter.deleteDigitalPerson(owner,personId));
+        if(operation==='import'&&req.method==='POST')return json(res,200,await adapter.importDigitalPerson(owner,personId,await body(req,512*1024)));
+        if(operation==='messages'&&req.method==='GET')return json(res,200,await adapter.digitalPersonMessages(owner,personId,{before:url.searchParams.get('before')||0,limit:url.searchParams.get('limit')||100}));
+        if(operation==='messages'&&req.method==='POST')return json(res,200,await adapter.sendDigitalPersonMessage(owner,personId,await body(req,16*1024)));
+        if(operation==='memories'&&!childId&&req.method==='GET')return json(res,200,await adapter.digitalPersonMemories(owner,personId));
+        if(operation==='memories'&&childId&&req.method==='PATCH')return json(res,200,await adapter.updateDigitalPersonMemory(owner,personId,childId,await body(req,16*1024)));
+        if(operation==='memories'&&childId&&req.method==='DELETE')return json(res,200,await adapter.deleteDigitalPersonMemory(owner,personId,childId));
+      }
       if(req.method==='GET'&&pathname==='/v1/dots/manager')return json(res,200,await adapter.manager(owner));
       if(req.method==='GET'&&pathname==='/v1/dots/manager/messages')return json(res,200,await adapter.managerMessages(owner,{before:url.searchParams.get('before')||0,limit:url.searchParams.get('limit')||100}));
       const feedbackRoute=pathname.match(/^\/v1\/dots\/manager\/messages\/(\d{1,12})\/feedback$/);
@@ -133,7 +154,8 @@ export function createDotsSidecar({root=ROOT,authenticate=authenticateDevice,ada
     server.registrationReady=startRegistrationReceiver({socketPath:registrationSocket,ingest:event=>adapter.registrationNotice(event)}).then(async receiver=>{if(!server.listening){await receiver.close();return null;}registrationReceiver=receiver;return receiver;});
     server.registrationReady.catch(()=>console.error('[registration-notices] private receiver unavailable; durable outboxes retain events'));
   });
-  server.on('close',()=>{void registrationReceiver?.close();adapter.close();});
+  server.on('upgrade',(req,socket,head)=>{let pathname='';try{pathname=new URL(req.url||'/', 'http://localhost').pathname.replace(/^\/shiyan/,'');}catch{}if(pathname==='/v1/dots/browser/stream')return browser.acceptWebSocket(req,socket,head);socket.destroy();});
+  server.on('close',()=>{void registrationReceiver?.close();void browser.close();adapter.close();});
 
   if(recover)server.on('listening',()=>void adapter.recover().catch(()=>{}));
   return server;

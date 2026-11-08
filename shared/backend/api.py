@@ -96,13 +96,19 @@ def create_app(directory, root, legacy=None, profile="desktop"):
                     return JSONResponse({"ok":False,"error":"上传内容过大"},status_code=413)
             except ValueError:
                 return JSONResponse({"ok":False,"error":"请求长度无效"},status_code=400)
-        try:
-            await request.app.state.accounts.protect(request)
-            isolated = await proxy_member_request(request)
-            if isolated is not None:
-                return isolated
-        except GatewayError as error:
-            return JSONResponse({"ok":False,"error":str(error)},status_code=error.status)
+        browser_token_routes = {
+            "/api/dots/browser/exchange",
+            "/api/dots/browser/poll",
+            "/api/dots/browser/control",
+        }
+        if request.url.path not in browser_token_routes or platform.mode != "web":
+            try:
+                await request.app.state.accounts.protect(request)
+                isolated = await proxy_member_request(request)
+                if isolated is not None:
+                    return isolated
+            except GatewayError as error:
+                return JSONResponse({"ok":False,"error":str(error)},status_code=error.status)
         response=await call_next(request)
         if hasattr(app.state.accounts, "finish"):
             app.state.accounts.finish(request, response)
@@ -223,12 +229,14 @@ def create_app(directory, root, legacy=None, profile="desktop"):
         return Response(source,media_type="application/javascript",headers={"Cache-Control":"no-store"})
 
     @app.get("/app.js")
-    async def app_script():
-        return FileResponse(root/"web"/"app.js",media_type="application/javascript",headers={"Cache-Control":"no-cache"})
+    async def app_script(request: Request):
+        cache = "public, max-age=31536000, immutable" if request.query_params.get("v") else "no-cache"
+        return FileResponse(root/"web"/"app.js",media_type="application/javascript",headers={"Cache-Control":cache})
 
     @app.get("/styles.css")
-    async def app_styles():
-        return FileResponse(root/"web"/"styles.css",media_type="text/css",headers={"Cache-Control":"no-cache"})
+    async def app_styles(request: Request):
+        cache = "public, max-age=31536000, immutable" if request.query_params.get("v") else "no-cache"
+        return FileResponse(root/"web"/"styles.css",media_type="text/css",headers={"Cache-Control":cache})
 
     @app.get("/api/health")
     async def health(request:Request):
@@ -654,8 +662,16 @@ def create_app(directory, root, legacy=None, profile="desktop"):
         r.notify()
         return result(request)
 
+    class VersionedStaticFiles(StaticFiles):
+        async def get_response(self, path, scope):
+            response = await super().get_response(path, scope)
+            query = scope.get("query_string", b"").decode("latin-1")
+            if any(part.split("=", 1)[0] == "v" for part in query.split("&") if part):
+                response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+            return response
+
     asset_root=root/"web"/"assets"
-    app.mount("/assets",StaticFiles(directory=asset_root,check_dir=False),name="assets")
+    app.mount("/assets",VersionedStaticFiles(directory=asset_root,check_dir=False),name="assets")
      
     if legacy:
         @app.api_route("/{rest:path}",methods=["GET","POST","PUT","PATCH","DELETE","OPTIONS","HEAD"])

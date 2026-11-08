@@ -16,13 +16,14 @@
     more:'<path d="m6 9 6 6 6-6"/>', add:'<path d="M12 4v16M4 12h16"/>',
     download:'<path d="M12 2v13m-5-5 5 5 5-5M4 16v5h16v-5"/>',
     check:'<path d="m5 12 4 4L19 6"/>',
+    computer:'<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>'
   };
   const icon = kind => kind === 'copy' ? '<span class="symbol dots-panel-icon" data-symbol="dots-copy" style="--symbol:url(\'/assets/symbols/dots-copy.png\')" aria-hidden="true"></span>' : '<svg class="dots-panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(icons[kind] || icons.file)+'</svg>';
   const colors = ['#bdc4d5','#00b4ef','#ffd139','#d469da','#bada10','#ed729c','#f79557','#7293f1'];
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   let C, profile = {}, pets = [], cataloguePromise, snapshot = {}, activities = [], outputs = [];
   let loading = false, activityError = '', expanded = false, outputExpanded = false, lastActivityFetch = 0, refreshTimer;
-  let profileDraft, profileDialog, conversationDialog, scheduleDialog, outputDialog, returnFocus;
+  let profileDraft, profileDialog, conversationDialog, scheduleDialog, outputDialog, browserDialog, returnFocus;
   let currentConversation, conversationFull = false, conversationVersion = 0, scheduleValue, scheduleBusy = false;
   let conversationTimer, conversationPolling = false;
   let readSession=null, readingIndex=-1, readUtterance=null;
@@ -31,6 +32,7 @@
   const api = (route, method = 'GET', data) => C.api(route, method, data);
   const rejected = error => [400,403,404,422].includes(error.status) && error.code !== 'action_uncertain';
   const name = () => profile.name || 'Dots';
+  // Dots pet characters are disabled for every account.
   const petById = id => pets.find(p => p.id === id) || pets.find(p => p.is_active) || pets[0];
   const imageURL = pet => pet ? (reduced.matches ? pet.thumbnail_url : pet.preview_url).replace('/static/dots-pets/','/assets/dots-pets/') : '';
   const petImage = (id, cls = '', size = '') => {
@@ -167,7 +169,7 @@
     if (savedSignature === signature) { positionPanel(); C.voiceUpdated?.(); return; }
     const scrollArea = panel.querySelector('.dots-panel-scroll'), top = scrollArea?.scrollTop || 0, voiceFocus = $('dotsVoiceCard')?.contains(document.activeElement) ? document.activeElement : null; savedSignature = signature;
     panel.innerHTML = '<div class="dots-profile-identity">'+'<span class="dots-pet-anchor" aria-hidden="true"></span>'+'<div><strong>'+esc(name())+'</strong><span>上次活跃：'+esc(ago(newest))+'</span><div class="dots-panel-status" role="status" aria-live="polite" hidden></div></div></div>'+
-      '<div class="dots-panel-scroll"><section class="dots-panel-section"><header><h3>最近活动</h3><button type="button" class="dots-mini-button" data-dots-new-schedule aria-label="新建定时任务" title="新建定时任务">'+icon('add')+'</button></header><div class="dots-activity-rows">'+
+      '<div class="dots-panel-scroll"><button type="button" class="dots-computer-entry" data-dots-computer>'+icon('computer')+'<span><strong>电脑</strong><small>打开服务器 Google Chrome</small></span>'+icon('forward')+'</button><section class="dots-panel-section"><header><h3>最近活动</h3><button type="button" class="dots-mini-button" data-dots-new-schedule aria-label="新建定时任务" title="新建定时任务">'+icon('add')+'</button></header><div class="dots-activity-rows">'+
       recent.map(a => {
         const isSchedule = a.type === 'schedule', id = isSchedule ? (a.scheduleId || a.schedule?.id || String(a.id).replace(/^schedule:/,'')) : (a.taskId || a.id);
         const key = a.type+':'+id, unread = (a.updatedAt || a.createdAt || 0) > (profile.seenActivities?.[key] || 0);
@@ -188,6 +190,7 @@
     const panel = $('dotsActivity'), button = $('dotsTasksButton'); if (!panel) return;
     $('dotsView')?.classList.toggle('has-activity-panel',!!value.drawerOpen);
     if(!value.drawerOpen&&previewOpen())closeDialog();
+    if(!value.drawerOpen&&currentModal===browserDialog)closeDialog();
     panel.hidden = !value.drawerOpen; button?.setAttribute('aria-expanded', String(value.drawerOpen)); button?.classList.toggle('is-selected', !!value.drawerOpen);
     if (value.drawerOpen) {
       const sig = JSON.stringify([value.manager?.activityCursor,value.tasks]);
@@ -203,23 +206,31 @@
     node = document.createElement('div'); node.id = id; node.hidden = true; node.className = 'wb-modal dots-dialog-overlay '+cls;
     document.body.appendChild(node); return node;
   }
+  function stopBrowserSession() {
+    const frame=browserDialog?.querySelector('[data-browser-frame]');
+    if(frame){frame.src='about:blank';frame.hidden=true;}
+    api('/browser/session','DELETE').catch(()=>{});
+  }
   function showDialog(dialog, target) {
     if(dialog!==conversationDialog){stopReading();clearInterval(conversationTimer);conversationTimer=null;}
-    if (currentModal && currentModal !== dialog) currentModal.hidden = true;
+    if (currentModal && currentModal !== dialog) { if(currentModal===browserDialog)stopBrowserSession(); currentModal.hidden = true; }
     else if (!currentModal) { const focused=document.activeElement;returnFocus=focused?.closest('.dots-menu')?.querySelector('[data-dots-more]') || (focused?.getClientRects().length?focused:$('dotsTasksButton')); }
     currentModal = dialog; dialog.hidden = false; dialog.tabIndex=-1; dialog.setAttribute('role','dialog'); dialog.setAttribute('aria-modal','true');
     C.scheduleNative?.(); requestAnimationFrame(() => (target || dialog.querySelector('input,button,textarea,select') || dialog)?.focus({preventScroll:true}));
     positionPet();
   }
-  function closeDialog() {
+  function closeDialog(force) {
     if (!currentModal && previewOpen()) {
       stopReading();conversationDialog.hidden=true;conversationDialog.classList.remove('is-inline');document.body.appendChild(conversationDialog);
       $('dotsActivity')?.classList.remove('is-conversation-preview');conversationVersion++;
       clearInterval(conversationTimer);conversationTimer=null;savedSignature='';renderPanel();C.scheduleNative?.();$('dotsTasksButton')?.focus({preventScroll:true});return;
     }
     if (!currentModal) return;
+    // The server browser only closes from its own close button; outside clicks, Esc and drawer changes keep it open.
+    if (currentModal===browserDialog && force!==true) return;
     if (scheduleBusy) return;
     if(currentModal===conversationDialog)stopReading();
+    if(currentModal===browserDialog)stopBrowserSession();
     currentModal.hidden = true; currentModal = null; conversationVersion++;
     clearInterval(conversationTimer);conversationTimer=null;
     if(previewOpen()){clearInterval(conversationTimer);conversationTimer=setInterval(refreshConversation,4000);}
@@ -545,6 +556,100 @@
     });
     try { const [s, g] = await Promise.all([api('/settings'), api('/approval-grants').catch(() => ({grants: []}))]); settings = s.settings; grants = g.grants || []; draw(); showDialog(dialog, dialog); } catch (cause) { C.showError(cause); }
   }
+  // 影子人：导入和某个人的微信聊天记录，Dots 在主页对话里用 Ta 的方式回复。同一时间只启用一个。
+  async function openShadow() {
+    const dialog = makeDialog('dotsShadowDialog','dots-conversation-overlay');
+    let people = [], activeId = null, step = '', draft = {name:'',relationship:''}, target = null, pending = null, busy = '', notice = '', error = '';
+    const day = at => at ? new Date(at).toLocaleDateString('zh-CN',{year:'numeric',month:'numeric',day:'numeric'}) : '';
+    const route = (id, tail = '') => '/people/'+encodeURIComponent(id)+tail;
+    const load = async () => { const r = await api('/people'); people = r.people || []; activeId = r.activePersonId || people.find(p => p.active)?.id || null; };
+    const formHTML = () => {
+      if (step === 'map' && pending) {
+        const name = esc(target?.name || draft.name || 'Ta');
+        const option = (speaker, value, label) => '<option value="'+value+'"'+(pending.mapping[speaker]===value?' selected':'')+'>'+label+'</option>';
+        const shown = pending.speakers.slice(0,12);
+        return '<form class="dots-goal-form" data-shadow-confirm>'
+          +'<p class="dots-goal-summary">已在本机解析 '+pending.messages.length+' 条消息。文件本身不会上传，只上传你和 '+name+' 的聊天文字；手机号、证件号、银行卡号、邮箱、密码、验证码等在上传前已隐藏，标为“其他人”的消息不会上传。</p>'
+          +'<div class="dots-goal-form-row">'+shown.map((speaker,i)=>'<label><span>'+esc(speaker)+'（'+pending.counts[speaker]+' 条）</span><select data-shadow-speaker="'+i+'">'+option(speaker,'person',name)+option(speaker,'owner','我')+option(speaker,'other','其他人')+'</select></label>').join('')+'</div>'
+          +(pending.speakers.length>shown.length?'<p class="dots-goal-meta">另有 '+(pending.speakers.length-shown.length)+' 个发送人按“其他人”处理。</p>':'')
+          +'<div class="dots-goal-meta">'+pending.messages.slice(0,4).map(m=>esc(m.speakerName)+'：'+esc(m.content.slice(0,80))).join('<br>')+'</div>'
+          +'<div class="dots-goal-form-actions"><button type="button" data-shadow-cancel>取消</button><button type="submit" class="is-primary">开始学习</button></div></form>';
+      }
+      if (step === 'new') return '<form class="dots-goal-form" data-shadow-create><label><span>Ta 是谁</span><input name="name" maxlength="80" required placeholder="比如：妈妈、小美、老王" value="'+esc(draft.name)+'"></label><label><span>和你的关系（可选）</span><input name="relationship" maxlength="80" placeholder="比如：母亲、女朋友、大学室友" value="'+esc(draft.relationship)+'"></label><label><span>微信聊天记录（TXT、CSV、JSON 或 HTML）</span><button type="button" class="dots-goal-new" data-shadow-choose>选择文件</button><input name="file" type="file" accept=".txt,.csv,.json,.html,.htm,.xml" hidden data-shadow-pick></label><div class="dots-goal-form-actions">'+(people.length?'<button type="button" data-shadow-cancel>取消</button>':'')+'<button type="submit" class="is-primary">下一步</button></div></form>';
+      return busy ? '' : '<button type="button" class="dots-goal-new" data-shadow-new>＋ 新的影子人</button>';
+    };
+    const personHTML = p => {
+      const on = p.id === activeId, working = busy === p.id, off = busy ? ' disabled' : '';
+      const meta = [p.relationship ? esc(p.relationship) : '', p.learnedAt ? '已学习 '+p.personMessages+' 条 Ta 的消息 · '+day(p.learnedAt) : p.personMessages ? '已导入 '+p.personMessages+' 条，尚未学习' : '还没有导入聊天记录'].filter(Boolean).join(' · ');
+      return '<article class="dots-goal'+(on?'':' is-paused')+'"><header><div><h3>'+esc(p.name)+'</h3><p>'+meta+'</p></div><span class="dots-goal-status">'+(on?'使用中':'未启用')+'</span></header>'
+        +(working?'<div class="dots-goal-planning"><span></span><span></span><span></span><em>'+esc(notice||'正在处理…')+'</em></div>':'')
+        +(!working&&p.learnError?'<div class="dots-goal-failed">'+esc(p.learnError)+'<button type="button" data-shadow-relearn="'+esc(p.id)+'"'+off+'>重试</button></div>':'')
+        +(!working&&p.summary?'<p class="dots-goal-summary">'+esc(p.summary)+'</p>':'')
+        +'<footer><button type="button" data-shadow-toggle="'+esc(p.id)+'"'+off+'>'+(on?'停用':'启用')+'</button><button type="button" data-shadow-append="'+esc(p.id)+'"'+off+'>追加聊天记录</button>'+(p.personMessages?'<button type="button" data-shadow-relearn="'+esc(p.id)+'"'+off+'>重新学习</button>':'')+'<button type="button" class="is-danger" data-shadow-delete="'+esc(p.id)+'"'+off+'>删除</button></footer></article>';
+    };
+    const draw = () => {
+      const ordered = [...people].sort((a,b) => Number(b.id===activeId) - Number(a.id===activeId));
+      if (!people.length && !step && !busy) step = 'new';
+      dialog.innerHTML = '<section class="dots-conversation-card dots-goals-card"><header><h2>影子人</h2><button type="button" class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button></header>'
+        +'<p class="dots-goal-meta">导入你和某个人的微信聊天记录，Dots 会学习 Ta 的说话方式。之后在 Dots 主页聊天，回复就像 Ta 在和你说话。同一时间只启用一个影子人，停用后 Dots 恢复原样。</p>'
+        +formHTML()+(error?'<p class="dots-dialog-error" role="alert">'+esc(error)+'</p>':'')
+        +'<div class="dots-goal-list">'+ordered.map(personHTML).join('')+'</div><input type="file" data-shadow-file accept=".txt,.csv,.json,.html,.htm,.xml" hidden></section>';
+    };
+    const parse = async file => {
+      try { pending = await window.ShiYanShadowParser.read(file, target?.name || draft.name); step = 'map'; error = ''; }
+      catch (cause) { error = cause.message || '无法读取文件'; if (step !== 'new') target = null; }
+      draw();
+    };
+    const learnNow = async () => {
+      const data = pending, rows = data.messages.map(m => ({...m, speaker: data.mapping[m.speakerName] || 'other'})).filter(m => m.speaker !== 'other');
+      if (!rows.some(m => m.speaker === 'person')) { error = '请至少把一个发送人标为 Ta。'; draw(); return; }
+      error = '';
+      try {
+        if (!target) { target = (await api('/people','POST',{name:draft.name, relationship:draft.relationship})).person; people = [target, ...people.filter(p => p.id !== target.id)]; }
+        busy = target.id; step = ''; pending = null;
+        const importId = crypto.randomUUID(); let result = null;
+        for (let i = 0; i < rows.length; i += 40) {
+          const final = i + 40 >= rows.length;
+          notice = final ? '正在学习 Ta 的说话方式，大约需要一两分钟…' : '正在上传聊天记录 '+Math.min(i+40, rows.length)+' / '+rows.length; draw();
+          result = await api(route(target.id,'/import'),'POST',{importId, source:'wechat', format:data.format, messages:rows.slice(i,i+40), final});
+        }
+        if (target.id !== activeId) await api(route(target.id),'PATCH',{active:true});
+        if (result?.learnError) error = result.learnError;
+        draft = {name:'',relationship:''};
+      } catch (cause) { error = cause.message || '导入失败，请重试'; }
+      finally { busy = ''; notice = ''; target = null; try { await load(); } catch {} draw(); }
+    };
+    const act = async (id, text, fn) => {
+      busy = id; notice = text; error = ''; draw();
+      try { await fn(); } catch (cause) { error = cause.message || '操作失败'; }
+      finally { busy = ''; notice = ''; try { await load(); } catch {} draw(); }
+    };
+    // 删除需要第二次点击确认（不弹系统对话框）。
+    const confirmDelete = button => { if (button.dataset.confirm) return true; button.dataset.confirm = '1'; button.textContent = '再点一次删除'; setTimeout(() => { if (button.isConnected) { delete button.dataset.confirm; button.textContent = '删除'; } }, 3000); return false; };
+    dialog.addEventListener('click', event => {
+      const t = event.target.closest('button'); if (!t || busy) return;
+      if (t.matches('[data-shadow-choose]')) { t.closest('form').querySelector('[data-shadow-pick]').click(); }
+      else if (t.matches('[data-shadow-new]')) { step = 'new'; target = null; error = ''; draw(); }
+      else if (t.matches('[data-shadow-cancel]')) { step = ''; pending = null; target = null; error = ''; draw(); }
+      else if (t.matches('[data-shadow-append]')) { target = people.find(p => p.id === t.dataset.shadowAppend) || null; step = ''; if (target) dialog.querySelector('[data-shadow-file]').click(); }
+      else if (t.matches('[data-shadow-toggle]')) { const id = t.dataset.shadowToggle; act(id, id === activeId ? '正在停用…' : '正在启用…', () => api(route(id),'PATCH',{active: id !== activeId})); }
+      else if (t.matches('[data-shadow-relearn]')) { const id = t.dataset.shadowRelearn; act(id, '正在重新学习，大约需要一两分钟…', async () => { const r = await api(route(id),'PATCH',{relearn:true}); if (r.learnError) throw new Error(r.learnError); }); }
+      else if (t.matches('[data-shadow-delete]')) { if (!confirmDelete(t)) return; const id = t.dataset.shadowDelete; act(id, '正在删除…', () => api(route(id),'DELETE',{})); }
+    });
+    dialog.addEventListener('change', event => {
+      if (event.target.matches('[data-shadow-pick]')) { const chosen = event.target.files?.[0], button = event.target.closest('form').querySelector('[data-shadow-choose]'); button.textContent = chosen ? chosen.name : '选择文件'; }
+      if (event.target.matches('[data-shadow-file]') && event.target.files?.[0]) { const file = event.target.files[0]; event.target.value = ''; parse(file); }
+      const speaker = event.target.closest('[data-shadow-speaker]'); if (speaker && pending) pending.mapping[pending.speakers[Number(speaker.dataset.shadowSpeaker)]] = speaker.value;
+    });
+    dialog.addEventListener('submit', event => {
+      event.preventDefault(); if (busy) return;
+      const form = event.target;
+      if (form.matches('[data-shadow-create]')) { const data = new FormData(form); draft = {name:String(data.get('name')||'').trim(), relationship:String(data.get('relationship')||'').trim()}; target = null; const file = form.querySelector('[data-shadow-pick]').files?.[0]; if (!draft.name) return; if (!file) { error = '请选择聊天记录文件'; const box = dialog.querySelector('.dots-dialog-error'); if (box) box.textContent = error; else form.insertAdjacentHTML('afterend','<p class="dots-dialog-error" role="alert">'+esc(error)+'</p>'); return; } error = ''; parse(file); }
+      if (form.matches('[data-shadow-confirm]')) learnNow();
+    });
+    draw(); showDialog(dialog, dialog);
+    try { await load(); step = ''; draw(); } catch (cause) { error = cause.message; draw(); }
+  }
   // 长期目标：Dots 拆成里程碑，并按你选的频率主动来问进展。
   async function openLifeGoals() {
     const dialog = makeDialog('dotsGoalsDialog','dots-conversation-overlay');
@@ -733,6 +838,24 @@
     utterance.onend=()=>{if(readSession===session){readSession=null;readingIndex=-1;readUtterance=null;syncReadButtons();}};
     utterance.onerror=event=>{if(readSession===session)readError(Error(event.error==='not-allowed'?'请允许浏览器播放语音':'朗读未能完成，请重试'));};
     readUtterance=utterance;speechSynthesis.speak(utterance);syncReadButtons();
+  }
+  async function openComputer() {
+    const dialog=browserDialog=makeDialog('dotsBrowserDialog','dots-browser-overlay');
+    dialog.innerHTML='<section class="dots-browser-card"><div class="dots-browser-loading" data-browser-loading>正在启动服务器 Chrome…</div><iframe class="dots-browser-frame" data-browser-frame title="拾燕浏览器" sandbox="allow-scripts allow-same-origin allow-forms" referrerpolicy="no-referrer" hidden></iframe><p class="dots-browser-error" data-browser-error role="alert" hidden></p></section>';
+    const frameMessage=event=>{if(event.origin!==location.origin||event.source!==dialog.querySelector('[data-browser-frame]')?.contentWindow||event.data?.type!=='shiyan-browser-close')return;window.removeEventListener('message',frameMessage);closeDialog(true);};
+    window.addEventListener('message',frameMessage);
+    dialog.addEventListener('click',event=>{if(event.target.closest('[data-dots-close-dialog]')){window.removeEventListener('message',frameMessage);closeDialog(true);}});
+    showDialog(dialog,dialog);
+    try {
+      const result=await api('/browser/session','POST',{});
+      if(dialog.hidden||currentModal!==dialog){api('/browser/session','DELETE').catch(()=>{});return;}
+      const frame=dialog.querySelector('[data-browser-frame]');
+      frame.src='/assets/dots-browser.html?v=20261108-whiteprobe#ticket='+encodeURIComponent(result.ticket);
+      frame.hidden=false;dialog.querySelector('[data-browser-loading]').hidden=true;
+    } catch(error) {
+      const loading=dialog.querySelector('[data-browser-loading]'),label=dialog.querySelector('[data-browser-error]');
+      if(loading)loading.hidden=true;if(label){label.textContent=error.message||String(error);label.hidden=false;}
+    }
   }
   async function openConversation(id, full = false) {
     stopReading();clearInterval(conversationTimer);conversationTimer=null;
@@ -923,6 +1046,7 @@
       if(target.hasAttribute('data-dots-copy-message')){const m=currentConversation?.messages?.[Number(target.dataset.dotsCopyMessage)];if(m){await window.shiyan.copyText(m.content || m.text || '');target.title='已复制';}}
       else if(target.hasAttribute('data-dots-read-message'))readMessage(Number(target.dataset.dotsReadMessage));
       else if(target.hasAttribute('data-dots-close-panel')){e.stopPropagation();C.closePanel();}
+      else if(target.hasAttribute('data-dots-computer')){e.stopPropagation();await openComputer();}
       else if(target.hasAttribute('data-dots-show-more')){e.stopPropagation();expanded=!expanded;savedSignature='';renderPanel();}
       else if(target.hasAttribute('data-dots-show-outputs')){e.stopPropagation();outputExpanded=!outputExpanded;savedSignature='';renderPanel();}
       else if(target.hasAttribute('data-dots-new-schedule')){e.stopPropagation();await openSchedule();}
@@ -970,10 +1094,13 @@
     const home = document.querySelector('.settings-home');
     if (!home || home.querySelector('[data-settings-dots]')) return;
     const chevron = '<svg class="settings-entry-chevron" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="m9 5 7 7-7 7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-    const entry = (key, symbol, title, detail) => '<button type="button" class="settings-memory-entry" data-settings-dots="'+key+'"><span class="settings-entry-icon" aria-hidden="true"><span class="wb-icon wb-ios-icon" style="--ios-symbol:url(\'/assets/symbols/'+symbol+'.png\')"></span></span><span class="settings-entry-copy"><strong>'+title+'</strong><span>'+detail+'</span></span>'+chevron+'</button>';
+    const entry = (key, symbol, title, detail) => {
+      const iconFile = symbol.endsWith('.svg') ? symbol : symbol + '.png';
+      return '<button type="button" class="settings-memory-entry" data-settings-dots="'+key+'"><span class="settings-entry-icon" aria-hidden="true"><span class="wb-icon wb-ios-icon" style="--ios-symbol:url(/assets/symbols/'+iconFile+')"></span></span><span class="settings-entry-copy"><strong>'+title+'</strong><span>'+detail+'</span></span>'+chevron+'</button>';
+    };
     const heading = document.createElement('h3'); heading.className = 'settings-section-title'; heading.textContent = 'Dots';
     const group = document.createElement('div'); group.className = 'settings-dots-entries';
-    const entries = entry('connectors','point.3.connected.trianglepath.dotted','连接器','微信、常用插件和自定义 MCP')+entry('settings','checkmark.circle','Dots 权限审批','审批方式和已授权的操作');
+    const entries = entry('people','person.2.svg','影子人','导入微信聊天记录，Dots 用 Ta 的方式和你聊')+entry('connectors','point.3.connected.trianglepath.dotted','连接器','微信、常用插件和自定义 MCP')+entry('settings','checkmark.circle','Dots 权限审批','审批方式和已授权的操作');
     group.innerHTML = entries;
     const account = home.querySelector('.settings-section-title'), first = [...home.querySelectorAll('.settings-section-title')].find(h => h.textContent === '账户');
     if (first) home.insertBefore(heading, first); else home.append(heading);
@@ -981,7 +1108,7 @@
     const open = async event => {
       const button = event.target.closest('[data-settings-dots]'); if (!button) return;
       window.ShiYanSettings?.close?.(false);
-      if (button.dataset.settingsDots === 'connectors') await openConnectors(); else await openDotsSettings();
+      if (button.dataset.settingsDots === 'people') await openShadow(); else if (button.dataset.settingsDots === 'connectors') await openConnectors(); else await openDotsSettings();
     };
     group.addEventListener('click', open);
     const navigation = document.querySelector('.settings-sidebar nav');
@@ -1008,7 +1135,6 @@
     document.addEventListener('pointermove',event=>{if(event.pointerType!=='touch')pointer={x:event.clientX,y:event.clientY};},{passive:true});
     document.addEventListener('pointerleave',()=>{pointer=null;});window.addEventListener('blur',()=>{pointer=null;});
     petFrame=requestAnimationFrame(animatePanelPet);
-     
     $('app').appendChild($('dotsActivity'));
     $('desktopToolbar').appendChild($('dotsToolbar'));
     const alignToolbar=()=>{
@@ -1053,6 +1179,8 @@
     window.addEventListener('resize',positionPanel);
     if($('mainWorkspace'))new ResizeObserver(positionPanel).observe($('mainWorkspace'));
     window.addEventListener('shiyan-view',()=>{if(window.shiyan.getView()!=='dots'){C.closePanel();closeDialog();}});
+    // Leaving Dots only hides the browser (session kept); coming back shows it again.
+    window.addEventListener('shiyan-view',()=>{if(currentModal&&currentModal===browserDialog)browserDialog.hidden=window.shiyan.getView()!=='dots';});
     reduced.addEventListener('change',()=>{const floating=$('dotsFloatingPet');if(floating){delete floating.dataset.petId;positionPet();}document.querySelectorAll('img[data-dots-pet]').forEach(img=>{const pet=petById(img.dataset.dotsPet);if(pet)img.src=imageURL(pet);});});
     window.addEventListener('shiyan-native',event=>{
       const d=event.detail || {};if(d.type!=='voicePlaybackState' || d.sessionId!==readSession)return;
@@ -1061,7 +1189,7 @@
     });
     document.addEventListener('visibilitychange',()=>{if(document.hidden)stopReading();});
     window.addEventListener('pagehide',stopReading);
-    getCatalogue().catch(C.showError);
+    window.__SHIYAN_DOTS_PET_READY__=getCatalogue().then(()=>{positionPet();return true;}).catch(error=>{C.showError(error);return false;});
   }
-  window.ShiYanDotsPanels={install,render,name,avatar,voiceCallIdentity,openProfile,openSubscriptions,openConnectors,openDotsSettings,openAudit,openLifeGoals,approvalScope,setApprovalScope:(goalId,id,value)=>{scopeChoices.set(goalId+':'+id,value);},approvalCards,isPendingApproval,canApprove,syncApprovalState,syncVoiceLayout:positionPet};
+  window.ShiYanDotsPanels={install,render,name,avatar,voiceCallIdentity,openProfile,openSubscriptions,openConnectors,openDotsSettings,openAudit,openLifeGoals,openShadow,approvalScope,setApprovalScope:(goalId,id,value)=>{scopeChoices.set(goalId+':'+id,value);},approvalCards,isPendingApproval,canApprove,syncApprovalState,syncVoiceLayout:positionPet};
 })();

@@ -222,7 +222,7 @@ export function createMcpBridge({ db, pathSecret, runtimeToken, runtimeBase = "h
     return pathname === endpointPath;
   }
 
-  async function runtime(path, options = {}, allowRelationshipError = false) {
+  async function runtime(path, options = {}, allowRelationshipError = false, timeoutMs = 15000) {
     const response = await fetch(runtimeBase + path, {
       ...options,
       headers: {
@@ -231,7 +231,7 @@ export function createMcpBridge({ db, pathSecret, runtimeToken, runtimeBase = "h
         ...(options.headers || {}),
         "x-dots-owner":currentOwner()
       },
-      signal: AbortSignal.timeout(15000)
+      signal: AbortSignal.timeout(timeoutMs)
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -405,6 +405,24 @@ export function createMcpBridge({ db, pathSecret, runtimeToken, runtimeBase = "h
         const w=weixin(),p=msg.params||{};
         const result=method==='dots/weixin/status'?await w.status():method==='dots/weixin/login'?await w.startLogin():method==='dots/weixin/verify'?await w.submitVerifyCode(p.code):method==='dots/weixin/unbind'?await w.unbind():method==='dots/weixin/push'?await w.setPush(p.enabled===true):null;
         if(result)return sendJson(res,200,rpc(id,result));
+      }
+      if(method.startsWith('dots/people/')){
+        const p=msg.params||{},owner=currentOwner(),base='/v1/managers/'+encodeURIComponent(owner)+'/people';
+        const person=encodeURIComponent(String(p.person_id||'')),memory=encodeURIComponent(String(p.memory_id||''));
+        let path='',options={},timeout=30000;
+        if(method==='dots/people/list')path=base;
+        else if(method==='dots/people/create'){path=base;options={method:'POST',body:JSON.stringify({name:p.name,relationship:p.relationship||''})};}
+        else if(method==='dots/people/get')path=base+'/'+person;
+        else if(method==='dots/people/update'){path=base+'/'+person;options={method:'PATCH',body:JSON.stringify({name:p.name,relationship:p.relationship,summary:p.summary,active:typeof p.active==='boolean'?p.active:undefined,relearn:p.relearn===true?true:undefined})};if(p.relearn===true)timeout=180000;}
+        else if(method==='dots/people/delete'){path=base+'/'+person;options={method:'DELETE'};}
+        else if(method==='dots/people/import'){path=base+'/'+person+'/import';options={method:'POST',body:JSON.stringify({importId:p.import_id,source:'wechat',format:p.format,messages:p.messages,final:p.final===true})};timeout=180000;}
+        else if(method==='dots/people/messages/list')path=base+'/'+person+'/messages?before='+(Number(p.before)||0)+'&limit='+(Number(p.limit)||100);
+        else if(method==='dots/people/messages/send'){path=base+'/'+person+'/messages';options={method:'POST',body:JSON.stringify({requestId:p.request_id,message:p.message})};timeout=180000;}
+        else if(method==='dots/people/memories/list')path=base+'/'+person+'/memories';
+        else if(method==='dots/people/memories/update'){path=base+'/'+person+'/memories/'+memory;options={method:'PATCH',body:JSON.stringify({content:p.content})};}
+        else if(method==='dots/people/memories/delete'){path=base+'/'+person+'/memories/'+memory;options={method:'DELETE'};}
+        else throw new Error('Unknown digital people operation');
+        return sendJson(res,200,rpc(id,await runtime(path,options,false,timeout)));
       }
       if(method==='dots/messages/feedback'&&feedback)return sendJson(res,200,rpc(id,feedback().messageFeedback(msg.params||{})));
       if(method.startsWith('dots/life-goals/')&&lifeGoals){

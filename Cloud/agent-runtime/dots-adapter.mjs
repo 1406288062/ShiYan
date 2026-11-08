@@ -48,7 +48,7 @@ const GRANT_SCOPES=['task','hour','day','always'];
 const timelineKeys=['id','goal_id','kind','message','data','created_at'];
 
 export function createLocalDotsClient({socketPath='/home/ubuntu/dots-runtime/local-ipc/mcp.sock',timeoutMs=25000,owner}={}) {
-  const rpc=(method,params={})=>new Promise((resolve,reject)=>{
+  const rpc=(method,params={},callTimeout=timeoutMs)=>new Promise((resolve,reject)=>{
     const body=JSON.stringify({jsonrpc:'2.0',id:randomUUID(),method,params});
     const req=http.request({socketPath,path:'/mcp',method:'POST',headers:{'Content-Type':'application/json','Content-Length':Buffer.byteLength(body),...(owner?{'X-Dots-Owner':owner}:{})}},res=>{
       let size=0;const chunks=[];
@@ -63,12 +63,16 @@ export function createLocalDotsClient({socketPath='/home/ubuntu/dots-runtime/loc
           }
           // 设置、授权、记录、微信这类面向用户的 RPC：运行时自己写的提示可以原样给用户看。
           if(res.statusCode===200&&parsed.error?.code===-32000&&/^dots\/(settings|grants|audit|weixin|life-goals)\//.test(method)&&typeof parsed.error.message==='string'&&/[\u4e00-\u9fff]/.test(parsed.error.message))throw fail(parsed.error.message.slice(0,200),400,'runtime_rejected');
+          if(res.statusCode===200&&method.startsWith('dots/people/')&&(parsed.error||parsed.result?.isError)){
+            const message=parsed.error?.message||parsed.result?.content?.find(item=>item.type==='text')?.text;
+            if(typeof message==='string'&&message.trim())throw fail(message.trim().slice(0,240),503,'runtime_rejected');
+          }
           if(res.statusCode!==200||parsed.error||parsed.result?.isError)throw fail('Dots 未能完成操作，请刷新目标状态后重试',502,'runtime_rejected');
           resolve(parsed.result);
         }catch(error){reject(error.status?error:fail('Dots 返回内容无效',502,'runtime_unavailable'));}
       });
     });
-    req.setTimeout(timeoutMs,()=>req.destroy(fail('Dots 连接超时，请保留请求并重试',504,'runtime_unavailable')));
+    req.setTimeout(callTimeout,()=>req.destroy(fail('Dots 连接超时，请保留请求并重试',504,'runtime_unavailable')));
     req.on('error',error=>reject(error.status?error:fail('Dots 服务暂时无法连接',503,'runtime_unavailable')));
     req.end(body);
   });
@@ -284,6 +288,17 @@ export class DotsAdapter {
   async updateSettings(owner,input){this.authorize(owner);const allowed={};for(const key of ['approvalMode','dailyBrief','dailyBriefTime'])if(key in (input||{}))allowed[key]=input[key];return this.clientFor(owner).rpc('dots/settings/update',allowed);}
   async updateSubscription(owner,provider,input){this.authorize(owner);return this.clientFor(owner).rpc('dots/subscriptions/update',{provider,config:input});}
   async deleteSubscription(owner,provider){this.authorize(owner);return this.clientFor(owner).rpc('dots/subscriptions/delete',{provider});}
+  async digitalPeople(owner){this.authorize(owner);return this.clientFor(owner).rpc('dots/people/list',{});}
+  async createDigitalPerson(owner,input){this.authorize(owner);return this.clientFor(owner).rpc('dots/people/create',{name:text(input.name,80,'人物称呼'),relationship:String(input.relationship||'').slice(0,80)});}
+  async digitalPerson(owner,id){this.authorize(owner);return this.clientFor(owner).rpc('dots/people/get',{person_id:identifier(id,'人物标识')});}
+  async updateDigitalPerson(owner,id,input){this.authorize(owner);const value={person_id:identifier(id,'人物标识')};for(const key of ['name','relationship','summary'])if(input[key]!==undefined)value[key]=input[key];if(typeof input.active==='boolean')value.active=input.active;if(input.relearn===true)value.relearn=true;return this.clientFor(owner).rpc('dots/people/update',value,input.relearn===true?210000:undefined);}
+  async deleteDigitalPerson(owner,id){this.authorize(owner);return this.clientFor(owner).rpc('dots/people/delete',{person_id:identifier(id,'人物标识')});}
+  async importDigitalPerson(owner,id,input){this.authorize(owner);if(!Array.isArray(input.messages)||input.messages.length<1||input.messages.length>40)throw fail('每批导入消息数量无效');return this.clientFor(owner).rpc('dots/people/import',{person_id:identifier(id,'人物标识'),import_id:identifier(input.importId,'导入标识'),format:text(input.format||'unknown',20,'文件格式'),messages:input.messages,final:input.final===true},210000);}
+  async digitalPersonMessages(owner,id,query={}){this.authorize(owner);return this.clientFor(owner).rpc('dots/people/messages/list',{person_id:identifier(id,'人物标识'),before:integer(Number(query.before)||0),limit:integer(Number(query.limit)||100,1,200)});}
+  async sendDigitalPersonMessage(owner,id,input){this.authorize(owner);return this.clientFor(owner).rpc('dots/people/messages/send',{person_id:identifier(id,'人物标识'),request_id:identifier(input.requestId,'请求标识'),message:text(input.message,8000,'消息内容')},210000);}
+  async digitalPersonMemories(owner,id){this.authorize(owner);return this.clientFor(owner).rpc('dots/people/memories/list',{person_id:identifier(id,'人物标识')});}
+  async updateDigitalPersonMemory(owner,id,memoryId,input){this.authorize(owner);return this.clientFor(owner).rpc('dots/people/memories/update',{person_id:identifier(id,'人物标识'),memory_id:identifier(memoryId,'记忆标识'),content:text(input.content,500,'记忆内容')});}
+  async deleteDigitalPersonMemory(owner,id,memoryId){this.authorize(owner);return this.clientFor(owner).rpc('dots/people/memories/delete',{person_id:identifier(id,'人物标识'),memory_id:identifier(memoryId,'记忆标识')});}
   async relationship(owner){this.authorize(owner);return relationshipResponse(await this.clientFor(owner).tool('dots_get_relationship',{owner_id:owner}));}
   async updateRelationshipTopic(owner,topicId,input){
     this.authorize(owner);if(typeof topicId!=='string'||!/^[A-Za-z0-9_-]{1,128}$/.test(topicId))throw fail('共同话题标识无效');

@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ShiYan Browser Media Transport</title>
+<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000}canvas{position:fixed;inset:0;width:100vw;height:100vh;opacity:.01;pointer-events:none}</style>
+</head>
+<body>
+<canvas id="media" width="1120" height="720"></canvas>
+<script>
+(()=>{
+'use strict';
+const canvas=document.getElementById('media');
+const context=canvas.getContext('2d',{alpha:false,desynchronized:true});
+let tabTrack=null,usingTab=false,videoSender=null;
+let peer=null,audioStream=null,videoStream=null,videoTrack=null,lastBitmap=null,frameTicker=null,closed=false;
+window.__shiyanFrameCount=0;window.__shiyanFrameCalls=0;window.__shiyanFrameError="";
+window.__shiyanResize=(width,height)=>{
+  canvas.width=Math.max(320,Math.min(2800,Math.round(width||1120)));
+  canvas.height=Math.max(420,Math.min(2000,Math.round(height||720)));
+};
+window.__shiyanFrame=async base64=>{
+  if(closed||typeof base64!=='string'||base64.length>2_100_000)return;
+  window.__shiyanFrameCalls++;
+  try{
+    const binary=atob(base64),bytes=new Uint8Array(binary.length);
+    for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+    const bitmap=await createImageBitmap(new Blob([bytes],{type:'image/jpeg'}));
+    if(!closed){
+      const previous=lastBitmap;lastBitmap=bitmap;
+      context.drawImage(bitmap,0,0,canvas.width,canvas.height);
+      window.__shiyanFrameCount++;
+      try{previous?.close();}catch{}
+      videoTrack?.requestFrame?.();
+    }else bitmap.close();
+    return {ok:true,frameCount:window.__shiyanFrameCount};
+  }catch(error){window.__shiyanFrameError=String(error?.message||error).slice(0,240);return {ok:false,error:window.__shiyanFrameError};}
+};
+// Measured: the TURN relay candidate arrives within ~1-2 s, but full gathering waited the 18 s
+// timeout (UDP allocation never completes on some networks). Return shortly after the first relay.
+function waitForIce(pc,timeout=6000){
+  if(pc.iceGatheringState==='complete')return Promise.resolve();
+  return new Promise(resolve=>{
+    let grace=0;
+    const done=()=>{clearTimeout(timer);clearTimeout(grace);pc.removeEventListener('icegatheringstatechange',check);pc.removeEventListener('icecandidate',onCandidate);resolve();};
+    const check=()=>{if(pc.iceGatheringState==='complete')done();};
+    const onCandidate=event=>{if(event.candidate&&/ typ relay /.test(event.candidate.candidate)&&!grace)grace=setTimeout(done,700);};
+    const timer=setTimeout(done,timeout);
+    pc.addEventListener('icegatheringstatechange',check);pc.addEventListener('icecandidate',onCandidate);
+  });
+}
+// Direct tab capture: the page's own compositor output, encoded once by WebRTC (no JPEG/base64
+// round-trip). The server titles the target tab with a token Chrome auto-selects on.
+async function captureTab(){
+  const stream=await navigator.mediaDevices.getDisplayMedia({video:{frameRate:{ideal:24,max:24}},audio:false,preferCurrentTab:false,selfBrowserSurface:'exclude',surfaceSwitching:'exclude',monitorTypeSurfaces:'exclude'});
+  const track=stream.getVideoTracks()[0];try{track.contentHint='detail';}catch{}return track;
+}
+window.__shiyanUseTab=async()=>{
+  const track=await captureTab();const old=tabTrack;tabTrack=track;
+  if(videoSender)await videoSender.replaceTrack(track);
+  try{old?.stop();}catch{}
+  return track.getSettings();
+};
+window.__shiyanStart=async config=>{
+  if(peer)window.__shiyanClose();
+  closed=false;
+  const devices=await navigator.mediaDevices.enumerateDevices();
+  const source=devices.find(item=>item.kind==='audioinput'&&item.label==='ShiYanBrowserAudio')||devices.find(item=>item.kind==='audioinput');
+  if(!source)throw new Error('服务器浏览器没有可用的音频回采设备');
+  audioStream=await navigator.mediaDevices.getUserMedia({audio:{deviceId:{exact:source.deviceId},echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+  usingTab=false;window.__shiyanTabError='';
+  if(config?.tabCapture){try{tabTrack=await captureTab();videoTrack=tabTrack;videoStream=new MediaStream([tabTrack]);usingTab=true;}catch(error){window.__shiyanTabError=String(error?.name+': '+error?.message);}}
+  if(!usingTab){videoStream=canvas.captureStream(15);videoTrack=videoStream.getVideoTracks()[0];try{videoTrack.contentHint='detail';}catch{}}
+  let frameTick=0;frameTicker=setInterval(()=>{if(closed||!lastBitmap)return;try{context.drawImage(lastBitmap,0,0,canvas.width,canvas.height);context.fillStyle=(frameTick++&1)?'#000':'#fff';context.fillRect(canvas.width-1,canvas.height-1,1,1);videoTrack?.requestFrame?.();}catch{}},66);
+  const iceServers=Array.isArray(config?.iceServers)?config.iceServers:[];
+  if(!iceServers.length&&config?.iceTransportPolicy!=='all')throw new Error('WebRTC 中继配置缺失');
+  peer=new RTCPeerConnection({iceServers,iceTransportPolicy:config?.iceTransportPolicy||'relay',bundlePolicy:'max-bundle'});
+  window.__shiyanPeer=peer;window.__shiyanVideoTrack=videoTrack;
+  videoSender=peer.addTrack(videoTrack,videoStream);
+  peer.addTrack(audioStream.getAudioTracks()[0],audioStream);
+
+  if(videoSender){
+    try{const parameters=videoSender.getParameters();parameters.encodings=[{maxBitrate:usingTab?2_400_000:1_800_000,maxFramerate:usingTab?24:15}];parameters.degradationPreference='maintain-framerate';await videoSender.setParameters(parameters);}catch{}
+  }
+  const offer=await peer.createOffer();
+  await peer.setLocalDescription(offer);
+  await waitForIce(peer);
+  if(!peer.localDescription?.sdp)throw new Error('无法生成 WebRTC 连接信息');
+  return {sdp:peer.localDescription.sdp,iceGatheringState:peer.iceGatheringState,tabCapture:usingTab,tabError:window.__shiyanTabError,video:videoTrack?.getSettings?.()||{},audio:!!audioStream?.getAudioTracks().length};
+};
+window.__shiyanApplyAnswer=async sdp=>{
+  if(!peer||typeof sdp!=='string'||!sdp.startsWith('v=0'))throw new Error('WebRTC 应答无效');
+  await peer.setRemoteDescription({type:'answer',sdp});
+  return {connectionState:peer.connectionState,iceConnectionState:peer.iceConnectionState};
+};
+window.__shiyanClose=()=>{
+  closed=true;
+  if(frameTicker){clearInterval(frameTicker);frameTicker=null;}try{lastBitmap?.close();}catch{}lastBitmap=null;videoTrack=null;
+  try{tabTrack?.stop();}catch{}tabTrack=null;videoSender=null;usingTab=false;
+  try{peer?.close();}catch{}
+  try{audioStream?.getTracks().forEach(track=>track.stop());}catch{}
+  try{videoStream?.getTracks().forEach(track=>track.stop());}catch{}
+  peer=null;audioStream=null;videoStream=null;window.__shiyanPeer=null;window.__shiyanVideoTrack=null;
+};
+})();
+</script>
+</body>
+</html>

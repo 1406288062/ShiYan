@@ -13,6 +13,7 @@ struct SettingsView: View {
     @State private var showingMemory = false
     @State private var showingCodexQuota = false
     @State private var showingDevices = false
+    @State private var showingDigitalPeople = false
     @State private var showingConnectors = false
     @State private var showingDotsSettings = false
     @State private var showingScanner = false
@@ -60,6 +61,11 @@ struct SettingsView: View {
 
                                 sectionLabel("Dots").padding(.top, 28)
                                 VStack(spacing: 0) {
+                                    settingsRow("影子人", detail: "导入微信聊天记录，Dots 用 Ta 的方式和你聊。", symbol: "person.2") {
+                                        showingDigitalPeople = true
+                                    }
+                                    .accessibilityIdentifier("settings-digital-people")
+                                    rowDivider
                                     settingsRow("连接器", detail: "微信、常用插件和自定义 MCP。", symbol: "point.3.connected.trianglepath.dotted") {
                                         showingConnectors = true
                                     }
@@ -126,6 +132,7 @@ struct SettingsView: View {
                 .accessibilityIdentifier("settings-page")
                 .fullScreenCover(isPresented: $showingScanner) { ShiyanQRScanner() }
                 .sheet(isPresented: $showingDevices) { ShiyanDevicesSheet() }
+                .sheet(isPresented: $showingDigitalPeople) { DigitalPeopleView() }
                 .sheet(isPresented: $showingConnectors) { DotsConnectorsView(onConnect: { _ in }) }
                 .sheet(isPresented: $showingDotsSettings) { DotsSettingsView() }
                 .task(id: selectedAvatar) { await updateAvatar() }

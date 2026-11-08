@@ -334,3 +334,22 @@ body.workbench-v22.workbench-v2.dots-is-current-view #agentSidebar .session-row.
   overscroll-behavior:contain;scrollbar-width:none;
 }
 #dotsActivity .dots-panel-scroll::-webkit-scrollbar { display:none;width:0;height:0; }
+
+/* Server-side Google Chrome entry in the Dots task panel. */
+#dotsActivity .dots-computer-entry{display:flex;align-items:center;gap:12px;width:100%;min-height:58px;margin:0 0 14px;padding:10px 13px;border:1px solid var(--line);border-radius:12px;background:var(--v22-panel);color:var(--text);text-align:left}
+#dotsActivity .dots-computer-entry>.dots-panel-icon:first-child{width:22px;height:22px;color:var(--secondary);flex:0 0 22px}
+#dotsActivity .dots-computer-entry>span{display:flex;flex:1;min-width:0;flex-direction:column;gap:3px}
+#dotsActivity .dots-computer-entry strong{font-size:14px;font-weight:600}
+#dotsActivity .dots-computer-entry small{font-size:12px;color:var(--secondary)}
+#dotsActivity .dots-computer-entry>.dots-panel-icon:last-child{width:16px;height:16px;color:var(--tertiary)}
+#dotsActivity .dots-computer-entry:hover{background:var(--v22-hover)}
+.dots-browser-overlay{z-index:10020!important;padding:2vh 2vw!important;background:rgba(245,245,245,.96)!important;backdrop-filter:blur(4px)}
+.dots-browser-card{display:flex;flex-direction:column;width:min(1280px,96vw);height:min(94vh,960px);min-height:360px;overflow:hidden;border:1px solid #dadce0;border-radius:18px;background:#f5f5f5;box-shadow:0 12px 36px rgba(60,64,67,.18)}
+.dots-browser-card>header{display:none}
+.dots-browser-frame{display:block;flex:1;width:100%;height:100%;min-height:0;border:0;background:#f5f5f5}
+.dots-browser-loading,.dots-browser-error{display:grid;flex:1;place-items:center;padding:24px;background:#f5f5f5;color:#5f6368;font-size:14px;text-align:center}
+.dots-browser-error{color:#d76767}
+@media(max-width:700px){.dots-browser-overlay{padding:0!important}.dots-browser-card{width:100vw;height:100dvh;min-height:0;border:0;border-radius:0}}
+
+@media (prefers-color-scheme:dark){.dots-browser-overlay{background:rgba(24,24,26,.94)!important}.dots-browser-card{border-color:#3c4043;background:#202124;box-shadow:0 12px 36px rgba(0,0,0,.5)}.dots-browser-frame,.dots-browser-loading,.dots-browser-error{background:#202124}.dots-browser-loading{color:#bdc1c6}}
+:root[data-theme="dark"] .dots-browser-overlay{background:rgba(24,24,26,.94)!important}:root[data-theme="dark"] .dots-browser-card{border-color:#3c4043;background:#202124}:root[data-theme="dark"] .dots-browser-frame,:root[data-theme="dark"] .dots-browser-loading{background:#202124}

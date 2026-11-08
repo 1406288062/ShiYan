@@ -1,0 +1,46 @@
+/* Web startup: never paint the ordinary chat as an intermediate screen.
+   Dots is the web conversation surface; desktop/iOS are unaffected. */
+html[data-shiyan-platform="web"] #agentView { display: none !important; }
+/* Hide the ordinary-chat workspace title from the very first web paint.
+   Dots has its own toolbar; do not wait for its activation event to hide this label. */
+html[data-shiyan-platform="web"] #workspaceTitle { display: none !important; }
+
+/* 网页端首页：隐藏左侧大型面板（置顶 / 项目 / 最近 / 新聊天 / Dots 入口所在面板）。
+   仅当 body.web-dots-only 存在时生效（由 web-dots-home.js 在网页端添加），桌面端、iOS 不受影响。
+   左侧竖向导航栏（#activityRail，第 1 列 50px）保持原样。删除本文件即可恢复。 */
+body.web-dots-only #leftContainer,
+body.web-dots-only #leftResizeHandle,
+body.web-dots-only #toggleLeftSidebar { display: none !important; }
+body.web-dots-only #desktopLayout { grid-template-columns: 50px 0px minmax(0, 1fr) var(--right-width) !important; }
+
+
+/* Match the ordinary conversation loading transition while web Dots mounts. */
+.web-dots-boot{position:fixed;z-index:9999;inset:0;display:grid;place-items:center;color-scheme:light dark;background:Canvas;color:CanvasText;opacity:1;visibility:visible;transition:opacity .2s ease,visibility .2s ease;pointer-events:none}
+.web-dots-boot[hidden]{display:none}
+.web-dots-boot.is-visible{opacity:1;visibility:visible}
+html.account-locked #accountGate:not([hidden]){position:relative;z-index:10000}
+.web-dots-boot .messages-loading{display:flex;justify-content:center;align-items:center;gap:7px;padding:56px 0}
+.web-dots-boot .messages-loading span{width:7px;height:7px;border-radius:50%;background:GrayText;animation:messages-loading 1s ease-in-out infinite}
+.web-dots-boot .messages-loading span:nth-child(2){animation-delay:.15s}
+.web-dots-boot .messages-loading span:nth-child(3){animation-delay:.3s}
+@media(prefers-reduced-motion:reduce){.web-dots-boot{transition:none}.web-dots-boot .messages-loading span{animation:none;opacity:.6}}
+
+/* Match the device's system appearance for the web Dots boot transition. */
+@media (prefers-color-scheme: dark) {
+  html[data-shiyan-platform="web"] .web-dots-boot {
+    color-scheme: dark;
+    background: #111318;
+  }
+  html[data-shiyan-platform="web"] .web-dots-boot .messages-loading span {
+    background: #aeb4c0;
+  }
+}
+@media (prefers-color-scheme: light) {
+  html[data-shiyan-platform="web"] .web-dots-boot {
+    color-scheme: light;
+    background: #fff;
+  }
+  html[data-shiyan-platform="web"] .web-dots-boot .messages-loading span {
+    background: #8a8f98;
+  }
+}

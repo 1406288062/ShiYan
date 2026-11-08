@@ -1594,7 +1594,10 @@
     eventSource=new EventSource('/api/events');
     eventSource.addEventListener('state',event=>{try {applyState(JSON.parse(event.data));}catch(e){console.error('Invalid state event',e);}});
     eventSource.onopen=()=>{if(state)renderConnection();};
-    eventSource.onerror=()=>{setText('connectionText','本地连接已断开，正在重新连接');show('connectionBanner');};
+    eventSource.onerror=()=>{
+      if(window.ShiYanPlatform?.mode==='web')return;
+      setText('connectionText','本地连接已断开，正在重新连接');show('connectionBanner');
+    };
   }
   window.addEventListener('shiyan-upload-priority-change',()=>{
     if(window.ShiYanPlatform?.mode!=='web')return;
@@ -1603,13 +1606,44 @@
   });
   async function start() {
     if(new URLSearchParams(location.search).has('native') || (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.native)){document.body.classList.add('is-native');document.documentElement.classList.add('is-native');}
+    const webDotsEntry=window.ShiYanPlatform?.mode==='web';
+    const bootTransition=webDotsEntry?document.getElementById('webDotsBootTransition'):null;
+    if(bootTransition){
+      bootTransition.hidden=false;
+      requestAnimationFrame(()=>bootTransition.classList.add('is-visible'));
+      // Absolute watchdog: the boot animation must never cover the page for 3 seconds.
+      window.setTimeout(()=>{
+        bootTransition.classList.remove('is-visible');
+        window.setTimeout(()=>{bootTransition.hidden=true;},220);
+      },2700);
+    }
     initEvents();
     try {
       const data=await api('/api/state');if(!state)applyState(data.state);
       connectStateEvents();
-      setView('agent');
+      // Dots is installed by the later workbench module. Wait for its actual
+      // mount before selecting it; selecting it before mount leaves a blank UI.
+      if(webDotsEntry && !window.__SHIYAN_DOTS_INSTALLED__){
+        await new Promise(resolve=>{
+          const ready=()=>resolve();
+          window.addEventListener('shiyan-dots-installed',ready,{once:true});
+          if(window.__SHIYAN_DOTS_INSTALLED__)resolve();
+        });
+      }
+      setView(webDotsEntry?'dots':'agent');
+      // Keep the web boot transition until Dots has completed its first-screen readiness.
+      // Do not release the page on a fixed timeout while its initial UI is still mounting.
+      if(webDotsEntry && window.__SHIYAN_DOTS_READY__){
+        await Promise.resolve(window.__SHIYAN_DOTS_READY__).catch(()=>{});
+      }
       if(state.connection && !['ready','connecting','unauthorized'].includes(state.connection.status))connectAgent();
     }catch(e){show('connectionBanner');setText('connectionText',e.message);toast(e.message);}
+    finally{
+      if(bootTransition){
+        bootTransition.classList.remove('is-visible');
+        window.setTimeout(()=>{bootTransition.hidden=true;},220);
+      }
+    }
   }
   window.shiyan={
     newConversation,selectConversation,openImagePicker:()=>(ui.view==='agent'?$('attachmentInput'):$('homeFileInput')).click(),

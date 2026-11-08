@@ -41,6 +41,7 @@ import { createAuditLog } from "./audit-log.mjs";
 import { createLifeGoals } from "./life-goals.mjs";
 import { smtpReplyTransport } from "./mail-reply-service.mjs";
 import { MemoryStore } from "../boss-codex-service/shiyan-v2/memory-store.mjs";
+import { DigitalPersonService } from './digital-persons.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -231,6 +232,7 @@ function createOwnerRuntime(owner){
   try{const turn=await runStructuredTurn(thread,data,schema,{signal});const value=JSON.parse(turn.finalResponse);dotsHub.report(dotsConsumer(source),{...used,ok:true,ms:Date.now()-started,usage:turn.usage||null});return value;}
   catch(error){dotsHub.report(dotsConsumer(source),{...used,ok:false,cancelled:signal?.aborted===true,ms:Date.now()-started,error:String(error?.message||error)});throw error;}
  };
+ const people=new DigitalPersonService({db,owner,assess});
  let trigger;const assessed=(...args)=>trigger.assess(assess,...args);
  const cognition=createDotsCognition({store,memory:memoryStore,assess:assessed,callsPerHour:Infinity,propagateErrors:true});
  const discovery=createPublicDiscovery({store,memory:memoryStore,assess:assessed,propagateErrors:true,onObservation:observation=>{const accepted=cognition.observe(observation);if(accepted)trigger.signal('L2-observation');return accepted;}});
@@ -241,7 +243,7 @@ function createOwnerRuntime(owner){
  const mailConfig=legacy?(process.env.DOTS_QQ_MAIL_CONFIG||path.join(dataDir,'qq-mail.json')):path.join(dataDir,'qq-mail.json');
  const mailReplies=createMailReplyService({store,transportFactory:config=>{audit(owner,'message_mail','回复了一封邮件');return smtpReplyTransport(config);},loadConfig:()=>readMailConfig(mailConfig),clientFactory:options=>new ImapFlow(options),readBody:readMailBody,assess:(data,schema,control)=>assess(data,schema,{...control,source:'dots-mail-summary'})});
  store.setMailReplies(mailReplies);
- const runtime=createManagerRuntime({store,codex,threadFactory:async params=>{const {light,...baseOptions}=params.options||{};const connectorServers=await mcpConnectors().runtimeServers(owner);const mcpServers={},mcpToolAllowlist=[];const bridge='/home/ubuntu/boss-codex-service/shiyan-v2/mcp-connector-proxy.mjs';for(const server of connectorServers){const key='shiyan_'+String(server.id).replace(/[^A-Za-z0-9_]/g,'_');mcpServers[key]={command:process.execPath,args:[bridge],env:{SHIYAN_ROOT:process.env.SHIYAN_ROOT||'/home/ubuntu/boss-codex-service/shiyan-v2',...(process.env.SHIYAN_MCP_DB?{SHIYAN_MCP_DB:process.env.SHIYAN_MCP_DB}:{}),SHIYAN_MCP_OWNER:String(owner),SHIYAN_MCP_ID:String(server.id)}};mcpToolAllowlist.push('mcp__'+key+'__mcp_list_tools','mcp__'+key+'__mcp_call_tool');}mcpServers.shiyan_sponge={command:process.execPath,args:['/home/ubuntu/ShiYan/Cloud/agent-runtime/sponge-mcp-proxy.mjs'],env:{SHIYAN_ROOT:process.env.SHIYAN_ROOT||'/home/ubuntu/boss-codex-service/shiyan-v2',SHIYAN_MCP_OWNER:String(owner)}};for(const tool of ['list_devices','run_device_tool','get_tool_result'])mcpToolAllowlist.push('mcp__shiyan_sponge__'+tool);const options={...baseOptions,mcpServers,mcpToolAllowlist};const inner={...params,options};return hubAwareThread({hub:dotsHub,owner,consumer:light?'dots.chat.quick':'dots.chat',threadId:params.threadId,options,createInner:()=>createTenantThread(owner,inner)});},workspaceRoot,memory:memoryStore,contentReviewEnabled:false,threadOptions:{model:MODEL,skipGitRepoCheck:true,modelReasoningEffort:REASONING},onModelCall:entry=>{if(!recentlyViaHub(owner,'dots.chat',entry.ms+5000)&&!recentlyViaHub(owner,'dots.chat.quick',entry.ms+5000))dotsHub.report('dots.chat',{...entry,provider:'openai',account:owner});}});
+ const runtime=createManagerRuntime({store,codex,voice:text=>people.voiceContext(text),threadFactory:async params=>{const {light,...baseOptions}=params.options||{};const connectorServers=await mcpConnectors().runtimeServers(owner);const mcpServers={},mcpToolAllowlist=[];const bridge='/home/ubuntu/boss-codex-service/shiyan-v2/mcp-connector-proxy.mjs';for(const server of connectorServers){const key='shiyan_'+String(server.id).replace(/[^A-Za-z0-9_]/g,'_');mcpServers[key]={command:process.execPath,args:[bridge],env:{SHIYAN_ROOT:process.env.SHIYAN_ROOT||'/home/ubuntu/boss-codex-service/shiyan-v2',...(process.env.SHIYAN_MCP_DB?{SHIYAN_MCP_DB:process.env.SHIYAN_MCP_DB}:{}),SHIYAN_MCP_OWNER:String(owner),SHIYAN_MCP_ID:String(server.id)}};mcpToolAllowlist.push('mcp__'+key+'__mcp_list_tools','mcp__'+key+'__mcp_call_tool');}mcpServers.shiyan_sponge={command:process.execPath,args:['/home/ubuntu/ShiYan/Cloud/agent-runtime/sponge-mcp-proxy.mjs'],env:{SHIYAN_ROOT:process.env.SHIYAN_ROOT||'/home/ubuntu/boss-codex-service/shiyan-v2',SHIYAN_MCP_OWNER:String(owner)}};for(const tool of ['list_devices','run_device_tool','get_tool_result'])mcpToolAllowlist.push('mcp__shiyan_sponge__'+tool);const options={...baseOptions,mcpServers,mcpToolAllowlist};const inner={...params,options};return hubAwareThread({hub:dotsHub,owner,consumer:light?'dots.chat.quick':'dots.chat',threadId:params.threadId,options,createInner:()=>createTenantThread(owner,inner)});},workspaceRoot,memory:memoryStore,contentReviewEnabled:false,threadOptions:{model:MODEL,skipGitRepoCheck:true,modelReasoningEffort:REASONING},onModelCall:entry=>{if(!recentlyViaHub(owner,'dots.chat',entry.ms+5000)&&!recentlyViaHub(owner,'dots.chat.quick',entry.ms+5000))dotsHub.report('dots.chat',{...entry,provider:'openai',account:owner});}});
  const presenter=createMailPresenter({store,assess:(data,schema,control)=>assess(data,schema,{...control,source:'dots-mail-summary'})});
  const mail=createQQMailSubscription({store,configPath:mailConfig,clientFactory:options=>new ImapFlow(options),prepareMail:async(client,message,control)=>{let body;try{body=await readMailBody(client,message);}catch(error){if(control.signal.aborted)throw error;return {kind:'body',text:'（本次未能读取邮件正文）',links:[]};}return presenter({...body,subject:message.envelope?.subject||'',from:message.envelope?.from?.[0]?.address||''},control);}});
  const ownerSubscriptions=createOwnerSubscriptions({store,dataDir,appSubscriptions:apps,mailSubscription:mail});
@@ -265,7 +267,7 @@ function createOwnerRuntime(owner){
  };
  const weixin=createWeixinBridge({store,owner,saveInbound:saveWeixinInbound,onAudit:(kind,summary)=>audit(owner,kind,summary),ingest:(text,requestId)=>ingestExternalMessage(owner,text,requestId,'weixin')});
  const unsubscribe=store.subscribeConversationEvents(()=>trigger.signal('L2-conversation'));
- return {store,runtime,trigger,apps,mailReplies,mail,subscriptions,intent,workspaceRoot,brief,weixin,lifeGoals,start(){trigger.start();mailReplies.start();mail.start();apps.start();brief.start();weixin.start();lifeGoals.start();},close(){lifeGoals.close();weixin.close();brief.close();runtime.close();mailReplies.close();mail.close();apps.close();unsubscribe();trigger.close();}};
+ return {store,runtime,trigger,apps,mailReplies,mail,subscriptions,intent,workspaceRoot,brief,weixin,lifeGoals,people,start(){trigger.start();mailReplies.start();mail.start();apps.start();brief.start();weixin.start();lifeGoals.start();},close(){lifeGoals.close();weixin.close();brief.close();runtime.close();mailReplies.close();mail.close();apps.close();unsubscribe();trigger.close();}};
 }
 ownerRegistry.get(PRIVATE_OWNER);
 for(const row of db.prepare('SELECT owner_id FROM managers').all())ownerRegistry.get(row.owner_id);
@@ -1101,6 +1103,24 @@ async function handle(req, res) {
     else return send(res,405,{ok:false,error:'Method not allowed'});
     managerRuntime.interruptProactive?.();
     return send(res,200,{ok:true,relationship:value});
+  }
+  const peopleMatch=url.pathname.match(/^\/v1\/managers\/([^/]+)\/people(?:\/([A-Za-z0-9_-]{8,100})(?:\/(import|messages|memories)(?:\/([A-Za-z0-9_-]{8,100}))?)?)?$/);
+  if(peopleMatch){
+    const ownerId=decodeURIComponent(peopleMatch[1]),personId=peopleMatch[2],operation=peopleMatch[3],memoryId=peopleMatch[4];
+    if(ownerId!==ownerRegistry.currentOwner())return send(res,404,{ok:false,error:'Not found'});
+    const people=ownerRegistry.get(ownerId).people;
+    if(!personId&&req.method==='GET')return send(res,200,people.list());
+    if(!personId&&req.method==='POST')return send(res,201,people.create(await readJson(req)));
+    if(personId&&!operation&&req.method==='GET')return send(res,200,people.get(personId));
+    if(personId&&!operation&&req.method==='PATCH')return send(res,200,await people.update(personId,await readJson(req)));
+    if(personId&&!operation&&req.method==='DELETE')return send(res,200,people.remove(personId));
+    if(personId&&operation==='import'&&req.method==='POST')return send(res,200,await people.importBatch(personId,await readJson(req)));
+    if(personId&&operation==='messages'&&req.method==='GET')return send(res,200,people.messages(personId,{before:Number(url.searchParams.get('before')||0),limit:Number(url.searchParams.get('limit')||100)}));
+    if(personId&&operation==='messages'&&req.method==='POST')return send(res,200,await people.sendMessage(personId,await readJson(req)));
+    if(personId&&operation==='memories'&&!memoryId&&req.method==='GET')return send(res,200,{ok:true,memories:people.listMemories(personId)});
+    if(personId&&operation==='memories'&&memoryId&&req.method==='PATCH')return send(res,200,people.updateMemory(personId,memoryId,await readJson(req)));
+    if(personId&&operation==='memories'&&memoryId&&req.method==='DELETE')return send(res,200,people.deleteMemory(personId,memoryId));
+    return send(res,405,{ok:false,error:'Method not allowed'});
   }
   const managerMatch = url.pathname.match(/^\/v1\/managers\/([^/]+)(?:\/(messages|control|activity))?$/);
   if (managerMatch) {
