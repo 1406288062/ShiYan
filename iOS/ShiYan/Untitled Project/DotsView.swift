@@ -579,11 +579,20 @@ struct DotsView: View {
                 if item.role == "user" {
                     Text(DotsQuote.split(item.content).body)
                         .font(.body).lineSpacing(5).fixedSize(horizontal: false, vertical: true)
-                        .padding(imageOnly ? 0 : 14)
-                        .background { if !imageOnly { DotsBubbleBackground(isUser: true) } }
                         .foregroundStyle(scheme == .dark
                             ? Color(red: 197.0 / 255, green: 212.0 / 255, blue: 232.0 / 255)
                             : Color.primary)
+                        .padding(imageOnly ? 0 : 14)
+                        .background {
+                            if !imageOnly {
+                                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                    .fill(scheme == .dark ? Color(red: 33.0 / 255, green: 50.0 / 255, blue: 71.0 / 255) : Color.white)
+                                    .overlay {
+                                        if scheme != .dark { RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color.accentColor.opacity(0.09)) }
+                                    }
+                            }
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                         .frame(maxWidth: .infinity, alignment: .trailing)
                         .padding(imageOnly ? 0 : 12)
                 } else {
@@ -1684,7 +1693,8 @@ struct DotsBubbleBackground: View {
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
         if isUser {
-            shape.fill(scheme == .dark ? Color(red: 33.0 / 255, green: 50.0 / 255, blue: 71.0 / 255) : Color.accentColor.opacity(0.09))
+            shape.fill(scheme == .dark ? Color(red: 33.0 / 255, green: 50.0 / 255, blue: 71.0 / 255) : Color.white)
+                .overlay { if scheme != .dark { shape.fill(Color.accentColor.opacity(0.09)) } }
         } else {
             shape.fill(scheme == .dark ? Color.white.opacity(0.06) : Color(red: 0.965, green: 0.968, blue: 0.985))
                 .overlay(shape.strokeBorder(Color.primary.opacity(scheme == .dark ? 0.07 : 0.05), lineWidth: 0.5))
