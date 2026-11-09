@@ -16,7 +16,8 @@
     more:'<path d="m6 9 6 6 6-6"/>', add:'<path d="M12 4v16M4 12h16"/>',
     download:'<path d="M12 2v13m-5-5 5 5 5-5M4 16v5h16v-5"/>',
     check:'<path d="m5 12 4 4L19 6"/>',
-    computer:'<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>'
+    computer:'<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>',
+    edit:'<path d="M4 20h4L19 9l-4-4L4 16v4Z M13.5 6.5l4 4"/>'
   };
   const icon = kind => kind === 'copy' ? '<span class="symbol dots-panel-icon" data-symbol="dots-copy" style="--symbol:url(\'/assets/symbols/dots-copy.png\')" aria-hidden="true"></span>' : '<svg class="dots-panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(icons[kind] || icons.file)+'</svg>';
   const colors = ['#bdc4d5','#00b4ef','#ffd139','#d469da','#bada10','#ed729c','#f79557','#7293f1'];
@@ -81,12 +82,38 @@
     if (approvalTasks.length) return approvals.length?'正在更新操作状态…':'需要你批准操作';
     if (value.messages?.at(-1)?.role==='assistant'&&value.messages.at(-1).deliveryState==='streaming') return '正在回复…';
     if (Number(value.manager?.runningWorkers) > 0 || tasks.some(t => t.status === 'running')) return '正在处理事项…';
-    if (tasks.some(t => t.status === 'done' && t.acceptanceStatus === 'pending')) return '正在验收…';
     if (tasks.some(t => ['active','pending','queued'].includes(t.status))) return '等待执行';
     if (tasks[0]?.status === 'failed') return '处理失败';
     if (value.loading && !value.messages?.length) return '正在加载…';
     if (value.messages?.at(-1)?.role === 'user') return '正在回复…';
     return '';
+  }
+  // Transparent margins differ per pet, so measure the idle frame once and return the
+  // vertical shift (px, in the 88×96 docked box) that makes top gap equal left gap.
+  const DOCK_W=88, DOCK_H=96, artOffsets=new Map();
+  function petArtOffset(pet) {
+    if (!pet) return 0;
+    const sprite = !reduced.matches && pet.sprite_url && pet.cell_width > 0 && pet.cell_height > 0;
+    const key = pet.id+(sprite?':sprite':':still');
+    if (artOffsets.has(key)) return artOffsets.get(key);
+    artOffsets.set(key, 0);
+    const img = new Image();
+    img.onload = () => { try {
+      const cw = sprite ? pet.cell_width : img.naturalWidth, ch = sprite ? pet.cell_height : img.naturalHeight;
+      if (!cw || !ch) return;
+      const state = sprite ? ((pet.states||[]).find(s=>s.name==='idle') || (pet.states||[])[0]) : null;
+      const canvas = document.createElement('canvas'); canvas.width = cw; canvas.height = ch;
+      const ctx = canvas.getContext('2d', {willReadFrequently:true});
+      ctx.drawImage(img, 0, sprite ? (state?.row||0)*ch : 0, cw, ch, 0, 0, cw, ch);
+      const data = ctx.getImageData(0, 0, cw, ch).data; let top = ch, leftEdge = cw;
+      for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) if (data[(y*cw+x)*4+3] > 24) { if (y < top) top = y; if (x < leftEdge) leftEdge = x; }
+      if (top >= ch) return;
+      const scale = Math.min(DOCK_W/cw, DOCK_H/ch), ox = (DOCK_W-cw*scale)/2, oy = (DOCK_H-ch*scale)/2;
+      artOffsets.set(key, Math.round((ox+leftEdge*scale)-(oy+top*scale)));
+      positionPet();
+    } catch (_) {} };
+    img.src = (sprite ? pet.sprite_url : imageURL(pet)).replace('/static/dots-pets/','/assets/dots-pets/');
+    return 0;
   }
   // A persistent pet keeps its animation frame while travelling between anchors.
   function positionPet() {
@@ -108,7 +135,7 @@
     if (!visible) return;
     if (floating.dataset.petId !== pet.id) {
       floating.dataset.petId = pet.id;
-      floating.innerHTML = '<div class="dots-floating-art">'+petImage(pet.id, 'dots-profile-pet')+'</div><div class="dots-floating-status" role="status" aria-live="polite" aria-atomic="true"></div>';
+      floating.innerHTML = '<div class="dots-floating-art" style="position:relative;">'+petImage(pet.id, 'dots-profile-pet')+'</div><button type="button" class="dots-pet-rename" data-dots-pet-rename aria-label="重命名" title="重命名">'+icon('edit')+'</button><div class="dots-floating-status" role="status" aria-live="polite" aria-atomic="true"></div>';
     }
     floating.classList.toggle('is-docked',!inCall && !!snapshot.drawerOpen);
     const panelBadge = panel?.querySelector('.dots-panel-status');
@@ -123,7 +150,8 @@
     const target = docked ? (slot?.getClientRects().length ? slot.getBoundingClientRect() :
       {left:panelBounds.left + 18,top:panelBounds.top + 18}) : null;
     const left = target ? target.left : bounds.left + (bounds.width - 66) / 2;
-    const top = target ? target.top : Math.max(0, header.top + 2);
+    // Docked: shift so the visible art sits as far from the panel top as from its left.
+    const top = target ? target.top + petArtOffset(pet) : Math.max(0, header.top + 2);
     floating.style.transform = `translate3d(${left}px,${top}px,0)`;
     if (revealing) floating.getBoundingClientRect();
     if (!floating.classList.contains('is-placed')) requestAnimationFrame(() => floating.classList.add('is-placed'));
@@ -168,7 +196,7 @@
     const signature = JSON.stringify([name(),profile.petId,profile.accent,recent,files,loading,activityError,expanded,outputExpanded,profile.seenActivities]);
     if (savedSignature === signature) { positionPanel(); C.voiceUpdated?.(); return; }
     const scrollArea = panel.querySelector('.dots-panel-scroll'), top = scrollArea?.scrollTop || 0, voiceFocus = $('dotsVoiceCard')?.contains(document.activeElement) ? document.activeElement : null; savedSignature = signature;
-    panel.innerHTML = '<div class="dots-profile-identity">'+'<span class="dots-pet-anchor" aria-hidden="true"></span>'+'<div><strong>'+esc(name())+'</strong><span>上次活跃：'+esc(ago(newest))+'</span><div class="dots-panel-status" role="status" aria-live="polite" hidden></div></div></div>'+
+    panel.innerHTML = '<div class="dots-profile-identity">'+'<span class="dots-pet-wrap" style="position:relative;display:inline-block;isolation:isolate;overflow:visible;flex-shrink:0;"><span class="dots-pet-anchor" aria-hidden="true"></span></span>'+'<div><strong>'+esc(name())+'</strong><div class="dots-panel-status" role="status" aria-live="polite" hidden></div></div></div>'+
       '<div class="dots-panel-scroll"><button type="button" class="dots-computer-entry" data-dots-computer>'+icon('computer')+'<span><strong>电脑</strong><small>打开服务器 Google Chrome</small></span>'+icon('forward')+'</button><section class="dots-panel-section"><header><h3>最近活动</h3><button type="button" class="dots-mini-button" data-dots-new-schedule aria-label="新建定时任务" title="新建定时任务">'+icon('add')+'</button></header><div class="dots-activity-rows">'+
       recent.map(a => {
         const isSchedule = a.type === 'schedule', id = isSchedule ? (a.scheduleId || a.schedule?.id || String(a.id).replace(/^schedule:/,'')) : (a.taskId || a.id);
@@ -576,7 +604,7 @@
           +'<div class="dots-goal-form-actions"><button type="button" data-shadow-cancel>取消</button><button type="submit" class="is-primary">开始学习</button></div></form>';
       }
       if (step === 'new') return '<form class="dots-goal-form" data-shadow-create><label><span>Ta 是谁</span><input name="name" maxlength="80" required placeholder="比如：妈妈、小美、老王" value="'+esc(draft.name)+'"></label><label><span>和你的关系（可选）</span><input name="relationship" maxlength="80" placeholder="比如：母亲、女朋友、大学室友" value="'+esc(draft.relationship)+'"></label><label><span>微信聊天记录（TXT、CSV、JSON 或 HTML）</span><button type="button" class="dots-goal-new" data-shadow-choose>选择文件</button><input name="file" type="file" accept=".txt,.csv,.json,.html,.htm,.xml" hidden data-shadow-pick></label><div class="dots-goal-form-actions">'+(people.length?'<button type="button" data-shadow-cancel>取消</button>':'')+'<button type="submit" class="is-primary">下一步</button></div></form>';
-      return busy ? '' : '<button type="button" class="dots-goal-new" data-shadow-new>＋ 新的影子人</button>';
+      return busy ? '<div class="dots-goal-planning"><span></span><span></span><span></span><em>'+esc(notice||'正在处理…')+'</em></div>' : '<button type="button" class="dots-goal-new" data-shadow-new>＋ 新的影子人</button>';
     };
     const personHTML = p => {
       const on = p.id === activeId, working = busy === p.id, off = busy ? ' disabled' : '';
@@ -1131,6 +1159,8 @@
     const floating = floatingPet = document.createElement('div');
     floating.id = 'dotsFloatingPet'; floating.hidden = true;
     document.body.appendChild(floating);
+    // Rename lives on the pet itself (drawn above it) and reuses the existing profile/rename dialog.
+    floating.addEventListener('click',event=>{if(event.target.closest('[data-dots-pet-rename]')){event.stopPropagation();openProfile();}});
     $('dotsActivity').addEventListener('scroll',positionPet,{passive:true});
     document.addEventListener('pointermove',event=>{if(event.pointerType!=='touch')pointer={x:event.clientX,y:event.clientY};},{passive:true});
     document.addEventListener('pointerleave',()=>{pointer=null;});window.addEventListener('blur',()=>{pointer=null;});

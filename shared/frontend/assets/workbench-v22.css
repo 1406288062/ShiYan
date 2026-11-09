@@ -442,6 +442,8 @@ body.workbench-v22 .v26-avatar-card footer kbd { justify-self:end;color:var(--se
 
  
 #messagesScroller{overflow-anchor:none}
+/* 打开会话、定位阅读位置期间先不显示消息，定好后一次性出现（不加动画，保持原有样式）。 */
+#messagesScroller.is-placing-messages #messages{visibility:hidden}
 
 .message-queue-row .queue-return-button{display:grid;place-items:center;flex:0 0 26px;width:26px;height:26px;padding:4px;border-radius:6px;color:#626872}
 .queue-return-button svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
