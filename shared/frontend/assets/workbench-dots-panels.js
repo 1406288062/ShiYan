@@ -107,7 +107,7 @@
     if (!visible) return;
     if (floating.dataset.petId !== pet.id) {
       floating.dataset.petId = pet.id;
-      floating.innerHTML = '<div class="dots-floating-art" style="position:relative;">'+petImage(pet.id, 'dots-profile-pet')+'<button type="button" class="dots-pet-rename" data-dots-rename aria-label="重命名" title="重命名" style="position:absolute;right:0;bottom:0;width:22px;height:22px;border-radius:50%;background:#fff;border:1px solid #e5e5e5;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.25);cursor:pointer;padding:0;z-index:10;">'+window.shiyan.sessionMenuIcon('rename')+'</button></div><div class="dots-floating-status" role="status" aria-live="polite" aria-atomic="true"></div>';
+      floating.innerHTML = '<div class="dots-floating-art" style="position:relative;">'+petImage(pet.id, 'dots-profile-pet')+'</div><div class="dots-floating-status" role="status" aria-live="polite" aria-atomic="true"></div>';
     }
     floating.classList.toggle('is-docked',!inCall && !!snapshot.drawerOpen);
     const panelBadge = panel?.querySelector('.dots-panel-status');
@@ -167,7 +167,7 @@
     const signature = JSON.stringify([name(),profile.petId,profile.accent,recent,files,loading,activityError,expanded,outputExpanded,profile.seenActivities]);
     if (savedSignature === signature) { positionPanel(); C.voiceUpdated?.(); return; }
     const scrollArea = panel.querySelector('.dots-panel-scroll'), top = scrollArea?.scrollTop || 0, voiceFocus = $('dotsVoiceCard')?.contains(document.activeElement) ? document.activeElement : null; savedSignature = signature;
-    panel.innerHTML = '<div class="dots-profile-identity">'+'<span class="dots-pet-wrap" style="position:relative;display:inline-block;isolation:isolate;overflow:visible;flex-shrink:0;"><span class="dots-pet-anchor" aria-hidden="true"></span><button type="button" class="dots-pet-rename" data-dots-rename aria-label="重命名" title="重命名" style="position:absolute;right:0;bottom:0;width:22px;height:22px;border-radius:50%;background:#fff;border:1px solid #e5e5e5;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.25);cursor:pointer;padding:0;z-index:1000;transform:translateZ(0);">'+window.shiyan.sessionMenuIcon('rename')+'</button></span>'+'<div><strong>'+esc(name())+'</strong><div class="dots-panel-status" role="status" aria-live="polite" hidden></div></div></div>'+
+    panel.innerHTML = '<div class="dots-profile-identity">'+'<span class="dots-pet-wrap" style="position:relative;display:inline-block;isolation:isolate;overflow:visible;flex-shrink:0;"><span class="dots-pet-anchor" aria-hidden="true"></span></span>'+'<div><strong>'+esc(name())+'</strong><div class="dots-panel-status" role="status" aria-live="polite" hidden></div></div></div>'+
       '<div class="dots-panel-scroll"><button type="button" class="dots-computer-entry" data-dots-computer>'+icon('computer')+'<span><strong>电脑</strong><small>打开服务器 Google Chrome</small></span>'+icon('forward')+'</button><section class="dots-panel-section"><header><h3>最近活动</h3><button type="button" class="dots-mini-button" data-dots-new-schedule aria-label="新建定时任务" title="新建定时任务">'+icon('add')+'</button></header><div class="dots-activity-rows">'+
       recent.map(a => {
         const isSchedule = a.type === 'schedule', id = isSchedule ? (a.scheduleId || a.schedule?.id || String(a.id).replace(/^schedule:/,'')) : (a.taskId || a.id);
