@@ -296,8 +296,11 @@
     }
     const signature=conversationId+':'+JSON.stringify(messages);
     if(!force && signature===lastMessagesSignature)return;
+    // 列表即将重绘：取消上一次渲染挂起的滚动恢复，避免它在新内容上用旧锚点把位置跳回去。
+    ++readingRestoreGeneration;restoringReadingPosition=false;
     const scroller=$('messagesScroller'),list=$('messages'),oldTop=scroller.scrollTop;
     const changedConversation=conversationId!==lastRenderedConversation;
+    const animateConversationChange=!!lastRenderedConversation && changedConversation;
     if(changedConversation){saveReadingPosition(lastRenderedConversation);const saved=readingPositions.get(conversationId)||c?.readingPosition;messageAutoFollow=saved?(!saved.anchorMessageId && saved.followLatest===true):true;}
     const follow=messageAutoFollow;
     const bounds=scroller.getBoundingClientRect();
@@ -527,7 +530,7 @@
     cancelSpeech();const c=current(),previous=c && c.id!==id?c.id:null;
     ui.editing=null;notice('');pendingSelection=id;
     // Switch locally first; the server confirmation and full messages arrive in the background.
-    if(state && state.selectedConversationId!==id){state.selectedConversationId=id;renderSessions();renderMessages(true);renderComposer(true);}
+    if(state && state.selectedConversationId!==id){state.selectedConversationId=id;renderSessions();renderComposer(true);}
     setDrawer(false);setView('agent');
     try {
       if(previous)await flushDraft(previous);
@@ -1607,16 +1610,6 @@
   async function start() {
     if(new URLSearchParams(location.search).has('native') || (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.native)){document.body.classList.add('is-native');document.documentElement.classList.add('is-native');}
     const webDotsEntry=window.ShiYanPlatform?.mode==='web';
-    const bootTransition=webDotsEntry?document.getElementById('webDotsBootTransition'):null;
-    if(bootTransition){
-      bootTransition.hidden=false;
-      requestAnimationFrame(()=>bootTransition.classList.add('is-visible'));
-      // Absolute watchdog: the boot animation must never cover the page for 3 seconds.
-      window.setTimeout(()=>{
-        bootTransition.classList.remove('is-visible');
-        window.setTimeout(()=>{bootTransition.hidden=true;},220);
-      },2700);
-    }
     initEvents();
     try {
       const data=await api('/api/state');if(!state)applyState(data.state);
@@ -1631,19 +1624,12 @@
         });
       }
       setView(webDotsEntry?'dots':'agent');
-      // Keep the web boot transition until Dots has completed its first-screen readiness.
-      // Do not release the page on a fixed timeout while its initial UI is still mounting.
+      // Wait for Dots' first-screen readiness without covering the page with a boot animation.
       if(webDotsEntry && window.__SHIYAN_DOTS_READY__){
         await Promise.resolve(window.__SHIYAN_DOTS_READY__).catch(()=>{});
       }
       if(state.connection && !['ready','connecting','unauthorized'].includes(state.connection.status))connectAgent();
     }catch(e){show('connectionBanner');setText('connectionText',e.message);toast(e.message);}
-    finally{
-      if(bootTransition){
-        bootTransition.classList.remove('is-visible');
-        window.setTimeout(()=>{bootTransition.hidden=true;},220);
-      }
-    }
   }
   window.shiyan={
     newConversation,selectConversation,openImagePicker:()=>(ui.view==='agent'?$('attachmentInput'):$('homeFileInput')).click(),

@@ -12,14 +12,16 @@ body.workbench-v2 #desktopToolbar #dotsToolbar { position:relative;height:32px;f
   box-sizing:border-box;width:368px;padding:18px 18px 14px;
   overflow-y:auto;overflow-x:hidden;border:1px solid var(--line);border-radius:22px;
   background:var(--v22-panel);color:var(--text);box-shadow:0 16px 48px #0003;
-  scrollbar-width:none;
+  scrollbar-width:thin;scrollbar-color:#dcdcdc transparent;
 }
-#dotsActivity::-webkit-scrollbar { display:none;width:0;height:0; }
+#dotsActivity::-webkit-scrollbar { width:6px; }
+#dotsActivity::-webkit-scrollbar-thumb { background:#dcdcdc;border-radius:3px; }
+#dotsActivity::-webkit-scrollbar-track { background:transparent; }
 #dotsActivity[hidden] { display:none; }
 .dots-profile-identity { position:relative;display:flex;align-items:center;gap:12px;margin:0 0 14px;min-height:76px; }
 .dots-pet { display:block;object-fit:contain;width:96px;height:104px;flex-shrink:0; }
 .dots-profile-identity .dots-profile-pet { width:66px;height:72px; }
-.dots-profile-identity>div { display:flex;flex-direction:column;gap:6px;min-width:0; }
+.dots-profile-identity>div { display:flex;flex-direction:column;gap:6px;min-width:0;align-items:flex-start;text-align:left; }
 .dots-profile-identity strong { font-size:19px;font-weight:600;overflow-wrap:anywhere;line-height:1.3; }
 .dots-profile-identity span { font-size:13px;color:var(--secondary); }
 .dots-panel-icon { width:20px;height:20px;flex-shrink:0;display:block; }
@@ -331,9 +333,11 @@ body.workbench-v22.workbench-v2.dots-is-current-view #agentSidebar .session-row.
 }
 #dotsActivity .dots-panel-scroll {
   flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;
-  overscroll-behavior:contain;scrollbar-width:none;
+  overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#dcdcdc transparent;
 }
-#dotsActivity .dots-panel-scroll::-webkit-scrollbar { display:none;width:0;height:0; }
+#dotsActivity .dots-panel-scroll::-webkit-scrollbar { width:6px; }
+#dotsActivity .dots-panel-scroll::-webkit-scrollbar-thumb { background:#dcdcdc;border-radius:3px; }
+#dotsActivity .dots-panel-scroll::-webkit-scrollbar-track { background:transparent; }
 
 /* Server-side Google Chrome entry in the Dots task panel. */
 #dotsActivity .dots-computer-entry{display:flex;align-items:center;gap:12px;width:100%;min-height:58px;margin:0 0 14px;padding:10px 13px;border:1px solid var(--line);border-radius:12px;background:var(--v22-panel);color:var(--text);text-align:left}
