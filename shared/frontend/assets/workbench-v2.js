@@ -389,25 +389,30 @@
    const today=new Date();today.setHours(0,0,0,0);const day=new Date(d);day.setHours(0,0,0,0);const diff=Math.round((today-day)/86400000);
    return diff===0?'今天':diff===1?'昨天':diff<7?'近 7 天':d.toLocaleDateString('zh-CN',{year:d.getFullYear()===today.getFullYear()?undefined:'numeric',month:'long',day:'numeric'});
   }
+  function enhanceOpLabel(h){
+   const d=new Date(h.createdAt);
+   const t=Number.isNaN(d.getTime())?'':d.toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
+   return [h.modelName||'增强',t].filter(Boolean).join(' · ');
+  }
   function renderEnhanceHistory(){
    if(!$('enhanceHistoryList')||!state())return;
    const query=String(S.enhanceQuery||'').trim().toLowerCase(),collapsed=S.enhanceCollapsed||new Set();
-   const all=(state().history||[]).filter(h=>h.asset&&(h.asset.mimeType||'image/').startsWith('image/')&&!/消除|上色/.test(h.modelName||''));
+   const all=(state().history||[]).filter(h=>h.asset&&(h.asset.mimeType||'image/').startsWith('image/')&&/增强/.test(h.modelName||''));
    const items=all.filter(h=>!query||[h.filename,h.asset.filename,h.modelName].some(v=>String(v||'').toLowerCase().includes(query)))
       .sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)||String(b.id).localeCompare(String(a.id)));
    const signature=JSON.stringify([query,[...collapsed].sort(),items.map(h=>[h.id,h.asset.id,h.filename,h.modelName])]);
    if(signature===S.lastEnhanceSignature)return;S.lastEnhanceSignature=signature;
    const empty=$('enhanceHistoryEmpty');empty.hidden=!!items.length;empty.querySelector('span').textContent=query&&all.length?'没有找到相关记录':'增强后的图片会出现在这里';
-   const groups=[];for(const h of items){const label=enhanceDay(h.createdAt);if(groups.at(-1)?.label!==label)groups.push({label,items:[]});groups.at(-1).items.push(h);}
+   const groups=[];for(const h of items){const key=h.jobId||h.id;if(groups.at(-1)?.key!==key)groups.push({key,label:enhanceOpLabel(h),items:[]});groups.at(-1).items.push(h);}
    // 时间分组可以折叠；搜索时全部展开，方便看到结果。
    $('enhanceHistoryList').innerHTML=groups.map(g=>{
-    const open=query||!collapsed.has(g.label);
+    const open=query||!collapsed.has(g.key);
     const rows=open?g.items.map(h=>{
      const a=h.asset,name=h.filename||a.filename||'图片',time=new Date(h.createdAt);
      const meta=[h.modelName||'增强',a.width&&a.height?a.width+'×'+a.height:'',Number.isNaN(time.getTime())?'':time.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})].filter(Boolean).join(' · ');
      return `<div class="v2-enhance-item" role="listitem" tabindex="0" data-enhance-item="${esc(h.id)}" title="查看 ${esc(name)}"><img src="${esc(thumbnailURL(a))}" alt="" loading="lazy" decoding="async"><span class="v2-enhance-text"><strong>${esc(name)}</strong><small>${esc(meta)}</small></span><button type="button" class="v2-enhance-download" data-enhance-action="download" aria-label="下载 ${esc(name)}" title="下载">${icon('download')}</button></div>`;
     }).join(''):'';
-    return `<button type="button" class="v2-enhance-group" data-enhance-group="${esc(g.label)}" aria-expanded="${open?'true':'false'}"><svg class="v2-enhance-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>${esc(g.label)}</span><small>${g.items.length}</small></button>`+rows;
+    return `<button type="button" class="v2-enhance-group" data-enhance-group="${esc(g.key)}" aria-expanded="${open?'true':'false'}"><svg class="v2-enhance-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>${esc(g.label)}</span><small>${g.items.length}</small></button>`+rows;
    }).join('');
   }
   function buildSpace(){

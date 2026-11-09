@@ -39,13 +39,24 @@
     const pattern=/^\s*\[?(\d{4}(?:[./-]\d{1,2}[./-]\d{1,2}|年\d{1,2}月\d{1,2}日)[ T]\d{1,2}:\d{2}(?::\d{2})?)\]?\s+([^:：]{1,80})[:：]\s*(.*)$/;
     // 微信常见导出：“昵称 2024-01-02 12:34:56”一行，下一行是内容。
     const header=/^\s*([^\d\s:：][^:：]{0,60}?)\s+(\d{4}[./-]\d{1,2}[./-]\d{1,2}\s+\d{1,2}:\d{2}(?::\d{2})?)\s*$/;
-    const simple=/^\s*([^:：]{1,50})[:：]\s+(.+)$/;
+    // 改动：冒号后的 \s+ 改成 \s*，空格可有可无。
+    const simple=/^\s*([^:：]{1,50})[:：]\s*(.+)$/;
+    // 文档型文件：分隔线（10 个以上 =）之前是说明/总览，跳过；「第X回」是章节标题，断句后跳过。
+    const separator=/^={10,}\s*$/m;
+    const chapter=/^第[一二三四五六七八九十百零\d]+回/;
+    let started=!separator.test(text);
+    const flush=()=>{if(current&&current.content.trim())rows.push(current);current=null;};
     for(const line of String(text).replace(/\r/g,'').split('\n')){
-      const match=line.match(pattern),head=!match&&line.match(header),plain=!match&&!head&&!current?.fresh&&line.match(simple);
-      if(match||head||plain){if(current&&current.content.trim())rows.push(current);current=match?{time:match[1],sender:match[2].trim(),content:match[3]}:head?{time:head[2],sender:head[1].trim(),content:'',fresh:true}:{sender:plain[1].trim(),content:plain[2]};}
+      if(!started){if(/^={10,}\s*$/.test(line))started=true;continue;}
+      if(!line.trim())continue;
+      if(chapter.test(line)){flush();continue;}
+      const match=line.match(pattern),head=!match&&line.match(header);
+      let plain=!match&&!head&&!current?.fresh&&line.match(simple);
+      if(plain&&/^\d+$/.test(plain[1].trim()))plain=null;
+      if(match||head||plain){flush();current=match?{time:match[1],sender:match[2].trim(),content:match[3]}:head?{time:head[2],sender:head[1].trim(),content:'',fresh:true}:{sender:plain[1].trim(),content:plain[2]};}
       else if(current&&line.trim()){current.content+=(current.content?'\n':'')+line;current.fresh=false;}
     }
-    if(current&&current.content.trim())rows.push(current);
+    flush();
     return rows.map(normalizeRecord).filter(Boolean);
   }
   function parseFile(text,extension){

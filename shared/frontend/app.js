@@ -153,13 +153,14 @@
     setView('history');
   }
   function setView(view) {
+    const enteringAgent=ui.view!=='agent' && view==='agent';
     if(ui.view==='agent' && view!=='agent'){saveReadingPosition();cancelSpeech();const c=current();if(c)flushDraft(c.id).catch(()=>{});}
     closePopovers();ui.view=view;
     for(const v of ['home','agent','history','search'])show(v+'View',v===view);
     document.body.dataset.view=view;
     window.dispatchEvent(new CustomEvent("shiyan-view",{detail:{view}}));
     if(state)renderConnection();
-    if(view==='agent'){renderMessages(true);renderComposer(true);restoreReadingPosition(current()?.id);}
+    if(view==='agent'){if(enteringAgent)renderMessages(true);renderComposer(true);}
     if(view==='history'){renderHistory();}
     if(view==='search'){renderSearch();setTimeout(()=>$('searchInput').focus(),60);}
     if(view==='home'){renderPhoto();requestAnimationFrame(resizeMask);}
@@ -277,27 +278,60 @@
     clearTimeout(readingSaveTimer);const pending=[...pendingReadingPositions];pendingReadingPositions.clear();
     for(const [id,readingPosition] of pending){try{await api('/api/conversations/'+encodeURIComponent(id),'PATCH',{readingPosition});}catch(_){if(!pendingReadingPositions.has(id))pendingReadingPositions.set(id,readingPosition);}}
   }
+  // 打开会话时先隐藏消息列表，等位置（含图片解码后的校正）全部定好再一次性显示，避免用户看到中途的跳动。
+  let messagesRevealTimer=0,messagesPlacing=false,messageAnchor=null;
+  function hideMessagesUntilPlaced(){messagesPlacing=true;clearTimeout(messagesRevealTimer);$('messagesScroller').classList.add('is-placing-messages');messagesRevealTimer=setTimeout(revealMessages,1200);}
+  function revealMessages(){if(!messagesPlacing)return;messagesPlacing=false;clearTimeout(messagesRevealTimer);$('messagesScroller').classList.remove('is-placing-messages');rememberMessageAnchor();}
+  function rememberMessageAnchor(){
+    const scroller=$('messagesScroller');if(!scroller.clientHeight){messageAnchor=null;return;}
+    const top=scroller.getBoundingClientRect().top,el=[...$('messages').querySelectorAll(':scope>article')].find(e=>e.getBoundingClientRect().bottom>top+1);
+    messageAnchor=el?{el,offset:el.getBoundingClientRect().top-top}:null;
+  }
+  // #messagesScroller 关闭了浏览器滚动锚定（overflow-anchor:none），图片晚加载、输入框变高时由这里保持视口：
+  // 跟随最新时贴住底部，否则保持当前看到的那条消息不动。
+  function keepMessagesInPlace(){
+    if(restoringReadingPosition || messagesPlacing || ui.view!=='agent')return;
+    const scroller=$('messagesScroller');if(!scroller.clientHeight)return;
+    if(messageAutoFollow){if(performance.now()>=messageUserScrollUntil && scroller.scrollHeight-scroller.scrollTop-scroller.clientHeight>1){scroller.scrollTop=scroller.scrollHeight;messageLastScrollTop=scroller.scrollTop;}return;}
+    if(!messageAnchor?.el?.isConnected)return;
+    const delta=messageAnchor.el.getBoundingClientRect().top-scroller.getBoundingClientRect().top-messageAnchor.offset;
+    if(Math.abs(delta)>=1){scroller.scrollTop+=delta;messageLastScrollTop=scroller.scrollTop;}
+  }
   function restoreReadingPosition(id){
-    if(!id)return;const generation=++readingRestoreGeneration;const saved=readingPositions.get(id)||state?.conversations.find(c=>c.id===id)?.readingPosition;
-    if(!saved){messageAutoFollow=true;scrollToLatest();return;}
+    if(!id)return;const generation=++readingRestoreGeneration;const saved=readingPositions.get(id)||state?.conversations.find(c=>c.id===id)?.readingPosition||{followLatest:true};
     messageAutoFollow=!saved.anchorMessageId && saved.followLatest===true;restoringReadingPosition=true;
-    const restore=()=>{if(generation!==readingRestoreGeneration || lastRenderedConversation!==id)return;const scroller=$('messagesScroller'),bounds=scroller.getBoundingClientRect(),anchor=saved.anchorMessageId&&$('messages').querySelector('[data-message-id="'+CSS.escape(saved.anchorMessageId)+'"]');
-      scroller.scrollTop=messageAutoFollow?scroller.scrollHeight:anchor?scroller.scrollTop+anchor.getBoundingClientRect().top-bounds.top-saved.offset:saved.scrollTop;messageLastScrollTop=scroller.scrollTop;show('latestButton',!messageAutoFollow&&!!current()?.messages?.length);};
-    restore();requestAnimationFrame(()=>{restore();requestAnimationFrame(()=>{if(generation===readingRestoreGeneration)restoringReadingPosition=false;});});
+    hideMessagesUntilPlaced();
+    const restore=()=>{if(generation!==readingRestoreGeneration || lastRenderedConversation!==id)return false;const scroller=$('messagesScroller'),bounds=scroller.getBoundingClientRect(),anchor=saved.anchorMessageId&&$('messages').querySelector('[data-message-id="'+CSS.escape(saved.anchorMessageId)+'"]');
+      scroller.scrollTop=messageAutoFollow?scroller.scrollHeight:anchor?scroller.scrollTop+anchor.getBoundingClientRect().top-bounds.top-saved.offset:saved.scrollTop;messageLastScrollTop=scroller.scrollTop;show('latestButton',!messageAutoFollow&&!!current()?.messages?.length);return true;};
+    restore();
+    requestAnimationFrame(()=>{if(!restore())return;requestAnimationFrame(async()=>{
+      if(generation!==readingRestoreGeneration || lastRenderedConversation!==id)return;
+      // 会话切换时，图片解码会改变消息高度。等当前会话图片完成解码后，再按原消息锚点校正视口。
+      const images=[...$('messages').querySelectorAll('img')];
+      // 最多等 500ms：慢图片之后由 keepMessagesInPlace 保持视口，不让整页长时间空白。
+      await Promise.race([Promise.allSettled(images.map(image=>typeof image.decode==='function'?image.decode():image.complete?Promise.resolve():new Promise(resolve=>{image.addEventListener('load',resolve,{once:true});image.addEventListener('error',resolve,{once:true});}))),new Promise(resolve=>setTimeout(resolve,500))]);
+      if(generation!==readingRestoreGeneration || lastRenderedConversation!==id)return;
+      requestAnimationFrame(()=>{if(!restore())return;requestAnimationFrame(()=>{if(generation===readingRestoreGeneration && lastRenderedConversation===id){restore();restoringReadingPosition=false;revealMessages();}});});
+    });});
   }
 
   function renderMessages(force=false) {
     const c=current(),messages=c && c.messages || [],conversationId=c?.id||'';
     if(c && c.messagesSummarized){
       if(lastRenderedConversation && lastRenderedConversation!==conversationId)saveReadingPosition(lastRenderedConversation);
-      lastRenderedConversation='';lastMessagesSignature='';
+      lastRenderedConversation='';lastMessagesSignature='';revealMessages();
       $('messages').innerHTML='<div class="messages-loading" role="status" aria-label="正在加载对话"><span></span><span></span><span></span></div>';
       return;
     }
     const signature=conversationId+':'+JSON.stringify(messages);
     if(!force && signature===lastMessagesSignature)return;
+    // 同一会话还在恢复位置时收到后台刷新：重绘后继续按保存的位置恢复，而不是停在半路。
+    const continueRestore=restoringReadingPosition && conversationId===lastRenderedConversation;
+    // 列表即将重绘：取消上一次渲染挂起的滚动恢复，避免它在新内容上用旧锚点把位置跳回去。
+    ++readingRestoreGeneration;restoringReadingPosition=false;
     const scroller=$('messagesScroller'),list=$('messages'),oldTop=scroller.scrollTop;
     const changedConversation=conversationId!==lastRenderedConversation;
+    const animateConversationChange=!!lastRenderedConversation && changedConversation;
     if(changedConversation){saveReadingPosition(lastRenderedConversation);const saved=readingPositions.get(conversationId)||c?.readingPosition;messageAutoFollow=saved?(!saved.anchorMessageId && saved.followLatest===true):true;}
     const follow=messageAutoFollow;
     const bounds=scroller.getBoundingClientRect();
@@ -353,7 +387,7 @@
     lastMessagesSignature=signature;lastRenderedConversation=conversationId;
     show('emptyConversation',!messages.length);
     cancelAnimationFrame(messageFollowFrame);
-    if(changedConversation){restoreReadingPosition(conversationId);}
+    if(changedConversation || continueRestore){restoreReadingPosition(conversationId);}
     else if(follow){
        
        
@@ -366,8 +400,8 @@
     }
     show('latestButton',!messageAutoFollow && messages.length>0);
   }
-  function scrollToLatest(){++readingRestoreGeneration;restoringReadingPosition=false;const el=$('messagesScroller');messageAutoFollow=true;el.scrollTop=el.scrollHeight;messageLastScrollTop=el.scrollTop;show('latestButton',false);}
-  function pauseMessageFollow(){++readingRestoreGeneration;restoringReadingPosition=false;messageAutoFollow=false;cancelAnimationFrame(messageFollowFrame);show('latestButton',!!current()?.messages?.length);}
+  function scrollToLatest(){++readingRestoreGeneration;restoringReadingPosition=false;revealMessages();const el=$('messagesScroller');messageAutoFollow=true;el.scrollTop=el.scrollHeight;messageLastScrollTop=el.scrollTop;show('latestButton',false);}
+  function pauseMessageFollow(){++readingRestoreGeneration;restoringReadingPosition=false;revealMessages();messageAutoFollow=false;cancelAnimationFrame(messageFollowFrame);show('latestButton',!!current()?.messages?.length);}
   let composerSizeFrame=0,composerMeasureInput=null;
   let composerTypingConversation='',composerTypingEmpty=null;
   let composerComposing=false,composerCompositionEnding=false,composerRefreshDeferred=false,composerCompositionFrame=0;
@@ -527,7 +561,7 @@
     cancelSpeech();const c=current(),previous=c && c.id!==id?c.id:null;
     ui.editing=null;notice('');pendingSelection=id;
     // Switch locally first; the server confirmation and full messages arrive in the background.
-    if(state && state.selectedConversationId!==id){state.selectedConversationId=id;renderSessions();renderMessages(true);renderComposer(true);}
+    if(state && state.selectedConversationId!==id){state.selectedConversationId=id;renderSessions();renderComposer(true);}
     setDrawer(false);setView('agent');
     try {
       if(previous)await flushDraft(previous);
@@ -1445,7 +1479,10 @@
     const messagesScroller=$('messagesScroller');
      
      
-    $('messages').addEventListener('load',event=>{if(event.target.tagName==='IMG' && messageAutoFollow && ui.view==='agent')scrollToLatest();},true);
+    // 图片加载会改变消息高度；不要在 load 事件里强制滚到底，否则切换到含图片的会话时会覆盖已恢复的阅读位置。
+    // 消息区关闭了浏览器滚动锚定，高度变化由 keepMessagesInPlace 统一处理（恢复位置期间不介入）。
+    if(window.ResizeObserver){const keeper=new ResizeObserver(()=>{keepMessagesInPlace();rememberMessageAnchor();});keeper.observe($('messages'));keeper.observe(messagesScroller);}
+    let anchorFrame=0;
     const noteUserScroll=()=>{messageUserScrollUntil=performance.now()+1000;};
     messagesScroller.addEventListener('wheel',event=>{noteUserScroll();if(event.deltaY<0)pauseMessageFollow();},{passive:true});
     messagesScroller.addEventListener('pointerdown',noteUserScroll,{passive:true});
@@ -1458,6 +1495,7 @@
       else if(performance.now()<messageUserScrollUntil && top<messageLastScrollTop-1)pauseMessageFollow();
       messageLastScrollTop=top;
       show('latestButton',!messageAutoFollow && !!current()?.messages?.length);saveReadingPosition();
+      if(!messagesPlacing){cancelAnimationFrame(anchorFrame);anchorFrame=requestAnimationFrame(rememberMessageAnchor);}
     },{passive:true});
     $('homeFileInput').addEventListener('change',event=>chooseHomeImages(event.target.files));
     bindClick('imageEmptyState',()=>$('homeFileInput').click());
@@ -1607,16 +1645,6 @@
   async function start() {
     if(new URLSearchParams(location.search).has('native') || (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.native)){document.body.classList.add('is-native');document.documentElement.classList.add('is-native');}
     const webDotsEntry=window.ShiYanPlatform?.mode==='web';
-    const bootTransition=webDotsEntry?document.getElementById('webDotsBootTransition'):null;
-    if(bootTransition){
-      bootTransition.hidden=false;
-      requestAnimationFrame(()=>bootTransition.classList.add('is-visible'));
-      // Absolute watchdog: the boot animation must never cover the page for 3 seconds.
-      window.setTimeout(()=>{
-        bootTransition.classList.remove('is-visible');
-        window.setTimeout(()=>{bootTransition.hidden=true;},220);
-      },2700);
-    }
     initEvents();
     try {
       const data=await api('/api/state');if(!state)applyState(data.state);
@@ -1631,19 +1659,12 @@
         });
       }
       setView(webDotsEntry?'dots':'agent');
-      // Keep the web boot transition until Dots has completed its first-screen readiness.
-      // Do not release the page on a fixed timeout while its initial UI is still mounting.
+      // Wait for Dots' first-screen readiness without covering the page with a boot animation.
       if(webDotsEntry && window.__SHIYAN_DOTS_READY__){
         await Promise.resolve(window.__SHIYAN_DOTS_READY__).catch(()=>{});
       }
       if(state.connection && !['ready','connecting','unauthorized'].includes(state.connection.status))connectAgent();
     }catch(e){show('connectionBanner');setText('connectionText',e.message);toast(e.message);}
-    finally{
-      if(bootTransition){
-        bootTransition.classList.remove('is-visible');
-        window.setTimeout(()=>{bootTransition.hidden=true;},220);
-      }
-    }
   }
   window.shiyan={
     newConversation,selectConversation,openImagePicker:()=>(ui.view==='agent'?$('attachmentInput'):$('homeFileInput')).click(),

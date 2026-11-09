@@ -12,14 +12,16 @@ body.workbench-v2 #desktopToolbar #dotsToolbar { position:relative;height:32px;f
   box-sizing:border-box;width:368px;padding:18px 18px 14px;
   overflow-y:auto;overflow-x:hidden;border:1px solid var(--line);border-radius:22px;
   background:var(--v22-panel);color:var(--text);box-shadow:0 16px 48px #0003;
-  scrollbar-width:none;
+  scrollbar-width:thin;scrollbar-color:#dcdcdc transparent;
 }
-#dotsActivity::-webkit-scrollbar { display:none;width:0;height:0; }
+#dotsActivity::-webkit-scrollbar { width:6px; }
+#dotsActivity::-webkit-scrollbar-thumb { background:#dcdcdc;border-radius:3px; }
+#dotsActivity::-webkit-scrollbar-track { background:transparent; }
 #dotsActivity[hidden] { display:none; }
 .dots-profile-identity { position:relative;display:flex;align-items:center;gap:12px;margin:0 0 14px;min-height:76px; }
 .dots-pet { display:block;object-fit:contain;width:96px;height:104px;flex-shrink:0; }
 .dots-profile-identity .dots-profile-pet { width:66px;height:72px; }
-.dots-profile-identity>div { display:flex;flex-direction:column;gap:6px;min-width:0; }
+.dots-profile-identity>div { display:flex;flex-direction:column;gap:6px;min-width:0;align-items:flex-start;text-align:left; }
 .dots-profile-identity strong { font-size:19px;font-weight:600;overflow-wrap:anywhere;line-height:1.3; }
 .dots-profile-identity span { font-size:13px;color:var(--secondary); }
 .dots-panel-icon { width:20px;height:20px;flex-shrink:0;display:block; }
@@ -331,9 +333,11 @@ body.workbench-v22.workbench-v2.dots-is-current-view #agentSidebar .session-row.
 }
 #dotsActivity .dots-panel-scroll {
   flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;
-  overscroll-behavior:contain;scrollbar-width:none;
+  overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#dcdcdc transparent;
 }
-#dotsActivity .dots-panel-scroll::-webkit-scrollbar { display:none;width:0;height:0; }
+#dotsActivity .dots-panel-scroll::-webkit-scrollbar { width:6px; }
+#dotsActivity .dots-panel-scroll::-webkit-scrollbar-thumb { background:#dcdcdc;border-radius:3px; }
+#dotsActivity .dots-panel-scroll::-webkit-scrollbar-track { background:transparent; }
 
 /* Server-side Google Chrome entry in the Dots task panel. */
 #dotsActivity .dots-computer-entry{display:flex;align-items:center;gap:12px;width:100%;min-height:58px;margin:0 0 14px;padding:10px 13px;border:1px solid var(--line);border-radius:12px;background:var(--v22-panel);color:var(--text);text-align:left}
@@ -353,3 +357,14 @@ body.workbench-v22.workbench-v2.dots-is-current-view #agentSidebar .session-row.
 
 @media (prefers-color-scheme:dark){.dots-browser-overlay{background:rgba(24,24,26,.94)!important}.dots-browser-card{border-color:#3c4043;background:#202124;box-shadow:0 12px 36px rgba(0,0,0,.5)}.dots-browser-frame,.dots-browser-loading,.dots-browser-error{background:#202124}.dots-browser-loading{color:#bdc1c6}}
 :root[data-theme="dark"] .dots-browser-overlay{background:rgba(24,24,26,.94)!important}:root[data-theme="dark"] .dots-browser-card{border-color:#3c4043;background:#202124}:root[data-theme="dark"] .dots-browser-frame,:root[data-theme="dark"] .dots-browser-loading{background:#202124}
+
+/* Task-panel pet: the slot matches the 88×96 docked pet (the wrapper used to shrink it to 66×72,
+   so the pet spilled onto the text and divider); the rename button is drawn above the pet;
+   the name is inset by the status pill's border + padding so both texts share one left edge. */
+#dotsActivity .dots-profile-identity>.dots-pet-wrap{width:88px;height:96px;flex:0 0 88px;align-self:flex-start}
+#dotsActivity .dots-pet-wrap>.dots-pet-anchor{width:88px;height:96px;flex-basis:88px}
+#dotsActivity .dots-profile-identity strong{box-sizing:border-box;max-width:100%;padding-left:11px}
+#dotsFloatingPet .dots-pet-rename{position:absolute;right:-4px;bottom:0;z-index:2;width:26px;height:26px;display:grid;place-items:center;padding:0;border:1px solid var(--line);border-radius:50%;background:var(--v22-panel,#fff);color:var(--secondary);box-shadow:0 2px 8px #0000001a;pointer-events:auto;cursor:pointer}
+#dotsFloatingPet .dots-pet-rename .dots-panel-icon{width:14px;height:14px}
+#dotsFloatingPet .dots-pet-rename:hover{color:var(--text)}
+#dotsFloatingPet:not(.is-docked) .dots-pet-rename,#dotsFloatingPet.is-in-call .dots-pet-rename{display:none}
