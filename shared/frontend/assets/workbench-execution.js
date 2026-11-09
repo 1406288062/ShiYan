@@ -14,6 +14,10 @@
  const chevron='<svg class="xs-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
  const oneLine=text=>String(text||'').replace(/\s+/g,' ').trim();
  function renderPane(tab,pane) {
+  if(C&&tab){const _id=tab.id;setTimeout(()=>{try{C.closeTab(_id);}catch(e){}},0);}
+  return;
+ }
+ function _renderPane_disabled(tab,pane) {
   if(!pane)return;
   const c=conversation(tab.conversationId),rounds=records(c);
   pane.classList.add('execution-pane');
@@ -44,7 +48,8 @@
   const host=pane.querySelector('.execution-steps-host'),title=oneLine(prompt?.text);
   window.ShiYanSteps.render(host,{status:live?'running':m.error?'failed':'done',title:title?title.slice(0,160)+(title.length>160?'…':''):(c?.title||'当前会话'),time:m.completedAt||m.createdAt,result:m.text||'',prompt:prompt?.text||'',steps:window.ShiYanSteps.fromItems(window.ShiYanOutput.itemsFor(m))});
  }
- function openMessage(id) {
+ function openMessage(id) { return; }
+ function _openMessage_disabled(id) {
   if(!C)return;
   const c=state()?.conversations?.find(c=>(c.messages||[]).some(m=>m.id===id))||(window.ShiYanSchedules?.message?.(id)?window.ShiYanSchedules.currentConversation():null);
   if(!c)return;
@@ -53,7 +58,8 @@
   else tab=C.openTab({type:'execution',title:'执行过程',conversationId:c.id,messageId:id,view:'detail'});
   return tab;
  }
- function openLatest() {
+ function openLatest() { return; }
+ function _openLatest_disabled() {
   const c=state()?.conversations?.find(c=>c.id===state()?.selectedConversationId);
   let tab=C?.tabs.find(t=>t.type==='execution');
   if(tab&&c){Object.assign(tab,{conversationId:c.id,view:'list'});tab.__sig=null;renderPane(tab,C.panes.get(tab.id));C.selectTab(tab.id);C.persist();return tab;}
@@ -67,7 +73,7 @@
   lastConversation=c?.id||'';previous=new Map((c?.messages||[]).map(m=>[m.id,m.state]));
  }
  function install(context) {
-  C=context;document.addEventListener('pointerdown',e=>{for(const menu of document.querySelectorAll('.execution-round-menu:not([hidden])'))if(!menu.parentElement.contains(e.target)){menu.hidden=true;menu.parentElement.querySelector('[data-execution-round]').setAttribute('aria-expanded','false');}},true);document.addEventListener('click',e=>{const b=e.target.closest('[data-open-execution]');if(b)openMessage(b.dataset.openExecution);});
+  C=context;setTimeout(()=>{try{for(const t of [...(C.tabs||[])])if(t.type==='execution')C.closeTab(t.id);}catch(e){}},0);document.addEventListener('pointerdown',e=>{for(const menu of document.querySelectorAll('.execution-round-menu:not([hidden])'))if(!menu.parentElement.contains(e.target)){menu.hidden=true;menu.parentElement.querySelector('[data-execution-round]').setAttribute('aria-expanded','false');}},true);document.addEventListener('click',e=>{const b=e.target.closest('[data-open-execution]');if(b)openMessage(b.dataset.openExecution);});
   window.addEventListener('shiyan-state',update);update();
  }
  window.ShiYanExecution={install,renderPane,openMessage,openLatest};

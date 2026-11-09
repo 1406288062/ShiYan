@@ -56,8 +56,7 @@
   return '<li class="xs-step'+(last?' is-last':'')+'" data-state="'+esc(step.status)+'"><button type="button" data-xs-step="'+esc(step.id)+'"><span class="xs-node">'+node(step.status)+'</span><span class="xs-text"><strong data-xs-title>'+esc(info?.title||step.title)+'</strong>'+(sub?'<small data-xs-sub class="'+(info?'':'is-raw')+'">'+esc(limit(sub,240))+'</small>':'<small data-xs-sub hidden></small>')+'</span>'+chevron+'</button></li>';
  }
  function detailHTML(step,info){
-  return '<button type="button" class="xs-back" data-xs-back aria-label="返回执行步骤"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg></button>'+
-   '<h2>'+esc(info?.title||step.title)+'</h2>'+(info?.detail?'<div class="xs-detail-md message-body">'+md(info.detail)+'</div>':info?.summary?'<p class="xs-detail-text">'+esc(info.summary)+'</p>':'')+
+ return '<h2>'+esc(info?.title||step.title)+'</h2>'+(info?.detail?'<div class="xs-detail-md message-body">'+md(info.detail)+'</div>':info?.summary?'<p class="xs-detail-text">'+esc(info.summary)+'</p>':'')+
    block(step.type==='command_execution'?'命令':'输入',step.input)+block(step.status==='failed'?'错误':'输出',step.output);
  }
  function render(container,options){

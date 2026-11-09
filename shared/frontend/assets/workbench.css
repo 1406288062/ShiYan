@@ -356,3 +356,13 @@
 @media(prefers-reduced-motion:reduce) {
   .workspace-tab,.browser-tool-grid > button,.browser-shortcuts button,.activity-rail .wb-icon-button { transition:none!important; }
 }
+
+/* Dots output document viewer (right workspace pane) */
+.dots-output-viewer{flex:1;min-height:0;overflow:auto;padding:16px 20px;}
+.dots-output-viewer .code-reader{margin:0;}
+.dots-output-source{margin:0;padding:2px 0;font-size:13px;line-height:1.65;white-space:pre-wrap;word-break:break-word;}
+.dots-output-md{line-height:1.7;}
+.dots-output-menu{min-width:168px;padding:6px;border:1px solid var(--line,#e5e6ea);border-radius:12px;background:var(--v22-panel,#fff);box-shadow:0 8px 24px #0002;font-size:13px;}
+.dots-output-menu button{display:flex;align-items:center;width:100%;padding:9px 10px;border:0;border-radius:8px;text-align:left;font:inherit;font-size:13px;background:transparent;color:var(--text,#292a2d);cursor:pointer;}
+.dots-output-menu button:hover{background:var(--v22-hover,#f1f3f6);}
+.dots-output-menu button.danger{color:#f04b4b;}

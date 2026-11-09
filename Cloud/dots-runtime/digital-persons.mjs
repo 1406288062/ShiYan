@@ -147,7 +147,14 @@ export class DigitalPersonService {
   create(input={}) {
     const name=clean(input.name).slice(0,80),relationship=clean(input.relationship).slice(0,80);
     if(!name)throw fail('请填写 Ta 是谁');
-    const now=this.now(),id=randomUUID();
+    const now=this.now();
+    const existing=this.db.prepare('SELECT * FROM digital_people WHERE owner_id=? AND name=? ORDER BY updated_at DESC LIMIT 1').get(this.owner,name);
+    if(existing){
+      if(relationship&&relationship!==existing.relationship)this.db.prepare('UPDATE digital_people SET relationship=?,updated_at=? WHERE owner_id=? AND id=?').run(relationship,now,this.owner,existing.id);
+      this.setActive(existing.id);
+      return {ok:true,reused:true,person:this.publicPerson(this.personRow(existing.id),{includeMemories:true})};
+    }
+    const id=randomUUID();
     this.db.prepare('INSERT INTO digital_people(id,owner_id,name,relationship,created_at,updated_at) VALUES(?,?,?,?,?,?)').run(id,this.owner,name,relationship,now,now);
     // 新建的学习对象直接成为 Dots 的说话方式；同一时间只启用一个人。
     this.setActive(id);
@@ -281,11 +288,11 @@ export class DigitalPersonService {
         if(!content||!evidence||!source.includes(evidence)||memories.some(m=>m.content===content))continue;
         memories.push({category:CATEGORIES.includes(item.category)?item.category:'other',content,evidence,occurredAt:Number.isSafeInteger(item.occurredAt)&&item.occurredAt>0?item.occurredAt:null});
       }
-      let vectors=[];try{if(memories.length)vectors=await this.embed(memories.map(m=>m.content+'\n'+m.evidence));}catch{}
+      let vectors=[],embedError='';try{if(memories.length){const texts=memories.map(m=>m.content+'\n'+m.evidence);for(let i=0;i<texts.length;i+=5){const part=await this.embed(texts.slice(i,i+5),60000);vectors.push(...part);}}}catch(e){embedError=String(e?.message||e);}
       const now=this.now();
       this.db.exec('BEGIN');
       try{
-        this.db.prepare("UPDATE digital_people SET style_profile=?,summary=?,learned_at=?,learn_error='',updated_at=? WHERE owner_id=? AND id=?").run(JSON.stringify(profile),summary,now,now,this.owner,personId);
+        this.db.prepare("UPDATE digital_people SET style_profile=?,summary=?,learned_at=?,learn_error=?,updated_at=? WHERE owner_id=? AND id=?").run(JSON.stringify(profile),summary,now,embedError?('记忆向量未生成（'+embedError.slice(0,80)+'），语义检索暂不可用，请点“重新学习”重试'):'',now,this.owner,personId);
         this.db.prepare('DELETE FROM digital_person_memories WHERE owner_id=? AND person_id=?').run(this.owner,personId);
         const insert=this.db.prepare('INSERT INTO digital_person_memories(id,owner_id,person_id,category,content,evidence,source_message_ids,embedding,occurred_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)');
         memories.forEach((m,i)=>insert.run(randomUUID(),this.owner,personId,m.category,m.content,m.evidence,'[]',vectors?.[i]?JSON.stringify(vectors[i]):null,m.occurredAt,now,now));

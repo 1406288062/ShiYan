@@ -121,7 +121,8 @@
     if (!floating || !area) return;
     const panel = $('dotsActivity'), call = $('dotsVoiceCard'), avatar = call?.querySelector('.dots-call-avatar');
     const pet = petById(profile.petId), inCall = !!pet && !!call && !call.hidden && !!avatar;
-    const visible = !!pet && (inCall || (window.shiyan.getView() === 'dots' && !conversationVisible()));
+    const fullView = document.getElementById('desktopLayout')?.dataset.full === 'true';
+    const visible = !!pet && !fullView && (inCall || (window.shiyan.getView() === 'dots' && !conversationVisible()));
     const revealing = floating.hidden && visible;
     if (revealing) floating.classList.remove('is-placed');
     floating.hidden = !visible;
@@ -604,22 +605,22 @@
           +'<div class="dots-goal-form-actions"><button type="button" data-shadow-cancel>取消</button><button type="submit" class="is-primary">开始学习</button></div></form>';
       }
       if (step === 'new') return '<form class="dots-goal-form" data-shadow-create><label><span>Ta 是谁</span><input name="name" maxlength="80" required placeholder="比如：妈妈、小美、老王" value="'+esc(draft.name)+'"></label><label><span>和你的关系（可选）</span><input name="relationship" maxlength="80" placeholder="比如：母亲、女朋友、大学室友" value="'+esc(draft.relationship)+'"></label><label><span>微信聊天记录（TXT、CSV、JSON 或 HTML）</span><button type="button" class="dots-goal-new" data-shadow-choose>选择文件</button><input name="file" type="file" accept=".txt,.csv,.json,.html,.htm,.xml" hidden data-shadow-pick></label><div class="dots-goal-form-actions">'+(people.length?'<button type="button" data-shadow-cancel>取消</button>':'')+'<button type="submit" class="is-primary">下一步</button></div></form>';
-      return busy ? '<div class="dots-goal-planning"><span></span><span></span><span></span><em>'+esc(notice||'正在处理…')+'</em></div>' : '<button type="button" class="dots-goal-new" data-shadow-new>＋ 新的影子人</button>';
+      return busy ? '' : '<button type="button" class="dots-goal-new" data-shadow-new>＋ 新的影子人</button>';
     };
     const personHTML = p => {
       const on = p.id === activeId, working = busy === p.id, off = busy ? ' disabled' : '';
-      const meta = [p.relationship ? esc(p.relationship) : '', p.learnedAt ? '已学习 '+p.personMessages+' 条 Ta 的消息 · '+day(p.learnedAt) : p.personMessages ? '已导入 '+p.personMessages+' 条，尚未学习' : '还没有导入聊天记录'].filter(Boolean).join(' · ');
+      const meta = [p.relationship ? esc(p.relationship) : '', p.learnedAt ? '已学习 '+p.personMessages+' 条 Ta 的消息 · '+(function(t){return (t.getMonth()+1)+'月'+t.getDate()+'日 '+String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0');})(new Date(p.learnedAt)) : p.personMessages ? '已导入 '+p.personMessages+' 条，尚未学习' : '还没有导入聊天记录'].filter(Boolean).join(' · ');
       return '<article class="dots-goal'+(on?'':' is-paused')+'"><header><div><h3>'+esc(p.name)+'</h3><p>'+meta+'</p></div><span class="dots-goal-status">'+(on?'使用中':'未启用')+'</span></header>'
         +(working?'<div class="dots-goal-planning"><span></span><span></span><span></span><em>'+esc(notice||'正在处理…')+'</em></div>':'')
         +(!working&&p.learnError?'<div class="dots-goal-failed">'+esc(p.learnError)+'<button type="button" data-shadow-relearn="'+esc(p.id)+'"'+off+'>重试</button></div>':'')
-        +(!working&&p.summary?'<p class="dots-goal-summary">'+esc(p.summary)+'</p>':'')
+        +(!working&&p.summary?'<details class="dots-goal-summary"><summary>性格</summary><p>'+esc(p.summary)+'</p></details>':'')
         +'<footer><button type="button" data-shadow-toggle="'+esc(p.id)+'"'+off+'>'+(on?'停用':'启用')+'</button><button type="button" data-shadow-append="'+esc(p.id)+'"'+off+'>追加聊天记录</button>'+(p.personMessages?'<button type="button" data-shadow-relearn="'+esc(p.id)+'"'+off+'>重新学习</button>':'')+'<button type="button" class="is-danger" data-shadow-delete="'+esc(p.id)+'"'+off+'>删除</button></footer></article>';
     };
     const draw = () => {
       const ordered = [...people].sort((a,b) => Number(b.id===activeId) - Number(a.id===activeId));
       if (!people.length && !step && !busy) step = 'new';
       dialog.innerHTML = '<section class="dots-conversation-card dots-goals-card"><header><h2>影子人</h2><button type="button" class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button></header>'
-        +'<p class="dots-goal-meta">导入你和某个人的微信聊天记录，Dots 会学习 Ta 的说话方式。之后在 Dots 主页聊天，回复就像 Ta 在和你说话。同一时间只启用一个影子人，停用后 Dots 恢复原样。</p>'
+        +'<p class="dots-goal-meta">导入你和某个人的微信聊天记录，Dots 会学习 Ta 的记忆和说话方式。之后在 Dots 主页聊天，回复就像 Ta 在和你说话。同一时间只启用一个影子人，停用后 Dots 恢复原样。</p>'
         +formHTML()+(error?'<p class="dots-dialog-error" role="alert">'+esc(error)+'</p>':'')
         +'<div class="dots-goal-list">'+ordered.map(personHTML).join('')+'</div><input type="file" data-shadow-file accept=".txt,.csv,.json,.html,.htm,.xml" hidden></section>';
     };
@@ -1049,6 +1050,7 @@
   }
   async function openOutput(id) {
     const output=outputs.find(o=>String(o.id)===String(id));if(!output)return;
+    if(C.openTab){C.openTab({type:'dots-output',title:output.filename||output.title||'任务结果',outputId:output.outputId||id,dotsOutputId:String(id),mimeType:output.mimeType||'',downloadUrl:localURL(output.downloadPath||output.downloadUrl||output.url||('/api/dots/outputs/'+id+'/file'))},true);return;}
     outputDialog=makeDialog('dotsOutputDialog','dots-output-overlay');
     let content='',error='';outputRaw='';const url=localURL(output.downloadPath || output.downloadUrl || output.url || '/api/dots/outputs/'+id+'/file');
     try {
@@ -1064,7 +1066,7 @@
         content+='<details class="dots-raw-result"><summary>原始结果</summary><pre><code>'+esc(preview)+'</code></pre><button type="button" data-dots-panel-copy-output>复制完整结果</button></details>';
       }
       else if(output.attachmentId)content='<p>'+esc(output.summary || output.filename)+'</p><p><a class="dots-output-download" href="'+esc(url)+'" download="'+esc(output.filename || '')+'">下载 '+esc(output.filename || '文件')+'</a></p>';
-      else content='<p>'+esc(output.summary || output.title || output.filename || '文件已生成')+'</p>';
+      else content='<p>'+esc(output.summary || output.title || '文件已生成，点击下方保存文件下载。')+'</p>';
     } catch(cause){error=cause.message;}
     outputDialog.innerHTML='<section class="dots-output-card"><header><h2>'+esc(output.filename || output.title || '任务结果')+'</h2><button type="button" class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button></header><div class="dots-output-body message-body">'+content+(error?'<p class="dots-dialog-error">'+esc(error)+'</p>':'')+'</div><a class="dots-white-button" download href="'+esc(url)+'">'+icon('download')+'保存文件</a></section>';showDialog(outputDialog);
   }
@@ -1083,7 +1085,7 @@
       else if(target.hasAttribute('data-dots-panel-output')){e.stopPropagation();await openOutput(target.dataset.dotsPanelOutput);}
       else if(target.hasAttribute('data-dots-panel-copy-output')){await window.shiyan.copyText(outputRaw);target.textContent='已复制';}
       else if(target.hasAttribute('data-dots-process')){e.stopPropagation();showProcess();}
-      else if(target.hasAttribute('data-dots-process-close')){e.stopPropagation();target.closest('.dots-process-view')?.remove();}
+      else if(target.hasAttribute('data-dots-process-close')){e.stopPropagation();const view=target.closest('.dots-process-view');const detail=view?.querySelector('.xs-detail'),list=view?.querySelector('.xs-list');if(detail&&!detail.hidden){detail.hidden=true;if(list)list.hidden=false;return;}view?.remove();}
       else if(target.hasAttribute('data-dots-close-dialog'))closeDialog();
       else if(target.hasAttribute('data-dots-select-pet')){profileDraft.name=$('dotsProfileName').value;profileDraft.petId=target.dataset.dotsSelectPet;renderProfile();profileDialog.querySelector('[data-dots-select-pet="'+CSS.escape(profileDraft.petId)+'"]').focus();}
       else if(target.hasAttribute('data-dots-select-color')){profileDraft.name=$('dotsProfileName').value;profileDraft.accent=target.dataset.dotsSelectColor;renderProfile();profileDialog.querySelector('[data-dots-select-color="'+profileDraft.accent+'"]').focus();}
@@ -1128,7 +1130,7 @@
     };
     const heading = document.createElement('h3'); heading.className = 'settings-section-title'; heading.textContent = 'Dots';
     const group = document.createElement('div'); group.className = 'settings-dots-entries';
-    const entries = entry('people','person.2.svg','影子人','导入微信聊天记录，Dots 用 Ta 的方式和你聊')+entry('connectors','point.3.connected.trianglepath.dotted','连接器','微信、常用插件和自定义 MCP')+entry('settings','checkmark.circle','Dots 权限审批','审批方式和已授权的操作');
+    const entries = entry('people','person.2.svg','影子人','导入微信聊天记录，Dots 用 Ta 的记忆和方式和你聊')+entry('connectors','point.3.connected.trianglepath.dotted','连接器','微信、常用插件和自定义 MCP')+entry('settings','checkmark.circle','Dots 权限审批','审批方式和已授权的操作');
     group.innerHTML = entries;
     const account = home.querySelector('.settings-section-title'), first = [...home.querySelectorAll('.settings-section-title')].find(h => h.textContent === '账户');
     if (first) home.insertBefore(heading, first); else home.append(heading);
@@ -1165,6 +1167,8 @@
     document.addEventListener('pointermove',event=>{if(event.pointerType!=='touch')pointer={x:event.clientX,y:event.clientY};},{passive:true});
     document.addEventListener('pointerleave',()=>{pointer=null;});window.addEventListener('blur',()=>{pointer=null;});
     petFrame=requestAnimationFrame(animatePanelPet);
+    // Hide the floating pet while the right workspace is in full view.
+    try{const shell=document.getElementById('desktopLayout');if(shell&&window.MutationObserver){new MutationObserver(()=>positionPet()).observe(shell,{attributes:true,attributeFilter:['data-full']});}}catch{}
     $('app').appendChild($('dotsActivity'));
     $('desktopToolbar').appendChild($('dotsToolbar'));
     const alignToolbar=()=>{

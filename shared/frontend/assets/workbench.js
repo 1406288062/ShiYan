@@ -276,6 +276,7 @@
     if(tab.type==='execution'){window.ShiYanExecution?.renderPane(tab,pane);return;}
     if(tab.type==='changes'){window.ShiYanChanges?.renderPane(tab,pane);return;}
     if(v2 && ['files','file'].includes(tab.type)){v2.initFile(tab,pane);return;}
+    if(tab.type==='dots-output'){renderDotsOutput(tab,pane);return;}
     if(tab.type==='browser')renderBrowserPane(tab,pane);
     else if(tab.type==='files')renderFiles(tab,pane);
     else if(tab.type==='file')readFileTab(tab,pane);
@@ -294,7 +295,7 @@
       return;
     }
     if(pane.dataset.mode==='start')return;pane.dataset.mode='start';
-    pane.innerHTML=`<div class="browser-start"><h3>工具</h3><div class="browser-tool-grid"><button type="button" data-workspace-tool="files">${icon('folder')}<span>文件</span><kbd>⌘O</kbd></button><div class="v21-terminal-tool"><button type="button" data-workspace-tool="terminal">${icon('terminal')}<span>终端</span></button><button type="button" data-tool-terminal-more aria-label="终端更多选项" title="终端更多">${icon('more')}</button></div><button type="button" data-workspace-temporary>${icon('newChat')}<span>临时聊天</span></button><button type="button" data-workspace-tool="execution">${icon('execution')}<span>执行过程</span></button></div><h3>浏览器</h3><div class="browser-shortcuts"><button type="button" data-workspace-tool="history">${icon('history')}<span>历史记录</span></button><button type="button" data-workspace-tool="bookmarks">${icon('star')}<span>书签</span></button><button type="button" data-workspace-tool="downloads">${icon('download')}<span>下载</span></button><button type="button" data-workspace-tool="settings">${icon('settings')}<span>设置</span></button></div></div>`;
+    pane.innerHTML=`<div class="browser-start"><h3>工具</h3><div class="browser-tool-grid"><button type="button" data-workspace-tool="files">${icon('folder')}<span>文件</span><kbd>⌘O</kbd></button><div class="v21-terminal-tool"><button type="button" data-workspace-tool="terminal">${icon('terminal')}<span>终端</span></button><button type="button" data-tool-terminal-more aria-label="终端更多选项" title="终端更多">${icon('more')}</button></div><button type="button" data-workspace-temporary>${icon('newChat')}<span>临时聊天</span></button></div><h3>浏览器</h3><div class="browser-shortcuts"><button type="button" data-workspace-tool="history">${icon('history')}<span>历史记录</span></button><button type="button" data-workspace-tool="bookmarks">${icon('star')}<span>书签</span></button><button type="button" data-workspace-tool="downloads">${icon('download')}<span>下载</span></button><button type="button" data-workspace-tool="settings">${icon('settings')}<span>设置</span></button></div></div>`;
   }
   function renderManager(tab,pane) {
     if(tab.type==='settings'){
@@ -338,6 +339,60 @@
     const rx=/(\/\*[\s\S]*?\*\/|\/\/[^\n]*|#[^\n]*|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\b(?:const|let|var|function|async|await|return|if|else|for|while|class|import|from|export|default|def|self|try|except|catch|throw|new|public|private|static|void|int|String|struct|enum|final|guard|case|switch|break|continue|in|of|true|false|None|null|True|False)\b|\b\d+(?:\.\d+)?\b)/g;
     let out='',index=0;for(const match of source.matchAll(rx)){out+=esc(source.slice(index,match.index));const t=match[0],kind=/^(\/\/|\/\*|#)/.test(t)?'comment':/^['"`]/.test(t)?'string':/^\d/.test(t)?'number':'keyword';out+=`<span class="syntax-${kind}">${esc(t)}</span>`;index=match.index+t.length;}
     return out+esc(source.slice(index));
+  }
+  async function renderDotsOutput(tab,pane) {
+    const outputId=tab.outputId||tab.dotsOutputId,filename=tab.title||'任务结果';
+    const url=tab.downloadUrl||('/api/dots/outputs/'+encodeURIComponent(String(outputId))+'/file');
+    pane.innerHTML='<p class="wb-empty">正在读取文件…</p>';
+    let text='',isImage=false,mime='';
+    try{
+      if(String(tab.mimeType||'').startsWith('image/')){isImage=true;mime=tab.mimeType;}
+      else{
+        const res=await fetch(url,{credentials:'same-origin'});
+        if(!res.ok)throw Error('读取失败（'+res.status+'）');
+        const ct=res.headers.get('content-type')||'';
+        if(ct.startsWith('image/')){isImage=true;mime=ct;}
+        else text=await res.text();
+      }
+    }catch(e){pane.innerHTML='<p class="wb-error file-error">'+esc(e.message)+'</p>';return;}
+    const isMd=/\.md$/i.test(filename)||/\.markdown$/i.test(filename);
+    let rawText=text;
+    pane.innerHTML='<div class="file-preview-toolbar"><span title="'+esc(filename)+'">'+esc(filename)+'</span><span class="toolbar-spacer"></span><button type="button" class="wb-icon-button dots-output-more" aria-label="更多" title="更多">'+icon('more')+'</button></div><div class="dots-output-viewer"></div>';
+    const viewer=pane.querySelector('.dots-output-viewer');
+    const showSource=()=>{
+      viewer.innerHTML='<pre class="dots-output-source"><code>'+esc(rawText)+'</code></pre>';
+    };
+    const showRendered=()=>{
+      if(isImage){viewer.innerHTML='<div class="file-image-stage"><img alt="'+esc(filename)+'" src="'+esc(url)+'"></div>';return;}
+      if(isMd&&C.markdown){viewer.innerHTML='<div class="message-body dots-output-md">'+C.markdown(rawText)+'</div>';return;}
+      const lines=rawText.split('\n'),limited=lines.slice(0,4000);
+      viewer.innerHTML='<div class="code-reader"><pre class="source-code"><code>'+esc(limited.join('\n'))+'</code></pre></div>'+(lines.length>4000?'<p class="file-preview-note">预览前 4000 行。</p>':'');
+    };
+    let showingSource=false;
+    showRendered();
+    const moreBtn=pane.querySelector('.dots-output-more');
+    const closeMenu=()=>{const m=pane.querySelector('.dots-output-menu');if(m)m.remove();document.removeEventListener('click',onDocClick);};
+    const onDocClick=e=>{if(!e.target.closest('.dots-output-menu')&&!e.target.closest('.dots-output-more'))closeMenu();};
+    moreBtn.onclick=e=>{
+      e.stopPropagation();
+      if(pane.querySelector('.dots-output-menu')){closeMenu();return;}
+      const menu=document.createElement('div');
+      menu.className='dots-output-menu';
+      const items=[
+        {label:'查看源代码',run:()=>{showingSource=!showingSource;if(showingSource)showSource();else showRendered();}},
+        {label:'复制',run:()=>{window.shiyan?.copyText?.(rawText);}},
+        {label:'下载',run:()=>{const a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();}},
+        {label:'下载为 PDF',run:()=>{const w=window.open('','_blank');if(!w)return;w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>'+esc(filename)+'</title><style>body{font-family:system-ui,sans-serif;max-width:800px;margin:40px auto;padding:0 20px;line-height:1.6;white-space:pre-wrap;word-break:break-word;}</style></head><body>'+esc(rawText)+'</body></html>');w.document.close();w.focus();setTimeout(()=>w.print(),300);}},
+        {label:'删除',danger:true,run:async()=>{if(!await window.shiyan?.confirmAction?.('删除这个文件？','删除后任务输出里将不再显示它。','删除'))return;try{await api('/outputs/'+encodeURIComponent(String(outputId)),'DELETE');}catch(err){}closeTab(tab.id);}},
+      ];
+      menu.innerHTML=items.map((it,i)=>'<button type="button" data-mi="'+i+'" class="'+(it.danger?'danger':'')+'">'+esc(it.label)+'</button>').join('');
+      menu.querySelectorAll('button').forEach(b=>{b.onclick=async ev=>{ev.stopPropagation();const it=items[Number(b.dataset.mi)];closeMenu();try{await it.run();}catch(err){notify(err.message);}};});
+      const r=moreBtn.getBoundingClientRect();menu.style.position='fixed';menu.style.top=(r.bottom+6)+'px';menu.style.right=Math.max(8,innerWidth-r.right)+'px';menu.style.zIndex='300';
+      pane.appendChild(menu);
+      document.addEventListener('click',onDocClick);
+    };
+    const label=$('workspaceTabs').querySelector('[data-tab="'+tab.id+'"] > span');if(label)label.textContent=filename;
+    persist();
   }
   async function readFileTab(tab,pane) {
     pane.innerHTML='<p class="wb-empty">正在读取文件…</p>';

@@ -3,7 +3,7 @@ import { createServer as createHttpServer, request as httpRequest } from 'node:h
 import { connect as tcpConnect } from 'node:net';
 import { lookup } from 'node:dns/promises';
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import { chmodSync, readFileSync, unlinkSync } from 'node:fs';
+import { chmodSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EventEmitter } from 'node:events';
@@ -26,7 +26,7 @@ const CAPTURE_TITLE = 'ShiYanCaptureTarget';
 // 2 vCPU / 1 GB container: high-DPI capture saturates CPU (~1 fps). Default to 1x; raise via env on bigger hosts.
 const MAX_VIEW_PIXELS = Number(process.env.SHIYAN_BROWSER_MAX_PIXELS) || 1;
 const MAX_CLIENT_MESSAGE = 64 * 1024;
-const ALLOWED_ORIGINS = new Set(['https://yandot.ai', 'https://129.226.81.110']);
+const ALLOWED_ORIGINS = new Set(['https://yandot.ai', 'https://www.yandot.ai', 'https://129.226.81.110']);
 
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -1109,6 +1109,7 @@ export class BrowserSessionManager {
   }
   #pushFrame(session, base64) {
     if (session.closing) return;
+    if (process.env.SHIYAN_FRAME_DUMP) { try { const b = Buffer.from(base64, 'base64'); writeFileSync('/tmp/shiyan-frame-dump.jpg', b); if (!session.frameDumpLogged || Date.now() - session.frameDumpLogged > 2000) { session.frameDumpLogged = Date.now(); process.stderr.write(`[browser-frame] DUMP bytes=${b.length} seq=${session.frameSeq || 0}\n`); } } catch {} }
     this.#calibrateClip(session, base64);
     // Latest JPEG is also kept for the HTTP-poll fallback picture (used when WebRTC cannot connect).
     if (base64 === session.latestFrame) return;

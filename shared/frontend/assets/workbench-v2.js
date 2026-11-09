@@ -49,7 +49,7 @@
    const compact=width<1060;if(compact&&!S.compact)S.compactSide='left';S.compact=compact;
    let showLeft=coding?!!C.prefs.leftOpen&&(!compact||S.compactSide==='left'):space?S.spaceSidebarOpen:photo&&S.enhanceSidebarOpen;
    let showRight=rightWorkspaceEnabled&&coding&&!!C.prefs.rightOpen&&(!compact||S.compactSide==='right'||S.full);
-   if(S.full&&coding){showRight=true;if(compact)showLeft=false;}
+   if(S.full&&coding){showRight=true;showLeft=false;}
    const preferredLeft=Math.min(Math.max(190,Math.min(Number(C.prefs.leftWidth)||250,350)),compact?Math.max(190,width*.28):350);
    let left=showLeft?preferredLeft:0;
    let right=showRight?Math.max(240,Number(C.prefs.rightWidth)||460):0;

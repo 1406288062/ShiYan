@@ -521,7 +521,7 @@ def install_remote(app):
     async def remote_projects(request: Request):
         runtime, transport = _owner_runtime(request)
         try: devices = await transport.devices()
-        except RemoteFailure as exc: _call_error(exc)
+        except RemoteFailure: devices = []
         public = []
         for device in devices:
             status = str(device.get("status") or "").lower()
