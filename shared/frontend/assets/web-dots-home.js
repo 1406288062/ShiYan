@@ -9,7 +9,7 @@
 
   const CHAT_VIEWS = new Set(['dots', 'agent']);
   const currentView = () => { try { return window.shiyan?.getView?.() || ''; } catch (_) { return ''; } };
-  const sync = () => document.body.classList.toggle('web-dots-only', CHAT_VIEWS.has(currentView()));
+  const sync = () => { const dotsOnly = CHAT_VIEWS.has(currentView()); document.body.classList.toggle('web-dots-only', dotsOnly); document.body.classList.toggle('web-dots-show-left', !dotsOnly); };
   const goDots = () => { try { window.shiyan?.navigate?.('dots'); } catch (_) {} };
 
   window.addEventListener('shiyan-view', () => { sync(); queueMicrotask(sync); });
