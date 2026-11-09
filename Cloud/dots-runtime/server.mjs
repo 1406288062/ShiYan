@@ -226,7 +226,7 @@ function createOwnerRuntime(owner){
   if(Buffer.byteLength(data,'utf8')>128*1024)throw new Error('Proactive context exceeds bounded input size');
   const hubPlan=await dotsHub.plan(source,{data,schema,signal,account:owner});
   if(hubPlan.result!==undefined)return hubPlan.result;
-  const options={model:hubPlan.settings?.model||(source==='dots-github-summary'?(String(process.env.DOTS_GITHUB_SUMMARY_MODEL||'').trim()||undefined):MODEL),skipGitRepoCheck:true,modelReasoningEffort:hubPlan.settings?.effort||(['dots-mail-summary','dots-github-summary'].includes(source)?'low':REASONING),workingDirectory:path.join(workspaceRoot,'.manager'),sandboxMode:'read-only',webSearchMode:'disabled',networkAccessEnabled:false,approvalPolicy:'never',allowTools:false,threadSource:source};
+  const options={model:hubPlan.settings?.model||(source==='dots-github-summary'?(String(process.env.DOTS_GITHUB_SUMMARY_MODEL||'').trim()||undefined):MODEL),skipGitRepoCheck:true,modelReasoningEffort:hubPlan.settings?.effort||(['dots-mail-summary','dots-github-summary'].includes(source)?'low':REASONING),workingDirectory:path.join(workspaceRoot,'.manager'),sandboxMode:'read-only',webSearchMode:'live',networkAccessEnabled:false,approvalPolicy:'never',allowTools:false,threadSource:source};
   const thread=createTenantThread(owner,{threadId:null,options});
   const started=Date.now(),used={provider:'openai',model:options.model||'',reasoning:options.modelReasoningEffort||'',account:owner};
   try{const turn=await runStructuredTurn(thread,data,schema,{signal});const value=JSON.parse(turn.finalResponse);dotsHub.report(dotsConsumer(source),{...used,ok:true,ms:Date.now()-started,usage:turn.usage||null});return value;}

@@ -48,7 +48,7 @@ test('an independent reflection initiates from an existing shared topic without 
   const x=runtime(f,()=>decision(a));await settle();
   assert.equal(x.calls,1);assert.deepEqual(activityCounts(f),before);assert.equal(proactive(f).length,1);
   const message=proactive(f)[0];assert.equal(message.content,perspective);assert.deepEqual(message.respondsToMessageIds,[]);assert.equal(message.deliveryState,'completed');
-  assert.ok(x.prompts[0].includes(source));assert.equal(x.options[0].allowTools,false);assert.equal(x.options[0].networkAccessEnabled,false);assert.equal(x.options[0].webSearchMode,'disabled');
+  assert.ok(x.prompts[0].includes(source));assert.equal(x.options[0].allowTools,false);assert.equal(x.options[0].networkAccessEnabled,false);assert.equal(x.options[0].webSearchMode,'live');
   assert.equal(await x.r.wake(),false);assert.equal(await x.r.requestContentReview(),false);await settle();assert.equal(x.calls,1);
  }finally{f.close();}
 });
