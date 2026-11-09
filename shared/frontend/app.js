@@ -153,13 +153,14 @@
     setView('history');
   }
   function setView(view) {
+    const enteringAgent=ui.view!=='agent' && view==='agent';
     if(ui.view==='agent' && view!=='agent'){saveReadingPosition();cancelSpeech();const c=current();if(c)flushDraft(c.id).catch(()=>{});}
     closePopovers();ui.view=view;
     for(const v of ['home','agent','history','search'])show(v+'View',v===view);
     document.body.dataset.view=view;
     window.dispatchEvent(new CustomEvent("shiyan-view",{detail:{view}}));
     if(state)renderConnection();
-    if(view==='agent'){renderMessages(true);renderComposer(true);restoreReadingPosition(current()?.id);}
+    if(view==='agent'){if(enteringAgent)renderMessages(true);renderComposer(true);}
     if(view==='history'){renderHistory();}
     if(view==='search'){renderSearch();setTimeout(()=>$('searchInput').focus(),60);}
     if(view==='home'){renderPhoto();requestAnimationFrame(resizeMask);}
@@ -281,9 +282,17 @@
     if(!id)return;const generation=++readingRestoreGeneration;const saved=readingPositions.get(id)||state?.conversations.find(c=>c.id===id)?.readingPosition;
     if(!saved){messageAutoFollow=true;scrollToLatest();return;}
     messageAutoFollow=!saved.anchorMessageId && saved.followLatest===true;restoringReadingPosition=true;
-    const restore=()=>{if(generation!==readingRestoreGeneration || lastRenderedConversation!==id)return;const scroller=$('messagesScroller'),bounds=scroller.getBoundingClientRect(),anchor=saved.anchorMessageId&&$('messages').querySelector('[data-message-id="'+CSS.escape(saved.anchorMessageId)+'"]');
-      scroller.scrollTop=messageAutoFollow?scroller.scrollHeight:anchor?scroller.scrollTop+anchor.getBoundingClientRect().top-bounds.top-saved.offset:saved.scrollTop;messageLastScrollTop=scroller.scrollTop;show('latestButton',!messageAutoFollow&&!!current()?.messages?.length);};
-    restore();requestAnimationFrame(()=>{restore();requestAnimationFrame(()=>{if(generation===readingRestoreGeneration)restoringReadingPosition=false;});});
+    const restore=()=>{if(generation!==readingRestoreGeneration || lastRenderedConversation!==id)return false;const scroller=$('messagesScroller'),bounds=scroller.getBoundingClientRect(),anchor=saved.anchorMessageId&&$('messages').querySelector('[data-message-id="'+CSS.escape(saved.anchorMessageId)+'"]');
+      scroller.scrollTop=messageAutoFollow?scroller.scrollHeight:anchor?scroller.scrollTop+anchor.getBoundingClientRect().top-bounds.top-saved.offset:saved.scrollTop;messageLastScrollTop=scroller.scrollTop;show('latestButton',!messageAutoFollow&&!!current()?.messages?.length);return true;};
+    restore();
+    requestAnimationFrame(()=>{if(!restore())return;requestAnimationFrame(async()=>{
+      if(generation!==readingRestoreGeneration || lastRenderedConversation!==id)return;
+      // 会话切换时，图片解码会改变消息高度。等当前会话图片完成解码后，再按原消息锚点校正视口。
+      const images=[...$('messages').querySelectorAll('img')];
+      await Promise.allSettled(images.map(image=>typeof image.decode==='function'?image.decode():image.complete?Promise.resolve():new Promise(resolve=>{image.addEventListener('load',resolve,{once:true});image.addEventListener('error',resolve,{once:true});})));
+      if(generation!==readingRestoreGeneration || lastRenderedConversation!==id)return;
+      requestAnimationFrame(()=>{if(!restore())return;requestAnimationFrame(()=>{if(generation===readingRestoreGeneration && lastRenderedConversation===id){restore();restoringReadingPosition=false;}});});
+    });});
   }
 
   function renderMessages(force=false) {
@@ -1448,7 +1457,8 @@
     const messagesScroller=$('messagesScroller');
      
      
-    $('messages').addEventListener('load',event=>{if(event.target.tagName==='IMG' && messageAutoFollow && ui.view==='agent')scrollToLatest();},true);
+    // 图片加载会改变消息高度；不要在 load 事件里强制滚到底，否则切换到含图片的会话时会覆盖已恢复的阅读位置。
+    // 浏览器自身的滚动锚定负责保持当前视口；新消息/流式输出仍由原有跟随逻辑处理。
     const noteUserScroll=()=>{messageUserScrollUntil=performance.now()+1000;};
     messagesScroller.addEventListener('wheel',event=>{noteUserScroll();if(event.deltaY<0)pauseMessageFollow();},{passive:true});
     messagesScroller.addEventListener('pointerdown',noteUserScroll,{passive:true});
