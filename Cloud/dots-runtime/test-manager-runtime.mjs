@@ -581,32 +581,30 @@ test('large task history stays within a strict prompt budget while retaining old
     assert.match(prompt,/早期仍在处理的事项/);
     const context=JSON.parse(prompt.split('TASKS AND REPORTS\n')[1].split('\nNEW INPUT')[0]);
     assert.ok(context.directory.some(task=>task.id===active.id));assert.ok(context.directory.some(task=>task.id===target));
-    assert.ok(context.omittedTasks>0);assert.equal(context.totalTasks,506);
-    const inspected=f.store.inspectRoutingTask({task_id:target,query:''});
-    assert.equal(inspected.task.instruction,original);
-    const fullPrompt=buildManagerPrompt(f.store,run,{inspection:inspected});
-    assert.ok(fullPrompt.length<180000,fullPrompt.length);assert.match(fullPrompt,/要求末尾不得丢失/);
+    assert.equal(context.totalTasks,506);assert.ok(context.directory.length>20);
+    assert.equal(MANAGER_SCHEMA.properties.inspect_tasks,undefined);
+    assert.match(prompt,/directoryHint/);
+    assert.ok(context.directory.some(task=>task.id===target));
   }finally{f.close();}
 });
 
-test('manager inspects historical requirements read-only before committing a continuation in the same turn',async()=>{
+test('manager uses one model call with server-prepared task context to continue historical work',async()=>{
   const f=fixture();try{
     const original='完整原始要求'.repeat(1800)+'最后必须验证边界';
     const [task]=f.store.createTasks([{key:'one',title:'旧事项',instruction:original,dependencies:[],resource_key:'project:A'}]);
-    f.db.prepare("UPDATE goals SET status='done',acceptance_status='accepted',thread_id='preserved-worker' WHERE id=?").run(task.id);
-    f.db.prepare("INSERT INTO events(goal_id,type,payload,created_at) VALUES(?,'user_instruction',?,100)").run(task.id,'补充要求'.repeat(1000)+'最近要求末尾');
-    const user=f.store.message({message:'继续原来的旧事项',requestId:'inspect-followup'}).message;
-    const prompts=[];let turns=0;
+    f.db.prepare("UPDATE goals SET status='done',acceptance_status='accepted',thread_id='preserved-worker',last_summary='此前执行结果' WHERE id=?").run(task.id);
+    const user=f.store.message({message:'继续原来的旧事项',requestId:'single-call-followup'}).message;
+    let turns=0;
     const thread={id:'manager-thread',run:async prompt=>{
-      prompts.push(prompt);turns++;
-      assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM manager_activity WHERE kind='task_continued'").get().n,0);
-      if(turns===1)return {finalResponse:JSON.stringify(managerResult({inspect_tasks:[{task_id:null,query:'旧事项'}],reply:'',summary:''}))};
-      if(turns===2){assert.match(prompt,/旧事项/);return {finalResponse:JSON.stringify(managerResult({inspect_tasks:[{task_id:task.id,query:''}],reply:'',summary:''}))};}
-      assert.match(prompt,/最后必须验证边界/);assert.match(prompt,/最近要求末尾/);
+      turns++;
+      assert.match(prompt,/旧事项/);
+      assert.match(prompt,/完整原始要求/);
+      assert.match(prompt,/此前执行结果/);
+      assert.equal(MANAGER_SCHEMA.properties.inspect_tasks,undefined);
       return {finalResponse:JSON.stringify(managerResult({continuations:[continuation(task,user)]}))};
     }};
     assert.equal(await createManagerRuntime({store:f.store,codex:{startThread:()=>thread},workspaceRoot:f.root,logger:{error(){}}}).wake(),true);
-    assert.equal(turns,3);assert.equal(f.store.snapshot().tasks.length,1);
+    assert.equal(turns,1);assert.equal(f.store.snapshot().tasks.length,1);
     assert.equal(f.store.snapshot().messages.filter(m=>m.role==='assistant').length,1);
     assert.equal(f.db.prepare('SELECT thread_id FROM goals WHERE id=?').get(task.id).thread_id,'preserved-worker');
     assert.equal(f.store.snapshot().tasks[0].status,'active');

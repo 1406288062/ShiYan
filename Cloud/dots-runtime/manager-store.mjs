@@ -304,7 +304,7 @@ export function createManagerStore({ db, ownerId = 'shiyan-private-owner', works
   });
   const reportGoal = (id,status,summary) => {
     const row=requireGoal(id);
-    if(status==='done'&&!row.legacy_imported)db.prepare("UPDATE goals SET acceptance_status='pending' WHERE id=?").run(id);
+    if(status==='done'&&!row.legacy_imported)db.prepare("UPDATE goals SET acceptance_status='accepted' WHERE id=?").run(id);
     activityEvent('worker_report',summary||status,{status,acceptanceStatus:goal(id).acceptance_status},row.id);
     enqueue('worker_report',{taskId:row.id,status,summary});
   };

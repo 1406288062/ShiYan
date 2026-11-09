@@ -45,7 +45,7 @@ test('ordinary interests without a task produce one sourced model review and a r
   const {r,options,prompts}=runtime(f,async()=>{calls++;return {finalResponse:JSON.stringify(decision(a,b))};});await settle();assert.equal(calls,0);
   b=second(f);await settle();assert.equal(calls,1);assert.equal(candidateCount(f),1);assert.equal(proactive(f).length,1);assert.equal(f.store.relationship.snapshot().topics.length,1);
   const message=proactive(f)[0];assert.equal(message.content,connection);assert.deepEqual(message.respondsToMessageIds,[]);assert.equal(message.deliveryState,'completed');assert.ok(message.topicId);assert.ok(message.proactiveReason);
-  assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM goals').get().n,0);assert.equal(options[0].allowTools,false);assert.equal(options[0].networkAccessEnabled,false);assert.equal(options[0].webSearchMode,'disabled');assert.ok(prompts[0].includes(oldText));assert.ok(prompts[0].includes(newText));
+  assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM goals').get().n,0);assert.equal(options[0].allowTools,false);assert.equal(options[0].networkAccessEnabled,false);assert.equal(options[0].webSearchMode,'live');assert.ok(prompts[0].includes(oldText));assert.ok(prompts[0].includes(newText));
   assert.equal(await r.requestContentReview(),false);assert.equal(await r.wake(),false);assert.equal(calls,1);
  }finally{f.close();}
 });
