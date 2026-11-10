@@ -12,6 +12,7 @@
 // finish_run tool. Everything else about the task lifecycle (leases, pause/cancel, approvals,
 // notifications, reports to the Dots conversation) is unchanged.
 import { tool } from './agent-tools.mjs';
+import { timeContext } from './time-context.mjs';
 
 const clip = (value, max) => String(value ?? '').slice(0, max);
 
@@ -33,6 +34,7 @@ export function buildWorkerAgentPrompt(goal, { memories = [], timeline = [], eve
 要求：
 ${goal.instruction}
 ${goal.acceptance_criteria ? '验收标准：\n' + goal.acceptance_criteria + '\n' : ''}
+当前时间：${timeContext()}
 这次唤醒的原因：${trigger}
 已运行轮数：${goal.run_count || 0}
 上一轮总结：${goal.last_summary || '（无）'}
@@ -56,7 +58,7 @@ ${context}
 - 需要在真实网站上操作（登录、填表、下单、看需要渲染的页面）时，用 mcp__browser__ 工具：browse 开浏览器任务（受理不等于完成，结果之后会作为新事件回来），windows 管理窗口，search/open/find 读网页文字。密码永远不写进任务。
 - 用户自己的设备（Mac 等）上的文件和命令，用 mcp__sponge__ 工具（海绵宝宝）；先 list_devices 查实际在线的设备。
 - 用户已连接的服务（邮箱、日历、文档、GitHub 等）在 mcp__conn_* 工具里：先 mcp_list_tools 搜工具，再 mcp_call_tool 调用。
-${privateOwner ? '- 只读检查服务器本机（磁盘、网卡、运行时长）用 mcp__dots__inspect_host。\n' : ''}- 可复用的工作流程（技能）在 ~/.claude/skills 和 ~/.codex/skills：批量调研、完整交付长文本、阈值监控、安全修改服务器、在用户环境验证修复等。任务属于这些类型时，先读对应的 SKILL.md 再照做。
+${privateOwner ? '- 只读检查服务器本机（磁盘、网卡、运行时长）用 mcp__dots__inspect_host。\n' : ''}- 可复用的工作流程（技能）在 ~/.claude/skills 和 ~/.codex/skills：批量调研、完整交付长文本、阈值监控、安全修改服务器、在用户环境验证修复等。任务属于这些类型时，先读对应的 SKILL.md 再照做。这个账号从以往工作中学到的技能在 /workspace/dots/learned-skills/（先看 INDEX.md，存在就读），用户怎么希望被对待见 /workspace/dots/dreams/ALIGNMENT_SYNTHESIS.md。
 - 实时状态（设备、文件、账号连接、网页内容）必须当场用工具查，不要凭记忆或以前的回复作答；工具失败就如实报告失败。
 
 规则

@@ -4,6 +4,7 @@ import {deviceRead} from './device-read.mjs';
 import {createMemoryIntent} from './memory-intent.mjs';
 import {createDailyBrief} from './daily-brief.mjs';
 import {createDreamReview} from './dream-review.mjs';
+import {createReminders,createProactivePreferences} from './reminders.mjs';
 import {createOwnerRegistry,ownerKey,memberDotsWorkingDirectory} from './owner-context.mjs';
 import {createOwnerSubscriptions} from './owner-subscriptions.mjs';
 import {createSubscriptionIntent} from './subscription-intent.mjs';
@@ -272,6 +273,9 @@ function createOwnerRuntime(owner){
  mkdirSync(dataDir,{recursive:true,mode:0o700});mkdirSync(workspaceRoot,{recursive:true,mode:0o700});
  const store=createManagerStore({db,workspaceRoot,ownerId:owner,importLegacyGoals:legacy});
  repairMailPresentationLinks(store);
+ // 定时提醒（到点直接推送，不调用模型）和主动推送偏好。
+ const reminders=createReminders({store}),preferences=createProactivePreferences({store});
+ store.reminders=reminders;store.proactivePreferences=preferences;
  // Older member records named a mounted tool directory. Rebind metadata only;
  // their files stay at /workspace/dots/<id> and are never copied by the host.
  if(!legacy)for(const row of db.prepare('SELECT id,workspace FROM goals WHERE manager_id=?').all(store.managerId)){const control=path.join(workspaceRoot,String(row.id));if(row.workspace!==control)db.prepare('UPDATE goals SET workspace=? WHERE id=? AND manager_id=?').run(control,row.id,store.managerId);}
@@ -297,7 +301,7 @@ function createOwnerRuntime(owner){
  const mailReplies=createMailReplyService({store,transportFactory:config=>{audit(owner,'message_mail','回复了一封邮件');return smtpReplyTransport(config);},loadConfig:()=>readMailConfig(mailConfig),clientFactory:options=>new ImapFlow(options),readBody:readMailBody,assess:(data,schema,control)=>assess(data,schema,{...control,source:'dots-mail-summary'})});
  store.setMailReplies(mailReplies);
  const runtime=createManagerRuntime({store,codex,voice:text=>people.voiceContext(text),threadFactory:async params=>{const {light,...baseOptions}=params.options||{};const connectorServers=light?[]:await mcpConnectors().runtimeServers(owner);const mcpServers={},mcpToolAllowlist=[];const bridge='/home/ubuntu/boss-codex-service/shiyan-v2/mcp-connector-proxy.mjs';for(const server of connectorServers){const key='shiyan_'+String(server.id).replace(/[^A-Za-z0-9_]/g,'_');mcpServers[key]={command:process.execPath,args:[bridge],env:{SHIYAN_ROOT:process.env.SHIYAN_ROOT||'/home/ubuntu/boss-codex-service/shiyan-v2',...(process.env.SHIYAN_MCP_DB?{SHIYAN_MCP_DB:process.env.SHIYAN_MCP_DB}:{}),SHIYAN_MCP_OWNER:String(owner),SHIYAN_MCP_ID:String(server.id)}};mcpToolAllowlist.push('mcp__'+key+'__mcp_list_tools','mcp__'+key+'__mcp_call_tool');}// 简单寒暄只需要回话：不加载工具定义（每次约 2.5 万 token），也不会进入多轮工具循环。
-if(!light){mcpServers.shiyan_sponge={command:process.execPath,args:['/home/ubuntu/ShiYan/Cloud/agent-runtime/sponge-mcp-proxy.mjs'],env:{SHIYAN_ROOT:process.env.SHIYAN_ROOT||'/home/ubuntu/boss-codex-service/shiyan-v2',SHIYAN_MCP_OWNER:String(owner)}};for(const tool of ['list_devices','run_device_tool','get_tool_result'])mcpToolAllowlist.push('mcp__shiyan_sponge__'+tool);mcpServers.browser=browserMcpServer(owner,baseOptions.threadSource==='dots-proactive'?'push':'chat');mcpToolAllowlist.push(...browserToolAllowlist());}const options={...baseOptions,mcpServers,mcpToolAllowlist};const inner={...params,options};return hubAwareThread({hub:dotsHub,owner,consumer:light?'dots.chat.quick':'dots.chat',threadId:params.threadId,options,createInner:()=>createTenantThread(owner,inner)});},workspaceRoot,resolveImagePath:file=>ownerImagePath(owner,file),memory:memoryStore,contentReviewEnabled:false,threadOptions:{model:MODEL,skipGitRepoCheck:true,modelReasoningEffort:REASONING},onModelCall:entry=>{if(!recentlyViaHub(owner,'dots.chat',entry.ms+5000)&&!recentlyViaHub(owner,'dots.chat.quick',entry.ms+5000))dotsHub.report('dots.chat',{...entry,provider:'openai',account:owner});}});
+if(!light){mcpServers.shiyan_sponge={command:process.execPath,args:['/home/ubuntu/ShiYan/Cloud/agent-runtime/sponge-mcp-proxy.mjs'],env:{SHIYAN_ROOT:process.env.SHIYAN_ROOT||'/home/ubuntu/boss-codex-service/shiyan-v2',SHIYAN_MCP_OWNER:String(owner)}};for(const tool of ['list_devices','run_device_tool','get_tool_result'])mcpToolAllowlist.push('mcp__shiyan_sponge__'+tool);mcpServers.browser=browserMcpServer(owner,baseOptions.threadSource==='dots-proactive'?'push':'chat');mcpToolAllowlist.push(...browserToolAllowlist());}const options={...baseOptions,mcpServers,mcpToolAllowlist};const inner={...params,options};return hubAwareThread({hub:dotsHub,owner,consumer:light?'dots.chat.quick':'dots.chat',threadId:params.threadId,options,createInner:()=>createTenantThread(owner,inner)});},workspaceRoot,resolveImagePath:file=>ownerImagePath(owner,file),afterCommit:result=>{const out=reminders.apply(result);if(out.failed.length)console.warn('[reminders] 未能设置：'+out.failed.join('、'));if(result?.proactive_preferences?.changed)preferences.set(result.proactive_preferences.content);},memory:memoryStore,contentReviewEnabled:false,threadOptions:{model:MODEL,skipGitRepoCheck:true,modelReasoningEffort:REASONING},onModelCall:entry=>{if(!recentlyViaHub(owner,'dots.chat',entry.ms+5000)&&!recentlyViaHub(owner,'dots.chat.quick',entry.ms+5000))dotsHub.report('dots.chat',{...entry,provider:'openai',account:owner});}});
  const presenter=createMailPresenter({store,assess:(data,schema,control)=>assess(data,schema,{...control,source:'dots-mail-summary'})});
  const mail=createQQMailSubscription({store,configPath:mailConfig,clientFactory:options=>new ImapFlow(options),prepareMail:async(client,message,control)=>{let body;try{body=await readMailBody(client,message);}catch(error){if(control.signal.aborted)throw error;return {kind:'body',text:'（本次未能读取邮件正文）',links:[]};}return presenter({...body,subject:message.envelope?.subject||'',from:message.envelope?.from?.[0]?.address||''},control);}});
  const ownerSubscriptions=createOwnerSubscriptions({store,dataDir,appSubscriptions:apps,mailSubscription:mail});
@@ -314,7 +318,8 @@ if(!light){mcpServers.shiyan_sponge={command:process.execPath,args:['/home/ubunt
  // 梦境回顾：每晚整理“怎么对待这个用户”，写到账号工作区 dreams/，并在每轮回复开场带给 Dots。
  const dream=createDreamReview({store,assess,writeFile:async(rel,text)=>{
   if(legacy){const file=path.join(workspaceRoot,rel);mkdirSync(path.dirname(file),{recursive:true,mode:0o700});await fs.writeFile(file,text,{mode:0o600});return;}
-  const target='/workspace/'+rel;await workspaceOperation(owner,{operation:'mkdir',path:path.posix.dirname(target),recursive:true});
+  // 和自己账号一致：都落在后台任务看到的 /workspace/dots/ 下。
+  const target='/workspace/dots/'+rel;await workspaceOperation(owner,{operation:'mkdir',path:path.posix.dirname(target),recursive:true});
   await workspaceOperation(owner,{operation:'write',path:target,data:Buffer.from(text).toString('base64'),encoding:'base64'});}});
  store.alignment=()=>dream.synthesis();
  const lifeGoals=createLifeGoals({store,assess,onAudit:(kind,summary)=>audit(owner,kind,summary)});
@@ -327,7 +332,7 @@ if(!light){mcpServers.shiyan_sponge={command:process.execPath,args:['/home/ubunt
  };
  const weixin=createWeixinBridge({store,owner,saveInbound:saveWeixinInbound,onAudit:(kind,summary)=>audit(owner,kind,summary),ingest:(text,requestId)=>ingestExternalMessage(owner,text,requestId,'weixin')});
  const unsubscribe=store.subscribeConversationEvents(()=>trigger.signal('L2-conversation'));
- return {store,runtime,trigger,apps,mailReplies,mail,subscriptions,intent,workspaceRoot,brief,dream,weixin,lifeGoals,people,start(){trigger.start();mailReplies.start();mail.start();apps.start();brief.start();dream.start();weixin.start();lifeGoals.start();},close(){lifeGoals.close();weixin.close();brief.close();dream.close();runtime.close();mailReplies.close();mail.close();apps.close();unsubscribe();trigger.close();}};
+ return {store,runtime,trigger,apps,mailReplies,mail,subscriptions,intent,workspaceRoot,brief,dream,reminders,preferences,weixin,lifeGoals,people,start(){trigger.start();mailReplies.start();mail.start();apps.start();brief.start();dream.start();reminders.start();weixin.start();lifeGoals.start();},close(){lifeGoals.close();weixin.close();brief.close();dream.close();reminders.close();runtime.close();mailReplies.close();mail.close();apps.close();unsubscribe();trigger.close();}};
 }
 ownerRegistry.get(PRIVATE_OWNER);
 for(const row of db.prepare('SELECT owner_id FROM managers').all())ownerRegistry.get(row.owner_id);
