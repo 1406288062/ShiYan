@@ -58,3 +58,46 @@
 .xs-detail-back{display:flex;align-items:center;gap:6px;margin:12px 0 0 14px;padding:6px 10px 6px 6px;border:0;border-radius:9px;background:none;font:inherit;font-size:13px;color:var(--secondary,#8a8f98);cursor:pointer}
 .xs-detail-back:hover{background:color-mix(in srgb,currentColor 5%,transparent);color:var(--text)}
 .xs-detail-back svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* 执行过程大窗口：参考任务详情窗口的尺寸与布局 */
+.xs-modal-overlay{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;padding:3vh 2.2vw;background:rgba(0,0,0,.28);animation:xs-fade .16s ease-out}
+@keyframes xs-fade{from{opacity:0}to{opacity:1}}
+.xs-modal{display:flex;flex-direction:column;width:100%;height:100%;max-width:1680px;border-radius:28px;background:var(--canvas,#fff);box-shadow:0 24px 80px rgba(0,0,0,.22),0 0 0 .5px rgba(0,0,0,.08);overflow:hidden;font-size:15px}
+.xs-modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:20px 22px 18px 34px;border-bottom:1px solid var(--xs-line)}
+.xs-modal-head>div{min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:10px;padding-top:4px}
+.xs-modal-head h1{margin:0;font-size:22px;line-height:1.3;font-weight:650;letter-spacing:-.01em;overflow-wrap:anywhere}
+.xs-modal-close{flex:none;display:grid;place-items:center;width:38px;height:38px;padding:0;border:0;border-radius:50%;background:var(--canvas,#fff);box-shadow:0 1px 6px rgba(0,0,0,.12),0 0 0 .5px rgba(0,0,0,.06);color:inherit;cursor:pointer}
+.xs-modal-close:hover{background:color-mix(in srgb,currentColor 5%,var(--canvas,#fff))}
+.xs-modal-close svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+.xs-modal-body{flex:1;min-height:0;display:grid;grid-template-columns:clamp(260px,23%,440px) minmax(0,1fr)}
+.xs-modal-list{min-height:0;overflow:auto;padding:22px 16px;background:color-mix(in srgb,currentColor 3.5%,var(--canvas,#fff));border-right:1px solid var(--xs-line)}
+.xs-modal-list ol{list-style:none;margin:0;padding:0}
+.xs-mrow{position:relative}
+.xs-mrow:not(.is-last)::after{content:"";position:absolute;left:24.5px;top:36px;bottom:-6px;border-left:1.5px solid color-mix(in srgb,currentColor 14%,transparent)}
+.xs-mrow button{position:relative;z-index:1;display:flex;align-items:center;gap:12px;width:100%;min-height:46px;margin:4px 0;padding:10px 14px;border:0;border-radius:14px;background:none;font:inherit;font-size:15px;color:inherit;text-align:left;cursor:pointer}
+.xs-mrow button:hover{background:color-mix(in srgb,currentColor 5%,transparent)}
+.xs-mrow button.is-selected{background:color-mix(in srgb,currentColor 8%,transparent)}
+.xs-mrow button:focus-visible{outline:2px solid #0a84ff;outline-offset:-2px}
+.xs-mrow .xs-node{width:22px;height:22px;margin:0;display:grid;place-items:center;color:color-mix(in srgb,currentColor 55%,transparent)}
+.xs-mrow[data-state="failed"] .xs-node{color:#ff3b30}.xs-mrow[data-state="running"] .xs-node{color:#0a84ff}
+.xs-mrow .xs-node svg{width:20px;height:20px}
+.xs-mrow.is-last[data-state="completed"] .xs-node{color:var(--text,#1d1d1f)}
+.xs-mrow .xs-fill{fill:currentColor;stroke:none}.xs-mrow .xs-tick{stroke:var(--canvas,#fff);stroke-width:2;fill:none}
+.xs-dot{width:7px;height:7px;border-radius:50%;background:color-mix(in srgb,currentColor 40%,transparent)}
+.xs-mtitle{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.xs-mrow.is-edge .xs-mtitle{font-weight:500}
+.xs-modal-detail{min-height:0;overflow:auto;padding:30px 56px 48px;outline:none;user-select:text}
+.xs-modal-detail h2{margin:0 0 16px;font-size:22px;line-height:1.3;font-weight:650}
+.xs-modal-detail .xs-detail-text,.xs-modal-detail .xs-detail-md{font-size:16px;line-height:1.65}
+.xs-muted{color:var(--xs-muted)}
+.xs-code-label{margin:14px 0 8px;font-size:16px}
+.xs-code{margin:14px 0;border-radius:14px;background:color-mix(in srgb,currentColor 4.5%,transparent);overflow:hidden}
+.xs-code-bar{display:flex;align-items:center;justify-content:space-between;padding:10px 12px 0 22px;font:13px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--xs-muted)}
+.xs-code-tools{display:flex;gap:4px}
+.xs-code-tools button{display:grid;place-items:center;width:32px;height:32px;padding:0;border:0;border-radius:8px;background:none;color:var(--xs-muted);cursor:pointer}
+.xs-code-tools button:hover{background:color-mix(in srgb,currentColor 8%,transparent);color:var(--text,#1d1d1f)}
+.xs-code-tools button.is-copied{color:#1f9d55}
+.xs-code-tools svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.xs-code pre{margin:0;padding:12px 22px 20px;font:14px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre;overflow:auto;max-height:60vh}
+@media (max-width:760px){.xs-modal-overlay{padding:0}.xs-modal{border-radius:0}.xs-modal-body{grid-template-columns:1fr;grid-template-rows:minmax(120px,38%) 1fr}.xs-modal-list{border-right:0;border-bottom:1px solid var(--xs-line)}.xs-modal-detail{padding:22px 18px 36px}.xs-modal-head{padding:16px 16px 14px 18px}}
+@media (prefers-reduced-motion:reduce){.xs-modal-overlay{animation:none}}

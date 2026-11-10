@@ -2,6 +2,7 @@
 // - 每个账号每天最多一次，先占位再生成，重启或失败都不会重复推送、也不会反复调用模型。
 // - 错过时间超过 3 小时（例如服务停机）就跳过当天，不在深夜补发。
 // - 没有任何内容时不调用模型。
+// - 用户自上一份简报以来没有发过新消息，就不发。
 const BRIEF_SCHEMA = { type: 'object', additionalProperties: false, required: ['content'], properties: { content: { type: 'string' } } };
 const local = ms => new Date(ms + 8 * 3600_000);
 export const briefDay = ms => local(ms).toISOString().slice(0, 10);
@@ -34,6 +35,15 @@ export function createDailyBrief({ store, assess, settings, now = () => Date.now
     if (late < 0 || late > 180) return;
     const row = db.prepare('SELECT last_day FROM dots_daily_brief WHERE manager_id=?').get(managerId);
     if (row?.last_day === today) return;
+    // 用户自上一份简报以来没发过消息，就不再推送（只记下今天已检查），免得对着不回应的人天天发。
+    const lastBrief = db.prepare("SELECT MAX(id) id FROM manager_messages WHERE manager_id=? AND origin='proactive' AND proactive_reason='每日简报'").get(managerId)?.id || 0;
+    const fresh = lastBrief
+      ? db.prepare("SELECT COUNT(*) n FROM manager_messages WHERE manager_id=? AND role='user' AND id>?").get(managerId, lastBrief).n
+      : db.prepare("SELECT COUNT(*) n FROM manager_messages WHERE manager_id=? AND role='user' AND created_at>=?").get(managerId, Math.floor(t / 1000) - 24 * 3600).n;
+    if (!fresh) {
+      db.prepare("INSERT INTO dots_daily_brief(manager_id,last_day,state,updated_at) VALUES(?,?,'skipped',?) ON CONFLICT(manager_id) DO UPDATE SET last_day=excluded.last_day,message_id=NULL,state='skipped',updated_at=excluded.updated_at").run(managerId, today, Math.floor(t / 1000));
+      return;
+    }
     running = true;
     try {
       // Claim first so a crash or failure never produces a second brief today.

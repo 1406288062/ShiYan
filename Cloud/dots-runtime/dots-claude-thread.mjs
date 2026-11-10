@@ -11,6 +11,7 @@ const hubImages = paths => (paths || []).flatMap(file => { try { if (statSync(fi
 // owner|consumer -> 最近一次经中枢完成的时间；用于避免与业务侧上报重复记一条。
 export const lastHubCall = new Map();
 
+// Dots 每轮提示词已自带最近对话、任务目录和记忆；不再让中枢按 threadKey 把前几轮的完整提示词再拼一遍（那会让同样的上下文重复好几份）。
 export function hubAwareThread({ hub, owner, consumer, threadId = null, options = {}, createInner }) {
   let inner = null;
   const getInner = () => (inner ??= createInner());
@@ -19,7 +20,7 @@ export function hubAwareThread({ hub, owner, consumer, threadId = null, options 
   async function hubRun(prompt, { outputSchema, signal, images } = {}) {
     try {
       const attached = hubImages(images);
-      const out = await hub.infer(consumer, { prompt, outputSchema, account: owner, threadKey: consumer + ':' + key, ...(attached.length ? { images: attached } : {}), ...(options.mcpServers && Object.keys(options.mcpServers).length ? { mcpServers: options.mcpServers } : {}), ...(Array.isArray(options.mcpToolAllowlist) && options.mcpToolAllowlist.length ? { mcpToolAllowlist: options.mcpToolAllowlist } : {}) }, { signal, timeoutMs: 360000 });
+      const out = await hub.infer(consumer, { prompt, outputSchema, account: owner, ...(attached.length ? { images: attached } : {}), ...(options.mcpServers && Object.keys(options.mcpServers).length ? { mcpServers: options.mcpServers } : {}), ...(Array.isArray(options.mcpToolAllowlist) && options.mcpToolAllowlist.length ? { mcpToolAllowlist: options.mcpToolAllowlist } : {}) }, { signal, timeoutMs: 360000 });
       return { finalResponse: out.finalResponse, usage: out.usage || null, items: [] };
     } finally { lastHubCall.set(owner + '|' + consumer, Date.now()); }
   }

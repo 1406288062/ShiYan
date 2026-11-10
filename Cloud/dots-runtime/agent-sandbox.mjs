@@ -51,6 +51,8 @@ export function createSandboxManager({
   claudeBinary = process.env.SHIYAN_CLAUDE_BIN || '/home/ubuntu/boss-codex-service/node_modules/@anthropic-ai/claude-agent-sdk-linux-x64/claude',
   codexBinary = process.env.CODEX_PATH || '/home/ubuntu/.local/bin/codex',
   relayScript = path.join(path.dirname(fileURLToPath(import.meta.url)), 'agent-sandbox', 'mcp-relay.mjs'),
+  // Dots 技能库（可复用工作流程），只读挂到 Claude Code 与 Codex 各自的技能目录。
+  skillsDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'skills'),
   credentials = { claude: path.join(os.homedir(), '.claude', '.credentials.json'), claudeEnv: path.join(os.homedir(), '.config', 'shiyan', 'claude.env'), codex: path.join(os.homedir(), '.codex', 'auth.json') },
   limits = { memory: process.env.SHIYAN_AGENT_MEMORY || '1536m', cpus: process.env.SHIYAN_AGENT_CPUS || '1.5', pids: process.env.SHIYAN_AGENT_PIDS || '1024' },
   uid = typeof process.getuid === 'function' ? process.getuid() : 1000,
@@ -67,6 +69,8 @@ export function createSandboxManager({
   function layout(owner) {
     const value = layoutFor(owner);
     for (const dir of [value.workspace, value.home, value.rpc]) { mkdirSync(dir, { recursive: true, mode: 0o700 }); }
+    // 技能目录的挂载点先由服务用户建好，避免 Docker 以 root 身份在账号 home 里创建。
+    for (const dir of [path.join(value.home, '.claude', 'skills'), path.join(value.home, '.codex', 'skills')]) mkdirSync(dir, { recursive: true, mode: 0o700 });
     return value;
   }
   function runArgs(owner, l, spec) {
@@ -75,6 +79,7 @@ export function createSandboxManager({
       ['-v', `${relayScript}:${paths.relay}:ro`],
       ...(existsSync(claudeBinary) ? [['-v', `${claudeBinary}:${paths.claude}:ro`]] : []),
       ...(codex ? [['-v', `${codex.dir}:/opt/shiyan/codex:ro`]] : []),
+      ...(existsSync(skillsDir) ? [['-v', `${skillsDir}:/home/agent/.claude/skills:ro`], ['-v', `${skillsDir}:/home/agent/.codex/skills:ro`]] : []),
       // Extra read-only inputs of this account (e.g. its uploaded chat attachments), at the paths the
       // Dots conversation refers to them by.
       ...(l.readonly || []).filter(([host]) => existsSync(host)).map(([host, target]) => ['-v', `${host}:${target || host}:ro`]),
@@ -86,7 +91,7 @@ export function createSandboxManager({
   }
   async function create(owner) {
     const l = layout(owner);
-    const spec = createHash('sha256').update(JSON.stringify([image, l, limits, uid, gid, codex, existsSync(claudeBinary) ? statSync(claudeBinary).mtimeMs : 0, relayScript])).digest('hex').slice(0, 16);
+    const spec = createHash('sha256').update(JSON.stringify([image, l, limits, uid, gid, codex, existsSync(claudeBinary) ? statSync(claudeBinary).mtimeMs : 0, relayScript, existsSync(skillsDir) ? skillsDir : ''])).digest('hex').slice(0, 16);
     let current = null;
     try { current = (await docker.run(['inspect', '-f', '{{.State.Running}} {{index .Config.Labels "shiyan.spec"}}', name(owner)])).stdout.trim().split(' '); } catch { current = null; }
     if (current && current[1] !== spec) { logger.info?.(`[agent-sandbox] recreating ${name(owner)} (spec changed)`); await docker.run(['rm', '-f', name(owner)]).catch(() => {}); current = null; }

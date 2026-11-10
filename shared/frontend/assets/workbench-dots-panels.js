@@ -1056,15 +1056,10 @@
   }
   // 执行过程：和对话的执行过程页同一套样式，覆盖在任务对话卡片上，可返回。
   function showProcess() {
-    const card=conversationDialog?.querySelector('.dots-conversation-card'),goal=currentConversation?.goal;if(!card||!goal)return;
-    card.querySelector('.dots-process-view')?.remove();
-    const view=document.createElement('div');view.className='dots-process-view';
-    view.innerHTML='<header><button type="button" class="dots-conversation-back" data-dots-process-close>'+icon('back')+'<strong>执行过程</strong></button></header><div class="dots-process-host"></div>';
-    card.appendChild(view);
+    const goal=currentConversation?.goal;if(!goal||!window.ShiYanSteps?.openModal)return;
     const status=['done','completed'].includes(goal.status)?'done':['failed','blocked','cancelled'].includes(goal.status)?'failed':['needs_approval','waiting_approval','awaiting_approval'].includes(goal.status)?'waiting':'running';
     const outputs=goal.outputs||[];
-    window.ShiYanSteps.render(view.querySelector('.dots-process-host'),{status,title:goal.title||'任务',time:goal.updated_at,result:outputs.at(-1)?.summary||goal.last_summary||'',prompt:goal.title||'',steps:window.ShiYanSteps.fromTimeline(goal.timeline)});
-    view.querySelector('[data-dots-process-close]').focus({preventScroll:true});
+    window.ShiYanSteps.openModal({status,title:goal.title||'任务',time:goal.created_at||goal.updated_at,result:outputs.at(-1)?.summary||goal.last_summary||'',prompt:goal.instruction||goal.title||'',steps:window.ShiYanSteps.fromTimeline(goal.timeline),onClose:()=>conversationDialog?.querySelector('[data-dots-process]')?.focus({preventScroll:true})});
   }
   async function refreshConversation() {
     if(conversationPolling||!conversationVisible()||document.hidden||!currentConversation)return;

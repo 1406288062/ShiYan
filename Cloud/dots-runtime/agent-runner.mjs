@@ -38,7 +38,10 @@ export function createAgentRunner({ sandbox, claudeSdk = loadClaudeSdk, managerT
       permissionMode: 'bypassPermissions', allowDangerouslySkipPermissions: true, settingSources: ['user', 'project'],
       systemPrompt: { type: 'preset', preset: 'claude_code', append: system }, mcpServers: servers.claude, maxTurns,
       abortController: controller, env: claudeChildEnv(process.env),
-      spawnClaudeCodeProcess: opts => sandbox.spawn(owner, { command: sandbox.paths.claude, args: opts.args, cwd, env: claudeChildEnv(opts.env) }),
+      // 沙箱里的 Claude 用的是服务器的 claude.ai 登录；那个账号在 claude.ai 上挂的连接器（例如能操作 Mac 的设备连接器）
+      // 不属于任何拾燕账号，不能让沙箱智能体拿到。只用我们传入的 MCP（浏览器、海绵宝宝、该账号自己连接的服务）。
+      strictMcpConfig: true,
+      spawnClaudeCodeProcess: opts => sandbox.spawn(owner, { command: sandbox.paths.claude, args: opts.args, cwd, env: { ...claudeChildEnv(opts.env), ENABLE_CLAUDEAI_MCP_SERVERS: 'false' } }),
     };
     const pendingTools = new Map(), items = [], texts = [];
     let sessionId = session || null, usage = null, result = null, turns = 0;

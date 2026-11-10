@@ -533,8 +533,8 @@ body.workbench-v22 :is(.message-body,.dots-manager-message) a.message-reference:
 /* 消息里的图片缩略图（例如微信发来的图片） */
 .dots-images { display:flex;flex-wrap:wrap;gap:8px;margin-top:6px; }
 .dots-manager-message.is-user .dots-images { justify-content:flex-end; }
-.dots-image { display:block;margin:0;padding:0;border:0!important;outline:0;appearance:none;-webkit-appearance:none;border-radius:10px;overflow:hidden;line-height:0;background:transparent!important;box-shadow:none!important;filter:none;cursor:pointer; }
-.dots-image img { display:block;max-width:min(260px,100%);max-height:240px;width:auto;height:auto;object-fit:contain;border:0;border-radius:inherit;box-shadow:none!important;filter:none!important; }
+.dots-image { display:block;max-width:100%;margin:0;padding:0;border:0!important;outline:0;appearance:none;-webkit-appearance:none;border-radius:10px;overflow:hidden;line-height:0;background:transparent!important;box-shadow:none!important;filter:none;cursor:pointer; }
+.dots-image img { display:block;max-width:260px;max-height:240px;width:auto;height:auto;object-fit:contain;border:0;border-radius:inherit;box-shadow:none!important;filter:none!important; }
 .dots-manager-message .message-body:empty { display:none; }
 
 /* 连接器说明：连上后能做什么、怎么连接；断开在卡片里原地确认 */
@@ -567,7 +567,7 @@ body.workbench-v22 :is(.message-body,.dots-manager-message) a.message-reference:
 .dots-composer-surface.has-files .dots-add-file { grid-area:add; }
 .dots-composer-surface.has-files .dots-send { grid-area:send; }
 .dots-composer-thumb { position:relative;flex:0 0 72px;width:72px;height:72px;border-radius:12px;background:var(--soft-fill); }
-.dots-composer-thumb img { display:block;width:100%;height:100%;object-fit:cover;border-radius:12px;box-shadow:inset 0 0 0 .5px color-mix(in srgb,#000 12%,transparent); }
+.dots-composer-thumb img { display:block;cursor:zoom-in;width:100%;height:100%;object-fit:cover;border-radius:12px;box-shadow:inset 0 0 0 .5px color-mix(in srgb,#000 12%,transparent); }
 .dots-composer-thumb.is-uploading img { opacity:.55; }
 .dots-thumb-progress { position:absolute;inset:0;margin:auto;width:20px;height:20px;border-radius:50%;border:2px solid #fff;border-right-color:transparent;animation:dots-thumb-spin .8s linear infinite;filter:drop-shadow(0 1px 2px #0005); }
 @keyframes dots-thumb-spin { to { transform:rotate(360deg); } }
@@ -588,6 +588,8 @@ body.workbench-v22 :is(.message-body,.dots-manager-message) a.message-reference:
 .dots-detail { position:relative; }
 #dotsLatestButton { position:absolute;z-index:7;left:50%;right:auto;bottom:calc(var(--dots-composer-height,96px) + 10px);width:36px;height:36px;transform:translateX(-50%);display:inline-grid;opacity:1;visibility:visible;translate:0 0;transition:opacity .28s ease-in-out,translate .28s ease-in-out,visibility 0s linear; }
 #dotsLatestButton .symbol { width:20px;height:20px; }
+/* 与普通对话的“查看最新消息”按钮一致：圆形玻璃按钮，箭头居中；覆盖 .dots-view button 的通用方形样式，悬停不变色。 */
+.dots-view #dotsLatestButton,.dots-view #dotsLatestButton:hover:not(:disabled),.dots-view #dotsLatestButton:focus { box-sizing:border-box;display:inline-grid;place-items:center;padding:0;margin:0;border:1px solid var(--glass-border);border-radius:50%;background:var(--glass);box-shadow:var(--glass-shadow);color:var(--text);-webkit-backdrop-filter:blur(24px) saturate(1.4);backdrop-filter:blur(24px) saturate(1.4); }
 #dotsLatestButton[data-visible="false"] { opacity:0;visibility:hidden;translate:0 8px;pointer-events:none;transition:opacity .28s ease-in-out,translate .28s ease-in-out,visibility 0s linear .28s; }
 #dotsLatestButton:active:not(:disabled) { transform:translateX(-50%) scale(.96); }
 @media (prefers-reduced-motion:reduce) { #dotsLatestButton { translate:none;transition:opacity .16s ease-out,visibility 0s linear!important; } #dotsLatestButton[data-visible="false"] { translate:none; } }

@@ -85,6 +85,48 @@
     button.querySelector('[data-xs-title]').textContent=value.title;const sub=button.querySelector('[data-xs-sub]');sub.textContent=value.summary;sub.hidden=!value.summary;sub.classList.remove('is-raw');}
   }).catch(()=>{});
  }
+ // 执行过程大窗口（参考 Claude 的任务详情）：顶部状态+标题+关闭；左侧步骤时间线，右侧所选步骤详情，两边选中联动。
+ const copyIcon='<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg>';
+ const downloadIcon='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14"/></svg>';
+ const closeIcon='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>';
+ const okIcon='<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.5" class="xs-fill"/><path d="m8 12.3 2.7 2.7L16.2 9.5" class="xs-tick"/></svg>';
+ const codeBlock=(lang,text,name)=>text?'<div class="xs-code"><div class="xs-code-bar"><span>'+esc(lang)+'</span><span class="xs-code-tools"><button type="button" data-xs-download="'+esc(name)+'" aria-label="下载" title="下载">'+downloadIcon+'</button><button type="button" data-xs-copy aria-label="复制" title="复制">'+copyIcon+'</button></span></div><pre>'+esc(text)+'</pre></div>':'';
+ function modalDetail(step,info,o){
+  if(step.id==='__start')return '<h2>已开始</h2>'+(o.prompt||o.title?'<div class="xs-detail-md message-body">'+md(o.prompt||o.title)+'</div>':'')+(when(o.time)?'<p class="xs-detail-text xs-muted">'+esc(when(o.time))+'</p>':'');
+  if(step.id==='__end'){const r=plain(o.result);return '<h2>'+esc(STATUS[o.status]?.[0]||'已完成')+'</h2>'+(r?'<div class="xs-detail-md message-body">'+md(o.result)+'</div>':'<p class="xs-detail-text xs-muted">'+(o.status==='running'?'还在执行，结果出来后会显示在这里。':'没有结果说明。')+'</p>');}
+  const lang=step.type==='command_execution'?'bash':step.type==='mcp_tool_call'?'tool':step.type==='file_change'?'files':step.type==='web_search'?'search':'input';
+  const desc=info?.detail?'<div class="xs-detail-md message-body">'+md(info.detail)+'</div>':info?.summary?'<p class="xs-detail-text">'+esc(info.summary)+'</p>':'';
+  return '<h2>'+esc(info?.title||step.title)+'</h2>'+desc+codeBlock(lang,step.input,'input.txt')+(step.output?'<p class="xs-code-label">'+(step.status==='failed'?'错误':'结果')+'</p>'+codeBlock(step.status==='failed'?'error':'output',step.output,'output.txt'):'');
+ }
+ function openModal(options){
+  document.querySelector('.xs-modal-overlay')?.remove();
+  const o={status:'done',title:'',summary:'',time:null,result:'',steps:[],...options},steps=o.steps||[];
+  const key=steps.map(s=>s.id+':'+s.input.length+':'+s.output.length+':'+s.status).join('|');
+  const [label,cls]=STATUS[o.status]||STATUS.done;
+  const all=[{id:'__start',title:'已开始'},...steps,{id:'__end',title:label}];
+  const row=(s,i)=>{const info=(cache.get(key)||{})[s.id],edge=s.id==='__start'||s.id==='__end';
+   const mark=s.id==='__start'?'<span class="xs-dot"></span>':s.id==='__end'?(o.status==='done'?okIcon:node(o.status==='failed'?'failed':'running')):node(s.status);
+   return '<li class="xs-mrow'+(edge?' is-edge':'')+(i===all.length-1?' is-last':'')+'" data-state="'+esc(s.id==='__end'?(o.status==='done'?'completed':o.status):s.status||'completed')+'"><button type="button" data-xs-select="'+esc(s.id)+'"><span class="xs-node">'+mark+'</span><span class="xs-mtitle" data-xs-title>'+esc(info?.title||s.title)+'</span></button></li>';};
+  const overlay=document.createElement('div');overlay.className='xs-modal-overlay';
+  overlay.innerHTML='<div class="xs-modal xs-page" role="dialog" aria-modal="true" aria-label="执行过程"><header class="xs-modal-head"><div><span class="xs-badge '+cls+'">'+label+'</span><h1>'+esc(o.title||'执行过程')+'</h1></div><button type="button" class="xs-modal-close" data-xs-close aria-label="关闭">'+closeIcon+'</button></header><div class="xs-modal-body"><nav class="xs-modal-list"><ol>'+all.map(row).join('')+'</ol></nav><section class="xs-modal-detail" tabindex="-1"></section></div></div>';
+  document.body.appendChild(overlay);
+  const detail=overlay.querySelector('.xs-modal-detail');let current=steps[0]?.id||'__end';
+  const select=id=>{const step=all.find(s=>s.id===id);if(!step)return;current=id;for(const b of overlay.querySelectorAll('[data-xs-select]')){const on=b.dataset.xsSelect===id;b.classList.toggle('is-selected',on);b.setAttribute('aria-current',on?'true':'false');if(on)b.scrollIntoView?.({block:'nearest'});}detail.innerHTML=modalDetail(step,(cache.get(key)||{})[id],o);detail.scrollTop=0;};
+  const close=()=>{overlay.remove();document.removeEventListener('keydown',onKey,true);o.onClose?.();};
+  const onKey=e=>{if(!overlay.isConnected)return document.removeEventListener('keydown',onKey,true);if(e.key==='Escape'){e.preventDefault();e.stopPropagation();close();return;}if((e.key==='ArrowDown'||e.key==='ArrowUp')&&!e.target.closest?.('input,textarea')){e.preventDefault();const i=all.findIndex(s=>s.id===current);const next=all[Math.max(0,Math.min(all.length-1,i+(e.key==='ArrowDown'?1:-1)))];select(next.id);overlay.querySelector('[data-xs-select="'+CSS.escape(next.id)+'"]')?.focus({preventScroll:true});}};
+  document.addEventListener('keydown',onKey,true);
+  overlay.addEventListener('click',async e=>{
+   if(e.target===overlay||e.target.closest('[data-xs-close]')){close();return;}
+   const pick=e.target.closest('[data-xs-select]');if(pick){select(pick.dataset.xsSelect);return;}
+   const copy=e.target.closest('[data-xs-copy]'),dl=e.target.closest('[data-xs-download]');
+   if(copy||dl){const text=(copy||dl).closest('.xs-code').querySelector('pre').textContent;
+    if(dl){const url=URL.createObjectURL(new Blob([text],{type:'text/plain;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download=dl.dataset.xsDownload||'step.txt';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);return;}
+    try{if(window.shiyan?.copyText)await window.shiyan.copyText(text);else await navigator.clipboard.writeText(text);copy.classList.add('is-copied');copy.innerHTML=check;setTimeout(()=>{copy.classList.remove('is-copied');copy.innerHTML=copyIcon;},1400);}catch{}}
+  });
+  select(current);overlay.querySelector('[data-xs-close]').focus({preventScroll:true});
+  if(steps.length&&!cache.has(key))window.shiyan?.api?.('/api/dots/steps/summary','POST',{steps}).then(res=>{const map={};for(const s of res?.steps||[])map[s.id]=s;cache.set(key,map);if(!overlay.isConnected)return;for(const b of overlay.querySelectorAll('[data-xs-select]')){const v=map[b.dataset.xsSelect];if(v)b.querySelector('[data-xs-title]').textContent=v.title;}select(current);}).catch(()=>{});
+  return {close,select};
+ }
  // 每轮“在干嘛 / 结果总结”，按 id 缓存。
  const roundCache=new Map();
  async function summarizeRounds(items){
@@ -93,5 +135,5 @@
    for(const i of missing)if(!roundCache.has(i.id))roundCache.set(i.id,'');}
   return Object.fromEntries(items.map(i=>[i.id,roundCache.get(i.id)||'']).concat(items.map(i=>['doing:'+i.id,roundCache.get('doing:'+i.id)||''])));
  }
- window.ShiYanSteps={render,fromItems,fromTimeline,summarizeRounds,when};
+ window.ShiYanSteps={render,openModal,fromItems,fromTimeline,summarizeRounds,when};
 })();
