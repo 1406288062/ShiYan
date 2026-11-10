@@ -7,12 +7,15 @@ const privateReviewFeatures=['shell_tool','unified_exec','apps','plugins','remot
 
 export function createManagerThread({threadId=null,options={},codexPath=process.env.CODEX_PATH||'/home/ubuntu/.local/bin/codex',spawnProcess=spawn,rpcTimeoutMs=15000}={}) {
   const privateReview=options.allowTools===false;
+  // mcpOnly: a thread whose only tools are the MCP servers passed in options (Dots browser executor).
+  // Built-in shell/exec/browser features and every inherited MCP server are disabled.
+  const mcpOnly=!privateReview&&options.mcpOnly===true;
   if(privateReview&&threadId)throw new Error('Private review must start an isolated thread');
   const thread={id:threadId};
   thread.runStreamed=async(prompt,{outputSchema,signal,images=[]}={})=>({events:stream(prompt,outputSchema,signal,images)});
   async function* stream(prompt,outputSchema,signal,images=[]) {
     if(signal?.aborted)throw signal.reason||new Error('Manager turn aborted');
-    const child=spawnProcess(codexPath,['app-server','--stdio',...(privateReview?privateReviewFeatures.flatMap(name=>['-c','features.'+name+'=false']):[])],{cwd:options.workingDirectory,stdio:['pipe','pipe','pipe']});
+    const child=spawnProcess(codexPath,['app-server','--stdio',...(privateReview||mcpOnly?privateReviewFeatures.flatMap(name=>['-c','features.'+name+'=false']):[])],{cwd:options.workingDirectory,stdio:['pipe','pipe','pipe']});
     child.stderr?.resume();
     const pending=new Map(),items=new Map(),queue=[];
     let nextId=0,turnId=null,started=false,done=false,failure=null,wake=null,usage=null,closing=false,exited=false;
@@ -60,6 +63,8 @@ export function createManagerThread({threadId=null,options={},codexPath=process.
         item.text+=p.delta;if(item.text.length>256000)return fail(new Error('Manager reply exceeds stream limit'));
         push({type:'item.updated',item:{id:p.itemId,type:'agent_message',text:item.text}});
       }else if(message.method==='item/completed'){
+        // Agent runs (Dots workers, browser executor) record every tool step for the timeline.
+        if(p.item&&p.item.type!=='agentMessage'&&typeof options.onItem==='function')try{options.onItem(p.item);}catch{}
         const item=p.item;if(item?.type!=='agentMessage'||item.phase&&!['final_answer','final'].includes(item.phase))return;
         if(typeof item.text!=='string')return fail(new Error('Invalid completed manager reply'));
         items.set(item.id,{text:item.text,phase:item.phase});push({type:'item.completed',item:{id:item.id,type:'agent_message',text:item.text}});
@@ -84,6 +89,14 @@ export function createManagerThread({threadId=null,options={},codexPath=process.
         const effective=await rpc('config/read',{includeLayers:false,cwd:options.workingDirectory});
         if(!effective?.config||typeof effective.config!=='object')throw new Error('Cannot verify private review configuration');
         config.mcp_servers=Object.fromEntries(Object.entries(effective.config.mcp_servers||{}).map(([name,server])=>[name,{...Object.fromEntries(Object.entries(server).filter(([,value])=>value!=null)),enabled:false}]));
+        for(const name of privateReviewFeatures)config['features.'+name]=false;
+        config.web_search='disabled';config['sandbox_workspace_write.network_access']=false;
+      }
+      if(mcpOnly){
+        const effective=await rpc('config/read',{includeLayers:false,cwd:options.workingDirectory});
+        if(!effective?.config||typeof effective.config!=='object')throw new Error('Cannot verify executor configuration');
+        const inherited=Object.fromEntries(Object.entries(effective.config.mcp_servers||{}).filter(([name])=>!Object.hasOwn(options.mcpServers||{},name)).map(([name,server])=>[name,{...Object.fromEntries(Object.entries(server).filter(([,value])=>value!=null)),enabled:false}]));
+        config.mcp_servers={...inherited,...(options.mcpServers||{})};
         for(const name of privateReviewFeatures)config['features.'+name]=false;
         config.web_search='disabled';config['sandbox_workspace_write.network_access']=false;
       }

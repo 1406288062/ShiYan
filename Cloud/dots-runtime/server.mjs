@@ -12,6 +12,12 @@ import {workspaceOperation,execSandbox} from '../boss-codex-service/shiyan-v2/me
 import {createGithubChangeSummarizer} from './github-change-summary.mjs';
 import {createAppSubscriptions,readSubscriptionConfig} from './app-subscriptions.mjs';
 import { createManagerThread } from './manager-stream-transport.mjs';
+import { createBrowserExecutor, browserMcpServer, browserToolAllowlist, inboxEvent, request as browserRequest, loadBrowserToolDefs } from './browser-executor.mjs';
+import { createSandboxManager } from './agent-sandbox.mjs';
+import { createAgentRunner } from './agent-runner.mjs';
+import { tool as agentTool, hostMcpTools } from './agent-tools.mjs';
+import { createWorkerAgent } from './dots-worker-agent.mjs';
+import { memberWorkspaceHostPath } from '../boss-codex-service/shiyan-v2/member-sandbox.mjs';
 import http from "node:http";
 import path from "node:path";
 import { mkdirSync, promises as fs } from "node:fs";
@@ -181,6 +187,40 @@ const runtimeRequests = createRuntimeRequestStore(db,{defaultOwner:PRIVATE_OWNER
 const codex = new Codex({ codexPathOverride: CODEX_PATH });
 // 推理类调用的模型由模型中枢决定；中枢不可用时沿用下面的环境变量默认值。
 const dotsHub = createDotsHub();
+// ---- Dots agents: per-account Docker sandboxes + real SDK agent sessions ---------------------------
+// DOTS_WORKER_MODE=legacy keeps the previous JSON-plan worker (rollback switch).
+const WORKER_MODE = process.env.DOTS_WORKER_MODE === 'legacy' ? 'legacy' : 'agent';
+const WORKER_AGENT_TIMEOUT_MS = Number(process.env.DOTS_WORKER_AGENT_TIMEOUT_MS) || 45 * 60_000;
+const agentSandbox = createSandboxManager({
+  layoutFor: owner => {
+    if (owner === PRIVATE_OWNER) return { workspace: WORKSPACE_ROOT, workspaceTarget: '/workspace/dots', home: path.join(DATA_DIR, 'agent-home'), rpc: path.join(DATA_DIR, 'agent-rpc', 'private') };
+    const workspace = memberWorkspaceHostPath(owner);
+    return { workspace, workspaceTarget: '/workspace', home: path.join(path.dirname(workspace), 'agent-home'), rpc: path.join(DATA_DIR, 'agent-rpc', ownerKey(owner)) };
+  },
+});
+const agentRunner = createAgentRunner({ sandbox: agentSandbox });
+// The hub picks provider/model/effort for agent consumers; without the hub, Codex with the env model.
+async function agentRoute(consumer) {
+  const route = await dotsHub.route(consumer).catch(() => null);
+  if (!route || !route.provider) return { provider: 'openai', model: MODEL, reasoning: REASONING };
+  if (route.available === false) throw new Error(route.problem || '模型中枢所选的模型当前不可用');
+  return { provider: route.provider, model: route.model, reasoning: route.reasoning };
+}
+// Host tool groups available to a worker agent, all bound to this owner.
+async function workerToolGroups(owner) {
+  const groups = {}, closers = [];
+  const { BROWSER_TOOLS } = await loadBrowserToolDefs().catch(() => ({ BROWSER_TOOLS: [] }));
+  groups.browser = BROWSER_TOOLS.map(def => ({ ...def, handler: async args => (await browserRequest('/dots/call', { owner, origin: 'scheduled', tool: def.name, args }, { timeoutMs: 180_000 })).result }));
+  const attach = async (name, spec) => { try { const set = await hostMcpTools(spec); if (set.tools.length) { groups[name] = set.tools; closers.push(set); } else set.close(); } catch (error) { console.warn('[worker-agent] tools unavailable', name, error?.message || error); } };
+  await attach('sponge', spongeMcpServer(owner));
+  const bridge = '/home/ubuntu/boss-codex-service/shiyan-v2/mcp-connector-proxy.mjs';
+  for (const server of await mcpConnectors().runtimeServers(owner).catch(() => [])) {
+    await attach('conn_' + String(server.id).replace(/[^A-Za-z0-9_]/g, '_').slice(0, 30), { command: process.execPath, args: [bridge], env: { SHIYAN_ROOT: process.env.SHIYAN_ROOT || '/home/ubuntu/boss-codex-service/shiyan-v2', ...(process.env.SHIYAN_MCP_DB ? { SHIYAN_MCP_DB: process.env.SHIYAN_MCP_DB } : {}), SHIYAN_MCP_OWNER: String(owner), SHIYAN_MCP_ID: String(server.id) } });
+  }
+  if (owner === PRIVATE_OWNER) groups.dots = [agentTool('inspect_host', '只读检查服务器本机：disk_usage、disk_inodes、network_interfaces、system_uptime。', { command: { type: 'string', enum: ['disk_usage', 'disk_inodes', 'network_interfaces', 'system_uptime'] } }, ['command'], args => executeHostInspection({ type: 'inspect_host', command: args.command }))];
+  return { groups, close() { for (const item of closers) item.close(); } };
+}
+const workerAgent = createWorkerAgent({ runAgent: args => agentRunner.runAgent(args), route: agentRoute, toolGroups: workerToolGroups });
 const memoryStore = new MemoryStore(process.env.SHIYAN_MEMORY_DATA||'/home/ubuntu/boss-codex-service/shiyan-v2/data');
 function createTenantThread(owner,{threadId,options}){
  if(owner===PRIVATE_OWNER)return createManagerThread({threadId,options,codexPath:CODEX_PATH});
@@ -243,7 +283,7 @@ function createOwnerRuntime(owner){
  const mailConfig=legacy?(process.env.DOTS_QQ_MAIL_CONFIG||path.join(dataDir,'qq-mail.json')):path.join(dataDir,'qq-mail.json');
  const mailReplies=createMailReplyService({store,transportFactory:config=>{audit(owner,'message_mail','回复了一封邮件');return smtpReplyTransport(config);},loadConfig:()=>readMailConfig(mailConfig),clientFactory:options=>new ImapFlow(options),readBody:readMailBody,assess:(data,schema,control)=>assess(data,schema,{...control,source:'dots-mail-summary'})});
  store.setMailReplies(mailReplies);
- const runtime=createManagerRuntime({store,codex,voice:text=>people.voiceContext(text),threadFactory:async params=>{const {light,...baseOptions}=params.options||{};const connectorServers=await mcpConnectors().runtimeServers(owner);const mcpServers={},mcpToolAllowlist=[];const bridge='/home/ubuntu/boss-codex-service/shiyan-v2/mcp-connector-proxy.mjs';for(const server of connectorServers){const key='shiyan_'+String(server.id).replace(/[^A-Za-z0-9_]/g,'_');mcpServers[key]={command:process.execPath,args:[bridge],env:{SHIYAN_ROOT:process.env.SHIYAN_ROOT||'/home/ubuntu/boss-codex-service/shiyan-v2',...(process.env.SHIYAN_MCP_DB?{SHIYAN_MCP_DB:process.env.SHIYAN_MCP_DB}:{}),SHIYAN_MCP_OWNER:String(owner),SHIYAN_MCP_ID:String(server.id)}};mcpToolAllowlist.push('mcp__'+key+'__mcp_list_tools','mcp__'+key+'__mcp_call_tool');}mcpServers.shiyan_sponge={command:process.execPath,args:['/home/ubuntu/ShiYan/Cloud/agent-runtime/sponge-mcp-proxy.mjs'],env:{SHIYAN_ROOT:process.env.SHIYAN_ROOT||'/home/ubuntu/boss-codex-service/shiyan-v2',SHIYAN_MCP_OWNER:String(owner)}};for(const tool of ['list_devices','run_device_tool','get_tool_result'])mcpToolAllowlist.push('mcp__shiyan_sponge__'+tool);const options={...baseOptions,mcpServers,mcpToolAllowlist};const inner={...params,options};return hubAwareThread({hub:dotsHub,owner,consumer:light?'dots.chat.quick':'dots.chat',threadId:params.threadId,options,createInner:()=>createTenantThread(owner,inner)});},workspaceRoot,memory:memoryStore,contentReviewEnabled:false,threadOptions:{model:MODEL,skipGitRepoCheck:true,modelReasoningEffort:REASONING},onModelCall:entry=>{if(!recentlyViaHub(owner,'dots.chat',entry.ms+5000)&&!recentlyViaHub(owner,'dots.chat.quick',entry.ms+5000))dotsHub.report('dots.chat',{...entry,provider:'openai',account:owner});}});
+ const runtime=createManagerRuntime({store,codex,voice:text=>people.voiceContext(text),threadFactory:async params=>{const {light,...baseOptions}=params.options||{};const connectorServers=await mcpConnectors().runtimeServers(owner);const mcpServers={},mcpToolAllowlist=[];const bridge='/home/ubuntu/boss-codex-service/shiyan-v2/mcp-connector-proxy.mjs';for(const server of connectorServers){const key='shiyan_'+String(server.id).replace(/[^A-Za-z0-9_]/g,'_');mcpServers[key]={command:process.execPath,args:[bridge],env:{SHIYAN_ROOT:process.env.SHIYAN_ROOT||'/home/ubuntu/boss-codex-service/shiyan-v2',...(process.env.SHIYAN_MCP_DB?{SHIYAN_MCP_DB:process.env.SHIYAN_MCP_DB}:{}),SHIYAN_MCP_OWNER:String(owner),SHIYAN_MCP_ID:String(server.id)}};mcpToolAllowlist.push('mcp__'+key+'__mcp_list_tools','mcp__'+key+'__mcp_call_tool');}mcpServers.shiyan_sponge={command:process.execPath,args:['/home/ubuntu/ShiYan/Cloud/agent-runtime/sponge-mcp-proxy.mjs'],env:{SHIYAN_ROOT:process.env.SHIYAN_ROOT||'/home/ubuntu/boss-codex-service/shiyan-v2',SHIYAN_MCP_OWNER:String(owner)}};for(const tool of ['list_devices','run_device_tool','get_tool_result'])mcpToolAllowlist.push('mcp__shiyan_sponge__'+tool);mcpServers.browser=browserMcpServer(owner,baseOptions.threadSource==='dots-proactive'?'push':'chat');mcpToolAllowlist.push(...browserToolAllowlist());const options={...baseOptions,mcpServers,mcpToolAllowlist};const inner={...params,options};return hubAwareThread({hub:dotsHub,owner,consumer:light?'dots.chat.quick':'dots.chat',threadId:params.threadId,options,createInner:()=>createTenantThread(owner,inner)});},workspaceRoot,memory:memoryStore,contentReviewEnabled:false,threadOptions:{model:MODEL,skipGitRepoCheck:true,modelReasoningEffort:REASONING},onModelCall:entry=>{if(!recentlyViaHub(owner,'dots.chat',entry.ms+5000)&&!recentlyViaHub(owner,'dots.chat.quick',entry.ms+5000))dotsHub.report('dots.chat',{...entry,provider:'openai',account:owner});}});
  const presenter=createMailPresenter({store,assess:(data,schema,control)=>assess(data,schema,{...control,source:'dots-mail-summary'})});
  const mail=createQQMailSubscription({store,configPath:mailConfig,clientFactory:options=>new ImapFlow(options),prepareMail:async(client,message,control)=>{let body;try{body=await readMailBody(client,message);}catch(error){if(control.signal.aborted)throw error;return {kind:'body',text:'（本次未能读取邮件正文）',links:[]};}return presenter({...body,subject:message.envelope?.subject||'',from:message.envelope?.from?.[0]?.address||''},control);}});
  const ownerSubscriptions=createOwnerSubscriptions({store,dataDir,appSubscriptions:apps,mailSubscription:mail});
@@ -529,7 +569,7 @@ function spongeMcpServer(owner) {
   return { command: process.execPath, args: ['/home/ubuntu/ShiYan/Cloud/agent-runtime/sponge-mcp-proxy.mjs'], env: { SHIYAN_ROOT: process.env.SHIYAN_ROOT || '/home/ubuntu/boss-codex-service/shiyan-v2', SHIYAN_MCP_OWNER: String(owner) } };
 }
 function codexWithConnectors(servers, owner) {
-  const mcp = { shiyan_sponge: spongeMcpServer(owner) };
+  const mcp = { shiyan_sponge: spongeMcpServer(owner), browser: browserMcpServer(owner, 'scheduled') };
   const bridge = path.join('/home/ubuntu/boss-codex-service/shiyan-v2', 'mcp-connector-proxy.mjs');
   for (const server of servers) {
     const key = "shiyan_" + String(server.id).replace(/[^A-Za-z0-9_]/g, "_");
@@ -546,7 +586,9 @@ function getThread(goal, connectorServers = []) {
   const options = threadOptions(goal), owner = ownerRegistry.currentOwner();
   const client = owner === PRIVATE_OWNER ? codexWithConnectors(connectorServers, owner) : codex;
   // 中枢把 dots.manager 路由到 Claude 时经中枢推理（带联网检索）；否则沿用 Codex 线程。
-  const tenantOptions = {...options, mcpServers:{...(options.mcpServers||{}), shiyan_sponge:spongeMcpServer(owner)}, mcpToolAllowlist:[...(options.mcpToolAllowlist||[]), 'mcp__shiyan_sponge__list_devices', 'mcp__shiyan_sponge__run_device_tool', 'mcp__shiyan_sponge__get_tool_result']};
+  // Background workers may use the server browser too; they are not conversations, so their
+  // browser tasks never offer takeover (origin "scheduled").
+  const tenantOptions = {...options, mcpServers:{...(options.mcpServers||{}), shiyan_sponge:spongeMcpServer(owner), browser:browserMcpServer(owner,'scheduled')}, mcpToolAllowlist:[...(options.mcpToolAllowlist||[]), 'mcp__shiyan_sponge__list_devices', 'mcp__shiyan_sponge__run_device_tool', 'mcp__shiyan_sponge__get_tool_result', ...browserToolAllowlist()]};
   const createInner = () => owner!==PRIVATE_OWNER
     ? createTenantThread(owner,{threadId:goal.thread_id,options})
     : (goal.thread_id ? client.resumeThread(String(goal.thread_id), options) : client.startThread(options));
@@ -827,10 +869,10 @@ async function runGoal(goalId, trigger = "scheduler") {
   if (durableStore && !run) return;
   runningGoalId = Number(goalId);
   const goalStarted = Date.now(); let goalError = '';
-  let heartbeat = null, deadline = null, abort = null, eventIds = [], thread = null;
+  let heartbeat = null, deadline = null, abort = null, eventIds = [], thread = null, agentRunUsed = null;
   if (run) {
     abort = new AbortController();
-    deadline = setTimeout(() => abort.abort(new Error("Worker planner timed out")), 300000);
+    deadline = setTimeout(() => abort.abort(new Error(WORKER_MODE === 'agent' ? "Worker agent run timed out" : "Worker planner timed out")), WORKER_MODE === 'agent' ? WORKER_AGENT_TIMEOUT_MS : 300000);
     deadline.unref();
     heartbeat = setInterval(() => { if (!durableStore.renewRun(run.id, run.fence)) abort.abort(new Error("Worker lease lost")); }, 10000);
     heartbeat.unref();
@@ -841,13 +883,22 @@ async function runGoal(goalId, trigger = "scheduler") {
     const timeline = listGoalTimeline(goal.id, 18);
     const events = listPendingEvents(goal.id, 30);
     eventIds = events.map((event) => event.id);
+    let turn, agentRun = null;
+    if (WORKER_MODE === 'agent' && run) {
+      const owner = ownerRegistry.currentOwner();
+      agentRun = await workerAgent.run(goal, { owner, memories, timeline, events, trigger, signal: abort.signal, privateOwner: owner === PRIVATE_OWNER,
+        onStep: step => { try { addTimeline(goal.id, step.ok ? 'tool_action' : 'tool_error', '执行步骤', clipStepValue({ type: step.name, input: step.input, output: step.output, status: step.ok ? 'completed' : 'failed' })); } catch {} } });
+      thread = { id: agentRun.sessionRef }; agentRunUsed = agentRun;
+      turn = agentRun.turn;
+    } else {
     const connectorServers = ownerRegistry.currentOwner() === PRIVATE_OWNER ? await mcpConnectors().runtimeServers(PRIVATE_OWNER).catch(() => []) : [];
     thread = getThread(goal, connectorServers);
     let prompt = buildAgentPrompt(ownerRegistry.currentOwner()===PRIVATE_OWNER?goal:{...goal,workspace:"/workspace/dots/"+goal.id}, memories, timeline, events, trigger);
     if(ownerRegistry.currentOwner()!==PRIVATE_OWNER)prompt=prompt.replace(/EXECUTION ENVIRONMENT[\s\S]*?PERMISSION RULES/,`EXECUTION ENVIRONMENT\nYou run only in this user's private /workspace. Your task directory is /workspace/dots/${goal.id}. All shell, coding and MCP operations run inside this account's isolation boundary. No host files, server addresses, private-network services or other users' devices are available. You may perform normal coding and tool work in this workspace. Structured write_file, append_file, mkdir, delete_file and run_command actions operate in your task directory; inspect_host reports only your isolated workspace.\nCONNECTED MCP PLUGINS\nUse mcp_list_servers to discover this account's connected MCP plugins, mcp_list_tools to inspect a plugin's actual tools, and mcp_call_tool to call them. This is the same account-level connector store and call path used by ordinary conversations; connecting a plugin once makes it available in both ordinary conversations and Dots. There is no separate Dots plugin permission switch. Never ask the user to provide connector tokens in chat; credentials stay in the connector service.\nA Mac device must be paired to this user before remote operations.\nPERMISSION RULES`).replace(/Routine current-host read-only checks[^\n]+/,"All work must stay inside this user's authorized workspace and devices.");
-    const turn = run
+    turn = run
       ? await runStructuredTurn(thread, prompt, AGENT_SCHEMA, {signal: abort.signal, onThread: id => durableStore.checkpointThread(run, id)})
       : await thread.run(prompt, {outputSchema: AGENT_SCHEMA});
+    }
     if (deadline) { clearTimeout(deadline); deadline = null; }
     recordTurnSteps(goal.id, turn.items);
     const result = parseJson(turn.finalResponse, null);
@@ -943,7 +994,7 @@ async function runGoal(goalId, trigger = "scheduler") {
       }
     }
   } finally {
-    try{const owner=db.prepare('SELECT owner_id FROM managers WHERE id=?').get(goal.manager_id)?.owner_id||'';if(!recentlyViaHub(owner,'dots.manager',Date.now()-goalStarted+5000))dotsHub.report('dots.manager',{provider:'openai',model:MODEL||'',reasoning:REASONING||'',account:owner,ok:!goalError,ms:Date.now()-goalStarted,error:goalError});}catch{}
+    try{const owner=db.prepare('SELECT owner_id FROM managers WHERE id=?').get(goal.manager_id)?.owner_id||'';if(WORKER_MODE==='agent'&&run)dotsHub.report('dots.worker',{provider:agentRunUsed?.route?.provider||'',model:agentRunUsed?.route?.model||'',reasoning:agentRunUsed?.route?.reasoning||'',account:owner,ok:!goalError,ms:Date.now()-goalStarted,error:goalError,usage:agentRunUsed?.usage||null});else if(!recentlyViaHub(owner,'dots.manager',Date.now()-goalStarted+5000))dotsHub.report('dots.manager',{provider:'openai',model:MODEL||'',reasoning:REASONING||'',account:owner,ok:!goalError,ms:Date.now()-goalStarted,error:goalError});}catch{}
     if(heartbeat)clearInterval(heartbeat);
     if(deadline)clearTimeout(deadline);
     if(run)durableStore.finishRun(run,{status:'interrupted'});
@@ -1390,8 +1441,21 @@ server.listen(PORT, HOST, () => {
  const privateBridge={handle:(req,res)=>Promise.resolve().then(()=>{req.dotsPrivateTransport=true;return ownerRegistry.run(req.headers['x-dots-owner']||PRIVATE_OWNER,()=>mcpBridge.handle(req,res));})};
  startLocalMcpSocket({root:ROOT,bridge:privateBridge}).then(close=>{closeLocalMcpSocket=close;}).catch(error=>console.error('[local-mcp]',error.message));
 });
+// Dots browser tasks: one sandboxed agent per task (model hub consumer "dots.browser").
+const browserExecutor=createBrowserExecutor({
+ runAgent:args=>agentRunner.runAgent(args),
+ route:agentRoute,
+ report:(consumer,entry)=>dotsHub.report(consumer,entry),
+ deliver:async(owner,event)=>ownerRegistry.run(owner,()=>{
+  const entry=ownerRegistry.get(owner),item=inboxEvent(event);
+  entry.store.enqueue(item.type,item.payload);
+  try{entry.store.activityEvent(item.type,String(item.payload.summary||item.payload.prompt||'浏览器任务有更新').slice(0,300),item.payload);}catch{}
+  setImmediate(()=>void entry.runtime.wake());
+ }),
+});
+browserExecutor.start();
 setInterval(()=>void schedulerTick(),LOOP_MS).unref();
 setTimeout(()=>void schedulerTick(),1000).unref();
 for(const signal of ['SIGTERM','SIGINT'])process.on(signal,()=>{
- ownerRegistry.close();mcpBridge.close?.();closeLocalMcpSocket();server.close(()=>process.exit(0));
+ browserExecutor.close();ownerRegistry.close();mcpBridge.close?.();closeLocalMcpSocket();server.close(()=>process.exit(0));
 });

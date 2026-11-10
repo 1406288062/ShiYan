@@ -46,3 +46,13 @@ test('private review rejects unexpected tool events and fails closed when config
  const failed=server({configFailure:true});await assert.rejects(consume(createManagerThread({options:{allowTools:false,workingDirectory:'/tmp'},spawnProcess:failed.spawnProcess})),/configuration/);assert.equal(failed.calls.some(call=>call.method==='turn/start'),false);
  assert.throws(()=>createManagerThread({threadId:'existing',options:{allowTools:false}}),/isolated thread/);
 });
+
+test('browser executor (mcpOnly) keeps only its own MCP server and disables built-in tools',async()=>{
+ const fake=server(),browser={command:'node',args:['exec.mjs'],env:{SHIYAN_BROWSER_TASK:'bt_1'},tool_timeout_sec:7200};
+ await consume(createManagerThread({options:{mcpOnly:true,workingDirectory:'/tmp',mcpServers:{browser_exec:browser}},spawnProcess:fake.spawnProcess}));
+ const params=fake.calls.find(call=>call.method==='thread/start').params;
+ assert.deepEqual(params.config.mcp_servers.browser_exec,browser);
+ assert.deepEqual(params.config.mcp_servers['private-server'],{command:'unused',enabled:false});
+ for(const feature of ['shell_tool','unified_exec','browser_use','computer_use'])assert.equal(params.config['features.'+feature],false);
+ assert.equal(params.config.web_search,'disabled');assert.notEqual(params.ephemeral,true);assert.ok(fake.processes[0].args.includes('features.shell_tool=false'));
+});

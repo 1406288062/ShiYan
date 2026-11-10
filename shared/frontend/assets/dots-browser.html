@@ -29,7 +29,7 @@
 <body>
 <div class="tab-strip" role="tablist" aria-label="浏览器标签页">
   <div class="tabs" id="tabs"><div class="tab is-active" role="tab" aria-selected="true"><img src="/assets/logo.png?v=20261107-cache-v1" alt=""><strong>新标签页</strong></div></div>
-  <button class="tab-add" id="tabAdd" type="button" title="新建标签页" aria-label="新建标签页">+</button><button class="tab-close modal-close" id="closeBrowser" title="关闭浏览器" aria-label="关闭浏览器">×</button>
+  <button class="tab-add" id="tabAdd" type="button" title="新建标签页" aria-label="新建标签页">+</button><button class="tab-add" id="handback" type="button" title="交还给 Dots" aria-label="交还给 Dots" hidden style="width:auto;padding:0 10px;font-size:13px">交还给 Dots</button><button class="tab-close modal-close" id="closeBrowser" title="关闭浏览器" aria-label="关闭浏览器">×</button>
 </div>
 <div class="toolbar" role="toolbar" aria-label="浏览器工具栏">
   <button class="tool" id="back" title="后退" aria-label="后退">‹</button><button class="tool" id="forward" title="前进" aria-label="前进">›</button><button class="tool" id="reload" title="刷新" aria-label="刷新">↻</button>
@@ -60,25 +60,27 @@ function diag(stage,detail=''){try{send({type:'client-diag',stage,detail:String(
 window.addEventListener('error',event=>diag('js-error',(event.message||'')+' @'+(event.lineno||'')));
 window.addEventListener('unhandledrejection',event=>diag('js-rejection',event.reason?.message||String(event.reason||'')));
 document.addEventListener('visibilitychange',()=>diag('visibility',document.visibilityState));
-function enterFallback(reason){pollDiag=pollDiag||('fallback '+reason+' fallback='+fallbackMode+' rtc='+rtcConnected+' queued='+outgoing.length+' flushing='+flushing);diag('fallback-request',reason+' fallback='+fallbackMode+' closed='+closed+' rtc='+rtcConnected);if(fallbackMode||closed||rtcConnected)return;fallbackMode=true;fallbackScreen.hidden=false;hint.hidden=false;hint.innerHTML='<div><strong>正在切换画面兼容模式</strong>正在获取浏览器画面，请稍候…</div>';setState('画面兼容模式（无声音）'+(reason?'：'+reason:''));}
-function leaveFallback(){if(!fallbackMode)return;fallbackMode=false;fallbackScreen.hidden=true;fallbackScreen.removeAttribute('src');}
+function enterFallback(reason){pollDiag=pollDiag||('fallback '+reason+' fallback='+fallbackMode+' rtc='+rtcConnected+' queued='+outgoing.length+' flushing='+flushing);diag('fallback-request',reason+' fallback='+fallbackMode+' closed='+closed+' rtc='+rtcConnected);if(fallbackMode||closed||rtcConnected)return;fallbackMode=true;hint.hidden=false;hint.innerHTML='<div><strong>正在切换画面兼容模式</strong>正在获取浏览器画面，请稍候…</div>';setState('画面兼容模式（无声音）'+(reason?'：'+reason:''));}
+function leaveFallback(){if(!fallbackMode)return;fallbackMode=false;fallbackScreen.hidden=true;fallbackScreen.removeAttribute('src');frameSeq=0;} // seq 0: next fallback gets the latest frame again
 // The WebRTC transport can connect yet paint no video frame: under headless Chrome tab-capture
 // stalls on a static page, so the <video> shows its white background while clicks still work. Watch
 // the decoded frame size; if nothing paints, overlay the JPEG poll frames (they sit above the blank
 // video and let clicks through) until real frames resume.
 let paintWatchTimer=0,probeCanvas=null;
-// Sample the decoded video: a real page always has some non-white pixels (text/logo/chrome), while a
-// stalled or blank-captured stream decodes as a uniform white frame. videoWidth alone can't tell them
-// apart (a white frame still has width), so read the actual pixels.
+// Sample the decoded video: a stalled or blank-captured stream decodes as one flat colour, while a real
+// page has edges somewhere (text/logo/chrome). Mostly-white pages such as baidu.com blur to near-white at
+// a tiny sample size, so sample at 320x180 and test contrast (min/max spread) instead of "all white".
+const PROBE_W=320,PROBE_H=180;
 function videoHasContent(){
   if(screen.videoWidth===0||screen.readyState<2)return false;
   try{
-    if(!probeCanvas){probeCanvas=document.createElement('canvas');probeCanvas.width=80;probeCanvas.height=45;}
+    if(!probeCanvas){probeCanvas=document.createElement('canvas');probeCanvas.width=PROBE_W;probeCanvas.height=PROBE_H;}
     const g=probeCanvas.getContext('2d',{willReadFrequently:true});
-    g.drawImage(screen,0,0,80,45);
-    const d=g.getImageData(0,0,80,45).data;
-    for(let i=0;i<d.length;i+=4){if(d[i]<246||d[i+1]<246||d[i+2]<246)return true;}
-    return false; // every sampled pixel is near-white -> treat as blank
+    g.drawImage(screen,0,0,PROBE_W,PROBE_H);
+    const d=g.getImageData(0,0,PROBE_W,PROBE_H).data;
+    let lo=255,hi=0;
+    for(let i=0;i<d.length;i+=4){const v=(d[i]*3+d[i+1]*6+d[i+2])/10;if(v<lo)lo=v;if(v>hi)hi=v;if(hi-lo>24)return true;}
+    return false; // flat frame -> treat as blank
   }catch(e){return true;} // unreadable -> assume content, don't force fallback
 }
 function startPaintWatch(){
@@ -86,7 +88,7 @@ function startPaintWatch(){
   paintWatchTimer=setInterval(()=>{
     if(closed){clearInterval(paintWatchTimer);return;}
     if(videoHasContent()){blankMs=0;if(fallbackMode){leaveFallback();setState('WebRTC 已连接 · 浏览器音视频');}}
-    else{blankMs+=700;if(blankMs>=2100&&!fallbackMode&&!closed){fallbackMode=true;fallbackScreen.hidden=false;diag('blank-video-fallback','whiteframe vw='+screen.videoWidth+' rs='+screen.readyState+' paused='+screen.paused);setState('画面加载中 · 已启用兼容画面');}}
+    else{blankMs+=700;if(blankMs>=2100&&!fallbackMode&&!closed){fallbackMode=true;diag('blank-video-fallback','whiteframe vw='+screen.videoWidth+' rs='+screen.readyState+' paused='+screen.paused);setState('画面加载中 · 已启用兼容画面');}}
   },700);
 }
 function send(value){
@@ -151,10 +153,12 @@ async function poll(){
       for(const message of data.messages||[])handleMessage(message);
       if(fallbackMode&&typeof data.frame==='string'&&data.frame){
         frameSeq=Number(data.frameSeq)||0;
-        fallbackScreen.onload=()=>{hint.hidden=true;};
+        // Uncover the image only once a frame decoded: an empty/broken <img> must never sit over live video.
+        fallbackScreen.onload=()=>{if(!fallbackMode)return;fallbackScreen.hidden=false;hint.hidden=true;};
         fallbackScreen.onerror=()=>{
-          hint.hidden=false;
-          hint.innerHTML='<div><strong>画面加载失败</strong>正在重新获取浏览器画面…</div>';
+          fallbackScreen.hidden=true;
+          diag('fallback-frame-error','seq='+frameSeq+' len='+data.frame.length);
+          if(!rtcConnected){hint.hidden=false;hint.innerHTML='<div><strong>画面加载失败</strong>正在重新获取浏览器画面…</div>';}
         };
         fallbackScreen.src='data:image/jpeg;base64,'+data.frame;
       }
@@ -242,6 +246,8 @@ async function startRtc(offer){
 }
 function connect(){
   const hash=new URLSearchParams(location.hash.slice(1)),ticket=hash.get('ticket');
+  // Takeover of a Dots browser task: the user drives the task's window, then hands it back.
+  if(hash.get('task')){const back=$('handback');back.hidden=false;back.addEventListener('click',()=>{try{parent.postMessage({type:'shiyan-browser-handback'},location.origin);}catch(_){}});setState('你正在接管 Dots 的浏览器任务');}
   history.replaceState(null,'',location.pathname+location.search);
   if(!ticket){setState('电脑入口已过期，请重新打开',true);hint.innerHTML='<div><strong>连接凭证已失效</strong>请关闭窗口后重新打开电脑入口</div>';return;}
   fetch('/api/dots/browser/exchange',{method:'POST',headers:{'Content-Type':'application/json','X-Shiyan-Local':'1'},credentials:'same-origin',cache:'no-store',body:JSON.stringify({ticket})})

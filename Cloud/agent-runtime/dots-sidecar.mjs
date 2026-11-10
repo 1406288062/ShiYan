@@ -14,7 +14,9 @@ import { getAccountStore, requestBearer } from './accounts.mjs';
 import { startRegistrationReceiver } from './registration-events.mjs';
 import { createStepSummaries } from './step-summary.mjs';
 import { mcpConnectors } from './mcp-connectors.mjs';
-import { BrowserSessionManager } from './browser-session.mjs';
+import { BrowserSessionManager, normalizeIdentity } from './browser-session.mjs';
+import { BrowserStore } from './browser-store.mjs';
+import { BrowserAgentHost, startBrowserAgentSocket, defaultBrowserSocket } from './browser-agent.mjs';
 
 const ROOT=process.env.SHIYAN_ROOT||'/home/ubuntu/boss-codex-service/shiyan-v2';
 const json=(res,status,value)=>{const data=JSON.stringify(value);res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Content-Length':Buffer.byteLength(data)});res.end(data);};
@@ -23,8 +25,34 @@ const download=(res,file)=>{res.writeHead(200,{'Content-Type':file.mimeType||'ap
 async function bytes(req,max=256*1024){let size=0;const chunks=[];for await(const chunk of req){size+=chunk.length;if(size>max)throw failure('请求内容过大',413);chunks.push(chunk);}return Buffer.concat(chunks);}
 async function body(req,max){const raw=await bytes(req,max);if(digest(raw)!==req.headers['x-shiyan-body-sha'])throw failure('请求校验失败',401);try{return JSON.parse(raw.toString()||'{}');}catch{throw failure('请求格式无效');}}
 
-export function createDotsSidecar({root=ROOT,authenticate=authenticateDevice,adapter=new DotsAdapter({root:path.join(root,'data'),allowedOwner:process.env.SHIYAN_DOTS_OWNER||'shiyan-private-owner',callbackURL:process.env.SHIYAN_DOTS_CALLBACK_URL||'',importPrivateGoals:process.env.SHIYAN_DOTS_IMPORT_PRIVATE_GOALS==='1'}),recover=true,registrationSocket=recover?(process.env.DOTS_REGISTRATION_SOCKET||path.join(root,'data','registration-events.sock')):null,browser=new BrowserSessionManager({validateAccountToken:token=>Boolean(getAccountStore().authenticate(token))})}={}) {
+export function createDotsSidecar({root=ROOT,authenticate=authenticateDevice,adapter=new DotsAdapter({root:path.join(root,'data'),allowedOwner:process.env.SHIYAN_DOTS_OWNER||'shiyan-private-owner',callbackURL:process.env.SHIYAN_DOTS_CALLBACK_URL||'',importPrivateGoals:process.env.SHIYAN_DOTS_IMPORT_PRIVATE_GOALS==='1'}),recover=true,registrationSocket=recover?(process.env.DOTS_REGISTRATION_SOCKET||path.join(root,'data','registration-events.sock')):null,browser=new BrowserSessionManager({validateAccountToken:token=>Boolean(getAccountStore().authenticate(token))}),browserStore=null,browserSocket=recover?(process.env.SHIYAN_BROWSER_SOCKET||defaultBrowserSocket(root)):null}={}) {
   const profile=createDotsProfile(adapter,root);
+  // Dots browser tasks: durable task/question/permission/vault state plus the agent host that drives
+  // the same isolated Chrome. Its private socket serves the MCP bridges and the Dots executor.
+  const browserTasks=browserStore||new BrowserStore(path.join(root,'data','browser'));
+  const browserAgent=new BrowserAgentHost({manager:browser,store:browserTasks,attachments:adapter.attachments});
+  const browserRoutes=async(req,res,pathname,owner,auth)=>{
+    const m=pathname.match(/^\/v1\/dots\/browser\/(tasks|questions|permissions|site-rules|identities|vault)(?:\/([A-Za-z0-9_-]{1,64}))?(?:\/(answer|secure|takeover|handback|close))?$/);
+    if(!m)return false;const [,kind,id,action]=m;
+    if(kind==='tasks'&&!id&&req.method==='GET'){json(res,200,{ok:true,tasks:browserTasks.listTasks(owner,{limit:40}).map(task=>browserAgent.publicTask(task)),takeover:browserAgent.takeover?.owner===owner?browserAgent.takeover.taskId:null});return true;}
+    if(kind==='tasks'&&id&&!action&&req.method==='GET'){json(res,200,{ok:true,task:browserAgent.publicTask(browserTasks.task(owner,id))});return true;}
+    if(kind==='tasks'&&id&&action==='takeover'&&req.method==='POST'){await body(req,1024);const accountToken=auth.accountSession?requestBearer(req):null;json(res,201,await browserAgent.startTakeover(owner,id,{accountToken}));return true;}
+    if(kind==='tasks'&&id&&action==='handback'&&req.method==='POST'){const input=await body(req,4096);json(res,200,await browserAgent.handback(owner,id,{note:typeof input.note==='string'?input.note:''}));return true;}
+    if(kind==='tasks'&&id&&action==='close'&&req.method==='POST'){await body(req,1024);json(res,200,await browserAgent.userClose(owner,id));return true;}
+    if(kind==='questions'&&id&&action==='answer'&&req.method==='POST'){json(res,200,await browserAgent.userAnswer(owner,id,await body(req,16*1024)));return true;}
+    // Secure input: the value is typed into the page and dropped; it is never stored or logged.
+    if(kind==='questions'&&id&&action==='secure'&&req.method==='POST'){const input=await body(req,8*1024);json(res,200,await browserAgent.submitSecureInput(owner,id,input.value));return true;}
+    if(kind==='permissions'&&!id){if(req.method==='GET'){json(res,200,{ok:true,permissions:browserTasks.permissions(owner),siteRules:browserTasks.siteRules(owner)});return true;}if(req.method==='PATCH'){json(res,200,{ok:true,permissions:browserTasks.setPermissions(owner,await body(req,4096))});return true;}}
+    if(kind==='site-rules'&&!id&&req.method==='PUT'){const input=await body(req,4096);json(res,200,{ok:true,rule:browserTasks.setSiteRule(owner,input.origin,input.setting??null),siteRules:browserTasks.siteRules(owner)});return true;}
+    if(kind==='identities'){if(!id&&req.method==='GET'){json(res,200,{ok:true,identities:browserTasks.identities(owner)});return true;}if(!id&&req.method==='POST'){const input=await body(req,4096);json(res,200,{ok:true,identity:browserTasks.addIdentity(owner,{id:normalizeIdentity(input.id),label:input.label,note:input.note})});return true;}if(id&&req.method==='DELETE'){browserTasks.removeIdentity(owner,normalizeIdentity(id));json(res,200,{ok:true});return true;}}
+    if(kind==='vault'){
+      if(!id&&req.method==='GET'){json(res,200,{ok:true,entries:browserTasks.vaultList(owner)});return true;}
+      if(!id&&req.method==='POST'){const input=await body(req,8*1024);json(res,200,{ok:true,entry:browserTasks.vaultSave(owner,{origin:input.origin,username:input.username,password:input.password,label:input.label,identity:normalizeIdentity(input.identity||'default')})});return true;}
+      if(id&&req.method==='PATCH'){const input=await body(req,8*1024);json(res,200,{ok:true,entry:browserTasks.vaultSave(owner,{id,origin:input.origin,username:input.username,password:input.password,label:input.label,identity:normalizeIdentity(input.identity||'default')})});return true;}
+      if(id&&req.method==='DELETE'){browserTasks.vaultDelete(owner,id);json(res,200,{ok:true});return true;}
+    }
+    return false;
+  };
   const stepSummaries=createStepSummaries(adapter.store.db);
   const server=http.createServer(async(req,res)=>{
     try{
@@ -38,6 +66,7 @@ export function createDotsSidecar({root=ROOT,authenticate=authenticateDevice,ada
       const auth=authenticate(req);if(!auth)return json(res,401,{ok:false,error:'服务连接未获授权'});const owner=auth.owner;adapter.authorize(owner);
       if(req.method==='POST'&&pathname==='/v1/dots/browser/session'){await body(req,1024);const accountToken=auth.accountSession?requestBearer(req):null;return json(res,201,{ok:true,...(await browser.createTicket(owner,{accountToken}))});}
       if(req.method==='DELETE'&&pathname==='/v1/dots/browser/session'){await browser.closeOwner(owner);return json(res,200,{ok:true});}
+      if(pathname.startsWith('/v1/dots/browser/')&&await browserRoutes(req,res,pathname,owner,auth))return;
 
       if(req.method==='POST'&&pathname==='/v1/dots/rounds/summary'){const input=await body(req,512*1024);return json(res,200,{ok:true,rounds:await stepSummaries.rounds(input.rounds)});}
       if(req.method==='POST'&&pathname==='/v1/dots/steps/summary'){const input=await body(req,512*1024);return json(res,200,{ok:true,steps:await stepSummaries.summarize(input.steps)});}
@@ -155,7 +184,10 @@ export function createDotsSidecar({root=ROOT,authenticate=authenticateDevice,ada
     server.registrationReady.catch(()=>console.error('[registration-notices] private receiver unavailable; durable outboxes retain events'));
   });
   server.on('upgrade',(req,socket,head)=>{let pathname='';try{pathname=new URL(req.url||'/', 'http://localhost').pathname.replace(/^\/shiyan/,'');}catch{}if(pathname==='/v1/dots/browser/stream')return browser.acceptWebSocket(req,socket,head);socket.destroy();});
-  server.on('close',()=>{void registrationReceiver?.close();void browser.close();adapter.close();});
+  let agentSocket=null;
+  if(browserSocket)server.on('listening',()=>{startBrowserAgentSocket(browserAgent,browserSocket).then(value=>{if(!server.listening){value.close();return;}agentSocket=value;}).catch(error=>console.error('[browser-agent] private socket unavailable:',error?.message||error));});
+  server.browserAgent=browserAgent;
+  server.on('close',()=>{void registrationReceiver?.close();agentSocket?.close();browserAgent.close();void browser.close();browserTasks.close();adapter.close();});
 
   if(recover)server.on('listening',()=>void adapter.recover().catch(()=>{}));
   return server;

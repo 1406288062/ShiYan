@@ -308,6 +308,98 @@ def register_dots(app):
     async def close_browser_session(request: Request):
         return await remote(request, "DELETE", "browser/session")
 
+    # Dots 浏览器任务：任务窗口、问题答复、加密输入、接管/交还、权限、身份与 Secure Vault。
+    def browser_id(value):
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", value or ""):
+            raise ValueError("浏览器任务标识无效")
+        return value
+
+    def pick(data, keys, limit=4096):
+        out = {}
+        for key in keys:
+            if key not in data:
+                continue
+            value = data[key]
+            if isinstance(value, str):
+                out[key] = value[:limit]
+            elif isinstance(value, bool) or value is None:
+                out[key] = value
+        return out
+
+    @app.get("/api/dots/browser/tasks")
+    async def browser_tasks(request: Request):
+        return await remote(request, "GET", "browser/tasks")
+
+    @app.get("/api/dots/browser/tasks/{task_id}")
+    async def browser_task(task_id: str, request: Request):
+        return await remote(request, "GET", "browser/tasks/" + browser_id(task_id))
+
+    @app.post("/api/dots/browser/tasks/{task_id}/{action}")
+    async def browser_task_action(task_id: str, action: str, request: Request):
+        if action not in {"takeover", "handback", "close"}:
+            raise ValueError("浏览器任务操作无效")
+        data = await plain(request)
+        return await remote(request, "POST", "browser/tasks/" + browser_id(task_id) + "/" + action, pick(data, ("note",), 300), timeout=75)
+
+    @app.post("/api/dots/browser/questions/{question_id}/answer")
+    async def browser_answer(question_id: str, request: Request):
+        data = await plain(request)
+        return await remote(request, "POST", "browser/questions/" + browser_id(question_id) + "/answer", pick(data, ("text", "decision", "approved", "remember"), 4000))
+
+    # 加密输入：内容只转发给服务器浏览器填入网页，不写日志、不落盘。
+    @app.post("/api/dots/browser/questions/{question_id}/secure")
+    async def browser_secure_input(question_id: str, request: Request):
+        data = await plain(request)
+        if not isinstance(data.get("value"), str) or not data["value"] or len(data["value"]) > 1024:
+            raise ValueError("请填写内容")
+        return await remote(request, "POST", "browser/questions/" + browser_id(question_id) + "/secure", {"value": data["value"]})
+
+    @app.get("/api/dots/browser/permissions")
+    async def browser_permissions(request: Request):
+        return await remote(request, "GET", "browser/permissions")
+
+    @app.patch("/api/dots/browser/permissions")
+    async def save_browser_permissions(request: Request):
+        data = await plain(request)
+        return await remote(request, "PATCH", "browser/permissions", pick(data, ("siteAccess", "downloads", "uploads", "savedPasswords"), 16))
+
+    @app.put("/api/dots/browser/site-rules")
+    async def save_browser_site_rule(request: Request):
+        data = await plain(request)
+        return await remote(request, "PUT", "browser/site-rules", pick(data, ("origin", "setting"), 300))
+
+    @app.get("/api/dots/browser/identities")
+    async def browser_identities(request: Request):
+        return await remote(request, "GET", "browser/identities")
+
+    @app.post("/api/dots/browser/identities")
+    async def add_browser_identity(request: Request):
+        data = await plain(request)
+        return await remote(request, "POST", "browser/identities", pick(data, ("id", "label", "note"), 200))
+
+    @app.delete("/api/dots/browser/identities/{identity}")
+    async def remove_browser_identity(identity: str, request: Request):
+        return await remote(request, "DELETE", "browser/identities/" + browser_id(identity))
+
+    # Secure Vault：密码只在这里录入，服务器加密保存，任何读取接口都不返回密码。
+    @app.get("/api/dots/browser/vault")
+    async def browser_vault(request: Request):
+        return await remote(request, "GET", "browser/vault")
+
+    @app.post("/api/dots/browser/vault")
+    async def add_browser_vault(request: Request):
+        data = await plain(request)
+        return await remote(request, "POST", "browser/vault", pick(data, ("origin", "username", "password", "label", "identity"), 1024))
+
+    @app.patch("/api/dots/browser/vault/{entry_id}")
+    async def update_browser_vault(entry_id: str, request: Request):
+        data = await plain(request)
+        return await remote(request, "PATCH", "browser/vault/" + browser_id(entry_id), pick(data, ("origin", "username", "password", "label", "identity"), 1024))
+
+    @app.delete("/api/dots/browser/vault/{entry_id}")
+    async def remove_browser_vault(entry_id: str, request: Request):
+        return await remote(request, "DELETE", "browser/vault/" + browser_id(entry_id))
+
     @app.post("/api/dots/browser/exchange")
     async def exchange_browser_ticket(request: Request):
         data = await plain(request)

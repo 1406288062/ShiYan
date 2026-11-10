@@ -28,7 +28,21 @@ const MAX_VIEW_PIXELS = Number(process.env.SHIYAN_BROWSER_MAX_PIXELS) || 1;
 const MAX_CLIENT_MESSAGE = 64 * 1024;
 const ALLOWED_ORIGINS = new Set(['https://yandot.ai', 'https://www.yandot.ai', 'https://129.226.81.110']);
 
-const fail = (message, status = 400) => Object.assign(new Error(message), { status });
+const fail = (message, status = 400, code = undefined) => Object.assign(new Error(message), { status }, code ? { code } : {});
+const IDENTITY_ROOT = '/home/browser/identities';
+export const BROWSER_CONTAINER_NAME = BROWSER_CONTAINER;
+// A browser identity is a persistent Chrome profile. Every window of an account shares the
+// "default" identity, so one login serves all conversations and scheduled tasks; a named identity
+// (another account on the same site) gets its own profile directory.
+export function normalizeIdentity(value) {
+  const raw = String(value ?? 'default').trim().toLowerCase();
+  if (!raw || raw === 'default') return 'default';
+  if (!/^[a-z0-9][a-z0-9-]{0,31}$/.test(raw)) throw fail('浏览器身份名称只能包含小写字母、数字和连字符', 400);
+  return raw;
+}
+export function identityProfilePath(owner, identity = 'default') {
+  return `${IDENTITY_ROOT}/${createHash('sha256').update(String(owner)).digest('hex').slice(0, 24)}-${normalizeIdentity(identity)}`;
+}
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 function runLxc(args, { timeoutMs = 15_000, allowFailure = false } = {}) {
@@ -445,9 +459,9 @@ async function startChromeRuntime(session, { debug = process.env.SHIYAN_BROWSER_
   const pulseSetup = `runuser -u browser -- env HOME=/home/browser XDG_RUNTIME_DIR=/tmp/pulse-browser PULSE_RUNTIME_PATH=/tmp/pulse-browser PULSE_SERVER=unix:/tmp/pulse-browser/native pactl list short sources | grep -q shiyan_capture_source || runuser -u browser -- env HOME=/home/browser XDG_RUNTIME_DIR=/tmp/pulse-browser PULSE_RUNTIME_PATH=/tmp/pulse-browser PULSE_SERVER=unix:/tmp/pulse-browser/native pactl load-module module-remap-source master=auto_null.monitor source_name=shiyan_capture_source source_properties=device.description=ShiYanBrowserAudio >/dev/null; runuser -u browser -- env HOME=/home/browser XDG_RUNTIME_DIR=/tmp/pulse-browser PULSE_RUNTIME_PATH=/tmp/pulse-browser PULSE_SERVER=unix:/tmp/pulse-browser/native pactl set-default-source shiyan_capture_source`;
   await runLxc(['exec', container, '--', 'bash', '-lc', pulseSetup]);
 
-  const profilePath = `/home/browser/profiles/${session.id}`;
+  const profilePath = identityProfilePath(session.owner, session.identity || 'default');
   session.profilePath = profilePath;
-  const prepareBrowser = `pkill -TERM -u browser -x chrome 2>/dev/null || true; for i in $(seq 1 30); do pgrep -u browser -x chrome >/dev/null || break; sleep 0.2; done; pkill -KILL -u browser -x chrome 2>/dev/null || true; for i in $(seq 1 25); do pgrep -u browser -x chrome >/dev/null || break; sleep 0.2; done; rm -rf /home/browser/profiles/* /home/browser/profile-cdp-test /home/browser/profile 2>/dev/null || rm -rf /home/browser/profiles/* 2>/dev/null || true; mkdir -p '${profilePath}' && chown -R browser:browser /home/browser/profiles 2>/dev/null; chown browser:browser /home/browser/profiles '${profilePath}' && test -d '${profilePath}'`;
+  const prepareBrowser = `pkill -TERM -u browser -x chrome 2>/dev/null || true; for i in $(seq 1 30); do pgrep -u browser -x chrome >/dev/null || break; sleep 0.2; done; pkill -KILL -u browser -x chrome 2>/dev/null || true; for i in $(seq 1 25); do pgrep -u browser -x chrome >/dev/null || break; sleep 0.2; done; rm -rf /home/browser/profiles /home/browser/profile-cdp-test /home/browser/profile 2>/dev/null || true; mkdir -p '${profilePath}' /home/browser/downloads /home/browser/uploads && rm -f '${profilePath}'/Singleton* && chown browser:browser ${IDENTITY_ROOT} '${profilePath}' /home/browser/downloads /home/browser/uploads && chmod 700 ${IDENTITY_ROOT} '${profilePath}' && test -d '${profilePath}'`;
   await runLxc(['exec', container, '--', 'bash', '-lc', prepareBrowser]);
   // Real (headed) Chrome on a private virtual display. Headless Chrome advertises
   // "HeadlessChrome" and is stopped by Cloudflare (chatgpt.com) and similar checks.
@@ -545,13 +559,19 @@ export class BrowserSessionManager {
     // The same account reopening (page refresh, closed tab without cleanup) takes over:
     // the stale session is closed instead of locking the user out until the idle timeout.
     if (this.ticket?.owner === String(owner)) { clearTimeout(this.ticketTimer); this.ticket = null; }
+    // While Dots browser tasks hold the runtime, a viewer attaches to the running Chrome instead of
+    // replacing it, so task windows (carts, logins in progress) survive the user opening the computer.
+    let attach = false;
     if (this.active?.owner === String(owner)) {
-      process.stderr.write(`[browser-session] session=${this.active.id} replaced by a new open from the same account\n`);
-      await this.#destroy(this.active);
+      if (this.active.agentHolds > 0 && !this.active.closing) attach = true;
+      else {
+        process.stderr.write(`[browser-session] session=${this.active.id} replaced by a new open from the same account\n`);
+        await this.#destroy(this.active);
+      }
     }
-    if (this.active || this.ticket) throw fail(this.active?.owner === owner ? '电脑已在其他窗口打开，请先关闭原窗口' : '服务器电脑当前正被使用，请稍后再试', 409);
+    if (!attach && (this.active || this.ticket)) throw fail(this.active?.owner === owner ? '电脑已在其他窗口打开，请先关闭原窗口' : '服务器电脑当前正被使用，请稍后再试', 409);
     const ticket = randomBytes(32).toString('base64url');
-    this.ticket = { value: ticket, owner: String(owner), accountToken, expiresAt: Date.now() + TICKET_TTL_MS };
+    this.ticket = { value: ticket, owner: String(owner), accountToken, attach, expiresAt: Date.now() + TICKET_TTL_MS };
     this.ticketTimer = setTimeout(() => { if (this.ticket?.value === ticket) this.ticket = null; }, TICKET_TTL_MS);
     this.ticketTimer.unref?.();
     return { ticket, expiresIn: TICKET_TTL_MS };
@@ -561,14 +581,117 @@ export class BrowserSessionManager {
     if (!ticket || typeof value !== 'string' || value.length < 32 || value !== ticket.value || ticket.expiresAt < Date.now()) throw fail('电脑入口已过期，请重新打开', 401);
     if (origin && !this.allowOrigins.has(origin)) throw fail('来源校验失败', 403);
     clearTimeout(this.ticketTimer); this.ticket = null;
+    if (ticket.attach && this.active?.owner === ticket.owner && !this.active.closing) {
+      await this.active.startPromise?.catch(() => {});
+      if (this.active && !this.active.closing && this.active.cdp) return this.#attachViewer(this.active, ticket);
+    }
     if (this.active) throw fail('服务器电脑当前正被使用，请稍后再试', 409);
+    const session = await this.#startSession({ owner: ticket.owner, accountToken: ticket.accountToken, identity: 'default', agent: false });
+    return { sessionToken: session.token, width: 1120, height: 720, iceServers: session.turn.clientIceServers };
+  }
+  // Agent-side runtime lease. Dots browser tasks use the same isolated Chrome as the viewer; one
+  // account (and one identity) owns it at a time. The lease keeps Chrome alive while task windows
+  // exist; the viewer can attach and detach without ending it.
+  setAgentHook(hook) { this.agentHook = hook || null; }
+  get activeSession() { return this.active && !this.active.closing ? this.active : null; }
+  async acquireAgent(owner, { identity = 'default' } = {}) {
+    owner = String(owner || ''); identity = normalizeIdentity(identity);
+    if (!owner) throw fail('账号身份无效', 401);
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const active = this.active;
+      if (active?.closing) { await active.destroyPromise?.catch(() => {}); continue; }
+      if (active && !active.cdp) { await active.startPromise?.catch(() => {}); continue; }
+      if (active && active.owner === owner && (active.identity || 'default') === identity) {
+        active.agentHolds = (active.agentHolds || 0) + 1; active.lastActivity = Date.now(); return active;
+      }
+      if (active) {
+        if (active.owner !== owner) throw fail('服务器浏览器正被其他账号使用，任务会在空闲后继续', 409, 'browser_busy');
+        if (!(active.agentHolds > 0) && !active.viewer) { await this.#destroy(active); continue; }
+        throw fail('服务器浏览器正以另一个身份运行，任务会在空闲后继续', 409, 'browser_busy');
+      }
+      if (this.ticket && this.ticket.owner !== owner && this.ticket.expiresAt > Date.now()) throw fail('服务器浏览器正被其他账号打开，任务会在空闲后继续', 409, 'browser_busy');
+      const session = await this.#startSession({ owner, accountToken: null, identity, agent: true });
+      session.agentHolds = (session.agentHolds || 0) + 1;
+      return session;
+    }
+    throw fail('服务器浏览器暂时无法启动，请稍后重试', 503, 'browser_busy');
+  }
+  releaseAgent(session) {
+    if (!session) return;
+    if (session.agentHolds > 0) session.agentHolds--;
+    session.lastActivity = Date.now();
+  }
+  // Takeover: show a task's window in the viewer (tabs are attached by the agent host already).
+  async showAgentTargets(session, targets) {
+    if (!session?.tabs || session.closing) return;
+    let first = null;
+    for (const item of targets || []) {
+      let tab = session.tabs.get(item.targetId);
+      if (!tab) { tab = this.#registerTab(session, item.targetId, item.sessionId); tab.agent = true; await this.#applyView(session, item.sessionId).catch(() => {}); }
+      first ||= tab;
+    }
+    if (first) await this.#activateTab(session, first);
+    this.#sendTabs(session);
+  }
+  async hideAgentTargets(session, targetIds) {
+    if (!session?.tabs || session.closing) return;
+    let wasMain = false;
+    for (const id of targetIds || []) if (session.tabs.get(id)?.agent && session.tabs.delete(id) && session.mainTargetId === id) wasMain = true;
+    if (wasMain) {
+      const next = [...session.tabs.values()].at(-1);
+      if (next) await this.#activateTab(session, next);
+      else await this.#openTab(session, 'about:blank').catch(() => {});
+    }
+    this.#sendTabs(session);
+  }
+  async #attachViewer(session, ticket) {
+    this.#detachViewer(session, { notify: false });
+    session.token = randomBytes(32).toString('base64url');
+    if (ticket.accountToken) session.accountToken = ticket.accountToken;
+    session.viewer = true; session.lastActivity = Date.now();
+    session.turn = createTurnCredentials(session.id);
+    // A fresh transport page drops the previous viewer's WebRTC peer.
+    if (session.transportSessionId) {
+      await session.cdp.send('Page.reload', {}, session.transportSessionId, 5000).catch(() => {});
+      let ready = null;
+      for (let attempt = 0; attempt < 25 && !ready?.result?.value; attempt++) {
+        await delay(200);
+        ready = await session.cdp.send('Runtime.evaluate', { expression: 'typeof window.__shiyanStart === "function"', returnByValue: true }, session.transportSessionId).catch(() => null);
+      }
+    }
+    process.stderr.write(`[browser-session] session=${session.id} viewer attached to running agent browser\n`);
+    try { await this.agentHook?.onViewerAttached?.(session); } catch (error) { process.stderr.write(`[browser-session] viewer attach hook failed: ${error?.message || error}\n`); }
+    return { sessionToken: session.token, width: 1120, height: 720, iceServers: session.turn.clientIceServers };
+  }
+  #detachViewer(session, { notify = true } = {}) {
+    if (!session) return;
+    clearTimeout(session.disconnectTimer); clearTimeout(session.orphanTimer);
+    try { session.ws?.close(1001); } catch {}
+    session.ws = null;
+    if (session.cdp && session.transportSessionId) void session.cdp.send('Runtime.evaluate', { expression: 'window.__shiyanClose?.()', returnByValue: true }, session.transportSessionId, 1500).catch(() => {});
+    if (session.cdp && session.targetSessionId && session.screencastStarted) void session.cdp.send('Page.stopScreencast', {}, session.targetSessionId, 1500).catch(() => {});
+    clearInterval(session.frameTimer); clearInterval(session.screencastWatchdog);
+    session.frameTimer = null; session.screencastWatchdog = null;
+    Object.assign(session, { screencastStarted: false, frameCaptureStarted: false, rtcStarting: false, rtcReady: false, tabCapture: false, fallbackFrames: false,
+      latestFrame: null, pendingFrame: null, frameSending: false, frameSeq: 0, statusSent: false, pendingMessages: [], viewer: false });
+    session.token = randomBytes(32).toString('base64url');
+    this.#wakePollers(session);
+    if (notify) { try { void this.agentHook?.onViewerDetached?.(session); } catch {} }
+  }
+  #endViewer(session) {
+    if (session?.agentHolds > 0 && !session.closing) { process.stderr.write(`[browser-session] session=${session.id} viewer closed; agent tasks keep the browser\n`); this.#detachViewer(session); return Promise.resolve(); }
+    return this.#destroy(session);
+  }
+  async #startSession({ owner, accountToken = null, identity = 'default', agent = false }) {
     const session = {
-      id: randomBytes(8).toString('hex'), owner: ticket.owner,
-      token: randomBytes(32).toString('base64url'), accountToken: ticket.accountToken,
+      id: randomBytes(8).toString('hex'), owner,
+      token: randomBytes(32).toString('base64url'), accountToken,
       createdAt: Date.now(), lastActivity: Date.now(), ws: null, pendingMessages: [], statusSent: false, closing: false,
-      targetSessionId: null, lastFrameAt: 0,
+      targetSessionId: null, lastFrameAt: 0, identity: normalizeIdentity(identity), agentHolds: 0, viewer: !agent,
     };
     this.active = session;
+    let resolveStarted;
+    session.startPromise = new Promise(resolve => { resolveStarted = resolve; });
     // One startup at a time: a quick reopen must wait for the previous (possibly cancelled) start.
     const previousStart = this.startTail;
     let releaseStart;
@@ -593,24 +716,29 @@ export class BrowserSessionManager {
       this.#registerTab(session, session.mainTargetId, session.targetSessionId);
       if (session.accountToken && this.validateAccountToken) {
         session.authTimer = setInterval(() => {
-          if (!this.validateAccountToken(session.accountToken)) void this.#destroy(session);
+          if (session.viewer && !this.validateAccountToken(session.accountToken)) void this.#endViewer(session);
         }, 5000);
         session.authTimer.unref?.();
       }
       session.idleTimer = setInterval(() => {
+        if (session.agentHolds > 0) return;
         if (Date.now() - session.lastActivity > this.idleMs || Date.now() - session.createdAt > this.maxSessionMs) void this.#destroy(session);
       }, 15_000);
       session.idleTimer.unref?.();
-      session.orphanTimer = setTimeout(() => {
-        if (!session.statusSent && !session.ws && !session.closing) { process.stderr.write(`[browser-session] session=${session.id} never connected after start; closing\n`); void this.#destroy(session); }
-      }, 45_000);
-      session.orphanTimer.unref?.();
+      if (!agent) {
+        session.orphanTimer = setTimeout(() => {
+          if (!session.statusSent && !session.ws && !session.closing) { process.stderr.write(`[browser-session] session=${session.id} never connected after start; closing\n`); void this.#endViewer(session); }
+        }, 45_000);
+        session.orphanTimer.unref?.();
+      }
       session.cdp.on('event', message => this.#cdpEvent(session, message));
       session.cdp.on('exit', () => { if (!session.closing) void this.#destroy(session); });
       // Keep the real page in front and visible; the transport page sits in its own off-screen window.
       await session.cdp.send('Page.bringToFront', {}, session.targetSessionId);
-      return { sessionToken: session.token, width: 1120, height: 720, iceServers: session.turn.clientIceServers };
+      resolveStarted();
+      return session;
     } catch (error) {
+      resolveStarted();
       await this.#destroy(session).catch(() => {});
       releaseStart();
       if (process.env.SHIYAN_BROWSER_DEBUG === '1') process.stderr.write('[browser] startup failed: ' + (error?.stack || error) + '\n');
@@ -636,14 +764,14 @@ export class BrowserSessionManager {
     session.ws = new WebSocketPeer(socket, head, message => this.#clientMessage(session, message), () => {
       if (session.ws) session.ws = null;
       if (session.closing) return;
-      session.disconnectTimer = setTimeout(() => { if (!session.ws) void this.#destroy(session); }, 15_000);
+      session.disconnectTimer = setTimeout(() => { if (!session.ws) void this.#endViewer(session); }, 15_000);
       session.disconnectTimer.unref?.();
     });
     void this.#sendStatus(session);
   }
   closeOwner(owner) {
     if (this.ticket?.owner === owner) { clearTimeout(this.ticketTimer); this.ticket = null; }
-    if (this.active?.owner === owner) return this.#destroy(this.active);
+    if (this.active?.owner === owner) return this.#endViewer(this.active);
     return Promise.resolve();
   }
   async close() { clearTimeout(this.ticketTimer); this.ticket = null; if (this.active) await this.#destroy(this.active); }
@@ -661,7 +789,7 @@ export class BrowserSessionManager {
         try { await session.cdp.send('Page.stopScreencast', {}, session.targetSessionId, 1500); } catch {}
       }
       if (session.container && session.profilePath) {
-        const cleanup = `pkill -TERM -u browser -x chrome 2>/dev/null || true; sleep 1; pkill -KILL -u browser -x chrome 2>/dev/null || true; pkill -u browser -x Xvfb 2>/dev/null || true; rm -rf '${session.profilePath}'`;
+        const cleanup = `pkill -TERM -u browser -x chrome 2>/dev/null || true; sleep 1; pkill -KILL -u browser -x chrome 2>/dev/null || true; pkill -u browser -x Xvfb 2>/dev/null || true; rm -f '${session.profilePath}'/Singleton*`;
         try { await runLxc(['exec', session.container, '--', 'bash', '-lc', cleanup], { timeoutMs: 12_000 }); } catch {}
       }
       try { session.cdp?.close(); } catch {}
@@ -674,6 +802,7 @@ export class BrowserSessionManager {
         await new Promise(resolve => { try { session.transportServer.close(resolve); } catch { resolve(); } });
       }
       if (this.active === session) this.active = null;
+      try { this.agentHook?.onSessionDestroyed?.(session); } catch {}
     })();
     return session.destroyPromise;
   }
@@ -948,6 +1077,7 @@ export class BrowserSessionManager {
   #handlePopup(session, info, method) {
     // Links with target=_blank / window.open now become real tabs (previously folded into the page).
     if (!session.tabs || !info || info.type !== 'page' || info.targetId === session.transportTargetId) return;
+    if (this.agentHook?.claimTarget?.(session, info, method) && !session.tabs.has(info.targetId)) return;
     const tab = session.tabs.get(info.targetId);
     if (tab) {
       const url = String(info.url || ''), title = info.title === CAPTURE_TITLE ? tab.title : String(info.title || '');
@@ -969,6 +1099,7 @@ export class BrowserSessionManager {
   }
   #cdpEvent(session, message) {
     if (session.closing || !session.targetSessionId) return;
+    try { if (this.agentHook?.cdpEvent?.(session, message)) return; } catch (error) { process.stderr.write(`[browser-agent] event hook failed: ${error?.message || error}\n`); }
     if (!message.sessionId && (message.method === 'Target.targetCreated' || message.method === 'Target.targetInfoChanged')) {
       this.#handlePopup(session, message.params?.targetInfo, message.method);
       return;
@@ -1272,10 +1403,12 @@ export class BrowserSessionManager {
           process.stderr.write(`[browser-client] session=${session.id} t=${Math.round((Date.now() - session.createdAt) / 100) / 10}s ${stage} ${detail}\n`);
           break;
         }
-        case 'close': await this.#destroy(session); break;
+        case 'close': await this.#endViewer(session); break;
         case 'activity': break;
         default: break;
       }
     } catch (error) { this.#sendJSON(session, { type:'error', message: error.message || '浏览器操作失败' }); if (throwErrors) throw error; }
   }
 }
+
+export { runLxc };

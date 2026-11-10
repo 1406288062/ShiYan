@@ -30,6 +30,7 @@
   let readSession=null, readingIndex=-1, readUtterance=null;
   let floatingPet=null;
   let currentModal, savedSignature = '', activitySignature = '', lastOpen = false, outputRaw = '';
+  let browserTasks = [], browserTakeover = null;
   const api = (route, method = 'GET', data) => C.api(route, method, data);
   const rejected = error => [400,403,404,422].includes(error.status) && error.code !== 'action_uncertain';
   const name = () => profile.name || 'Dots';
@@ -184,7 +185,7 @@
     loading = true; activityError = ''; renderPanel();
     try {
       await getCatalogue();
-      const result = await api('/activity');
+      const [result] = await Promise.all([api('/activity'), loadBrowserTasks()]);
       activities = result.activities || []; outputs = result.outputs || []; lastActivityFetch = Date.now();
     } catch (error) { activityError = error.message || String(error); }
     finally { loading = false; savedSignature = ''; renderPanel(); }
@@ -194,11 +195,11 @@
     if(previewOpen()){positionPanel();C.voiceUpdated?.();return;}
     const recent = expanded ? activities : activities.slice(0, 5), files = outputExpanded ? outputs : outputs.slice(0, 3);
     const newest = Math.max(0, ...activities.map(a => a.updatedAt || a.createdAt || 0));
-    const signature = JSON.stringify([name(),profile.petId,profile.accent,recent,files,loading,activityError,expanded,outputExpanded,profile.seenActivities]);
+    const signature = JSON.stringify([name(),profile.petId,profile.accent,recent,files,loading,activityError,expanded,outputExpanded,profile.seenActivities,(browserTasks||[]).map(t=>[t.task_id,t.status,t.title,browserNeedsYou(t)])]);
     if (savedSignature === signature) { positionPanel(); C.voiceUpdated?.(); return; }
     const scrollArea = panel.querySelector('.dots-panel-scroll'), top = scrollArea?.scrollTop || 0, voiceFocus = $('dotsVoiceCard')?.contains(document.activeElement) ? document.activeElement : null; savedSignature = signature;
     panel.innerHTML = '<div class="dots-profile-identity">'+'<span class="dots-pet-wrap" style="position:relative;display:inline-block;isolation:isolate;overflow:visible;flex-shrink:0;"><span class="dots-pet-anchor" aria-hidden="true"></span></span>'+'<div><strong>'+esc(name())+'</strong><div class="dots-panel-status" role="status" aria-live="polite" hidden></div></div></div>'+
-      '<div class="dots-panel-scroll"><button type="button" class="dots-computer-entry" data-dots-computer>'+icon('computer')+'<span><strong>电脑</strong><small>打开服务器 Google Chrome</small></span>'+icon('forward')+'</button><section class="dots-panel-section"><header><h3>最近活动</h3><button type="button" class="dots-mini-button" data-dots-new-schedule aria-label="新建定时任务" title="新建定时任务">'+icon('add')+'</button></header><div class="dots-activity-rows">'+
+      '<div class="dots-panel-scroll"><button type="button" class="dots-computer-entry" data-dots-computer>'+icon('computer')+'<span><strong>电脑</strong><small>打开服务器 Google Chrome</small></span>'+icon('forward')+'</button>'+browserTasksSection()+'<section class="dots-panel-section"><header><h3>最近活动</h3><button type="button" class="dots-mini-button" data-dots-new-schedule aria-label="新建定时任务" title="新建定时任务">'+icon('add')+'</button></header><div class="dots-activity-rows">'+
       recent.map(a => {
         const isSchedule = a.type === 'schedule', id = isSchedule ? (a.scheduleId || a.schedule?.id || String(a.id).replace(/^schedule:/,'')) : (a.taskId || a.id);
         const key = a.type+':'+id, unread = (a.updatedAt || a.createdAt || 0) > (profile.seenActivities?.[key] || 0);
@@ -395,6 +396,7 @@
       const body = dialog.querySelector('[data-connector-body]');
       const html = (weixin.length?'<h3>聊天与通讯</h3><ul class="dots-src-list">'+weixin.map(weixinRow).join('')+'</ul>':'')+
         '<h3>设备与远程控制</h3><ul class="dots-src-list">'+spongeRow()+'</ul>'+
+        '<h3>浏览器</h3><ul class="dots-src-list"><li class="dots-src"><div class="dots-src-row" role="button" tabindex="0" data-browser-settings><span class="dots-src-icon">'+icon('computer')+'</span><span class="dots-src-text"><strong>服务器浏览器</strong><small>访问网站、下载、上传、保存的登录和浏览器身份</small></span><span class="dots-src-side">'+chevron+'</span></div></li></ul>'+
         categorized+
         '<h3>自定义插件</h3>'+(custom.length?'<ul class="dots-src-list">'+custom.map(c=>mcpRow(c,null)).join('')+'</ul>':'')+addForm();
       // 状态轮询可能每 3 秒触发一次 draw；内容未变化时不要重建整个列表，
@@ -448,6 +450,7 @@
       if (form.matches('[data-mcp-token]')) { const id = form.closest('[data-mcp]').dataset.mcp; await connect({catalogId:id,token:String(new FormData(form).get('token')||'').trim()}, id, false); }
     });
     dialog.addEventListener('click', async event => {
+      if (event.target.closest('[data-browser-settings]')) { await openBrowserSettings(); return; }
       if (event.target.closest('[data-mcp-add-open]')) { adding = true; draw(); return; }
       if (event.target.closest('[data-mcp-cancel]')) { adding = false; draw(); return; }
       if (event.target.closest('[data-confirm-cancel]')) { confirming = ''; draw(); return; }
@@ -868,18 +871,137 @@
     utterance.onerror=event=>{if(readSession===session)readError(Error(event.error==='not-allowed'?'请允许浏览器播放语音':'朗读未能完成，请重试'));};
     readUtterance=utterance;speechSynthesis.speak(utterance);syncReadButtons();
   }
-  async function openComputer() {
+  // ---------------------------------------------------------------- Dots 浏览器任务
+  // 任务面板里的浏览器任务：进度、需要你决定的问题、加密输入、付款授权、接管/交还、文件。
+  const browserStatus = {queued:['排队中','paused'],running:['执行中','connected'],waiting_user:['等你处理','paused'],taken_over:['你正在接管','paused'],waiting_browser:['等待浏览器','paused'],idle:['窗口已打开',''],done:['已完成','connected'],failed:['失败','error'],blocked:['被卡住','error'],unverified:['结果待核实','error'],interrupted:['执行中断','error'],cancelled:['已关闭','']};
+  const browserNeedsYou = task => (task.pending_questions || []).some(q => q.user_only || ['choice','cart_confirmation'].includes(q.kind));
+  async function loadBrowserTasks() { try { const r = await api('/browser/tasks'); browserTasks = r.tasks || []; browserTakeover = r.takeover || null; } catch { browserTasks = browserTasks || []; } }
+  function browserTasksSection() {
+    const list = (browserTasks || []).filter(t => t.status !== 'cancelled').slice(0, 4);
+    if (!list.length) return '';
+    return '<section class="dots-panel-section"><header><h3>浏览器任务</h3></header><div class="dots-activity-rows">'+list.map(t => {
+      const [label] = browserStatus[t.status] || [t.status];
+      return '<button type="button" class="dots-activity-row" data-dots-browser-task="'+esc(t.task_id)+'" title="'+esc(t.title)+'">'+icon('computer')+'<span><strong>'+esc(t.title || '浏览器任务')+'</strong><small>'+esc(label)+'</small></span>'+(browserNeedsYou(t)?'<i class="dots-unread-dot" aria-label="需要你处理"></i>':'')+'</button>';
+    }).join('')+'</div></section>';
+  }
+  function questionHTML(task, q) {
+    const id = esc(q.question_id), data = q.data || {};
+    const yesNo = (yes, no, extra='') => '<div class="dots-src-actions">'+extra+'<button type="button" class="dots-src-button" data-bq-answer="'+id+'" data-bq-decision="deny">'+esc(no)+'</button><button type="button" class="dots-src-button is-primary" data-bq-answer="'+id+'" data-bq-decision="allow">'+esc(yes)+'</button></div>';
+    let body = '';
+    if (q.kind === 'secure_input') body = '<form class="dots-mcp-form" data-bq-secure="'+id+'"><label><span>'+esc(data.label || '敏感信息')+(data.origin?' · '+esc(data.origin):'')+'</span><input name="value" type="password" autocomplete="off" required maxlength="1024"></label><p class="dots-src-example">内容会加密传给服务器浏览器直接填进网页，不经过 Dots，也不会保存。</p><div class="dots-src-actions"><button type="submit" class="dots-src-button is-primary">加密填入</button></div></form>';
+    else if (q.kind === 'payment_authorization') body = '<ul class="dots-src-abilities"><li>商家：'+esc(data.merchant)+'</li><li>金额：'+esc(data.amount)+' '+esc(data.currency||'')+'</li>'+(data.payment_method?'<li>支付方式：'+esc(data.payment_method)+'</li>':'')+(data.items||[]).map(item=>'<li>'+esc(item)+'</li>').join('')+'</ul><p class="dots-src-example">批准后浏览器只能提交这一笔订单；订单以商家凭证为准。</p><div class="dots-src-actions"><button type="button" class="dots-src-button" data-bq-pay="'+id+'" data-bq-approved="0">拒绝</button><button type="button" class="dots-src-button is-primary" data-bq-pay="'+id+'" data-bq-approved="1">批准付款</button></div>';
+    else if (q.kind === 'takeover') body = '<div class="dots-src-actions"><button type="button" class="dots-src-button is-primary" data-bt-takeover="'+esc(task.task_id)+'">接管浏览器</button></div>';
+    else if (q.kind === 'site_access') body = yesNo('允许', '拒绝', '<label class="dots-src-example"><input type="checkbox" data-bq-remember="'+id+'"> 记住这个网站</label>');
+    else if (['download','upload','saved_password','verification_share'].includes(q.kind)) body = yesNo('允许', '拒绝');
+    else {
+      const cart = data.cart && Object.keys(data.cart).length ? '<pre class="dots-src-example" style="white-space:pre-wrap">'+esc(JSON.stringify(data.cart, null, 2))+'</pre>' : '';
+      body = cart+((q.options||[]).length?'<div class="dots-src-actions">'+q.options.map(o=>'<button type="button" class="dots-src-button" data-bq-option="'+id+'" data-bq-text="'+esc(o)+'">'+esc(o)+'</button>').join('')+'</div>':'')+'<form class="dots-mcp-form" data-bq-text-form="'+id+'"><label><span>回复</span><input name="text" maxlength="4000" required placeholder="直接回复浏览器任务"></label><div class="dots-src-actions"><button type="submit" class="dots-src-button is-primary">发送</button></div></form>';
+    }
+    return '<div class="dots-src-confirm" role="group"><span><strong>'+esc(q.prompt)+'</strong></span>'+body+'</div>';
+  }
+  async function openBrowserTasks(focusTaskId) {
+    const dialog = makeDialog('dotsBrowserTasksDialog','dots-conversation-overlay');
+    dialog.innerHTML = '<section class="dots-conversation-card dots-sources-card"><header><div><h2>浏览器任务</h2><small>Dots 在服务器浏览器里替你做的事</small></div><button type="button" class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button></header><div class="dots-src-body" data-bt-body></div><p role="alert" class="dots-dialog-error" data-bt-error hidden></p></section>';
+    showDialog(dialog, dialog);
+    let open = focusTaskId || '', timer = null, lastHTML = '';
+    const errorBox = dialog.querySelector('[data-bt-error]'), body = dialog.querySelector('[data-bt-body]');
+    const fail = cause => { errorBox.textContent = cause?.message || String(cause); errorBox.hidden = false; };
+    const draw = () => {
+      const tasks = browserTasks || [];
+      const html = tasks.length ? '<ul class="dots-src-list">'+tasks.map(t => {
+        const [label, state] = browserStatus[t.status] || [t.status, ''], isOpen = open === t.task_id;
+        const active = ['queued','running','waiting_user','waiting_browser','idle','taken_over'].includes(t.status);
+        let more = '';
+        if (isOpen) {
+          more = (t.summary?'<p class="dots-src-example">'+esc(t.summary)+'</p>':'')+(t.error&&t.status!=='done'?'<p class="dots-src-example">'+esc(t.error)+'</p>':'')+
+            (t.pending_questions||[]).map(q=>questionHTML(t,q)).join('')+
+            ((t.progress||[]).length?'<p class="dots-src-label">进展</p><ul class="dots-src-abilities">'+t.progress.slice(-8).map(p=>'<li>'+esc(p.text)+'</li>').join('')+'</ul>':'')+
+            ((t.files||[]).length?'<p class="dots-src-label">文件</p><ul class="dots-src-abilities">'+t.files.map(f=>'<li>'+(f.attachment_id?'<a download href="/api/dots/attachments/'+encodeURIComponent(f.attachment_id)+'">'+esc(f.filename)+'</a>':esc(f.filename))+'</li>').join('')+'</ul>':'')+
+            (t.tabs||[]).map(tab=>'<p class="dots-src-url">'+esc(tab.title||tab.url)+'</p>').join('')+
+            '<div class="dots-src-actions">'+(t.status==='taken_over'?'<button type="button" class="dots-src-button is-primary" data-bt-handback="'+esc(t.task_id)+'">交还给 Dots</button><button type="button" class="dots-src-button" data-bt-takeover="'+esc(t.task_id)+'">回到浏览器</button>':(t.origin==='chat'&&t.status!=='cancelled'?'<button type="button" class="dots-src-button" data-bt-takeover="'+esc(t.task_id)+'">接管浏览器</button>':''))+(active?'<button type="button" class="dots-src-button is-danger" data-bt-close="'+esc(t.task_id)+'">关闭窗口</button>':'')+'</div>';
+        }
+        const side = '<span class="dots-src-state is-'+esc(state)+'"><i></i>'+esc(label)+'</span>';
+        return '<li class="dots-src'+(isOpen?' is-open':'')+'" data-bt="'+esc(t.task_id)+'"><div class="dots-src-row" data-bt-toggle role="button" tabindex="0" aria-expanded="'+isOpen+'"><span class="dots-src-icon">'+icon('computer')+'</span><span class="dots-src-text"><strong>'+esc(t.title||'浏览器任务')+'</strong><small>'+esc(t.identity==='default'?'默认身份':'身份：'+t.identity)+(browserNeedsYou(t)?' · 需要你处理':'')+'</small></span><span class="dots-src-side">'+side+'</span></div>'+(isOpen?'<div class="dots-src-more">'+more+'</div>':'')+'</li>';
+      }).join('')+'</ul>' : '<p class="dots-panel-empty">还没有浏览器任务。对 Dots 说“帮我在某网站上…”即可开始。</p>';
+      // 正在输入时不重建，避免打断加密输入或回复。
+      if (html !== lastHTML && !body.contains(document.activeElement?.closest('form') || null)) { body.innerHTML = html; lastHTML = html; }
+    };
+    const refresh = async () => { await loadBrowserTasks(); if (dialog.isConnected && !dialog.hidden) draw(); };
+    const poll = () => { clearTimeout(timer); if (dialog.isConnected && !dialog.hidden && currentModal === dialog) timer = setTimeout(async () => { await refresh().catch(()=>{}); poll(); }, 3000); };
+    const act = async fn => { errorBox.hidden = true; try { await fn(); } catch (cause) { fail(cause); } await refresh(); };
+    dialog.addEventListener('submit', event => {
+      event.preventDefault(); const form = event.target;
+      if (form.dataset.bqSecure) { const value = String(new FormData(form).get('value') || ''); form.reset(); act(() => api('/browser/questions/'+encodeURIComponent(form.dataset.bqSecure)+'/secure','POST',{value})); }
+      if (form.dataset.bqTextForm) { const text = String(new FormData(form).get('text') || '').trim(); if (text) { form.reset(); act(() => api('/browser/questions/'+encodeURIComponent(form.dataset.bqTextForm)+'/answer','POST',{text})); } }
+    });
+    dialog.addEventListener('click', event => {
+      const el = event.target.closest('button,[data-bt-toggle]'); if (!el) return;
+      if (el.dataset.bqAnswer) { const remember = !!dialog.querySelector('[data-bq-remember="'+CSS.escape(el.dataset.bqAnswer)+'"]')?.checked; return act(() => api('/browser/questions/'+encodeURIComponent(el.dataset.bqAnswer)+'/answer','POST',{decision:el.dataset.bqDecision,remember})); }
+      if (el.dataset.bqPay) return act(() => api('/browser/questions/'+encodeURIComponent(el.dataset.bqPay)+'/answer','POST',{approved:el.dataset.bqApproved==='1'}));
+      if (el.dataset.bqOption) return act(() => api('/browser/questions/'+encodeURIComponent(el.dataset.bqOption)+'/answer','POST',{text:el.dataset.bqText}));
+      if (el.dataset.btHandback) return act(() => api('/browser/tasks/'+encodeURIComponent(el.dataset.btHandback)+'/handback','POST',{}));
+      if (el.dataset.btClose) return act(() => api('/browser/tasks/'+encodeURIComponent(el.dataset.btClose)+'/close','POST',{}));
+      if (el.dataset.btTakeover) { clearTimeout(timer); return takeoverBrowser(el.dataset.btTakeover).catch(fail); }
+      if (el.hasAttribute('data-bt-toggle')) { const id = el.closest('[data-bt]').dataset.bt; open = open === id ? '' : id; lastHTML = ''; draw(); }
+    });
+    dialog.addEventListener('keydown', event => { const row = event.target.closest('[data-bt-toggle]'); if (row && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); row.click(); } });
+    await refresh().catch(fail); poll();
+  }
+  // 接管：服务器浏览器切到这个任务的窗口；关闭浏览器或点“交还给 Dots”都会交还，任务先查看变化再继续。
+  async function takeoverBrowser(taskId) {
+    const result = await api('/browser/tasks/'+encodeURIComponent(taskId)+'/takeover','POST',{});
+    await openComputer({ticket: result.ticket, taskId});
+  }
+  // 设置 > 连接器 > 浏览器：权限、网站权限、浏览器身份、Secure Vault。Dots 只能读取这些设置，不能修改。
+  async function openBrowserSettings() {
+    const dialog = makeDialog('dotsBrowserSettingsDialog','dots-conversation-overlay');
+    dialog.innerHTML = '<section class="dots-conversation-card dots-sources-card"><header><div><h2>浏览器</h2><small>Dots 使用服务器浏览器时的权限和登录</small></div><button type="button" class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button></header><div class="dots-src-body" data-bs-body></div><p role="alert" class="dots-dialog-error" data-bs-error hidden></p></section>';
+    showDialog(dialog, dialog);
+    const body = dialog.querySelector('[data-bs-body]'), errorBox = dialog.querySelector('[data-bs-error]');
+    const fail = cause => { errorBox.textContent = cause?.message || String(cause); errorBox.hidden = false; };
+    let perms = {}, rules = [], identities = [], vault = [];
+    const opts = {allow:'允许',ask:'询问',deny:'拒绝'};
+    const select = (key, label, values) => '<label class="dots-src-row" style="cursor:default"><span class="dots-src-text"><strong>'+esc(label)+'</strong></span><span class="dots-src-side"><select data-bs-perm="'+key+'">'+values.map(v=>'<option value="'+v+'"'+(perms[key]===v?' selected':'')+'>'+opts[v]+'</option>').join('')+'</select></span></label>';
+    const draw = () => {
+      body.innerHTML = '<h3>权限</h3><ul class="dots-src-list"><li class="dots-src">'+select('siteAccess','访问网站（默认）',['allow','ask','deny'])+'</li><li class="dots-src">'+select('downloads','下载文件',['allow','ask','deny'])+'</li><li class="dots-src">'+select('uploads','上传文件',['ask','deny'])+'</li><li class="dots-src">'+select('savedPasswords','填写保存的账号密码',['allow','ask','deny'])+'</li></ul>'+
+        '<h3>网站权限</h3><ul class="dots-src-list">'+rules.map(r=>'<li class="dots-src"><div class="dots-src-row" style="cursor:default"><span class="dots-src-text"><strong>'+esc(r.origin)+'</strong><small>'+esc(opts[r.setting])+'</small></span><span class="dots-src-side"><button type="button" class="dots-src-button" data-bs-rule-remove="'+esc(r.origin)+'">移除</button></span></div></li>').join('')+'</ul>'+
+        '<form class="dots-mcp-form" data-bs-rule><label><span>网站</span><input name="origin" placeholder="https://example.com" required maxlength="300"></label><label><span>设置</span><select name="setting"><option value="allow">允许</option><option value="ask">询问</option><option value="deny">拒绝</option></select></label><div class="dots-src-actions"><button type="submit" class="dots-src-button">添加网站权限</button></div></form>'+
+        '<h3>浏览器身份</h3><p class="dots-src-example">所有窗口默认共用一个身份，一次登录可用于所有对话和定时任务。要用另一个账号登录同一网站时，新建一个身份。</p><ul class="dots-src-list">'+identities.map(i=>'<li class="dots-src"><div class="dots-src-row" style="cursor:default"><span class="dots-src-text"><strong>'+esc(i.label)+'</strong><small>'+esc(i.id)+(i.note?' · '+esc(i.note):'')+'</small></span><span class="dots-src-side">'+(i.id==='default'?'':'<button type="button" class="dots-src-button" data-bs-identity-remove="'+esc(i.id)+'">删除</button>')+'</span></div></li>').join('')+'</ul>'+
+        '<form class="dots-mcp-form" data-bs-identity><label><span>身份标识</span><input name="id" pattern="[a-z0-9][a-z0-9-]{0,31}" placeholder="work" required></label><label><span>名称</span><input name="label" maxlength="60" placeholder="工作账号" required></label><div class="dots-src-actions"><button type="submit" class="dots-src-button">新建身份</button></div></form>'+
+        '<h3>Secure Vault 保存的登录</h3><p class="dots-src-example">密码加密保存在服务器上，只会被直接填进对应网站，不会出现在聊天、任务或记忆里。</p><ul class="dots-src-list">'+vault.map(v=>'<li class="dots-src"><div class="dots-src-row" style="cursor:default"><span class="dots-src-text"><strong>'+esc(v.label||v.origin)+'</strong><small>'+esc(v.username)+' · '+esc(v.origin)+(v.identity!=='default'?' · '+esc(v.identity):'')+'</small></span><span class="dots-src-side"><button type="button" class="dots-src-button" data-bs-vault-remove="'+esc(v.id)+'">删除</button></span></div></li>').join('')+'</ul>'+
+        '<form class="dots-mcp-form" data-bs-vault autocomplete="off"><label><span>网站</span><input name="origin" placeholder="https://example.com" required maxlength="300"></label><label><span>账号</span><input name="username" required maxlength="256" autocomplete="off"></label><label><span>密码</span><input name="password" type="password" required maxlength="1024" autocomplete="new-password"></label><label><span>备注（可选）</span><input name="label" maxlength="80"></label><label><span>身份</span><select name="identity">'+identities.map(i=>'<option value="'+esc(i.id)+'">'+esc(i.label)+'</option>').join('')+'</select></label><div class="dots-src-actions"><button type="submit" class="dots-src-button is-primary">保存登录</button></div></form>';
+    };
+    const load = async () => { const [p, i, v] = await Promise.all([api('/browser/permissions'), api('/browser/identities'), api('/browser/vault')]); perms = p.permissions || {}; rules = p.siteRules || []; identities = i.identities || []; vault = v.entries || []; draw(); };
+    const act = async fn => { errorBox.hidden = true; try { await fn(); await load(); } catch (cause) { fail(cause); } };
+    dialog.addEventListener('change', event => { const key = event.target.dataset?.bsPerm; if (key) act(() => api('/browser/permissions','PATCH',{[key]:event.target.value})); });
+    dialog.addEventListener('submit', event => {
+      event.preventDefault(); const form = event.target, data = Object.fromEntries(new FormData(form));
+      if (form.matches('[data-bs-rule]')) act(() => api('/browser/site-rules','PUT',{origin:data.origin,setting:data.setting}));
+      if (form.matches('[data-bs-identity]')) act(() => api('/browser/identities','POST',{id:data.id,label:data.label}));
+      if (form.matches('[data-bs-vault]')) { form.querySelector('[name=password]').value = ''; act(() => api('/browser/vault','POST',data)); }
+    });
+    dialog.addEventListener('click', event => {
+      const el = event.target.closest('button'); if (!el) return;
+      if (el.dataset.bsRuleRemove) act(() => api('/browser/site-rules','PUT',{origin:el.dataset.bsRuleRemove,setting:'default'}));
+      if (el.dataset.bsIdentityRemove) act(() => api('/browser/identities/'+encodeURIComponent(el.dataset.bsIdentityRemove),'DELETE'));
+      if (el.dataset.bsVaultRemove) act(() => api('/browser/vault/'+encodeURIComponent(el.dataset.bsVaultRemove),'DELETE'));
+    });
+    try { await load(); } catch (cause) { fail(cause); }
+  }
+  async function openComputer(takeover = null) {
     const dialog=browserDialog=makeDialog('dotsBrowserDialog','dots-browser-overlay');
     dialog.innerHTML='<section class="dots-browser-card"><div class="dots-browser-loading" data-browser-loading>正在启动服务器 Chrome…</div><iframe class="dots-browser-frame" data-browser-frame title="拾燕浏览器" sandbox="allow-scripts allow-same-origin allow-forms" referrerpolicy="no-referrer" hidden></iframe><p class="dots-browser-error" data-browser-error role="alert" hidden></p></section>';
-    const frameMessage=event=>{if(event.origin!==location.origin||event.source!==dialog.querySelector('[data-browser-frame]')?.contentWindow||event.data?.type!=='shiyan-browser-close')return;window.removeEventListener('message',frameMessage);closeDialog(true);};
+    const frameMessage=event=>{if(event.origin!==location.origin||event.source!==dialog.querySelector('[data-browser-frame]')?.contentWindow||!['shiyan-browser-close','shiyan-browser-handback'].includes(event.data?.type))return;window.removeEventListener('message',frameMessage);
+      if(event.data.type==='shiyan-browser-handback'&&takeover?.taskId)api('/browser/tasks/'+encodeURIComponent(takeover.taskId)+'/handback','POST',{}).catch(()=>{}).finally(()=>{void loadBrowserTasks().then(()=>{savedSignature='';renderPanel();});});
+      closeDialog(true);};
     window.addEventListener('message',frameMessage);
     dialog.addEventListener('click',event=>{if(event.target.closest('[data-dots-close-dialog]')){window.removeEventListener('message',frameMessage);closeDialog(true);}});
     showDialog(dialog,dialog);
     try {
-      const result=await api('/browser/session','POST',{});
+      const result=takeover?.ticket?{ticket:takeover.ticket}:await api('/browser/session','POST',{});
       if(dialog.hidden||currentModal!==dialog){api('/browser/session','DELETE').catch(()=>{});return;}
       const frame=dialog.querySelector('[data-browser-frame]');
-      frame.src='/assets/dots-browser.html?v=20261108-whiteprobe#ticket='+encodeURIComponent(result.ticket);
+      frame.src='/assets/dots-browser.html?v=20261110-agent#ticket='+encodeURIComponent(result.ticket)+(takeover?.taskId?'&task='+encodeURIComponent(takeover.taskId):'');
       frame.hidden=false;dialog.querySelector('[data-browser-loading]').hidden=true;
     } catch(error) {
       const loading=dialog.querySelector('[data-browser-loading]'),label=dialog.querySelector('[data-browser-error]');
@@ -1077,6 +1199,7 @@
       else if(target.hasAttribute('data-dots-read-message'))readMessage(Number(target.dataset.dotsReadMessage));
       else if(target.hasAttribute('data-dots-close-panel')){e.stopPropagation();C.closePanel();}
       else if(target.hasAttribute('data-dots-computer')){e.stopPropagation();await openComputer();}
+      else if(target.hasAttribute('data-dots-browser-task')){e.stopPropagation();await openBrowserTasks(target.dataset.dotsBrowserTask);}
       else if(target.hasAttribute('data-dots-show-more')){e.stopPropagation();expanded=!expanded;savedSignature='';renderPanel();}
       else if(target.hasAttribute('data-dots-show-outputs')){e.stopPropagation();outputExpanded=!outputExpanded;savedSignature='';renderPanel();}
       else if(target.hasAttribute('data-dots-new-schedule')){e.stopPropagation();await openSchedule();}
