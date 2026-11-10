@@ -483,7 +483,7 @@ struct DotsView: View {
         if store.currentTasks.contains(where: { $0.status == "done" && $0.acceptanceStatus == "pending" && $0.legacyImported != true }) {
             return "正在验收…"
         }
-        if store.currentTasks.contains(where: { ["active", "pending", "queued"].contains($0.status ?? "") }) { return "等待执行" }
+        if store.currentTasks.contains(where: { ["active", "pending", "queued"].contains($0.status ?? "") }) { return "已排队" }
         if store.currentTasks.first?.status == "failed" { return "处理失败" }
         if store.loading && store.messages.isEmpty { return "正在加载…" }
         if store.messages.last?.role == "user" { return "正在回复…" }

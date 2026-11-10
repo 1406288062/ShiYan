@@ -191,9 +191,21 @@ const dotsHub = createDotsHub();
 // DOTS_WORKER_MODE=legacy keeps the previous JSON-plan worker (rollback switch).
 const WORKER_MODE = process.env.DOTS_WORKER_MODE === 'legacy' ? 'legacy' : 'agent';
 const WORKER_AGENT_TIMEOUT_MS = Number(process.env.DOTS_WORKER_AGENT_TIMEOUT_MS) || 45 * 60_000;
+// Files the web Dots conversation uploads (sidecar store). The private owner's messages refer to them
+// by these host paths; members' uploads are copied into their own workspace (/workspace/inputs/...).
+const DOTS_ATTACHMENTS_ROOT = path.join(process.env.SHIYAN_ROOT || '/home/ubuntu/boss-codex-service/shiyan-v2', 'data', 'dots-attachments');
+// A path named in a Dots message -> a host file this owner may show the model, or ''.
+function ownerImagePath(owner, file) {
+  const value = path.normalize(String(file || ''));
+  const inside = (root, p) => p === root || p.startsWith(root + path.sep);
+  if (owner === PRIVATE_OWNER) return [DOTS_ATTACHMENTS_ROOT, path.resolve(WORKSPACE_ROOT)].some(root => inside(root, value)) ? value : '';
+  if (!inside('/workspace', value)) return '';
+  const root = path.resolve(memberWorkspaceHostPath(owner)), host = path.join(root, path.relative('/workspace', value));
+  return inside(root, host) ? host : '';
+}
 const agentSandbox = createSandboxManager({
   layoutFor: owner => {
-    if (owner === PRIVATE_OWNER) return { workspace: WORKSPACE_ROOT, workspaceTarget: '/workspace/dots', home: path.join(DATA_DIR, 'agent-home'), rpc: path.join(DATA_DIR, 'agent-rpc', 'private') };
+    if (owner === PRIVATE_OWNER) return { workspace: WORKSPACE_ROOT, workspaceTarget: '/workspace/dots', home: path.join(DATA_DIR, 'agent-home'), rpc: path.join(DATA_DIR, 'agent-rpc', 'private'), readonly: [[DOTS_ATTACHMENTS_ROOT, DOTS_ATTACHMENTS_ROOT]] };
     const workspace = memberWorkspaceHostPath(owner);
     return { workspace, workspaceTarget: '/workspace', home: path.join(path.dirname(workspace), 'agent-home'), rpc: path.join(DATA_DIR, 'agent-rpc', ownerKey(owner)) };
   },
@@ -283,7 +295,7 @@ function createOwnerRuntime(owner){
  const mailConfig=legacy?(process.env.DOTS_QQ_MAIL_CONFIG||path.join(dataDir,'qq-mail.json')):path.join(dataDir,'qq-mail.json');
  const mailReplies=createMailReplyService({store,transportFactory:config=>{audit(owner,'message_mail','回复了一封邮件');return smtpReplyTransport(config);},loadConfig:()=>readMailConfig(mailConfig),clientFactory:options=>new ImapFlow(options),readBody:readMailBody,assess:(data,schema,control)=>assess(data,schema,{...control,source:'dots-mail-summary'})});
  store.setMailReplies(mailReplies);
- const runtime=createManagerRuntime({store,codex,voice:text=>people.voiceContext(text),threadFactory:async params=>{const {light,...baseOptions}=params.options||{};const connectorServers=await mcpConnectors().runtimeServers(owner);const mcpServers={},mcpToolAllowlist=[];const bridge='/home/ubuntu/boss-codex-service/shiyan-v2/mcp-connector-proxy.mjs';for(const server of connectorServers){const key='shiyan_'+String(server.id).replace(/[^A-Za-z0-9_]/g,'_');mcpServers[key]={command:process.execPath,args:[bridge],env:{SHIYAN_ROOT:process.env.SHIYAN_ROOT||'/home/ubuntu/boss-codex-service/shiyan-v2',...(process.env.SHIYAN_MCP_DB?{SHIYAN_MCP_DB:process.env.SHIYAN_MCP_DB}:{}),SHIYAN_MCP_OWNER:String(owner),SHIYAN_MCP_ID:String(server.id)}};mcpToolAllowlist.push('mcp__'+key+'__mcp_list_tools','mcp__'+key+'__mcp_call_tool');}mcpServers.shiyan_sponge={command:process.execPath,args:['/home/ubuntu/ShiYan/Cloud/agent-runtime/sponge-mcp-proxy.mjs'],env:{SHIYAN_ROOT:process.env.SHIYAN_ROOT||'/home/ubuntu/boss-codex-service/shiyan-v2',SHIYAN_MCP_OWNER:String(owner)}};for(const tool of ['list_devices','run_device_tool','get_tool_result'])mcpToolAllowlist.push('mcp__shiyan_sponge__'+tool);mcpServers.browser=browserMcpServer(owner,baseOptions.threadSource==='dots-proactive'?'push':'chat');mcpToolAllowlist.push(...browserToolAllowlist());const options={...baseOptions,mcpServers,mcpToolAllowlist};const inner={...params,options};return hubAwareThread({hub:dotsHub,owner,consumer:light?'dots.chat.quick':'dots.chat',threadId:params.threadId,options,createInner:()=>createTenantThread(owner,inner)});},workspaceRoot,memory:memoryStore,contentReviewEnabled:false,threadOptions:{model:MODEL,skipGitRepoCheck:true,modelReasoningEffort:REASONING},onModelCall:entry=>{if(!recentlyViaHub(owner,'dots.chat',entry.ms+5000)&&!recentlyViaHub(owner,'dots.chat.quick',entry.ms+5000))dotsHub.report('dots.chat',{...entry,provider:'openai',account:owner});}});
+ const runtime=createManagerRuntime({store,codex,voice:text=>people.voiceContext(text),threadFactory:async params=>{const {light,...baseOptions}=params.options||{};const connectorServers=await mcpConnectors().runtimeServers(owner);const mcpServers={},mcpToolAllowlist=[];const bridge='/home/ubuntu/boss-codex-service/shiyan-v2/mcp-connector-proxy.mjs';for(const server of connectorServers){const key='shiyan_'+String(server.id).replace(/[^A-Za-z0-9_]/g,'_');mcpServers[key]={command:process.execPath,args:[bridge],env:{SHIYAN_ROOT:process.env.SHIYAN_ROOT||'/home/ubuntu/boss-codex-service/shiyan-v2',...(process.env.SHIYAN_MCP_DB?{SHIYAN_MCP_DB:process.env.SHIYAN_MCP_DB}:{}),SHIYAN_MCP_OWNER:String(owner),SHIYAN_MCP_ID:String(server.id)}};mcpToolAllowlist.push('mcp__'+key+'__mcp_list_tools','mcp__'+key+'__mcp_call_tool');}mcpServers.shiyan_sponge={command:process.execPath,args:['/home/ubuntu/ShiYan/Cloud/agent-runtime/sponge-mcp-proxy.mjs'],env:{SHIYAN_ROOT:process.env.SHIYAN_ROOT||'/home/ubuntu/boss-codex-service/shiyan-v2',SHIYAN_MCP_OWNER:String(owner)}};for(const tool of ['list_devices','run_device_tool','get_tool_result'])mcpToolAllowlist.push('mcp__shiyan_sponge__'+tool);mcpServers.browser=browserMcpServer(owner,baseOptions.threadSource==='dots-proactive'?'push':'chat');mcpToolAllowlist.push(...browserToolAllowlist());const options={...baseOptions,mcpServers,mcpToolAllowlist};const inner={...params,options};return hubAwareThread({hub:dotsHub,owner,consumer:light?'dots.chat.quick':'dots.chat',threadId:params.threadId,options,createInner:()=>createTenantThread(owner,inner)});},workspaceRoot,resolveImagePath:file=>ownerImagePath(owner,file),memory:memoryStore,contentReviewEnabled:false,threadOptions:{model:MODEL,skipGitRepoCheck:true,modelReasoningEffort:REASONING},onModelCall:entry=>{if(!recentlyViaHub(owner,'dots.chat',entry.ms+5000)&&!recentlyViaHub(owner,'dots.chat.quick',entry.ms+5000))dotsHub.report('dots.chat',{...entry,provider:'openai',account:owner});}});
  const presenter=createMailPresenter({store,assess:(data,schema,control)=>assess(data,schema,{...control,source:'dots-mail-summary'})});
  const mail=createQQMailSubscription({store,configPath:mailConfig,clientFactory:options=>new ImapFlow(options),prepareMail:async(client,message,control)=>{let body;try{body=await readMailBody(client,message);}catch(error){if(control.signal.aborted)throw error;return {kind:'body',text:'（本次未能读取邮件正文）',links:[]};}return presenter({...body,subject:message.envelope?.subject||'',from:message.envelope?.from?.[0]?.address||''},control);}});
  const ownerSubscriptions=createOwnerSubscriptions({store,dataDir,appSubscriptions:apps,mailSubscription:mail});
@@ -887,7 +899,7 @@ async function runGoal(goalId, trigger = "scheduler") {
     if (WORKER_MODE === 'agent' && run) {
       const owner = ownerRegistry.currentOwner();
       agentRun = await workerAgent.run(goal, { owner, memories, timeline, events, trigger, signal: abort.signal, privateOwner: owner === PRIVATE_OWNER,
-        onStep: step => { try { addTimeline(goal.id, step.ok ? 'tool_action' : 'tool_error', '执行步骤', clipStepValue({ type: step.name, input: step.input, output: step.output, status: step.ok ? 'completed' : 'failed' })); } catch {} } });
+        onStep: step => { try { addTimeline(goal.id, step.ok ? 'tool_action' : 'tool_error', '执行步骤', clipStepValue(step.record || { type: step.name, input: step.input, output: step.output, status: step.ok ? 'completed' : 'failed' })); } catch {} } });
       thread = { id: agentRun.sessionRef }; agentRunUsed = agentRun;
       turn = agentRun.turn;
     } else {

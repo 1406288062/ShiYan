@@ -557,3 +557,37 @@ body.workbench-v22 :is(.message-body,.dots-manager-message) a.message-reference:
 .dots-view .dots-send-retry:hover { background:var(--soft-fill); }
 .dots-send-retry .wb-icon { width:14px;height:14px; }
 .dots-manager-message.is-send-failed { opacity:1; }
+
+/* 输入框里的附件：输入框把图片包在里面，图片在上、文字在中、加号和发送在底部一行 */
+.dots-composer-surface { position:relative; }
+.dots-composer-files { display:none; }
+.dots-composer-surface.has-files { display:grid;grid-template-columns:auto 1fr auto;grid-template-areas:"files files files" "input input input" "add . send";align-items:end;row-gap:6px;border-radius:22px;padding:12px 12px 9px; }
+.dots-composer-surface.has-files .dots-composer-files { grid-area:files;display:flex;flex-wrap:wrap;gap:10px;min-width:0;padding:2px 2px 2px; }
+.dots-composer-surface.has-files textarea { grid-area:input;padding:4px 6px; }
+.dots-composer-surface.has-files .dots-add-file { grid-area:add; }
+.dots-composer-surface.has-files .dots-send { grid-area:send; }
+.dots-composer-thumb { position:relative;flex:0 0 72px;width:72px;height:72px;border-radius:12px;background:var(--soft-fill); }
+.dots-composer-thumb img { display:block;width:100%;height:100%;object-fit:cover;border-radius:12px;box-shadow:inset 0 0 0 .5px color-mix(in srgb,#000 12%,transparent); }
+.dots-composer-thumb.is-uploading img { opacity:.55; }
+.dots-thumb-progress { position:absolute;inset:0;margin:auto;width:20px;height:20px;border-radius:50%;border:2px solid #fff;border-right-color:transparent;animation:dots-thumb-spin .8s linear infinite;filter:drop-shadow(0 1px 2px #0005); }
+@keyframes dots-thumb-spin { to { transform:rotate(360deg); } }
+.dots-view .dots-thumb-remove { position:absolute;top:-6px;right:-6px;display:grid;place-items:center;width:20px;height:20px;margin:0;padding:0 0 1px;border:1.5px solid var(--v22-panel,var(--canvas));border-radius:50%;background:rgba(0,0,0,.72);color:#fff;font-size:14px;line-height:1;cursor:pointer; }
+.dots-view .dots-thumb-remove:hover { background:#000; }
+.dots-composer-files .dots-file-chip { align-self:center; }
+
+/* 拖文件进来：输入框高亮，出现“松开即可添加到对话”的提示，带轻微呼吸动效 */
+.dots-drop-hint { position:absolute;inset:0;z-index:2;display:none;place-items:center;border-radius:inherit;pointer-events:none;background:color-mix(in srgb,var(--accent) 9%,var(--v22-panel,var(--canvas)));border:1.5px dashed var(--accent); }
+.dots-drop-hint span { font-size:14px;font-weight:600;color:var(--accent);letter-spacing:.02em;animation:dots-drop-pulse 1.1s ease-in-out infinite; }
+.dots-composer.is-drop-target .dots-composer-surface { border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 16%,transparent);min-height:58px; }
+.dots-composer.is-drop-target .dots-drop-hint { display:grid;animation:dots-drop-in .16s ease-out; }
+@keyframes dots-drop-pulse { 0%,100% { opacity:.65;transform:translateY(0) scale(1); } 50% { opacity:1;transform:translateY(-1px) scale(1.04); } }
+@keyframes dots-drop-in { from { opacity:0; } to { opacity:1; } }
+@media (prefers-reduced-motion:reduce) { .dots-drop-hint span,.dots-thumb-progress { animation:none; } }
+
+/* 回到底部：与普通会话的“查看最新消息”按钮同款，位于输入框上方居中 */
+.dots-detail { position:relative; }
+#dotsLatestButton { position:absolute;z-index:7;left:50%;right:auto;bottom:calc(var(--dots-composer-height,96px) + 10px);width:36px;height:36px;transform:translateX(-50%);display:inline-grid;opacity:1;visibility:visible;translate:0 0;transition:opacity .28s ease-in-out,translate .28s ease-in-out,visibility 0s linear; }
+#dotsLatestButton .symbol { width:20px;height:20px; }
+#dotsLatestButton[data-visible="false"] { opacity:0;visibility:hidden;translate:0 8px;pointer-events:none;transition:opacity .28s ease-in-out,translate .28s ease-in-out,visibility 0s linear .28s; }
+#dotsLatestButton:active:not(:disabled) { transform:translateX(-50%) scale(.96); }
+@media (prefers-reduced-motion:reduce) { #dotsLatestButton { translate:none;transition:opacity .16s ease-out,visibility 0s linear!important; } #dotsLatestButton[data-visible="false"] { translate:none; } }

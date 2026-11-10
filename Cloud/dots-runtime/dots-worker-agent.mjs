@@ -67,6 +67,21 @@ ${privateOwner ? '- 只读检查服务器本机（磁盘、网卡、运行时长
 6. 只有当前任务确有成功的高德地图连接器调用记录时，才对相应地图信息标注“来源：高德地图”。`;
 }
 
+// One agent tool call -> the execution-step record the 执行过程 page already understands
+// (same shapes as Codex items: command_execution / mcp_tool_call / file_change / web_search).
+export function stepRecord({ name = '', input, output, ok = true } = {}) {
+  const status = ok ? 'completed' : 'failed', text = typeof output === 'string' ? output : output == null ? '' : JSON.stringify(output);
+  const args = input && typeof input === 'object' ? input : {};
+  if (name === 'Bash' || name === 'shell') return { type: 'command_execution', command: typeof input === 'string' ? input : String(args.command || ''), aggregated_output: text, status };
+  if (name === 'web_search' || name === 'WebSearch') return { type: 'web_search', query: typeof input === 'string' ? input : String(args.query || ''), status };
+  if (['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'file_change'].includes(name)) {
+    const paths = Array.isArray(input) ? input : [args.file_path || args.notebook_path || ''];
+    return { type: 'file_change', changes: paths.filter(Boolean).map(p => ({ kind: name === 'Write' ? 'add' : 'update', path: String(p) })), status };
+  }
+  const mcp = /^mcp__([^_].*?)__(.+)$/.exec(name);
+  return { type: 'mcp_tool_call', server: mcp ? mcp[1] : '', tool: mcp ? mcp[2] : name, arguments: args, result_text: text, ...(ok ? {} : { error: text.slice(0, 2000) || '工具调用失败' }), status };
+}
+
 export function createWorkerAgent({ runAgent, route, toolGroups, logger = console }) {
   async function run(goal, { owner, memories, timeline, events, trigger, signal, onStep, privateOwner = false }) {
     const chosen = await route('dots.worker');
@@ -91,7 +106,7 @@ export function createWorkerAgent({ runAgent, route, toolGroups, logger = consol
         system: 'You are a Dots background-task agent working autonomously inside a per-account Docker sandbox. Follow the task brief in the user message. Always end the run by calling mcp__dots__finish_run.',
         prompt: buildWorkerAgentPrompt(goal, { memories, timeline, events, trigger, cwd, privateOwner, resumed }),
         groups: { ...extra.groups, dots: [finish, ...(extra.groups.dots || [])] }, signal, maxTurns: 300,
-        onEvent: event => { if (event.type === 'tool_result' && !/^mcp__dots__finish_run$/.test(event.name)) onStep?.(event); },
+        onEvent: event => { if (event.type === 'tool_result' && !/^mcp__dots__finish_run$/.test(event.name)) onStep?.({ ...event, record: stepRecord(event) }); },
       });
       // An agent that forgot finish_run still did real work: record its last message and wake again.
       const result = finished || { status: 'continue', summary: clip(out.text || '本轮结束但没有汇报结果', 4000), next_step: '继续推进并用 finish_run 汇报', wake_after_seconds: 900, notify: false, notification: '', memories: [], approval_reason: '', approval_command: '', actions: [] };

@@ -482,6 +482,9 @@ export function createManagerStore({ db, ownerId = 'shiyan-private-owner', works
     if(!sameError)db.prepare('INSERT INTO manager_inbox(manager_id,type,payload,created_at) VALUES(?,?,?,?)').run(managerId,'previous_plan_error',encode({error:errorText,instruction:'Correct invalid directives before retrying. Do not repeat the rejected plan.'}),now());
   });
   const recoverExpired = () => transaction(()=>{
+    // A run that ended without releasing its resource locks (e.g. superseded mid-action) must not block
+    // later tasks on the same resource forever. Locks held only for an uncertain action stay until reconciled.
+    db.prepare("DELETE FROM manager_resources WHERE run_id IN (SELECT id FROM manager_runs WHERE manager_id=? AND state<>'running') AND NOT EXISTS (SELECT 1 FROM manager_actions a WHERE a.run_id=manager_resources.run_id AND a.state='unknown')").run(managerId);
     const expired=db.prepare("SELECT * FROM manager_runs WHERE manager_id=? AND state='running' AND lease_expires_at<=?").all(managerId,now());
     for(const run of expired){
       if(run.purpose==='content_review'){relationship.cancelRun(run,'内容评估租约已结束');finishRun(run,{status:'cancelled',summary:'Content review lease expired'});continue;}

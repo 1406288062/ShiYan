@@ -628,3 +628,18 @@ test('inspection cannot mutate task state, access another manager or hide a stal
     assert.ok(f.store.claimManager());
   }finally{f.close();}
 });
+
+test('images uploaded in web Dots and WeChat are handed to the model as images', async () => {
+  const { pendingImagePaths } = await import('./manager-runtime.mjs');
+  const { writeFileSync, mkdirSync } = await import('node:fs');
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'dots-img-'));
+  try {
+    const host = path.join(dir, 'a', '图 1.png'); mkdirSync(path.dirname(host), { recursive: true }); writeFileSync(host, 'x');
+    const member = path.join(dir, 'ws', 'inputs', 'id1', 'b.JPG'); mkdirSync(path.dirname(member), { recursive: true }); writeFileSync(member, 'x');
+    const content = '看看\n\n[用户上传的附件]\n' + JSON.stringify({ filename: '图 1.png', path: host }) + '\n' + JSON.stringify({ filename: 'b.JPG', path: '/workspace/inputs/id1/b.JPG' }) + '\n' + JSON.stringify({ filename: 'c.pdf', path: '/workspace/inputs/id1/c.pdf' });
+    const store = { pendingManagerInbox: () => [{ type: 'user_message', payload: JSON.stringify({ content }) }] };
+    const resolve = file => file.startsWith('/workspace/') ? path.join(dir, 'ws', file.slice('/workspace/'.length)) : file;
+    assert.deepEqual(pendingImagePaths(store, {}, resolve), [host, member]);
+    assert.deepEqual(pendingImagePaths(store, {}, () => ''), []);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});

@@ -13,7 +13,7 @@
   }
   function restoreRail() {
     const view = window.shiyan?.getView?.();
-    const id = {agent:'railHome', search:'railHome', home:'railEnhance', history:'railHistory', schedules:'railSchedules'}[view];
+    const id = {agent:'railHome', search:'railHome', dots:'railHome', home:'railEnhance', history:'railHistory', schedules:'railSchedules'}[view];
     const restored = id ? [id] : previousActive;
     for (const button of document.querySelectorAll('#activityRail > button')) {
       button.classList.toggle('is-active', restored.includes(button.id));

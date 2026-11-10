@@ -42,7 +42,7 @@ struct DotsGoal: Codable, Identifiable {
     var displayTitle: String { title?.isEmpty == false ? title! : "未命名目标" }
     var statusText: String {
         switch status {
-        case "active": return "等待执行"
+        case "active": return "已排队"
         case "running": return "处理中"
         case "paused": return "已暂停"
         case "completed", "done": return "已完成"
@@ -406,7 +406,7 @@ struct DotsManagerTask: Codable, Identifiable {
         if legacyImported != true && status == "done" && acceptanceStatus == "pending" { return "待总管验收" }
         switch status {
         case "running": return "处理中"
-        case "active", "pending", "queued": return "等待执行"
+        case "active", "pending", "queued": return "已排队"
         case "paused": return "已暂停"
         case "done", "completed": return "已完成"
         case "cancelled": return "已取消"

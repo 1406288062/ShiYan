@@ -169,12 +169,14 @@ export function extractManagerReply(source) {
 }
 
 // Stream thread.started immediately so a crash cannot lose a new SDK thread.
-// 微信等渠道发来的图片：只取本轮新消息里引用、且确实存在于账号工作区 inputs 目录下的图片，原图交给模型看。
-export function pendingImagePaths(store,run){
+// 本轮新消息里带的图片（网页 Dots 上传的附件、微信发来的图片）：原图交给模型看。
+// resolve 把消息里的路径（宿主路径或账号工作区里的 /workspace/...）换成宿主上可读的文件路径。
+const IMAGE_PATH=/"path":"((?:[^"\\]|\\.)+?\.(?:jpe?g|png|gif|webp))"/gi;
+export function pendingImagePaths(store,run,resolve=p=>p){
   const paths=new Set();
   try{for(const event of store.pendingManagerInbox(run)){if(event.type!=='user_message')continue;const content=String(JSON.parse(event.payload)?.content||'');
-    for(const match of content.matchAll(/"path":"([^"]+\/inputs\/weixin\/[^"]+\.(?:jpe?g|png|gif|webp))"/gi))if(existsSync(match[1]))paths.add(match[1]);}}catch{}
-  return [...paths].slice(0,4);
+    for(const match of content.matchAll(IMAGE_PATH)){let raw;try{raw=JSON.parse('"'+match[1]+'"');}catch{continue;}const file=resolve(raw);if(file&&existsSync(file))paths.add(file);}}}catch{}
+  return [...paths].slice(0,8);
 }
 export async function runStructuredTurn(thread,prompt,schema,{signal,onThread,onReply,images=[]}={}) {
   if(typeof thread.runStreamed!=='function'){
@@ -236,7 +238,7 @@ ${JSON.stringify(recent)}
 Return only the structured decision.${buildVoiceRule(voiceContext,{field:'message'}).replace(/rule 8's default tone and length/,'the default tone and length').replace(/tasks, summaries, worker instructions, notes, routing and every other rule above/,'every decision rule above')}`;
 }
 
-export function createManagerRuntime({store,codex,workspaceRoot,memory,threadOptions={},timeoutMs=120000,onComplete=()=>{},threadFactory=null,contentReviewEnabled=true,logger=console,onModelCall=()=>{},voice=null}={}) {
+export function createManagerRuntime({store,codex,workspaceRoot,memory,resolveImagePath,threadOptions={},timeoutMs=120000,onComplete=()=>{},threadFactory=null,contentReviewEnabled=true,logger=console,onModelCall=()=>{},voice=null}={}) {
   const workspace=path.join(workspaceRoot,'.manager');mkdirSync(workspace,{recursive:true});
   // 读取用户启用的“学习对象”说话方式；失败时按普通 Dots 回复，不影响对话。
   const voiceFor=async text=>{if(typeof voice!=='function')return '';try{return String(await voice(String(text||''))||'');}catch(cause){logger.warn?.('[voice]',cause?.message||cause);return '';}};
@@ -322,7 +324,7 @@ export function createManagerRuntime({store,codex,workspaceRoot,memory,threadOpt
         lastDelivered=content;lastDeliveredAt=Date.now();
       };
       const voiceContext=await voiceFor(pendingForLight.filter(event=>event.type==='user_message').map(event=>{try{return String(JSON.parse(event.payload).content||'');}catch{return '';}}).join('\n'));
-      const turn=await runStructuredTurn(thread,buildManagerPrompt(store,run,{memoryContext:remembered,voiceContext}),MANAGER_SCHEMA,{signal:abort.signal,onThread:id=>store.checkpointThread(run,id),onReply,images:pendingImagePaths(store,run)});
+      const turn=await runStructuredTurn(thread,buildManagerPrompt(store,run,{memoryContext:remembered,voiceContext}),MANAGER_SCHEMA,{signal:abort.signal,onThread:id=>store.checkpointThread(run,id),onReply,images:pendingImagePaths(store,run,resolveImagePath)});
       result=JSON.parse(turn.finalResponse);
       if(result.inspect_tasks?.length)throw new Error('Manager task inspection is disabled; historical task context must be prepared before the single model call');
       if(result.mail_actions?.length){result.reply=result.mail_actions[0].action==='send'?'正在处理邮件回复，实际发送结果会随后告诉你。':'正在起草邮件回复。';result.summary=result.reply;result.awaiting_user_input=false;}

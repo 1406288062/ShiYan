@@ -75,6 +75,9 @@ export function createSandboxManager({
       ['-v', `${relayScript}:${paths.relay}:ro`],
       ...(existsSync(claudeBinary) ? [['-v', `${claudeBinary}:${paths.claude}:ro`]] : []),
       ...(codex ? [['-v', `${codex.dir}:/opt/shiyan/codex:ro`]] : []),
+      // Extra read-only inputs of this account (e.g. its uploaded chat attachments), at the paths the
+      // Dots conversation refers to them by.
+      ...(l.readonly || []).filter(([host]) => existsSync(host)).map(([host, target]) => ['-v', `${host}:${target || host}:ro`]),
     ].flat();
     return ['run', '-d', '--name', name(owner), '--label', 'shiyan.agent=1', '--label', 'shiyan.spec=' + spec, '--hostname', 'dots-agent',
       '--user', `${uid}:${gid}`, '--memory', limits.memory, '--cpus', String(limits.cpus), '--pids-limit', String(limits.pids),

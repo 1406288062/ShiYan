@@ -83,7 +83,14 @@
     if (approvalTasks.length) return approvals.length?'正在更新操作状态…':'需要你批准操作';
     if (value.messages?.at(-1)?.role==='assistant'&&value.messages.at(-1).deliveryState==='streaming') return '正在回复…';
     if (Number(value.manager?.runningWorkers) > 0 || tasks.some(t => t.status === 'running')) return '正在处理事项…';
-    if (tasks.some(t => ['active','pending','queued'].includes(t.status))) return '等待执行';
+    // 排队的事项：说清楚是“即将开始”还是“几点继续”，而不是笼统的“等待执行”。
+    const queued = tasks.filter(t => ['active','pending','queued'].includes(t.status));
+    if (queued.length) {
+      const wakeOf = t => { const v = Number(t.next_wake_at ?? t.nextWakeAt); return v ? (v < 1e12 ? v * 1000 : v) : 0; };
+      const next = [...queued].sort((a, b) => (wakeOf(a) || 0) - (wakeOf(b) || 0))[0], wake = wakeOf(next), title = String(next.title || '').trim();
+      const head = wake && wake - Date.now() > 60000 ? new Date(wake).toLocaleString('zh-CN', new Date(wake).toDateString() === new Date().toDateString() ? {hour:'2-digit',minute:'2-digit'} : {month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) + ' 继续' : '即将开始';
+      return (queued.length > 1 ? head + '（共 ' + queued.length + ' 项）' : head) + (title ? '：' + title : '');
+    }
     if (tasks[0]?.status === 'failed') return '处理失败';
     if (value.loading && !value.messages?.length) return '正在加载…';
     if (value.messages?.at(-1)?.role === 'user') return '正在回复…';

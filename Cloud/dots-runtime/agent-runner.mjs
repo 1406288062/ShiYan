@@ -59,7 +59,7 @@ export function createAgentRunner({ sandbox, claudeSdk = loadClaudeSdk, managerT
             pendingTools.delete(block.tool_use_id);
             const output = Array.isArray(block.content) ? block.content.map(part => part.type === 'text' ? part.text : '[' + part.type + ']').join('\n') : block.content;
             const item = { type: 'tool', name: call.name, input: call.input, ok: !block.is_error, output: clip(output) };
-            items.push(item); onEvent?.({ type: 'tool_result', ...item });
+            items.push(item); onEvent?.({ ...item, type: 'tool_result' });
           }
         } else if (message.type === 'result') {
           result = message; usage = message.usage ? { input_tokens: message.usage.input_tokens || 0, cached_input_tokens: message.usage.cache_read_input_tokens || 0, output_tokens: message.usage.output_tokens || 0 } : null;
@@ -83,7 +83,7 @@ export function createAgentRunner({ sandbox, claudeSdk = loadClaudeSdk, managerT
       const input = raw.type === 'commandExecution' ? raw.command : raw.type === 'mcpToolCall' ? raw.arguments : raw.type === 'fileChange' ? (raw.changes || []).map(c => c.path) : raw.query;
       const output = raw.type === 'commandExecution' ? raw.aggregatedOutput : raw.type === 'mcpToolCall' ? (raw.result || raw.error) : raw.status;
       const item = { type: 'tool', name, input, ok: !['failed', 'declined'].includes(raw.status) && !raw.error, output: clip(output) };
-      items.push(item); onEvent?.({ type: 'tool_result', ...item });
+      items.push(item); onEvent?.({ ...item, type: 'tool_result' });
     };
     const thread = managerThread({
       threadId: session || null, codexPath: sandbox.paths.codex,

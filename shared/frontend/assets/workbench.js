@@ -182,7 +182,7 @@
     renderProjects();
     $('pinnedSection').hidden=false;
     const view=window.shiyan?.getView();
-    $('railHome').classList.toggle('is-active',view==='agent'||view==='search');
+    $('railHome').classList.toggle('is-active',view==='agent'||view==='search'||view==='dots');
     $('railEnhance').classList.toggle('is-active',view==='home');
     $('railHistory').classList.toggle('is-active',view==='history');
     v2?.renderState(state);
@@ -340,19 +340,58 @@
     let out='',index=0;for(const match of source.matchAll(rx)){out+=esc(source.slice(index,match.index));const t=match[0],kind=/^(\/\/|\/\*|#)/.test(t)?'comment':/^['"`]/.test(t)?'string':/^\d/.test(t)?'number':'keyword';out+=`<span class="syntax-${kind}">${esc(t)}</span>`;index=match.index+t.length;}
     return out+esc(source.slice(index));
   }
+  // Word 文档（.docx）在浏览器里解压出正文，按标题 / 段落 / 表格显示；不再把二进制当文本显示成乱码。
+  async function zipEntry(buffer,name){
+    const view=new DataView(buffer),bytes=new Uint8Array(buffer);let end=-1;
+    for(let i=bytes.length-22;i>=Math.max(0,bytes.length-65557);i--)if(view.getUint32(i,true)===0x06054b50){end=i;break;}
+    if(end<0)throw Error('文件不是有效的 Word 文档');
+    let offset=view.getUint32(end+16,true);const count=view.getUint16(end+10,true),decoder=new TextDecoder();
+    for(let n=0;n<count;n++){
+      if(view.getUint32(offset,true)!==0x02014b50)break;
+      const method=view.getUint16(offset+10,true),size=view.getUint32(offset+20,true),nameLen=view.getUint16(offset+28,true),extra=view.getUint16(offset+30,true),comment=view.getUint16(offset+32,true),local=view.getUint32(offset+42,true);
+      const entry=decoder.decode(bytes.subarray(offset+46,offset+46+nameLen));offset+=46+nameLen+extra+comment;
+      if(entry!==name)continue;
+      const start=local+30+view.getUint16(local+26,true)+view.getUint16(local+28,true),data=bytes.subarray(start,start+size);
+      if(method===0)return decoder.decode(data);
+      if(method!==8||typeof DecompressionStream==='undefined')throw Error('当前浏览器无法预览这个 Word 文档，请下载后查看');
+      return await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
+    }
+    throw Error('Word 文档里没有正文');
+  }
+  async function docxHTML(buffer){
+    const xml=new DOMParser().parseFromString(await zipEntry(buffer,'word/document.xml'),'application/xml');
+    const W='http://schemas.openxmlformats.org/wordprocessingml/2006/main',text=[];
+    const runText=p=>[...p.getElementsByTagNameNS(W,'*')].map(n=>n.localName==='t'?n.textContent:n.localName==='tab'?'\t':n.localName==='br'?'\n':'').join('');
+    const para=p=>{const style=p.getElementsByTagNameNS(W,'pStyle')[0]?.getAttributeNS(W,'val')||p.getElementsByTagNameNS(W,'pStyle')[0]?.getAttribute('w:val')||'',value=runText(p);text.push(value);if(!value.trim())return '';
+      const level=/^title$/i.test(style)?1:Number((/heading\s*(\d)/i.exec(style)||/^(\d)$/.exec(style)||[])[1]||0);
+      const list=p.getElementsByTagNameNS(W,'numPr').length;
+      return level?'<h'+Math.min(level+1,4)+'>'+esc(value)+'</h'+Math.min(level+1,4)+'>':list?'<p class="dots-docx-li">• '+esc(value)+'</p>':'<p>'+esc(value).replace(/\n/g,'<br>')+'</p>';};
+    const body=xml.getElementsByTagNameNS(W,'body')[0];if(!body)throw Error('Word 文档里没有正文');
+    const html=[...body.children].map(node=>{
+      if(node.localName==='p')return para(node);
+      if(node.localName==='tbl')return '<table class="dots-docx-table">'+[...node.children].filter(r=>r.localName==='tr').map(r=>'<tr>'+[...r.children].filter(c=>c.localName==='tc').map(c=>'<td>'+[...c.children].filter(x=>x.localName==='p').map(para).join('')+'</td>').join('')+'</tr>').join('')+'</table>';
+      return '';}).join('');
+    return {html,text:text.join('\n')};
+  }
   async function renderDotsOutput(tab,pane) {
     const outputId=tab.outputId||tab.dotsOutputId,filename=tab.title||'任务结果';
     const url=tab.downloadUrl||('/api/dots/outputs/'+encodeURIComponent(String(outputId))+'/file');
     pane.innerHTML='<p class="wb-empty">正在读取文件…</p>';
-    let text='',isImage=false,mime='';
+    let text='',isImage=false,mime='',docHTML='',pdfURL='',binary='';
     try{
       if(String(tab.mimeType||'').startsWith('image/')){isImage=true;mime=tab.mimeType;}
       else{
         const res=await fetch(url,{credentials:'same-origin'});
         if(!res.ok)throw Error('读取失败（'+res.status+'）');
-        const ct=res.headers.get('content-type')||'';
+        const ct=(res.headers.get('content-type')||tab.mimeType||'').toLowerCase(),ext=(filename.split('.').pop()||'').toLowerCase();
         if(ct.startsWith('image/')){isImage=true;mime=ct;}
-        else text=await res.text();
+        else if(ext==='docx'||ct.includes('wordprocessingml')){const doc=await docxHTML(await res.arrayBuffer());docHTML=doc.html||'<p class="file-preview-note">文档没有文字内容。</p>';text=doc.text;}
+        else if(ext==='pdf'||ct.includes('application/pdf')){pdfURL=URL.createObjectURL(new Blob([await res.arrayBuffer()],{type:'application/pdf'}));}
+        else{
+          const buffer=await res.arrayBuffer(),head=new Uint8Array(buffer.slice(0,8192));
+          if(head.includes(0)||/^(application\/(zip|octet-stream|vnd\.openxmlformats|vnd\.ms-|x-))/.test(ct)&&!/json|xml|javascript/.test(ct))binary='这个文件（'+(ext?'.'+ext:'二进制')+'）暂不支持在这里预览，可以点右上角“更多 → 下载”后用本地应用打开。';
+          else{try{text=new TextDecoder('utf-8',{fatal:true}).decode(buffer);}catch{try{text=new TextDecoder('gb18030').decode(buffer);}catch{text=new TextDecoder().decode(buffer);}}}
+        }
       }
     }catch(e){pane.innerHTML='<p class="wb-error file-error">'+esc(e.message)+'</p>';return;}
     const isMd=/\.md$/i.test(filename)||/\.markdown$/i.test(filename);
@@ -364,6 +403,9 @@
     };
     const showRendered=()=>{
       if(isImage){viewer.innerHTML='<div class="file-image-stage"><img alt="'+esc(filename)+'" src="'+esc(url)+'"></div>';return;}
+      if(pdfURL){viewer.innerHTML='<iframe class="dots-output-pdf" title="'+esc(filename)+'" src="'+esc(pdfURL)+'"></iframe>';return;}
+      if(binary){viewer.innerHTML='<p class="file-preview-note">'+esc(binary)+'</p>';return;}
+      if(docHTML){viewer.innerHTML='<div class="message-body dots-output-md dots-output-docx">'+docHTML+'</div>';return;}
       if(isMd&&C.markdown){viewer.innerHTML='<div class="message-body dots-output-md">'+C.markdown(rawText)+'</div>';return;}
       const lines=rawText.split('\n'),limited=lines.slice(0,4000);
       viewer.innerHTML='<div class="code-reader"><pre class="source-code"><code>'+esc(limited.join('\n'))+'</code></pre></div>'+(lines.length>4000?'<p class="file-preview-note">预览前 4000 行。</p>':'');
