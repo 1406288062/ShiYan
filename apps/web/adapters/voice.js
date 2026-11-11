@@ -37,8 +37,16 @@
   }
   function finishCapture(record) {
     if (capture !== record) return;
-    const text = record.text.trim();
+    // 浏览器没检测到有人说话（没有 speechstart，或结果在开始后瞬间就到）时不发送：
+    // 这类文字来自环境声音或浏览器残留的上一轮识别，不是这次说的话。
+    // 有的浏览器不触发 speechstart：边说边出现的多次中间结果同样说明是真在说话。
+    const live = (record.speech || record.events >= 2) && record.heardAt - record.startedAt >= 400;
+    const text = live ? record.text.trim() : '';
     cancelCapture(record.id);
+    // 拦下的“幻听”文字不结束通话，静默地重新开始聆听（最多 3 次）。
+    if (!text && record.text.trim() && (record.detail.restarts || 0) < 3) {
+      startCapture({...record.detail, restarts: (record.detail.restarts || 0) + 1}); return;
+    }
     if (text) emit({type: 'speech', sessionId: record.id, text, isFinal: true});
     else emit({type: 'speechState', sessionId: record.id, active: false});
   }
@@ -50,7 +58,7 @@
   function startCapture(detail) {
     cancelCapture();
     const recognition = new Recognition();
-    const record = {id: detail.sessionId, recognition, text: '', timer: 0};
+    const record = {id: detail.sessionId, detail, recognition, text: '', timer: 0, speech: false, events: 0, startedAt: Date.now(), heardAt: 0};
     capture = record;
     recognition.lang = 'zh-CN';
     recognition.continuous = true;
@@ -62,11 +70,13 @@
     };
     recognition.onresult = event => {
       if (capture !== record) return;
+      if (!record.heardAt) record.heardAt = Date.now();
+      record.events++;
       record.text = normalizeTranscript(Array.from(event.results, result => result[0]?.transcript || '').join(''));
       emit({type: 'speech', sessionId: record.id, text: record.text, isFinal: false});
       schedule();
     };
-    recognition.onspeechstart = () => { if (capture === record) clearTimeout(record.timer); };
+    recognition.onspeechstart = () => { if (capture === record) { record.speech = true; clearTimeout(record.timer); } };
     recognition.onspeechend = () => { if (capture === record) schedule(); };
     recognition.onend = () => finishCapture(record);
     recognition.onerror = event => {
