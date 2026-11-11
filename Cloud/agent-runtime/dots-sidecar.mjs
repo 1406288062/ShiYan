@@ -14,7 +14,7 @@ import { getAccountStore, requestBearer } from './accounts.mjs';
 import { startRegistrationReceiver } from './registration-events.mjs';
 import { createStepSummaries } from './step-summary.mjs';
 import { mcpConnectors } from './mcp-connectors.mjs';
-import { BrowserSessionManager, normalizeIdentity } from './browser-session.mjs';
+import { BrowserSessionManager, normalizeIdentity, sweepStaleBrowser } from './browser-session.mjs';
 import { BrowserStore } from './browser-store.mjs';
 import { BrowserAgentHost, startBrowserAgentSocket, defaultBrowserSocket } from './browser-agent.mjs';
 
@@ -192,4 +192,11 @@ export function createDotsSidecar({root=ROOT,authenticate=authenticateDevice,ada
   if(recover)server.on('listening',()=>void adapter.recover().catch(()=>{}));
   return server;
 }
-if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href)createDotsSidecar().listen(Number(process.env.SHIYAN_DOTS_PORT||4325),'127.0.0.1',()=>console.log('Shiyan Dots listening on 127.0.0.1:'+Number(process.env.SHIYAN_DOTS_PORT||4325)));
+if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
+  // 先清掉上次进程留下的服务器 Chrome；退出（systemd 重启/停止）时关掉当前浏览器，不留孤儿进程。
+  await sweepStaleBrowser().catch(error=>console.warn('[browser-lifecycle] startup sweep failed: '+String(error?.message||error).slice(0,200)));
+  const sidecar=createDotsSidecar();
+  let stopping=false;const stop=()=>{if(stopping)return;stopping=true;const timer=setTimeout(()=>process.exit(0),8000);timer.unref?.();sidecar.close(()=>{sweepStaleBrowser().catch(()=>{}).finally(()=>process.exit(0));});sidecar.closeAllConnections?.();};
+  process.once('SIGTERM',stop);process.once('SIGINT',stop);
+  sidecar.listen(Number(process.env.SHIYAN_DOTS_PORT||4325),'127.0.0.1',()=>console.log('Shiyan Dots listening on 127.0.0.1:'+Number(process.env.SHIYAN_DOTS_PORT||4325)));
+}

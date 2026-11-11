@@ -550,6 +550,16 @@ async function startChromeRuntime(session, { debug = process.env.SHIYAN_BROWSER_
 
 function tab0title(session) { for (const tab of session.tabs?.values() || []) if (tab.sessionId === session.targetSessionId) return tab.title || ''; return ''; }
 
+// 侧边服务刚启动时没有任何浏览器会话：容器里残留的 Chrome / 虚拟显示（上次进程被重启或崩溃时留下）一律结束。
+export async function sweepStaleBrowser() {
+  const info = await runLxc(['info', BROWSER_CONTAINER], { allowFailure: true });
+  if (!/Status:\s*RUNNING/i.test(info?.stdout || '')) return false;
+  const script = 'n=$(pgrep -u browser -x chrome | wc -l); pkill -TERM -u browser -x chrome 2>/dev/null; for i in $(seq 1 25); do pgrep -u browser -x chrome >/dev/null || break; sleep 0.2; done; pkill -KILL -u browser -x chrome 2>/dev/null; pkill -u browser -x Xvfb 2>/dev/null; echo $n';
+  const out = await runLxc(['exec', BROWSER_CONTAINER, '--', 'bash', '-lc', script], { allowFailure: true, timeoutMs: 20_000 });
+  const count = Number(String(out?.stdout || '').trim().split('\n').pop()) || 0;
+  if (count) process.stderr.write(`[browser-lifecycle] startup sweep closed ${count} leftover chrome processes\n`);
+  return count > 0;
+}
 export class BrowserSessionManager {
   constructor({ launch = startChromeRuntime, allowOrigins = ALLOWED_ORIGINS, validateAccountToken = null, idleMs = IDLE_TTL_MS, maxSessionMs = MAX_SESSION_MS } = {}) {
     this.launch = launch; this.allowOrigins = allowOrigins; this.validateAccountToken = validateAccountToken;
