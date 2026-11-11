@@ -577,6 +577,14 @@ export class BrowserSessionManager {
     return { ticket, expiresIn: TICKET_TTL_MS };
   }
   async exchangeTicket(value, origin = '') {
+    // 同一凭证的重试（网络慢、请求中途断开）：2 分钟内返回同一个会话，而不是“入口已过期”。
+    const last = this.lastExchange;
+    if (last && typeof value === 'string' && value === last.value && last.expiresAt > Date.now()) {
+      if (origin && !this.allowOrigins.has(origin)) throw fail('来源校验失败', 403);
+      const result = await last.promise;
+      if (this.active && this.active.token === result.sessionToken && !this.active.closing) return result;
+      throw fail('服务器浏览器已关闭，请重新打开', 410);
+    }
     const ticket = this.ticket;
     if (!ticket || typeof value !== 'string' || value.length < 32 || value !== ticket.value || ticket.expiresAt < Date.now()) throw fail('电脑入口已过期，请重新打开', 401);
     if (origin && !this.allowOrigins.has(origin)) throw fail('来源校验失败', 403);
@@ -586,8 +594,11 @@ export class BrowserSessionManager {
       if (this.active && !this.active.closing && this.active.cdp) return this.#attachViewer(this.active, ticket);
     }
     if (this.active) throw fail('服务器电脑当前正被使用，请稍后再试', 409);
-    const session = await this.#startSession({ owner: ticket.owner, accountToken: ticket.accountToken, identity: 'default', agent: false });
-    return { sessionToken: session.token, width: 1120, height: 720, iceServers: session.turn.clientIceServers };
+    const promise = this.#startSession({ owner: ticket.owner, accountToken: ticket.accountToken, identity: 'default', agent: false })
+      .then(session => ({ sessionToken: session.token, width: 1120, height: 720, iceServers: session.turn.clientIceServers }));
+    this.lastExchange = { value, promise, expiresAt: Date.now() + 120_000 };
+    promise.catch(() => { if (this.lastExchange?.promise === promise) this.lastExchange = null; });
+    return promise;
   }
   // Agent-side runtime lease. Dots browser tasks use the same isolated Chrome as the viewer; one
   // account (and one identity) owns it at a time. The lease keeps Chrome alive while task windows
@@ -728,7 +739,7 @@ export class BrowserSessionManager {
       if (!agent) {
         session.orphanTimer = setTimeout(() => {
           if (!session.statusSent && !session.ws && !session.closing) { process.stderr.write(`[browser-session] session=${session.id} never connected after start; closing\n`); void this.#endViewer(session); }
-        }, 45_000);
+        }, 90_000);
         session.orphanTimer.unref?.();
       }
       session.cdp.on('event', message => this.#cdpEvent(session, message));

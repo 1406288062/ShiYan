@@ -55,6 +55,8 @@ def register_dots(app):
                 if not 200 <= response.status < 300:
                     raise GatewayError(result.get("error") or "服务器电脑请求失败", response.status)
                 return result
+            except (OSError, http.client.HTTPException) as exc:
+                raise GatewayError("服务器电脑暂时没有响应，请稍后重试", 503) from exc
             finally:
                 connection.close()
         return await asyncio.to_thread(perform)
