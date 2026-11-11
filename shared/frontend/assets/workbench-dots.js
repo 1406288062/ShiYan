@@ -9,7 +9,7 @@
  let C,view,active=false,monitorReady=false,hydration,saveChain=Promise.resolve(),refreshFlight=null,refreshQueuedForce=false,events=Promise.resolve();
  // 保存到服务器时只传变化的部分：草稿/待发送（用户正在编辑的）立即保存，聊天记录等缓存最多每 30 秒同步一次。
  // 整份状态可能有几百 KB，用户网络慢时整包重传要几十秒，会让删掉的图片刷新后又回来，也会和图片上传抢带宽。
- const URGENT_PARTS=['drafts','pending'],CACHE_SAVE_MS=30_000;
+ const URGENT_PARTS=['drafts','pending'],CACHE_SAVE_MS=5*60_000,CACHE_MESSAGES=100;
  let persistedParts={},localParts={},draftsAt=Number(saved.draftsAt)||0,lastCacheSave=0,cacheFlushTimer=null;
  let manager=saved.manager||null,messages=saved.messages||[],tasks=saved.tasks||[],goals=saved.goals||[],details=saved.details||{},drafts=saved.drafts||{},pending=saved.pending||{},cursor=Number(saved.cursor)||0;
  if(!Array.isArray(pending.managerMessages))pending.managerMessages=pending.managerMessage?[{...pending.managerMessage,state:'failed',error:'上次发送未确认，请重试'}]:[];delete pending.managerMessage;
@@ -433,25 +433,35 @@
  });
  const stateParts=()=>({manager,messages,tasks,goals,details,drafts,pending,cursor,readState});
  const partsJSON=parts=>Object.fromEntries(Object.entries(parts).map(([k,v])=>[k,JSON.stringify(v??null)]));
- function scheduleCacheFlush(){if(cacheFlushTimer)return;cacheFlushTimer=setTimeout(()=>{cacheFlushTimer=null;persist().catch(()=>{});},CACHE_SAVE_MS);cacheFlushTimer.unref?.();}
+ function scheduleCacheFlush(){if(cacheFlushTimer)return;const wait=Math.max(1000,CACHE_SAVE_MS-(Date.now()-lastCacheSave));cacheFlushTimer=setTimeout(()=>{cacheFlushTimer=null;flushCache();},wait);cacheFlushTimer.unref?.();}
+ // 聊天记录等缓存：独立队列、低频同步，永远不挡在草稿/待发送保存前面。
+ let cacheChain=Promise.resolve();
+ function flushCache(){
+  cacheChain=cacheChain.catch(()=>{}).then(async()=>{
+   if(hydration)await hydration.catch(()=>{});
+   const parts=stateParts(),json=partsJSON(parts),changed=Object.keys(json).filter(k=>!URGENT_PARTS.includes(k)&&json[k]!==persistedParts[k]);
+   if(!changed.length)return;
+   await api('/local-state','PATCH',{patch:Object.fromEntries(changed.map(k=>[k,k==='messages'&&Array.isArray(parts[k])?parts[k].slice(-CACHE_MESSAGES):parts[k]??null]))});
+   for(const k of changed)persistedParts[k]=json[k];lastCacheSave=Date.now();
+  }).catch(()=>{});
+  return cacheChain;
+ }
  function persist(){
   const parts=stateParts(),json=partsJSON(parts);
   if(Object.keys(localParts).length&&URGENT_PARTS.some(k=>json[k]!==localParts[k]))draftsAt=Date.now();
   localParts=json;
   try{localStorage.setItem(key,JSON.stringify({...parts,draftsAt}));}catch{throw Error('无法保存 Dots 状态，请释放本机存储后重试');}
+  // 草稿和待发送内容：只传变化的部分（通常几百字节），立即保存。
   const task=saveChain.catch(()=>{}).then(async()=>{
    // 等首次从服务器读回状态后再比较，并用执行时的最新状态，避免把旧数据写回去。
    if(hydration)await hydration.catch(()=>{});
    const parts=stateParts(),json=partsJSON(parts),stamp=draftsAt;
-   const now=Date.now(),cacheDue=now-lastCacheSave>=CACHE_SAVE_MS;
-   const changed=Object.keys(json).filter(k=>json[k]!==persistedParts[k]&&(URGENT_PARTS.includes(k)||cacheDue));
-   if(changed.length){
-    const patch=Object.fromEntries(changed.map(k=>[k,parts[k]??null]));if(changed.some(k=>URGENT_PARTS.includes(k)))patch.draftsAt=stamp;
-    await api('/local-state','PATCH',{patch});
-    for(const k of changed)persistedParts[k]=json[k];
-    if(changed.some(k=>!URGENT_PARTS.includes(k)))lastCacheSave=now;
+   const urgent=URGENT_PARTS.filter(k=>json[k]!==persistedParts[k]);
+   if(urgent.length){
+    await api('/local-state','PATCH',{patch:{...Object.fromEntries(urgent.map(k=>[k,parts[k]??null])),draftsAt:stamp}});
+    for(const k of urgent)persistedParts[k]=json[k];
    }
-   if(Object.keys(json).some(k=>json[k]!==persistedParts[k]))scheduleCacheFlush();
+   if(Object.keys(json).some(k=>!URGENT_PARTS.includes(k)&&json[k]!==persistedParts[k]))scheduleCacheFlush();
   });
   saveChain=task;task.catch(showError);return task;
  }
@@ -563,7 +573,7 @@
  function renderMessagesRaw(records){const loaded=new Map([...records.querySelectorAll('.dots-images img')].map(img=>[img.getAttribute('src'),img]));renderMessagesHTML(records);for(const img of records.querySelectorAll('.dots-images img')){const old=loaded.get(img.getAttribute('src'));if(old){img.replaceWith(old);loaded.delete(img.getAttribute('src'));}}}
  function renderMessagesHTML(records){records.innerHTML=(hasMoreMessages&&messages.length?'<button type="button" class="dots-history-more" data-dots-earlier'+(historyLoading?' disabled':'')+'>'+(historyLoading?'正在读取…':'查看更早消息')+'</button>':'')+(messages.length?messages.filter(m=>!blankReply(m)||m.card).map(m=>managerTime(m)+'<article class="dots-manager-message '+(m.role==='user'?'is-user':m.role==='system'?'is-system':'is-assistant')+(m.role==='user'&&!String(m.content||'').trim()&&(m.attachments||[]).length&&(m.attachments||[]).every(isImageAttachment)?' is-image-only':'')+'" data-dots-message="'+esc(m.id)+'">'+(m.role==='system'?'<header>状态</header>':'')+'<div class="message-body">'+markdown(m.content||'')+'</div>'+subscriptionCard(m)+attachmentsHTML(m.attachments||[])+messageActions(m)+'</article>').join(''):'')+optimisticHTML()+(awaitingReply()||voiceAwaitingReply()?thinkingHTML():(thinkingSince=0,''));}
  // 语音通话：我说的话已发出、回复还没出现时，也显示三个点。
- function voiceAwaitingReply(){if(!voice.active||!['sending','waiting'].includes(voice.phase))return false;const after=Number(voice.acceptedId)||0;return !messages.some(m=>m.role==='assistant'&&Number(m.id)>after&&!blankReply(m));}
+ function voiceAwaitingReply(){if(!voice.active||!['sending','waiting'].includes(voice.phase))return false;let after=Number(voice.acceptedId)||0;if(!after)for(const m of messages)if(m.role==='user')after=Math.max(after,Number(m.id)||0);if(!after)return voice.phase==='sending';return !messages.some(m=>m.role==='assistant'&&Number(m.id)>after&&!blankReply(m));}
  function optimisticHTML(){return (pending.managerMessages||[]).filter(p=>!messages.some(m=>m.requestId===p.requestId)).map(p=>{const failed=p.state==='failed';return managerTime(p)+'<article class="dots-manager-message is-user is-optimistic'+(failed?' is-send-failed':'')+'" data-dots-pending-send="'+esc(p.requestId)+'"><div class="message-body">'+markdown(p.message||'')+'</div>'+(p.attachments?.length?attachmentsHTML(p.attachments):'')+'</article>'+(failed?'<div class="dots-send-note dots-send-failure"><span>❗发送失败</span><button type="button" class="dots-send-retry" aria-label="重试" title="重试" data-dots-retry-send="'+esc(p.requestId)+'"><span class="wb-icon wb-ios-icon" style="--ios-symbol:url(\'/assets/symbols/arrow.clockwise.png\')" aria-hidden="true"></span></button></div>':'');}).join('');}
  // 重新渲染时保留卡片里已经输入的内容和焦点（轮询刷新不会清空用户正在填写的值）。
  function renderMessages(){const records=$('dotsRecords');if(!records)return;requestAnimationFrame(updateLatestButton);
