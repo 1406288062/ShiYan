@@ -7,7 +7,10 @@
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const key=window.ShiYanAccount.storageKey('shiyan.dots.v1');let saved={};try{saved=JSON.parse(localStorage.getItem(key)||'{}');}catch{}
  let C,view,active=false,monitorReady=false,hydration,saveChain=Promise.resolve(),refreshFlight=null,refreshQueuedForce=false,events=Promise.resolve();
- let persistedSnapshot=null,savingSnapshot=null,savingTask=null;
+ // 保存到服务器时只传变化的部分：草稿/待发送（用户正在编辑的）立即保存，聊天记录等缓存最多每 30 秒同步一次。
+ // 整份状态可能有几百 KB，用户网络慢时整包重传要几十秒，会让删掉的图片刷新后又回来，也会和图片上传抢带宽。
+ const URGENT_PARTS=['drafts','pending'],CACHE_SAVE_MS=30_000;
+ let persistedParts={},localParts={},draftsAt=Number(saved.draftsAt)||0,lastCacheSave=0,cacheFlushTimer=null;
  let manager=saved.manager||null,messages=saved.messages||[],tasks=saved.tasks||[],goals=saved.goals||[],details=saved.details||{},drafts=saved.drafts||{},pending=saved.pending||{},cursor=Number(saved.cursor)||0;
  if(!Array.isArray(pending.managerMessages))pending.managerMessages=pending.managerMessage?[{...pending.managerMessage,state:'failed',error:'上次发送未确认，请重试'}]:[];delete pending.managerMessage;
  const sendingManagerMessages=new Set();pending.managerMessages.forEach(item=>{if(item.state==='sending'){item.state='failed';item.error='上次发送中断，请重试';}});
@@ -425,20 +428,37 @@
    m.card={...c,state:'done',fields:(c.fields||[]).map(f=>f.secret?{...f,value:''}:f)};renderMessages();
   }catch(cause){error.textContent=cause?.message||'订阅没有成功';error.hidden=false;form.querySelectorAll('button,input').forEach(n=>n.disabled=false);}
  });
+ const stateParts=()=>({manager,messages,tasks,goals,details,drafts,pending,cursor,readState});
+ const partsJSON=parts=>Object.fromEntries(Object.entries(parts).map(([k,v])=>[k,JSON.stringify(v??null)]));
+ function scheduleCacheFlush(){if(cacheFlushTimer)return;cacheFlushTimer=setTimeout(()=>{cacheFlushTimer=null;persist().catch(()=>{});},CACHE_SAVE_MS);cacheFlushTimer.unref?.();}
  function persist(){
-  const snapshot=JSON.stringify({manager,messages,tasks,goals,details,drafts,pending,cursor,readState});
-  try{localStorage.setItem(key,snapshot);}catch{throw Error('无法保存 Dots 状态，请释放本机存储后重试');}
-  if(savingTask&&savingSnapshot===snapshot)return savingTask;
-  // Preserve write order and durability barriers, but do not resend unchanged history.
+  const parts=stateParts(),json=partsJSON(parts);
+  if(Object.keys(localParts).length&&URGENT_PARTS.some(k=>json[k]!==localParts[k]))draftsAt=Date.now();
+  localParts=json;
+  try{localStorage.setItem(key,JSON.stringify({...parts,draftsAt}));}catch{throw Error('无法保存 Dots 状态，请释放本机存储后重试');}
   const task=saveChain.catch(()=>{}).then(async()=>{
-   if(snapshot===persistedSnapshot)return;
-   await api('/local-state','PATCH',{state:JSON.parse(snapshot)});persistedSnapshot=snapshot;
+   // 等首次从服务器读回状态后再比较，并用执行时的最新状态，避免把旧数据写回去。
+   if(hydration)await hydration.catch(()=>{});
+   const parts=stateParts(),json=partsJSON(parts),stamp=draftsAt;
+   const now=Date.now(),cacheDue=now-lastCacheSave>=CACHE_SAVE_MS;
+   const changed=Object.keys(json).filter(k=>json[k]!==persistedParts[k]&&(URGENT_PARTS.includes(k)||cacheDue));
+   if(changed.length){
+    const patch=Object.fromEntries(changed.map(k=>[k,parts[k]??null]));if(changed.some(k=>URGENT_PARTS.includes(k)))patch.draftsAt=stamp;
+    await api('/local-state','PATCH',{patch});
+    for(const k of changed)persistedParts[k]=json[k];
+    if(changed.some(k=>!URGENT_PARTS.includes(k)))lastCacheSave=now;
+   }
+   if(Object.keys(json).some(k=>json[k]!==persistedParts[k]))scheduleCacheFlush();
   });
-  saveChain=task;savingTask=task;savingSnapshot=snapshot;
-  const clear=()=>{if(savingTask===task){savingTask=null;savingSnapshot=null;}};
-  task.then(clear,clear);task.catch(showError);return task;
+  saveChain=task;task.catch(showError);return task;
  }
- async function hydrate(){const {dotsState:s={}}=await api('/local-state');if(Object.keys(s).length){manager=s.manager||null;messages=s.messages||[];tasks=s.tasks||[];goals=s.goals||[];details=s.details||{};drafts=s.drafts||{};pending=s.pending||{};cursor=Number(s.cursor)||0;readState=normalizeReadState(s.readState,messages);}}
+ // 关页面/刷新时：草稿有未保存的改动就用 keepalive 发出去（请求很小，浏览器保证送达）。
+ function flushDraftsOnExit(){const json=partsJSON(stateParts()),changed=URGENT_PARTS.filter(k=>json[k]!==persistedParts[k]);if(!changed.length)return;const body=JSON.stringify({patch:{...Object.fromEntries(changed.map(k=>[k,stateParts()[k]])),draftsAt}});if(body.length>60000)return;try{fetch('/api/dots/local-state',{method:'PATCH',keepalive:true,credentials:'same-origin',headers:{'Content-Type':'application/json','X-Shiyan-Local':'1'},body});}catch{}}
+ async function hydrate(){const {dotsState:s={}}=await api('/local-state');if(Object.keys(s).length){manager=s.manager||null;messages=s.messages||[];tasks=s.tasks||[];goals=s.goals||[];details=s.details||{};drafts=s.drafts||{};pending=s.pending||{};cursor=Number(s.cursor)||0;readState=normalizeReadState(s.readState,messages);}
+  persistedParts=partsJSON(stateParts());localParts={...persistedParts};lastCacheSave=Date.now();
+  // 本机保存的草稿比服务器上的新（例如删掉图片后马上刷新，服务器那次保存还没完成），以本机为准并补存。
+  let local=null;try{local=JSON.parse(localStorage.getItem(key)||'null');}catch{}
+  if(local&&Number(local.draftsAt)>Number(s.draftsAt||0)){drafts=local.drafts||{};pending=local.pending||{};if(!Array.isArray(pending.managerMessages))pending.managerMessages=[];draftsAt=Number(local.draftsAt);persist().catch(()=>{});}else draftsAt=Number(s.draftsAt)||0;}
  function showError(e){error=e?.message||String(e);if(error==='连接中断，请检查网络后重试')error='';if($('dotsError')){$('dotsError').textContent=error;$('dotsError').hidden=!error;}if(error.includes('解锁')||error.includes('设备授权')){disconnect();setConnection('等待设备解锁或授权');}renderDrawer();}
  function setConnection(text){const notice=$('dotsConnection');if(notice){notice.textContent=text==='已连接'?'':text;notice.hidden=!notice.textContent;}renderDrawer();}
  function request(slot,payload){if(pending[slot])return pending[slot];pending[slot]={...payload,requestId:crypto.randomUUID()};return pending[slot];}
@@ -756,9 +776,8 @@
     // The event cursor is tiny and independent of the transcript snapshot.
     // Persist it locally immediately, then update only this field remotely.
     try{
-     const snapshot=JSON.stringify({manager,messages,tasks,goals,details,drafts,pending,cursor,readState});
-     localStorage.setItem(key,snapshot);
-     await api('/local-state','PATCH',{cursor:target});
+     localStorage.setItem(key,JSON.stringify({...stateParts(),draftsAt}));
+     await api('/local-state','PATCH',{cursor:target});persistedParts.cursor=JSON.stringify(target);
      if(saveSnapshot)await persist();
     }catch(error){cursor=before;eventPersistNeeded=eventPersistNeeded||saveSnapshot;throw error;}
     if(epoch!==streamEpoch||!monitorAllowed())return;
@@ -816,7 +835,7 @@
   document.addEventListener('dragenter',e=>{if(!active||!hasFiles(e))return;e.preventDefault();dragDepth++;dropTarget(true);});
   document.addEventListener('dragover',e=>{if(!active||!hasFiles(e))return;e.preventDefault();e.dataTransfer.dropEffect='copy';dropTarget(true);});
   document.addEventListener('dragleave',e=>{if(!active||!hasFiles(e))return;dragDepth=Math.max(0,dragDepth-1);if(!dragDepth||!e.relatedTarget)dropTarget(false);});
-  document.addEventListener('drop',e=>{if(!active)return;dragDepth=0;dropTarget(false);if(!e.dataTransfer?.files?.length)return;e.preventDefault();if(voice.active){showError('语音聊天中不能添加文件');return;}uploadFiles(Array.from(e.dataTransfer.files)).then(()=>$('dotsManagerInput')?.focus()).catch(showError);});window.addEventListener('shiyan-state',()=>{if(active)queueMicrotask(()=>{$('workspaceTitle').replaceChildren();$('railHome').classList.add('is-active');});});document.addEventListener('visibilitychange',handleVisibilityChange);window.addEventListener('pagehide',()=>{stopVoice();disconnect();persist().catch(()=>{});});window.addEventListener('online',()=>{if(monitorAllowed()){connect();refresh().catch(showError);}});view.addEventListener('scroll',e=>{if(e.target.id==='dotsRecords'){markVisibleRepliesRead();updateLatestButton();}},true);if(typeof ResizeObserver!=='undefined')new ResizeObserver(()=>updateLatestButton()).observe(view);hydration.then(()=>{monitorReady=true;renderUnread();connect();refresh().catch(showError);}).catch(showError);
+  document.addEventListener('drop',e=>{if(!active)return;dragDepth=0;dropTarget(false);if(!e.dataTransfer?.files?.length)return;e.preventDefault();if(voice.active){showError('语音聊天中不能添加文件');return;}uploadFiles(Array.from(e.dataTransfer.files)).then(()=>$('dotsManagerInput')?.focus()).catch(showError);});window.addEventListener('shiyan-state',()=>{if(active)queueMicrotask(()=>{$('workspaceTitle').replaceChildren();$('railHome').classList.add('is-active');});});document.addEventListener('visibilitychange',handleVisibilityChange);window.addEventListener('pagehide',()=>{stopVoice();disconnect();flushDraftsOnExit();persist().catch(()=>{});});window.addEventListener('online',()=>{if(monitorAllowed()){connect();refresh().catch(showError);}});view.addEventListener('scroll',e=>{if(e.target.id==='dotsRecords'){markVisibleRepliesRead();updateLatestButton();}},true);if(typeof ResizeObserver!=='undefined')new ResizeObserver(()=>updateLatestButton()).observe(view);hydration.then(()=>{monitorReady=true;renderUnread();connect();refresh().catch(showError);}).catch(showError);
   const activationReady=new Promise(resolve=>{
    const onView=()=>{if(active){resolve(window.__SHIYAN_DOTS_ACTIVATION_READY__||Promise.resolve());return;}window.addEventListener('shiyan-view',onView,{once:true});};
    if(active)resolve(window.__SHIYAN_DOTS_ACTIVATION_READY__||Promise.resolve());

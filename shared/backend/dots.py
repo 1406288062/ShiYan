@@ -88,10 +88,28 @@ def register_dots(app):
             state["cursor"] = cursor
             storage.set_setting("dotsLocalState", state)
             return {"ok": True}
+        allowed = {"selected", "goals", "details", "drafts", "pending", "cursor", "manager", "messages", "tasks", "readState", "draftsAt"}
+        # 只更新变化的部分（网页端默认这样保存，避免每次整包重传几百 KB）。
+        if isinstance(data, dict) and isinstance(data.get("patch"), dict):
+            storage = request.app.state.runtime.storage
+            state = storage.setting("dotsLocalState", {})
+            if not isinstance(state, dict):
+                state = {}
+            patch = {k: v for k, v in data["patch"].items() if k in allowed}
+            stamp = patch.get("draftsAt")
+            if stamp is not None and (isinstance(stamp, bool) or not isinstance(stamp, (int, float))):
+                raise ValueError("Dots 草稿时间无效")
+            # 旧的草稿保存晚到时，不覆盖已经保存的更新草稿。
+            if stamp is not None and float(state.get("draftsAt") or 0) > float(stamp):
+                patch = {k: v for k, v in patch.items() if k not in {"drafts", "pending", "draftsAt"}}
+            state.update(patch)
+            if len(json.dumps(state, ensure_ascii=False).encode()) > 8 * 1024 * 1024:
+                raise ValueError("Dots 本地记录过大，请先减少历史记录")
+            storage.set_setting("dotsLocalState", state)
+            return {"ok": True}
         state = data.get("state") if isinstance(data, dict) else None
         if not isinstance(state, dict):
             raise ValueError("Dots 本地状态格式无效")
-        allowed = {"selected", "goals", "details", "drafts", "pending", "cursor", "manager", "messages", "tasks", "readState"}
         state = {k: v for k, v in state.items() if k in allowed}
         if len(json.dumps(state, ensure_ascii=False).encode()) > 8 * 1024 * 1024:
             raise ValueError("Dots 本地记录过大，请先减少历史记录")
