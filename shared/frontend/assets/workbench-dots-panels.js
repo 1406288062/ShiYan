@@ -246,7 +246,11 @@
   function stopBrowserSession() {
     const frame=browserDialog?.querySelector('[data-browser-frame]');
     if(frame){frame.src='about:blank';frame.hidden=true;}
-    api('/browser/session','DELETE').catch(()=>{});
+    // 关闭请求必须送到服务器：keepalive 保证页面切换后也会发出，失败（慢网络、连接被画面轮询占满）时重试。
+    const send=attempt=>fetch('/api/dots/browser/session',{method:'DELETE',keepalive:true,credentials:'same-origin',cache:'no-store',headers:{'X-Shiyan-Local':'1'}})
+      .then(response=>{if(!response.ok)throw new Error(String(response.status));})
+      .catch(()=>{if(attempt<4)setTimeout(()=>send(attempt+1),1500*attempt);});
+    send(1);
   }
   function showDialog(dialog, target) {
     if(dialog!==conversationDialog){stopReading();clearInterval(conversationTimer);conversationTimer=null;}

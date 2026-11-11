@@ -19,6 +19,7 @@ const BROWSER_DISPLAY_NUM = 99;
 const VIEW_WIDTH = 1120, VIEW_HEIGHT = 720;
 const TICKET_TTL_MS = 60_000;
 const IDLE_TTL_MS = 20 * 60_000;
+const POLL_GONE_MS = 90_000;
 const MAX_SESSION_MS = 2 * 60 * 60_000;
 const MAX_FRAME_BYTES = 1_500_000;
 const MAX_TABS = 8;
@@ -659,7 +660,7 @@ export class BrowserSessionManager {
     this.#detachViewer(session, { notify: false });
     session.token = randomBytes(32).toString('base64url');
     if (ticket.accountToken) session.accountToken = ticket.accountToken;
-    session.viewer = true; session.lastActivity = Date.now();
+    session.viewer = true; session.lastActivity = Date.now(); session.lastPollAt = 0;
     session.turn = createTurnCredentials(session.id);
     // A fresh transport page drops the previous viewer's WebRTC peer.
     if (session.transportSessionId) {
@@ -684,7 +685,7 @@ export class BrowserSessionManager {
     clearInterval(session.frameTimer); clearInterval(session.screencastWatchdog);
     session.frameTimer = null; session.screencastWatchdog = null;
     Object.assign(session, { screencastStarted: false, frameCaptureStarted: false, rtcStarting: false, rtcReady: false, tabCapture: false, fallbackFrames: false,
-      latestFrame: null, pendingFrame: null, frameSending: false, frameSeq: 0, statusSent: false, pendingMessages: [], viewer: false });
+      latestFrame: null, pendingFrame: null, frameSending: false, frameSeq: 0, statusSent: false, pendingMessages: [], viewer: false, lastPollAt: 0 });
     session.token = randomBytes(32).toString('base64url');
     this.#wakePollers(session);
     if (notify) { try { void this.agentHook?.onViewerDetached?.(session); } catch {} }
@@ -732,6 +733,11 @@ export class BrowserSessionManager {
         session.authTimer.unref?.();
       }
       session.idleTimer = setInterval(() => {
+        // 轮询模式（WebRTC 连不上时退回拉图片）没有 WebSocket 断开事件：超过 90 秒没有轮询，就当看画面的人已离开。
+        if (session.viewer && !session.ws && session.lastPollAt && Date.now() - session.lastPollAt > POLL_GONE_MS && !session.closing) {
+          process.stderr.write(`[browser-session] session=${session.id} viewer stopped polling; closing\n`);
+          void this.#endViewer(session); return;
+        }
         if (session.agentHolds > 0) return;
         if (Date.now() - session.lastActivity > this.idleMs || Date.now() - session.createdAt > this.maxSessionMs) void this.#destroy(session);
       }, 15_000);
@@ -845,6 +851,7 @@ export class BrowserSessionManager {
   async pollMessagesForToken(token, { wantFrames = false, frameSeq = 0 } = {}) {
     const session = this.#httpSessionByToken(token);
     if (!session.statusSent) { session.statusSent = true; await this.#sendStatus(session); this.#sendTabs(session); }
+    session.lastPollAt = Date.now();
     const seq = Number(frameSeq) || 0;
     if (wantFrames === true) {
       session.lastActivity = Date.now();
