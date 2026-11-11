@@ -8,6 +8,13 @@ import path from 'node:path';
 // 图片路径 → 中枢需要的 base64；单张不超过 8 MB。
 const hubImages = paths => (paths || []).flatMap(file => { try { if (statSync(file).size > 8 * 1024 * 1024) return []; return [{ data: readFileSync(file).toString('base64'), suffix: path.extname(file).toLowerCase() || '.jpg' }]; } catch { return []; } });
 
+// Dots 回复的提示词：分隔符前是固定的身份与规则，后面是每轮变化的状态。
+// 经中枢走 Claude 时固定部分放进系统提示，和工具定义一起被缓存，每轮只有状态部分按全价计；
+// 走 Codex 时把分隔符换回空行，内容不变。
+export const DOTS_STATE_SPLIT = '\n\n<<DOTS_STATE>>\n\n';
+const splitPrompt = prompt => { const text = String(prompt ?? ''), i = text.indexOf(DOTS_STATE_SPLIT); return i < 0 ? { prompt: text } : { system: text.slice(0, i), prompt: text.slice(i + DOTS_STATE_SPLIT.length) }; };
+const joinPrompt = prompt => String(prompt ?? '').replace(DOTS_STATE_SPLIT, '\n\n');
+
 // owner|consumer -> 最近一次经中枢完成的时间；用于避免与业务侧上报重复记一条。
 export const lastHubCall = new Map();
 
@@ -20,7 +27,8 @@ export function hubAwareThread({ hub, owner, consumer, threadId = null, options 
   async function hubRun(prompt, { outputSchema, signal, images } = {}) {
     try {
       const attached = hubImages(images);
-      const out = await hub.infer(consumer, { prompt, outputSchema, account: owner, ...(attached.length ? { images: attached } : {}), ...(options.mcpServers && Object.keys(options.mcpServers).length ? { mcpServers: options.mcpServers } : {}), ...(Array.isArray(options.mcpToolAllowlist) && options.mcpToolAllowlist.length ? { mcpToolAllowlist: options.mcpToolAllowlist } : {}) }, { signal, timeoutMs: 360000 });
+      const parts = splitPrompt(prompt);
+      const out = await hub.infer(consumer, { ...parts, outputSchema, account: owner, ...(attached.length ? { images: attached } : {}), ...(options.mcpServers && Object.keys(options.mcpServers).length ? { mcpServers: options.mcpServers } : {}), ...(Array.isArray(options.mcpToolAllowlist) && options.mcpToolAllowlist.length ? { mcpToolAllowlist: options.mcpToolAllowlist } : {}) }, { signal, timeoutMs: 360000 });
       return { finalResponse: out.finalResponse, usage: out.usage || null, items: [] };
     } finally { lastHubCall.set(owner + '|' + consumer, Date.now()); }
   }
@@ -30,11 +38,11 @@ export function hubAwareThread({ hub, owner, consumer, threadId = null, options 
   })() });
   return {
     get id() { return inner ? inner.id : threadId; },
-    async run(prompt, opts = {}) { return (await viaHub()) ? hubRun(prompt, opts) : getInner().run(prompt, opts); },
+    async run(prompt, opts = {}) { return (await viaHub()) ? hubRun(prompt, opts) : getInner().run(joinPrompt(prompt), opts); },
     async runStreamed(prompt, opts = {}) {
       if (await viaHub()) return once(await hubRun(prompt, opts));
       const thread = getInner();
-      return typeof thread.runStreamed === 'function' ? thread.runStreamed(prompt, opts) : once(await thread.run(prompt, opts));
+      return typeof thread.runStreamed === 'function' ? thread.runStreamed(joinPrompt(prompt), opts) : once(await thread.run(joinPrompt(prompt), opts));
     },
   };
 }

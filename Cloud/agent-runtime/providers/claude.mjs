@@ -146,6 +146,8 @@ export function zodShape(z, parameters = {}) {
 
 // 开放联网时附加：搜索引擎对当天数据有延迟，实时数据要直接打开数据源。
 const WEB_GUIDE = '\n\n联网须知：搜索引擎对当天的数据有延迟，搜索摘要经常是前几天的旧消息。用户问实时数据（股票指数与行情、汇率、金价、天气、比分等）时，不要只凭搜索摘要作答，要用 WebFetch 直接打开提供数据的页面或公开接口；页面如果只有未填充的模板（如 @now@）或乱码，就换一个来源。A 股、港股和指数行情可直接读腾讯行情接口，例如上证指数 https://qt.gtimg.cn/q=sh000001、深证成指 https://qt.gtimg.cn/q=sz399001、个股 https://qt.gtimg.cn/q=sh600519（字段以 ~ 分隔，依次为：市场、名称、代码、现价、昨收、今开……，倒数靠前处有 yyyyMMddHHmmss 时间戳）。回答时写明数据对应的日期和时间；收盘后（15:00 以后）的现价就是当天收盘价。确实查不到时再如实说明。';
+// 用了 MCP 时附加：调用方自带系统提示（如 Dots 的固定规则）也照样附上。
+const MCP_GUIDE = '你是拾燕 Dots 助手。你可以使用当前账号已连接的 MCP 服务。每个 MCP 服务都提供 mcp_list_tools 和 mcp_call_tool：先用 mcp_list_tools 按用户意图搜索真实工具，阅读返回的工具说明与参数 Schema，再用 mcp_call_tool 调用对应工具；工具结果返回后继续推理。不要臆造工具名或参数，也不得声称完成未实际成功的操作。';
 const INFER_SYSTEM = '你是拾燕的推理服务。只依据请求中提供的内容完成任务并直接给出结果。除非请求明确提供了检索工具，否则你没有任何工具、文件或网络访问能力，不要声称读取了外部文件。要求结构化输出时，只输出符合要求的 JSON。';
 const INFER_IMAGE_TYPES = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif' };
 
@@ -177,7 +179,7 @@ export async function inferClaude({ model, reasoning, prompt, images = [], schem
   const allowedMcp = Array.isArray(mcpToolAllowlist) ? mcpToolAllowlist.filter(name => typeof name === 'string' && /^mcp__[A-Za-z0-9_-]{1,64}__[A-Za-z0-9_.-]{1,128}$/.test(name)) : [];
   const allowedTools = [...new Set([...web, ...allowedMcp])];
   const options = { model, ...effortOption(reasoning), cwd: isolatedCwd(), tools: web, ...(allowedTools.length ? { allowedTools } : {}), ...(mcpNames.length ? { mcpServers: claudeMcpConfig(mcpServers) } : {}), settingSources: [], persistSession: false,
-    permissionMode: 'dontAsk', maxTurns: mcpNames.length ? 20 : (web.length ? 10 : 2), systemPrompt: (system || (mcpNames.length ? '你是拾燕 Dots 助手。你可以使用当前账号已连接的 MCP 服务。每个 MCP 服务都提供 mcp_list_tools 和 mcp_call_tool：先用 mcp_list_tools 按用户意图搜索真实工具，阅读返回的工具说明与参数 Schema，再用 mcp_call_tool 调用对应工具；工具结果返回后继续推理。不要臆造工具名或参数，也不得声称完成未实际成功的操作。' : INFER_SYSTEM)) + (web.length ? WEB_GUIDE : ''), strictMcpConfig: true, env: claudeEnv({ ENABLE_CLAUDEAI_MCP_SERVERS: "false" }) };
+    permissionMode: 'dontAsk', maxTurns: mcpNames.length ? 20 : (web.length ? 10 : 2), systemPrompt: [system, mcpNames.length ? MCP_GUIDE : (system ? '' : INFER_SYSTEM)].filter(Boolean).join('\n\n') + (web.length ? WEB_GUIDE : ''), strictMcpConfig: true, env: claudeEnv({ ENABLE_CLAUDEAI_MCP_SERVERS: "false" }) };
   let usage = null, problem = '', previous = '';
   for (let attempt = 0; attempt < 2; attempt++) {
     const text = attempt ? `${base}\n\n你上一次的输出没有通过校验：${problem}\n上一次的输出：\n${previous.slice(0, 6000)}\n请只输出修正后的 JSON。` : base;
