@@ -1,6 +1,7 @@
  
 from __future__ import annotations
 import asyncio
+import base64
 import http.client
 import json
 import re
@@ -259,6 +260,26 @@ def register_dots(app):
         if not isinstance(data, dict):
             raise ValueError("文件数据无效")
         return await remote(request, "POST", "attachments", data)
+
+    # 输入框上传：浏览器直接发二进制（比 base64 JSON 少 1/3 字节，用户网络慢时差别明显），
+    # 服务器内部再转成 base64 交给 Dots。
+    @app.post("/api/dots/attachments/raw")
+    async def upload_attachment_raw(request: Request):
+        attachment_id = str(uuid.UUID(request.query_params.get("id", "")))
+        filename = (request.query_params.get("filename") or "").strip()[:180]
+        if not filename:
+            raise ValueError("文件名无效")
+        mime = request.headers.get("content-type", "application/octet-stream").split(";")[0].strip()[:100] or "application/octet-stream"
+        chunks, size = [], 0
+        async for chunk in request.stream():
+            size += len(chunk)
+            if size > 20 * 1024 * 1024:
+                raise ValueError("文件不能为空，单个文件不能超过 20 MB")
+            chunks.append(chunk)
+        if not size:
+            raise ValueError("文件不能为空，单个文件不能超过 20 MB")
+        data = base64.b64encode(b"".join(chunks)).decode()
+        return await remote(request, "POST", "attachments", {"id": attachment_id, "filename": filename, "mimeType": mime, "data": data}, timeout=60)
 
     @app.get("/api/dots/attachments/{attachment_id}")
     async def download_attachment(attachment_id: str, request: Request):

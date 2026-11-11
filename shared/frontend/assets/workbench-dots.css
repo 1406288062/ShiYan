@@ -569,7 +569,7 @@ body.workbench-v22 :is(.message-body,.dots-manager-message) a.message-reference:
 .dots-composer-thumb { position:relative;flex:0 0 72px;width:72px;height:72px;border-radius:12px;background:var(--soft-fill); }
 .dots-composer-thumb img { display:block;cursor:zoom-in;width:100%;height:100%;object-fit:cover;border-radius:12px;box-shadow:inset 0 0 0 .5px color-mix(in srgb,#000 12%,transparent); }
 .dots-composer-thumb.is-uploading img { opacity:.55; }
-.dots-thumb-progress { position:absolute;inset:0;margin:auto;width:20px;height:20px;border-radius:50%;border:2px solid #fff;border-right-color:transparent;animation:dots-thumb-spin .8s linear infinite;filter:drop-shadow(0 1px 2px #0005); }
+.dots-thumb-progress { position:absolute;left:0;right:0;top:18px;margin:0 auto;width:20px;height:20px;border-radius:50%;border:2px solid #fff;border-right-color:transparent;animation:dots-thumb-spin .8s linear infinite;filter:drop-shadow(0 1px 2px #0005); }
 @keyframes dots-thumb-spin { to { transform:rotate(360deg); } }
 .dots-view .dots-thumb-remove { position:absolute;top:-6px;right:-6px;display:grid;place-items:center;width:20px;height:20px;margin:0;padding:0 0 1px;border:1.5px solid var(--v22-panel,var(--canvas));border-radius:50%;background:rgba(0,0,0,.72);color:#fff;font-size:14px;line-height:1;cursor:pointer; }
 .dots-view .dots-thumb-remove:hover { background:#000; }
@@ -582,6 +582,7 @@ body.workbench-v22 :is(.message-body,.dots-manager-message) a.message-reference:
 .dots-composer.is-drop-target .dots-drop-hint { display:grid;animation:dots-drop-in .16s ease-out; }
 @keyframes dots-drop-pulse { 0%,100% { opacity:.65;transform:translateY(0) scale(1); } 50% { opacity:1;transform:translateY(-1px) scale(1.04); } }
 @keyframes dots-drop-in { from { opacity:0; } to { opacity:1; } }
+.dots-thumb-percent { position:absolute;left:0;right:0;bottom:10px;text-align:center;font-size:11px;font-weight:600;line-height:1;color:#fff;text-shadow:0 1px 2px #0008;font-variant-numeric:tabular-nums;pointer-events:none; }
 @media (prefers-reduced-motion:reduce) { .dots-drop-hint span,.dots-thumb-progress { animation:none; } }
 
 /* 回到底部：与普通会话的“查看最新消息”按钮同款，位于输入框上方居中 */

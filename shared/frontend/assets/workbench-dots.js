@@ -57,18 +57,29 @@
  const fileChip=(a,removable=false)=>'<span class="dots-file-chip"><span aria-hidden="true">'+C.icon('file')+'</span>'+(!removable?'<a download href="/api/dots/attachments/'+encodeURIComponent(a.id)+'">'+esc(a.filename)+'</a>':'<span>'+esc(a.filename)+'</span><button type="button" data-dots-remove-file="'+esc(a.id)+'" aria-label="移除 '+esc(a.filename)+'">×</button>')+'</span>';
  // 输入框里的附件：图片显示缩略图（右上角 × 移除），其他文件显示文件条；上传中的图片先用本地预览。
  let uploadPreviews=[];
- const composerThumb=(src,name,removeId,mime)=>'<span class="dots-composer-thumb'+(removeId?'':' is-uploading')+'" title="'+esc(name)+'"><img src="'+esc(src)+'" alt="'+esc(name)+'" decoding="async"'+(removeId?' data-dots-preview-image="'+esc(removeId)+'" data-dots-image-name="'+esc(name)+'" data-dots-image-mime="'+esc(mime||'image/jpeg')+'" title="点击查看大图"':'')+'>'+(removeId?'<button type="button" class="dots-thumb-remove" data-dots-remove-file="'+esc(removeId)+'" aria-label="移除 '+esc(name)+'">×</button>':'<span class="dots-thumb-progress" aria-label="正在上传"></span>')+'</span>';
+ const uploadLabel=u=>!u?'':u.stage==='compress'?'压缩中':u.sent?'处理中':Number.isFinite(u.percent)?u.percent+'%':'上传中';
+ const composerThumb=(src,name,removeId,mime,upload)=>'<span class="dots-composer-thumb'+(removeId?'':' is-uploading')+'" title="'+esc(name)+'"><img src="'+esc(src)+'" alt="'+esc(name)+'" decoding="async"'+(removeId?' data-dots-preview-image="'+esc(removeId)+'" data-dots-image-name="'+esc(name)+'" data-dots-image-mime="'+esc(mime||'image/jpeg')+'" title="点击查看大图"':'')+'>'+(removeId?'<button type="button" class="dots-thumb-remove" data-dots-remove-file="'+esc(removeId)+'" aria-label="移除 '+esc(name)+'">×</button>':'<span class="dots-thumb-progress" aria-label="正在上传"></span><span class="dots-thumb-percent" data-upload-key="'+esc(upload?.key||'')+'">'+esc(uploadLabel(upload))+'</span>')+'</span>';
  function renderComposerFiles(form){const box=form?.querySelector('.dots-composer-files');if(!box)return;const list=attachments(),images=list.filter(a=>/^image\//.test(a.mimeType||'')),others=list.filter(a=>!/^image\//.test(a.mimeType||''));
-  const html=images.map(a=>composerThumb('/api/dots/attachments/'+encodeURIComponent(a.id),a.filename||'图片',a.id,a.mimeType)).join('')+uploadPreviews.map(p=>composerThumb(p.url,p.name,'')).join('')+others.map(a=>fileChip(a,true)).join('');
+  const html=images.map(a=>composerThumb('/api/dots/attachments/'+encodeURIComponent(a.id),a.filename||'图片',a.id,a.mimeType)).join('')+uploadPreviews.map(p=>composerThumb(p.url,p.name,'',null,p)).join('')+others.map(a=>fileChip(a,true)).join('');
   if(box.dataset.html!==html){box.dataset.html=html;box.innerHTML=html;}
   form.querySelector('.dots-composer-surface')?.classList.toggle('has-files',!!html);}
  // 粘贴的截图常常没有扩展名；补上扩展名，后端才能按图片交给模型。
  const uploadName=file=>{const name=file.name||'image';if(/^image\//.test(file.type||'')&&!/\.[a-z0-9]{2,5}$/i.test(name))return name+'.'+((file.type.split('/')[1]||'png').replace('jpeg','jpg').replace(/[^a-z0-9]/gi,''));return name;};
- // 服务器上行带宽有限：大图先在浏览器里缩到长边 2048、转 JPEG，再上传（变小才用压缩结果；GIF/SVG 保持原样）。
- async function compressImage(file){if(!/^image\/(jpeg|png|webp|heic|heif|bmp)$/i.test(file.type||''))return file;try{const bitmap=await createImageBitmap(file);const max=2048,scale=Math.min(1,max/Math.max(bitmap.width,bitmap.height));if(scale===1&&file.size<=600*1024){bitmap.close?.();return file;}const w=Math.max(1,Math.round(bitmap.width*scale)),h=Math.max(1,Math.round(bitmap.height*scale));const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);ctx.drawImage(bitmap,0,0,w,h);bitmap.close?.();const blob=await new Promise(r=>canvas.toBlob(r,'image/jpeg',0.86));if(!blob||blob.size>=file.size)return file;return new File([blob],uploadName(file).replace(/\.[a-z0-9]{2,5}$/i,'')+'.jpg',{type:'image/jpeg'});}catch{return file;}}
+ // 用户到服务器的网络可能只有几十 KB/s：图片先在浏览器里缩到长边 1568（模型看图的上限，再大也会被缩小），
+ // 优先 WebP、不支持就 JPEG；结果更小才用。GIF/SVG 保持原样。
+ async function compressImage(file){if(!/^image\/(jpeg|png|webp|heic|heif|bmp)$/i.test(file.type||''))return file;try{const bitmap=await createImageBitmap(file);const max=1568,scale=Math.min(1,max/Math.max(bitmap.width,bitmap.height));if(scale===1&&file.size<=150*1024){bitmap.close?.();return file;}const w=Math.max(1,Math.round(bitmap.width*scale)),h=Math.max(1,Math.round(bitmap.height*scale));const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);ctx.drawImage(bitmap,0,0,w,h);bitmap.close?.();const encode=(type,q)=>new Promise(r=>canvas.toBlob(r,type,q));let blob=await encode('image/webp',0.8);if(!blob||blob.type!=='image/webp')blob=await encode('image/jpeg',0.8);if(!blob||blob.size>=file.size)return file;const ext=blob.type==='image/webp'?'.webp':'.jpg';return new File([blob],uploadName(file).replace(/\.[a-z0-9]{2,5}$/i,'')+ext,{type:blob.type});}catch{return file;}}
+ // 二进制直传（比 base64 少 1/3），带进度；上传期间暂停后台同步，把带宽让给上传。
+ function setUploadProgress(preview,value){if(!preview)return;Object.assign(preview,value);const node=view?.querySelector('[data-upload-key="'+CSS.escape(preview.key)+'"]');if(node)node.textContent=uploadLabel(preview);}
+ async function uploadOne(file,preview){const id=crypto.randomUUID(),name=uploadName(file),P=window.ShiYanUploadPriority;
+  if(P?.upload){const release=P.begin();try{const data=await P.upload('/api/dots/attachments/raw?id='+id+'&filename='+encodeURIComponent(name),file.type?file:new Blob([file],{type:'application/octet-stream'}),p=>setUploadProgress(preview,{stage:'upload',percent:p.percent,sent:p.sent}));return data.attachment;}finally{release();}}
+  const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(Error('无法读取文件'));reader.readAsDataURL(file);});
+  return (await api('/attachments','POST',{id,filename:name,mimeType:file.type||'application/octet-stream',data})).attachment;}
+ let sendAfterUpload=false;
  async function uploadFiles(files){files=Array.from(files||[]).filter(f=>f&&f.size!==undefined);if(!files.length)return;if(uploading){showError('上一批文件还在上传，请稍候');return;}uploading=true;
-  uploadPreviews=files.filter(f=>/^image\//.test(f.type||'')).map(f=>({file:f,name:uploadName(f),url:URL.createObjectURL(f)}));refreshContent();
-  try{for(const original of files){const preview=uploadPreviews.find(p=>p.file===original);const file=await compressImage(original);if(attachments().length>=8)throw Error('最多添加 8 个文件');if(!file.size||file.size>20*1024*1024)throw Error('文件不能为空，单个文件不能超过 20 MB');const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(Error('无法读取文件'));reader.readAsDataURL(file);});const result=await api('/attachments','POST',{id:crypto.randomUUID(),filename:uploadName(file),mimeType:file.type||'application/octet-stream',data});drafts.managerAttachments=[...attachments(),result.attachment];if(preview){uploadPreviews=uploadPreviews.filter(p=>p!==preview);URL.revokeObjectURL(preview.url);}await persist();refreshContent();}}finally{for(const p of uploadPreviews)URL.revokeObjectURL(p.url);uploadPreviews=[];uploading=false;refreshContent();}}
+  uploadPreviews=files.filter(f=>/^image\//.test(f.type||'')).map(f=>({file:f,key:crypto.randomUUID(),name:uploadName(f),url:URL.createObjectURL(f),stage:'compress'}));refreshContent();
+  try{for(const original of files){const preview=uploadPreviews.find(p=>p.file===original);if(attachments().length>=8)throw Error('最多添加 8 个文件');const file=await compressImage(original);setUploadProgress(preview,{stage:'upload',percent:0});if(!file.size||file.size>20*1024*1024)throw Error('文件不能为空，单个文件不能超过 20 MB');const attachment=await uploadOne(file,preview);drafts.managerAttachments=[...attachments(),attachment];if(preview){uploadPreviews=uploadPreviews.filter(p=>p!==preview);URL.revokeObjectURL(preview.url);}void persist().catch(showError);refreshContent();}}
+  catch(error){sendAfterUpload=false;throw error;}
+  finally{for(const p of uploadPreviews)URL.revokeObjectURL(p.url);uploadPreviews=[];uploading=false;refreshContent();if(sendAfterUpload){sendAfterUpload=false;showError('');submit().catch(showError);}}}
  let managerIME=null;
  let busy=false,historyLoading=false,historyChecked=false,hasMoreMessages=true,error='',drawerOpen=false,selected=null,source,reconnectTimer,recoveryTimer,reconnectAttempt=0,streamEpoch=0;
   
@@ -646,7 +657,7 @@
   }catch(e){item.state='failed';item.error=e?.message||String(e);showError(e);await persist().catch(()=>{});refreshContent();return null;}
   finally{sendingManagerMessages.delete(item.requestId);refreshContent();}
  }
- async function submit(){if(uploading||managerIMEBlocksSend())return;const input=$('dotsManagerInput'),text=input?.value?.trim();if(!text&&!attachments().length)return;const body=text||'请处理这些附件。',quoted=replyTo?composeQuote(quoteExcerpt(replyTo.content),body):body;const replyAfterId=messages.reduce((a,m)=>Math.max(a,Number(m.id)||0),0);replyTo=null;
+ async function submit(){if(managerIMEBlocksSend())return;if(uploading){if($('dotsManagerInput')?.value?.trim()||attachments().length||uploadPreviews.length){sendAfterUpload=true;showError('图片上传完成后会自动发送');}return;}const input=$('dotsManagerInput'),text=input?.value?.trim();if(!text&&!attachments().length)return;const body=text||'请处理这些附件。',quoted=replyTo?composeQuote(quoteExcerpt(replyTo.content),body):body;const replyAfterId=messages.reduce((a,m)=>Math.max(a,Number(m.id)||0),0);replyTo=null;
   const item={message:quoted,host:window.ShiYanPlatform?.mode==='web'?'shiyan_web':'shiyan_desktop',attachments:attachments().map(a=>({...a})),requestId:crypto.randomUUID(),replyAfterId,state:'sending',role:'user',createdAt:Date.now()};
   pending.managerMessages=pending.managerMessages||[];pending.managerMessages.push(item);
   drafts.manager='';drafts.managerAttachments=[];if(input)input.value='';showError('');void persist().catch(showError);refreshContent();void sendPendingManagerMessage(item);return item;
@@ -655,9 +666,9 @@
 
  function syncSendButton(){
   const button=$('dotsSendButton');if(!button)return;
-  const empty=!$('dotsManagerInput')?.value?.trim()&&!attachments().length;
+  const empty=!$('dotsManagerInput')?.value?.trim()&&!attachments().length&&!uploadPreviews.length;
   const mode=!empty?'send':voice.active?'voice-active':awaitingReply()?'stop':'voice';
-  button.disabled=mode==='voice-active'||mode==='stop'?false:uploading;
+  button.disabled=mode==='voice-active'||mode==='stop'||mode==='send'?false:uploading;
   if(button.dataset.mode===mode)return;
   button.dataset.mode=mode;
   button.classList.toggle('is-voice',mode==='voice'||mode==='voice-active');
