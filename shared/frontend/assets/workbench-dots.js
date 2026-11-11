@@ -77,12 +77,10 @@
   if(P?.upload){const release=P.begin();try{const data=await P.upload('/api/dots/attachments/raw?id='+id+'&filename='+encodeURIComponent(name),file.type?file:new Blob([file],{type:'application/octet-stream'}),p=>setUploadProgress(preview,{stage:'upload',percent:p.percent,sent:p.sent}));return data.attachment;}finally{release();}}
   const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(Error('无法读取文件'));reader.readAsDataURL(file);});
   return (await api('/attachments','POST',{id,filename:name,mimeType:file.type||'application/octet-stream',data})).attachment;}
- let sendAfterUpload=false;
  async function uploadFiles(files){files=Array.from(files||[]).filter(f=>f&&f.size!==undefined);if(!files.length)return;if(uploading){showError('上一批文件还在上传，请稍候');return;}uploading=true;
   uploadPreviews=files.filter(f=>/^image\//.test(f.type||'')).map(f=>({file:f,key:crypto.randomUUID(),name:uploadName(f),url:URL.createObjectURL(f),stage:'compress'}));refreshContent();
   try{for(const original of files){const preview=uploadPreviews.find(p=>p.file===original);if(attachments().length>=8)throw Error('最多添加 8 个文件');const file=await compressImage(original);setUploadProgress(preview,{stage:'upload',percent:0});if(!file.size||file.size>20*1024*1024)throw Error('文件不能为空，单个文件不能超过 20 MB');const attachment=await uploadOne(file,preview);drafts.managerAttachments=[...attachments(),attachment];if(preview){uploadPreviews=uploadPreviews.filter(p=>p!==preview);URL.revokeObjectURL(preview.url);}void persist().catch(showError);refreshContent();}}
-  catch(error){sendAfterUpload=false;throw error;}
-  finally{for(const p of uploadPreviews)URL.revokeObjectURL(p.url);uploadPreviews=[];uploading=false;refreshContent();if(sendAfterUpload){sendAfterUpload=false;showError('');submit().catch(showError);}}}
+  finally{for(const p of uploadPreviews)URL.revokeObjectURL(p.url);uploadPreviews=[];uploading=false;refreshContent();}}
  let managerIME=null;
  let busy=false,historyLoading=false,historyChecked=false,hasMoreMessages=true,error='',drawerOpen=false,selected=null,source,reconnectTimer,recoveryTimer,reconnectAttempt=0,streamEpoch=0;
   
@@ -692,7 +690,7 @@
   }catch(e){item.state='failed';item.error=e?.message||String(e);showError(e);await persist().catch(()=>{});refreshContent();return null;}
   finally{sendingManagerMessages.delete(item.requestId);refreshContent();}
  }
- async function submit(){if(managerIMEBlocksSend())return;if(uploading){if($('dotsManagerInput')?.value?.trim()||attachments().length||uploadPreviews.length){sendAfterUpload=true;showError('图片上传完成后会自动发送');}return;}const input=$('dotsManagerInput'),text=input?.value?.trim();if(!text&&!attachments().length)return;const body=text||'请处理这些附件。',quoted=replyTo?composeQuote(quoteExcerpt(replyTo.content),body):body;const replyAfterId=messages.reduce((a,m)=>Math.max(a,Number(m.id)||0),0);replyTo=null;
+ async function submit(){if(managerIMEBlocksSend()||uploading)return;const input=$('dotsManagerInput'),text=input?.value?.trim();if(!text&&!attachments().length)return;const body=text||'请处理这些附件。',quoted=replyTo?composeQuote(quoteExcerpt(replyTo.content),body):body;const replyAfterId=messages.reduce((a,m)=>Math.max(a,Number(m.id)||0),0);replyTo=null;
   const item={message:quoted,host:window.ShiYanPlatform?.mode==='web'?'shiyan_web':'shiyan_desktop',attachments:attachments().map(a=>({...a})),requestId:crypto.randomUUID(),replyAfterId,state:'sending',role:'user',createdAt:Date.now()};
   pending.managerMessages=pending.managerMessages||[];pending.managerMessages.push(item);
   drafts.manager='';drafts.managerAttachments=[];if(input)input.value='';showError('');void persist().catch(showError);refreshContent();void sendPendingManagerMessage(item);return item;
@@ -703,7 +701,8 @@
   const button=$('dotsSendButton');if(!button)return;
   const empty=!$('dotsManagerInput')?.value?.trim()&&!attachments().length&&!uploadPreviews.length;
   const mode=!empty?'send':voice.active?'voice-active':awaitingReply()?'stop':'voice';
-  button.disabled=mode==='voice-active'||mode==='stop'||mode==='send'?false:uploading;
+  // 图片还在上传时不能发送（按钮置灰，回车也不发）。
+  button.disabled=mode==='voice-active'||mode==='stop'?false:uploading;button.title=uploading&&mode==='send'?'图片上传完成后才能发送':'';
   if(button.dataset.mode===mode)return;
   button.dataset.mode=mode;
   button.classList.toggle('is-voice',mode==='voice'||mode==='voice-active');
