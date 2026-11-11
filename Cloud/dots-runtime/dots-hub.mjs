@@ -2,7 +2,7 @@
 // 中枢不可用时返回空对象，调用方沿用原有的 Codex 与环境变量默认值。
 import { createHubClient } from '/home/ubuntu/model-hub/client.mjs';
 
-const CONSUMER_BY_SOURCE = { 'dots-mail-summary': 'dots.mail', 'dots-github-summary': 'dots.github', 'dots-subscribe': 'dots.subscribe' };
+const CONSUMER_BY_SOURCE = { 'dots-mail-summary': 'dots.mail', 'dots-github-summary': 'dots.github', 'dots-subscribe': 'dots.subscribe', 'dots-route': 'dots.route' };
 export const dotsConsumer = source => CONSUMER_BY_SOURCE[source] || 'dots.proactive';
 
 export function createDotsHub(client = createHubClient()) {

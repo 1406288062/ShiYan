@@ -257,7 +257,7 @@ ${JSON.stringify(recent)}
 Return only the structured decision.${buildVoiceRule(voiceContext,{field:'message'}).replace(/rule 8's default tone and length/,'the default tone and length').replace(/tasks, summaries, worker instructions, notes, routing and every other rule above/,'every decision rule above')}`;
 }
 
-export function createManagerRuntime({store,codex,workspaceRoot,memory,resolveImagePath,threadOptions={},timeoutMs=120000,onComplete=()=>{},threadFactory=null,contentReviewEnabled=true,logger=console,onModelCall=()=>{},voice=null,afterCommit=null}={}) {
+export function createManagerRuntime({store,codex,workspaceRoot,memory,resolveImagePath,threadOptions={},timeoutMs=120000,onComplete=()=>{},threadFactory=null,contentReviewEnabled=true,logger=console,onModelCall=()=>{},voice=null,afterCommit=null,routeTurn=null}={}) {
   const workspace=path.join(workspaceRoot,'.manager');mkdirSync(workspace,{recursive:true});
   // 读取用户启用的“学习对象”说话方式；失败时按普通 Dots 回复，不影响对话。
   const voiceFor=async text=>{if(typeof voice!=='function')return '';try{return String(await voice(String(text||''))||'');}catch(cause){logger.warn?.('[voice]',cause?.message||cause);return '';}};
@@ -329,9 +329,18 @@ export function createManagerRuntime({store,codex,workspaceRoot,memory,resolveIm
         }).filter(Boolean);
         try{remembered=memory.context(store.ownerId,{text:sources.map(m=>m.content||'').join('\n'),conversationId:'dots-manager',allProjects:true});}catch{logger.warn?.('[memory] Could not read Dots memory');}
       }
-      // 只有简短寒暄、没有任务意图时标记为 light，由中枢的 dots.chat.quick（便宜模型）回复。
+      // 分流：light 走中枢的 dots.chat.quick（便宜模型、少量上下文、不加载设备和应用工具），其余走 dots.chat。
+      // 有 routeTurn 时按意图判断（turn-router.mjs）；没有时沿用旧的字数加关键词规则。
       const pendingForLight=store.pendingManagerInbox(run);
-      const light=pendingForLight.length>0&&pendingForLight.every(event=>{if(event.type!=='user_message')return false;let content='';try{content=String(JSON.parse(event.payload).content||'');}catch{}return content.length>0&&content.length<=40&&!/任务|帮我|帮忙|订阅|提醒|安排|执行|查|写|改|修|部署|文件|邮件|github|仓库|日历|设置|继续|停止|取消|删除|创建|分析|总结|翻译|计划|设备|在线|电脑|mac|手机|网页|浏览|打开|搜|地图|天气|新闻|看看|看下|发我|发给/i.test(content);})&&!pendingImagePaths(store,run,resolveImagePath).length;
+      let light;
+      if(routeTurn){
+        const hasImages=pendingImagePaths(store,run,resolveImagePath).length>0;
+        const pendingIds=new Set(pendingForLight.map(event=>{try{return Number(JSON.parse(event.payload).id)||0;}catch{return 0;}}));
+        const recent=store.db.prepare("SELECT id,role,content FROM manager_messages WHERE manager_id=? AND role IN ('user','assistant') ORDER BY id DESC LIMIT 12").all(store.managerId).filter(m=>!pendingIds.has(m.id)).slice(0,6).reverse();
+        const tasks=store.db.prepare("SELECT title FROM goals WHERE manager_id=? AND status NOT IN ('done','cancelled','archived','failed') ORDER BY updated_at DESC LIMIT 6").all(store.managerId).map(row=>row.title);
+        let decision;try{decision=await routeTurn({events:pendingForLight,hasImages,recent,tasks});}catch{decision={route:'full'};}
+        light=decision?.route==='light';
+      }else light=pendingForLight.length>0&&pendingForLight.every(event=>{if(event.type!=='user_message')return false;let content='';try{content=String(JSON.parse(event.payload).content||'');}catch{}return content.length>0&&content.length<=40&&!/任务|帮我|帮忙|订阅|提醒|安排|执行|查|写|改|修|部署|文件|邮件|github|仓库|日历|设置|继续|停止|取消|删除|创建|分析|总结|翻译|计划|设备|在线|电脑|mac|手机|网页|浏览|打开|搜|地图|天气|新闻|看看|看下|发我|发给/i.test(content);})&&!pendingImagePaths(store,run,resolveImagePath).length;
       const options={...threadOptions,workingDirectory:workspace,sandboxMode:'read-only',webSearchMode:'live',networkAccessEnabled:false,approvalPolicy:'never',threadSource:'dots-manager',...(light?{light:true}:{})};
       const thread=threadFactory?await threadFactory({threadId:run.thread_id,options}):run.thread_id?codex.resumeThread(run.thread_id,options):codex.startThread(options);
       let result,lastDelivered='',lastDeliveredAt=0;
