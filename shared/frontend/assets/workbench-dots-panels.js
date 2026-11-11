@@ -1008,7 +1008,7 @@
       const result=takeover?.ticket?{ticket:takeover.ticket}:await api('/browser/session','POST',{});
       if(dialog.hidden||currentModal!==dialog){api('/browser/session','DELETE').catch(()=>{});return;}
       const frame=dialog.querySelector('[data-browser-frame]');
-      frame.src='/assets/dots-browser.html?v=20261111-handback2#ticket='+encodeURIComponent(result.ticket)+(takeover?.taskId?'&task='+encodeURIComponent(takeover.taskId):'');
+      frame.src='/assets/dots-browser.html?v=20261111-handback3#ticket='+encodeURIComponent(result.ticket)+(takeover?.taskId?'&task='+encodeURIComponent(takeover.taskId):'');
       frame.hidden=false;dialog.querySelector('[data-browser-loading]').hidden=true;
     } catch(error) {
       const loading=dialog.querySelector('[data-browser-loading]'),label=dialog.querySelector('[data-browser-error]');

@@ -92,19 +92,24 @@
       return context;
     });
   }
+  // 第一段只放第一句（最多 60 字）：网络慢时也能很快开口；后面每段逐步变长（120、320 字），
+  // 播放当前段时预取下一段。音频约 6KB/秒，下载比播放快时就不会断。
+  const partLimit = index => index === 0 ? 60 : index === 1 ? 120 : 320;
   function speechParts(text) {
     const parts = [];
     let pending = '';
     const append = value => {
-      if (pending && Array.from(pending + value).length > 320) {
+      if (pending && (parts.length === 0 || Array.from(pending + value).length > partLimit(parts.length))) {
         parts.push(pending); pending = '';
       }
       pending += value;
     };
     for (const sentence of text.match(/[^。！？!?；;\n]+[。！？!?；;\n]*|[。！？!?；;\n]+/gu) || []) {
       const characters = Array.from(sentence);
-      for (let offset = 0; offset < characters.length; offset += 320) {
-        append(characters.slice(offset, offset + 320).join(''));
+      for (let offset = 0; offset < characters.length;) {
+        const size = pending ? 320 : partLimit(parts.length);
+        append(characters.slice(offset, offset + size).join(''));
+        offset += size;
       }
     }
     if (pending) parts.push(pending);
