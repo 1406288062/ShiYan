@@ -19,7 +19,7 @@ import type { BrowserSessionManager } from './browser-session.ts';
 import type { BrowserStore } from './browser-store.ts';
 import type { DotsAttachments } from './dots-attachments.ts';
 
-const fail = (message, status = 400, code = undefined) => Object.assign(new Error(message), { status }, code ? { code } : {});
+const fail = (message, status = 400, code: any = undefined) => Object.assign(new Error(message), { status }, code ? { code } : {});
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const clip = (value, max) => { const s = String(value ?? ''); return s.length > max ? s.slice(0, max) + '…' : s; };
 const originOf = url => { try { const u = new URL(url); return /^https?:$/.test(u.protocol) ? u.origin.toLowerCase() : ''; } catch { return ''; } };
@@ -82,6 +82,16 @@ const SEARCH_JS = `(() => { const out = [];
   if (!out.length) for (const r of document.querySelectorAll('.result')) { const a = r.querySelector('a.result__a'); if (!a) continue; const s = r.querySelector('.result__snippet'); out.push({ title: a.innerText.trim(), url: a.href, snippet: s ? s.innerText.trim().slice(0, 300) : '' }); }
   return { url: location.href, title: document.title, results: out.slice(0, 15), text: (document.body ? document.body.innerText : '').slice(0, 600) }; })()`;
 
+interface BrowserAgentHostOptions {
+  manager: BrowserSessionManager;
+  store: BrowserStore;
+  attachments?: DotsAttachments | null;
+  lxc?: typeof defaultLxc;
+  container?: string;
+  logger?: (msg: string) => void;
+  windowIdleMs?: number;
+}
+
 export class BrowserAgentHost {
   manager: BrowserSessionManager;
   store: BrowserStore;
@@ -99,7 +109,7 @@ export class BrowserAgentHost {
   takeover: { owner: string; taskId: string; previousStatus: string } | null;
   windowIdleMs: number;
   sweeper: ReturnType<typeof setInterval>;
-  constructor({ manager, store, attachments = null, lxc = defaultLxc, container = BROWSER_CONTAINER_NAME, logger = msg => process.stderr.write(msg + '\n'), windowIdleMs = WINDOW_IDLE_MS } = {}) {
+  constructor({ manager, store, attachments = null, lxc = defaultLxc, container = BROWSER_CONTAINER_NAME, logger = msg => process.stderr.write(msg + '\n'), windowIdleMs = WINDOW_IDLE_MS }: BrowserAgentHostOptions) {
     this.manager = manager; this.store = store; this.attachments = attachments; this.lxc = lxc; this.container = container; this.log = logger;
     this.windows = new Map();      // taskId -> window state
     this.byTarget = new Map();     // Chrome targetId -> { owner, taskId|null (reader), tab }
@@ -217,7 +227,7 @@ export class BrowserAgentHost {
     if (win) { this.windows.delete(task.id); if (!win.session.closing) this.manager.releaseAgent(win.session); }
     let session;
     try { session = await this.manager.acquireAgent(task.owner, { identity: task.identity }); }
-    catch (error) { if (error.code === 'browser_busy') this.store.updateTask(task.id, { error: error.message }); throw error; }
+    catch (error) { if ((error as any).code === 'browser_busy') this.store.updateTask(task.id, { error: (error as any).message }); throw error; }
     win = { taskId: task.id, owner: task.owner, session, tabs: new Map(), active: null, notes: [], lastUsed: Date.now() };
     this.windows.set(task.id, win);
     try {
@@ -250,7 +260,7 @@ export class BrowserAgentHost {
     return result.result?.value;
   }
   async #waitLoad(tab, timeoutMs = 15_000) {
-    await new Promise(resolve => { const timer = setTimeout(resolve, timeoutMs); tab.loadWaiters.push(() => { clearTimeout(timer); resolve(); }); });
+    await new Promise<void>(resolve => { const timer = setTimeout(resolve, timeoutMs); tab.loadWaiters.push(() => { clearTimeout(timer); resolve(); }); });
   }
   async #navigate(session, tab, raw, { taskId = null, owner = null } = {}) {
     const url = normalizeBrowserURL(raw);
@@ -283,8 +293,8 @@ export class BrowserAgentHost {
   }
 
   // ================================================================ questions and waiting
-  #ask(task, { kind, prompt, options = [], data = {} }, { block = true } = {}) {
-    const question = this.store.createQuestion(task.owner, task.id, { kind, prompt, options, data });
+  #ask(task, { kind, prompt, options = [], data = {} }: {kind: string; prompt: string; options?: string[]; data?: any}, { block = true }: {block?: boolean} = {}) {
+    const question = this.store.createQuestion(task.owner, task.id, { kind, prompt, options, data })!;
     const userOnly = USER_ONLY.includes(kind);
     // An executor waiting on this answer shows the task as waiting for the user; an approval asked
     // ahead of time (sharing a code when the task is created) does not hold the task back.
@@ -306,16 +316,16 @@ export class BrowserAgentHost {
       if (!task || task.status === 'cancelled') return { ...question, status: 'cancelled' };
       const left = deadline - Date.now();
       if (left <= 0) return question;
-      await new Promise(resolve => {
+      await new Promise<void>(resolve => {
         const timer = setTimeout(done, Math.min(left, 30_000));
         function done() { clearTimeout(timer); resolve(); }
         if (!this.waiters.has(questionId)) this.waiters.set(questionId, new Set());
-        this.waiters.get(questionId).add(done);
+        this.waiters.get(questionId)!.add(done);
       });
     }
   }
   #resumeAfterAnswer(task) {
-    const fresh = this.store.row(task.id);
+    const fresh = this.store.row(task.id)!;
     if (!fresh || !['waiting_user', 'running', 'queued'].includes(fresh.status)) return;
     if (this.store.pendingQuestions(fresh.owner, fresh.id).length) return;
     // A live executor is still blocked inside a tool call and picks the answer up itself; otherwise
@@ -336,7 +346,7 @@ export class BrowserAgentHost {
     }
   }
   #grantFiles(owner, ids) {
-    const out = [];
+    const out: any[] = [];
     for (const fileId of (Array.isArray(ids) ? ids : []).slice(0, 10)) {
       const value = String(fileId || '');
       if (!this.attachments) throw fail('文件授权不可用', 503);
@@ -345,7 +355,7 @@ export class BrowserAgentHost {
     }
     return out;
   }
-  async browse(owner, origin, { task_id: taskId, task: instruction = '', answer_to: answerTo = null, verification_code: codeRef = null, files = [], identity = 'default', title = '' } = {}) {
+  async browse(owner, origin, { task_id: taskId, task: instruction = '', answer_to: answerTo = null, verification_code: codeRef = null, files = [], identity = 'default', title = '' }: {task_id?: string; task?: string; answer_to?: string | null; verification_code?: string | null; files?: any[]; identity?: string; title?: string} = {}) {
     instruction = String(instruction || '').trim();
     if (!taskId) throw fail('请提供 task_id：继续已有窗口传它的 task_id，开新活传 "new"');
     if (answerTo) {
@@ -384,7 +394,7 @@ export class BrowserAgentHost {
   }
   windowSummary(task, { detail = false } = {}) {
     const win = this.windows.get(task.id);
-    const out = { task_id: task.id, title: task.title, status: task.status, identity: task.identity, origin: task.origin, updated_at: task.updated_at,
+    const out: any = { task_id: task.id, title: task.title, status: task.status, identity: task.identity, origin: task.origin, updated_at: task.updated_at,
       window_open: Boolean(win), tabs: win ? [...win.tabs.values()].map(tab => ({ tab_id: tab.id, url: clip(tab.url, 300), title: clip(tab.title, 120), active: tab.id === win.active })) : [],
       last_url: task.last_url || undefined, summary: task.summary || undefined, error: task.error || undefined,
       pending_questions: this.store.pendingQuestions(task.owner, task.id).map(q => ({ question_id: q.id, kind: q.kind, prompt: q.prompt, options: q.options, user_only: USER_ONLY.includes(q.kind) })) };
@@ -460,7 +470,7 @@ export class BrowserAgentHost {
   async search(owner, { query = '', max_results: max = 8 } = {}) {
     query = String(query || '').trim(); if (!query) throw fail('请提供搜索内容');
     const engines = [`https://www.bing.com/search?q=${encodeURIComponent(query)}&setlang=zh-Hans`, `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`];
-    const failures = [];
+    const failures: string[] = [];
     for (const url of engines) {
       try {
         const value = await this.#withReader(owner, async reader => {
@@ -470,7 +480,7 @@ export class BrowserAgentHost {
         });
         if (value?.results?.length) return { ok: true, query, engine: new URL(url).host, results: value.results.slice(0, Math.max(1, Math.min(15, Number(max) || 8))) };
         failures.push(`${new URL(url).host} 没有返回可解析的结果（页面标题：${clip(value?.title, 60)}；开头文字：${clip(value?.text, 120)}）`);
-      } catch (error) { failures.push(`${new URL(url).host}：${error.message}`); }
+      } catch (error) { failures.push(`${new URL(url).host}：${(error as any).message}`); }
     }
     return { ok: false, query, results: [], error: '搜索没有拿到结果：' + failures.join('；') + '。这只说明读取失败，不代表真实浏览器被拦截或网站需要登录。' };
   }
@@ -481,7 +491,7 @@ export class BrowserAgentHost {
     let page = this.readers.get(owner)?.pages.get(target);
     if (!page || cursor === 0) {
       try { const loaded = await this.#readerLoad(owner, target); page = loaded.page; loaded.reader.pages.set(target, page); loaded.reader.last = target; if (loaded.reader.pages.size > 20) loaded.reader.pages.delete(loaded.reader.pages.keys().next().value); }
-      catch (error) { return { ok: false, url: target, error: `读取页面文字失败：${error.message}。这不代表真实浏览器被拦截，也不代表网站需要登录。` }; }
+      catch (error) { return { ok: false, url: target, error: `读取页面文字失败：${(error as any).message}。这不代表真实浏览器被拦截，也不代表网站需要登录。` }; }
     }
     const textValue = page.text || '';
     const next = cursor + PAGE_CHUNK < textValue.length ? cursor + PAGE_CHUNK : null;
@@ -494,7 +504,7 @@ export class BrowserAgentHost {
     if (!key) throw fail('还没有打开过页面；请提供 url 或先用 open 打开页面');
     let page = reader?.pages.get(key);
     if (!page) { const result = await this.open(owner, { url: key }); if (!result.ok) return result; page = this.readers.get(owner)?.pages.get(key); }
-    const hay = page.text || '', lower = hay.toLowerCase(), needle = query.toLowerCase(), matches = [];
+    const hay = page.text || '', lower = hay.toLowerCase(), needle = query.toLowerCase(), matches: any[] = [];
     for (let at = lower.indexOf(needle); at >= 0 && matches.length < 20; at = lower.indexOf(needle, at + needle.length)) matches.push({ position: at, context: hay.slice(Math.max(0, at - 200), at + needle.length + 200) });
     return { ok: true, url: page.url, query, count: matches.length, matches };
   }
@@ -520,7 +530,7 @@ export class BrowserAgentHost {
     const win = this.windows.get(taskId);
     const notes = win?.notes.splice(0) || [];
     if (!inputs.length && !notes.length) return null;
-    if (inputs.length) this.store.consumeInputs(taskId, inputs.at(-1).id);
+    if (inputs.length) this.store.consumeInputs(taskId, inputs.at(-1)!.id);
     return { new_instructions: inputs.length ? inputs.map(item => item.text) : undefined, browser_notes: notes.length ? notes : undefined };
   }
   async #serial(key, fn) {
@@ -558,7 +568,7 @@ export class BrowserAgentHost {
   }
   #snapshotResult(tab, value, win) {
     tab.gen = value.gen; tab.url = value.url; tab.title = value.title;
-    const out = { url: value.url, title: clip(value.title, 200), tab_id: tab.id, tabs: [...win.tabs.values()].map(t => ({ tab_id: t.id, url: clip(t.url, 200), title: clip(t.title, 80), active: t.id === win.active })),
+    const out: any = { url: value.url, title: clip(value.title, 200), tab_id: tab.id, tabs: [...win.tabs.values()].map(t => ({ tab_id: t.id, url: clip(t.url, 200), title: clip(t.title, 80), active: t.id === win.active })),
       elements: value.items, more_elements: value.more || undefined, text: value.text, scroll: value.scroll };
     if (value.challenge) out.challenge = { kind: value.challenge, note: '页面出现了机器人验证/验证码。不要尝试破解或绕过。对话里发起的任务可用 request_takeover 请用户亲自完成；定时/推送/网页应用发起的任务不能接管，请 finish(status="blocked") 如实汇报。' };
     if (value.hasPassword) out.password_note = '页面有密码框：只能用 fill_saved_login 或 request_secure_input 填写，不能用 type。';
@@ -571,7 +581,7 @@ export class BrowserAgentHost {
     switch (tool) {
       case 'get_task': {
         const inputs = this.store.pendingInputs(task.id);
-        if (inputs.length) this.store.consumeInputs(task.id, inputs.at(-1).id);
+        if (inputs.length) this.store.consumeInputs(task.id, inputs.at(-1)!.id);
         const checkout = JSON.parse(task.checkout || 'null');
         return { task_id: task.id, title: task.title, origin: task.origin, identity: task.identity, status: task.status,
           takeover_available: task.origin === 'chat', instructions: this.store.allInstructions(task.id).map(item => ({ kind: item.kind, text: item.text })),
@@ -581,7 +591,7 @@ export class BrowserAgentHost {
           window: this.windowSummary(task).tabs };
       }
       case 'report_progress': this.store.progress(task.id, String(args.text || '')); return { ok: true };
-      case 'wait': await delay(Math.max(1, Math.min(30, Number(args.seconds) || 3)) * 1000); return { ok: true, status: this.store.row(task.id).status };
+      case 'wait': await delay(Math.max(1, Math.min(30, Number(args.seconds) || 3)) * 1000); return { ok: true, status: this.store.row(task.id)!.status };
       case 'wait_for_answer': {
         const question = this.store.ownedQuestion(owner, args.question_id);
         if (question.task_id !== task.id) throw fail('这个问题不属于当前任务', 403);
@@ -675,7 +685,7 @@ export class BrowserAgentHost {
         const win = await this.#window(task), tab = this.#activeTab(win);
         const page = await this.#eval(win.session, tab, READ_JS, { timeoutMs: 10_000 });
         const needle = String(args.query || '').toLowerCase(); if (!needle) throw fail('请提供要查找的文字');
-        const lower = page.text.toLowerCase(), matches = [];
+        const lower = page.text.toLowerCase(), matches: string[] = [];
         for (let at = lower.indexOf(needle); at >= 0 && matches.length < 15; at = lower.indexOf(needle, at + needle.length)) matches.push(page.text.slice(Math.max(0, at - 160), at + needle.length + 160));
         return { count: matches.length, matches };
       }
@@ -747,7 +757,7 @@ export class BrowserAgentHost {
         return { ok: true, authorization_id: question.id, note: '用户已授权这一笔付款。用 place_order(ref, authorization_id) 提交；提交后必须核实商家订单凭证。' };
       }
       case 'place_order': {
-        const checkout = JSON.parse(this.store.row(task.id).checkout || 'null');
+        const checkout = JSON.parse(this.store.row(task.id)!.checkout || 'null');
         if (checkout?.used && checkout.authorization_id === args.authorization_id) throw fail('这个付款授权已经用过。结果不明时先核对订单，不要重复提交。', 409, 'authorization_used');
         if (!checkout || checkout.stage !== 'authorized' || checkout.authorization_id !== args.authorization_id) throw fail('没有有效的付款授权：先 request_payment_authorization，由用户在专用界面批准。交还控制权不等于批准购买。', 403, 'no_authorization');
         const win = await this.#window(task), tab = this.#activeTab(win);
@@ -795,7 +805,7 @@ export class BrowserAgentHost {
       }
       case 'finish': {
         const status = ['done', 'failed', 'blocked'].includes(args.status) ? args.status : 'done';
-        const fresh = this.store.row(task.id), checkout = JSON.parse(fresh.checkout || 'null');
+        const fresh = this.store.row(task.id)!, checkout = JSON.parse(fresh.checkout || 'null');
         const unverified = status === 'done' && checkout?.used && !String(args.merchant_confirmation || '').trim();
         const finalStatus = unverified ? 'unverified' : status;
         const files = this.store.files(owner, task.id).map(item => ({ file_id: item.id, attachment_id: item.attachment_id, filename: item.filename, kind: item.kind }));
@@ -814,7 +824,7 @@ export class BrowserAgentHost {
   // ---- files
   #deliver(task, { kind, filename, mime, data }) {
     const sha256 = createHash('sha256').update(data).digest('hex');
-    let attachmentId = null;
+    let attachmentId: string | null = null;
     if (this.attachments) {
       if (data.length > 20 * 1024 * 1024) throw fail('文件超过 20 MB，无法交付', 413);
       attachmentId = randomUUID();
@@ -860,7 +870,7 @@ export class BrowserAgentHost {
     }
   }
   async #upload(task, win, tab, ref, granted) {
-    const session = win.session, file = this.attachments.download(task.owner, granted.id);
+    const session = win.session, file = this.attachments!.download(task.owner, granted.id);
     const safe = path.basename(file.filename).replace(/[^\w.\-一-鿿]/g, '_').slice(0, 120) || 'upload.bin';
     const dir = `/home/browser/uploads/${task.id}`, remote = `${dir}/${safe}`;
     const local = path.join(tmpdir(), 'shiyan-up-' + randomBytes(6).toString('hex'));
@@ -884,7 +894,7 @@ export class BrowserAgentHost {
   }
 
   // ================================================================ user-side actions (frontend)
-  async userAnswer(owner, questionId, input = {}) {
+  async userAnswer(owner, questionId, input: any = {}) {
     const question = this.store.ownedQuestion(owner, questionId);
     if (question.status !== 'pending') throw fail('这个问题已经处理过', 409);
     const task = this.store.task(owner, question.task_id);
@@ -925,7 +935,7 @@ export class BrowserAgentHost {
     if (question.kind !== 'secure_input' || question.status !== 'pending') throw fail('这个加密输入已处理或无效', 409);
     if (typeof value !== 'string' || !value || value.length > 1024) throw fail('请填写内容');
     const task = this.store.task(owner, question.task_id);
-    let answer = { entered: false };
+    let answer: {entered: boolean; error?: string} = { entered: false };
     try {
       await this.#serial(task.id, async () => {
         const win = this.windows.get(task.id);
@@ -937,7 +947,7 @@ export class BrowserAgentHost {
         await this.#typeInto(win.session, tab, question.data.ref, value);
       });
       answer = { entered: true };
-    } catch (error) { answer = { entered: false, error: error.message }; }
+    } catch (error) { answer = { entered: false, error: (error as any).message }; }
     this.store.answerQuestion(question.id, answer, 'user');
     this.#wake(question.id); this.#resumeAfterAnswer(task);
     if (!answer.entered) throw fail(answer.error || '没有填入页面', 409);
@@ -956,7 +966,7 @@ export class BrowserAgentHost {
   }
   async handback(owner, taskId, { note = '' } = {}) {
     const task = this.store.task(owner, taskId);
-    const previous = this.takeover?.taskId === task.id ? this.takeover.previousStatus : null;
+    const previous = this.takeover?.taskId === task.id ? this.takeover!.previousStatus : null;
     if (this.takeover?.taskId === task.id) {
       const win = this.windows.get(task.id);
       if (win) await this.manager.hideAgentTargets(win.session, [...win.tabs.values()].map(tab => tab.targetId)).catch(() => {});
@@ -970,7 +980,7 @@ export class BrowserAgentHost {
     const live = Boolean(task.claim_token);
     const others = this.store.pendingQuestions(owner, task.id).length;
     // A window the user took over while it was idle or finished goes back to that state.
-    const resting = (previous === 'idle' || FINAL_STATUSES.includes(previous)) && !live && !this.store.pendingInputs(task.id).some(item => item.kind === 'instruction');
+    const resting = (previous === 'idle' || FINAL_STATUSES.includes(previous!)) && !live && !this.store.pendingInputs(task.id).some(item => item.kind === 'instruction');
     const status = others ? 'waiting_user' : resting ? previous : live ? 'running' : 'queued';
     this.store.updateTask(task.id, { status });
     return { ok: true, task_id: task.id, status };
@@ -979,11 +989,11 @@ export class BrowserAgentHost {
   publicTask(task) { return { ...this.windowSummary(task, { detail: true }), created_at: task.created_at, finished_at: task.finished_at, checkout: JSON.parse(task.checkout || 'null'), result: JSON.parse(task.result || 'null') }; }
 
   // ================================================================ executor runtime coordination
-  claim(workerId, { exclude = [] } = {}) {
+  claim(workerId, { exclude = [] }: {exclude?: string[]} = {}) {
     // Owners whose browser is held by another account wait: skip them instead of failing the task.
     const busy = new Set(exclude);
     const active = this.manager.activeSession;
-    if (active) for (const row of this.store.db.prepare("SELECT DISTINCT owner FROM browser_tasks WHERE status='queued'").all()) if (row.owner !== active.owner) busy.add(row.owner);
+    if (active) for (const row of this.store.db.prepare("SELECT DISTINCT owner FROM browser_tasks WHERE status='queued'").all()) if (row.owner !== active.owner) busy.add(String(row.owner));
     const claimed = this.store.claimNext(workerId, { exclude: [...busy] });
     if (!claimed) return null;
     const task = claimed.task;
@@ -991,16 +1001,16 @@ export class BrowserAgentHost {
     return { task: { task_id: task.id, owner: task.owner, origin: task.origin, identity: task.identity, title: task.title, thread_id: task.thread_id || null, resumed: Boolean(task.thread_id) },
       token: claimed.token, new_inputs: inputs.map(item => ({ kind: item.kind, text: item.text })) };
   }
-  renew(taskId, token) { this.store.renewClaim(taskId, token); return { ok: true, status: this.store.row(taskId).status }; }
+  renew(taskId, token) { this.store.renewClaim(taskId, token); return { ok: true, status: this.store.row(taskId)!.status }; }
   checkpoint(taskId, token, threadId) { this.store.verifyClaim(taskId, token); this.store.updateTask(taskId, { thread_id: String(threadId || '').slice(0, 200) }); return { ok: true }; }
   complete(taskId, token, { error = '' } = {}) {
     const task = this.store.verifyClaim(taskId, token);
     this.store.releaseClaim(task.id);
-    const fresh = this.store.row(task.id);
+    const fresh = this.store.row(task.id)!;
     if (FINAL_STATUSES.includes(fresh.status) || fresh.status === 'idle') {
       // New instructions may have arrived after finish(): run them.
       if (fresh.status !== 'cancelled' && this.store.pendingInputs(task.id).some(item => item.kind === 'instruction')) this.store.updateTask(task.id, { status: 'queued', finished_at: null });
-      return { ok: true, status: this.store.row(task.id).status };
+      return { ok: true, status: this.store.row(task.id)!.status };
     }
     if (['waiting_user', 'taken_over'].includes(fresh.status)) return { ok: true, status: fresh.status };
     if (fresh.status === 'queued') return { ok: true, status: 'queued' };
@@ -1022,7 +1032,7 @@ export function startBrowserAgentSocket(host, socketPath) {
   const send = (res, status, value) => { const data = JSON.stringify(value); res.writeHead(status, { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) }); res.end(data); };
   const server = http.createServer(async (req, res) => {
     try {
-      let size = 0; const chunks = [];
+      let size = 0; const chunks: any[] = [];
       for await (const chunk of req) { size += chunk.length; if (size > 1024 * 1024) throw fail('请求过大', 413); chunks.push(chunk); }
       const input = JSON.parse(Buffer.concat(chunks).toString() || '{}');
       const route = new URL(req.url || '/', 'http://local').pathname;
@@ -1037,7 +1047,7 @@ export function startBrowserAgentSocket(host, socketPath) {
       if (route === '/events/claim') return send(res, 200, { ok: true, events: host.store.undeliveredEvents(Math.min(100, Number(input.limit) || 50)) });
       if (route === '/events/ack') { host.store.markDelivered(Array.isArray(input.ids) ? input.ids : []); return send(res, 200, { ok: true }); }
       return send(res, 404, { ok: false, error: 'not found' });
-    } catch (error) { send(res, error.status && error.status < 600 ? error.status : 500, { ok: false, error: error.status ? error.message : '浏览器服务内部错误', code: error.code || undefined }); if (!error.status) process.stderr.write('[browser-agent] ' + (error?.stack || error) + '\n'); }
+    } catch (error) { send(res, (error as any).status && (error as any).status < 600 ? (error as any).status : 500, { ok: false, error: (error as any).status ? (error as any).message : '浏览器服务内部错误', code: (error as any).code || undefined }); if (!(error as any).status) process.stderr.write('[browser-agent] ' + ((error as any)?.stack || error) + '\n'); }
   });
   mkdirSync(path.dirname(socketPath), { recursive: true, mode: 0o700 });
   try { rmSync(socketPath, { force: true }); } catch {}
@@ -1052,11 +1062,11 @@ export function browserAgentRequest(socketPath, route, body, { timeoutMs = 30 * 
   const payload = Buffer.from(JSON.stringify(body || {}));
   return new Promise((resolve, reject) => {
     const req = http.request({ socketPath, path: route, method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': payload.length } }, res => {
-      const chunks = []; res.on('data', chunk => chunks.push(chunk));
-      res.on('end', () => { let data = {}; try { data = JSON.parse(Buffer.concat(chunks).toString() || '{}'); } catch {} if (res.statusCode >= 200 && res.statusCode < 300 && data.ok !== false) resolve(data); else reject(Object.assign(new Error(data.error || '浏览器服务请求失败'), { status: res.statusCode, code: data.code })); });
+      const chunks: any[] = []; res.on('data', chunk => chunks.push(chunk));
+      res.on('end', () => { let data: any = {}; try { data = JSON.parse(Buffer.concat(chunks).toString() || '{}'); } catch {} if (res.statusCode! >= 200 && res.statusCode! < 300 && data.ok !== false) resolve(data); else reject(Object.assign(new Error(data.error || '浏览器服务请求失败'), { status: res.statusCode, code: data.code })); });
     });
     req.setTimeout(timeoutMs, () => req.destroy(Object.assign(new Error('浏览器服务响应超时'), { status: 504 })));
-    req.on('error', error => reject(Object.assign(new Error(error.code === 'ENOENT' || error.code === 'ECONNREFUSED' ? '浏览器服务不可用（Dots 服务未运行）' : error.message), { status: 503 })));
+    req.on('error', error => reject(Object.assign(new Error((error as any).code === 'ENOENT' || (error as any).code === 'ECONNREFUSED' ? '浏览器服务不可用（Dots 服务未运行）' : (error as any).message), { status: 503 })));
     req.end(payload);
   });
 }

@@ -8,11 +8,11 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync, existsSync, chmodSync } from 'node:fs';
 import path from 'node:path';
 
-const fail = (message, status = 400, code = undefined) => Object.assign(new Error(message), { status }, code ? { code } : {});
+const fail = (message, status = 400, code: any = undefined) => Object.assign(new Error(message), { status }, code ? { code } : {});
 const now = () => Date.now();
 const id = prefix => prefix + '_' + randomBytes(9).toString('base64url');
 const json = value => JSON.stringify(value ?? null);
-const parse = (value, fallback = null) => { try { return value == null ? fallback : JSON.parse(value); } catch { return fallback; } };
+const parse = (value, fallback: any = null) => { try { return value == null ? fallback : JSON.parse(value); } catch { return fallback; } };
 const text = (value, max) => String(value ?? '').replace(/\u0000/g, '').slice(0, max);
 
 export const PERMISSION_KEYS = ['siteAccess', 'downloads', 'uploads', 'savedPasswords'];
@@ -20,6 +20,28 @@ export const DEFAULT_PERMISSIONS = { siteAccess: 'allow', downloads: 'ask', uplo
 const PERMISSION_VALUES = { siteAccess: ['allow', 'ask', 'deny'], downloads: ['allow', 'ask', 'deny'], uploads: ['ask', 'deny'], savedPasswords: ['allow', 'ask', 'deny'] };
 export const TASK_ORIGINS = ['chat', 'scheduled', 'push', 'webapp'];
 export const ACTIVE_STATUSES = ['queued', 'running', 'waiting_user', 'taken_over', 'waiting_browser'];
+
+export interface BrowserTask {
+  id: any; owner: any; identity: any; title: any; origin: any;
+  status: any; summary: any; result?: any; error: any; last_url: any;
+  thread_id?: any; claimed_by?: any; claim_token?: any; lease_until?: any;
+  checkout?: any; granted_files: any; allowed_origins: any;
+  created_at: any; updated_at: any; finished_at?: any;
+  [key: string]: any;
+}
+
+export interface BrowserQuestion {
+  id: any; task_id: any; owner: any; kind: any; prompt: any;
+  options: any; data: any; answer?: any;
+  status: any; answered_by?: any; created_at: any; answered_at?: any;
+  [key: string]: any;
+}
+
+export interface BrowserCode {
+  id: any; owner: any; task_id: any; label: any; status: any;
+  created_at: any; expires_at: any; used_at?: any;
+  [key: string]: any;
+}
 // Question kinds Dots may answer with answer_to (after checking them against the user's request).
 export const DOTS_ANSWERABLE = ['choice', 'cart_confirmation'];
 // Question kinds answered only by the user in a dedicated interface — never through chat.
@@ -41,13 +63,15 @@ export function originMatches(ruleOrigin, pageOrigin) {
 }
 
 export class SecretBox {
-  constructor({ keyPath, key = process.env.SHIYAN_BROWSER_VAULT_KEY || '' } = {}) {
+  key: Buffer;
+  constructor({ keyPath, key = process.env.SHIYAN_BROWSER_VAULT_KEY || '' }: {keyPath?: string; key?: string} = {}) {
     if (key) this.key = Buffer.from(key, 'base64');
     else {
-      mkdirSync(path.dirname(keyPath), { recursive: true, mode: 0o700 });
-      if (!existsSync(keyPath)) writeFileSync(keyPath, randomBytes(32).toString('base64'), { mode: 0o600, flag: 'wx' });
-      try { chmodSync(keyPath, 0o600); } catch {}
-      this.key = Buffer.from(readFileSync(keyPath, 'utf8').trim(), 'base64');
+      const kp = keyPath!;
+      mkdirSync(path.dirname(kp), { recursive: true, mode: 0o700 });
+      if (!existsSync(kp)) writeFileSync(kp, randomBytes(32).toString('base64'), { mode: 0o600, flag: 'wx' });
+      try { chmodSync(kp, 0o600); } catch {}
+      this.key = Buffer.from(readFileSync(kp, 'utf8').trim(), 'base64');
     }
     if (this.key.length !== 32) throw new Error('Secure Vault key must be 32 bytes');
   }
@@ -68,7 +92,8 @@ export class SecretBox {
 export class BrowserStore {
   root: string;
   db: DatabaseSync;
-  constructor(root, { databasePath = path.join(root, 'browser.sqlite3'), secretBox = null } = {}) {
+  box: SecretBox;
+  constructor(root: string, { databasePath = path.join(root, 'browser.sqlite3'), secretBox = null }: {databasePath?: string; secretBox?: SecretBox | null} = {}) {
     mkdirSync(root, { recursive: true, mode: 0o700 });
     this.root = root;
     this.db = new DatabaseSync(databasePath);
@@ -105,13 +130,13 @@ export class BrowserStore {
   }
 
   // ---- tasks ------------------------------------------------------------------------------------
-  row(taskId) { return this.db.prepare('SELECT * FROM browser_tasks WHERE id=?').get(String(taskId || '')) || null; }
+  row(taskId): BrowserTask | null { const r = this.db.prepare('SELECT * FROM browser_tasks WHERE id=?').get(String(taskId || '')); return r ? r as unknown as BrowserTask : null; }
   task(owner, taskId) {
     const row = this.row(taskId);
     if (!row || row.owner !== String(owner)) throw fail('没有找到这个浏览器任务（task_id 无效）', 404, 'task_not_found');
     return row;
   }
-  createTask(owner, { title = '', identity = 'default', origin = 'chat', instruction = '', status = 'queued', grantedFiles = [] } = {}) {
+  createTask(owner, { title = '', identity = 'default', origin = 'chat', instruction = '', status = 'queued', grantedFiles = [] }: {title?: string; identity?: string; origin?: string; instruction?: string; status?: string; grantedFiles?: any[]} = {}) {
     if (!TASK_ORIGINS.includes(origin)) origin = 'chat';
     const taskId = id('bt'), at = now();
     this.transaction(() => {
@@ -119,7 +144,7 @@ export class BrowserStore {
         .run(taskId, String(owner), identity, text(title || instruction, 120), origin, status, json(grantedFiles), at, at);
       if (instruction) this.db.prepare('INSERT INTO browser_inputs(task_id,kind,text,created_at) VALUES(?,?,?,?)').run(taskId, 'instruction', text(instruction, 20000), at);
     });
-    return this.row(taskId);
+    return this.row(taskId)!;
   }
   updateTask(taskId, fields) {
     const allowed = ['title', 'status', 'summary', 'result', 'error', 'last_url', 'thread_id', 'claimed_by', 'claim_token', 'lease_until', 'checkout', 'granted_files', 'allowed_origins', 'finished_at', 'identity'];
@@ -145,7 +170,7 @@ export class BrowserStore {
 
   // Executor claims: one live executor per task; an expired lease is never silently re-run because
   // the page may have changed (an order may have been placed). It is surfaced as interrupted.
-  claimNext(workerId, { leaseMs = 5 * 60_000, exclude = [] } = {}) {
+  claimNext(workerId, { leaseMs = 5 * 60_000, exclude = [] }: {leaseMs?: number; exclude?: string[]} = {}) {
     return this.transaction(() => {
       const at = now();
       const expired = this.db.prepare("SELECT * FROM browser_tasks WHERE status='running' AND lease_until IS NOT NULL AND lease_until<?").all(at);
@@ -174,15 +199,15 @@ export class BrowserStore {
   releaseClaim(taskId) { this.db.prepare('UPDATE browser_tasks SET claimed_by=NULL,claim_token=NULL,lease_until=NULL,updated_at=? WHERE id=?').run(now(), String(taskId)); }
 
   // ---- questions ----------------------------------------------------------------------------------
-  createQuestion(owner, taskId, { kind, prompt, options = [], data = {} }) {
+  createQuestion(owner, taskId, { kind, prompt, options = [], data = {} }: {kind: string; prompt: string; options?: string[]; data?: any}) {
     const questionId = id('q');
     this.db.prepare('INSERT INTO browser_questions(id,task_id,owner,kind,prompt,options,data,created_at) VALUES(?,?,?,?,?,?,?,?)')
       .run(questionId, String(taskId), String(owner), kind, text(prompt, 2000), json(options), json(data), now());
     return this.question(questionId);
   }
-  question(questionId) {
+  question(questionId): BrowserQuestion | null {
     const row = this.db.prepare('SELECT * FROM browser_questions WHERE id=?').get(String(questionId || ''));
-    return row ? { ...row, options: parse(row.options, []), data: parse(row.data, {}), answer: parse(row.answer, null) } : null;
+    return row ? { ...row, options: parse(row.options, []), data: parse(row.data, {}), answer: parse(row.answer, null) } as BrowserQuestion : null;
   }
   ownedQuestion(owner, questionId) {
     const row = this.question(questionId);
@@ -199,7 +224,7 @@ export class BrowserStore {
     const rows = taskId
       ? this.db.prepare("SELECT * FROM browser_questions WHERE owner=? AND task_id=? AND status='pending' ORDER BY created_at").all(String(owner), String(taskId))
       : this.db.prepare("SELECT * FROM browser_questions WHERE owner=? AND status='pending' ORDER BY created_at").all(String(owner));
-    return rows.map(row => ({ ...row, options: parse(row.options, []), data: parse(row.data, {}) }));
+    return rows.map(row => ({ ...row, options: parse(row.options, []), data: parse(row.data, {}) } as BrowserQuestion));
   }
 
   // ---- events for the Dots conversation ------------------------------------------------------------
@@ -233,9 +258,9 @@ export class BrowserStore {
   }
   // Effective site-access decision: a site rule wins over the default; a task-level approval
   // (the user answered "allow" for this task) turns "ask" into "allow" for that task only.
-  siteDecision(owner, origin, task = null) {
+  siteDecision(owner, origin, task: BrowserTask | null = null) {
     const rules = this.siteRules(owner);
-    const rule = rules.find(item => originMatches(item.origin, origin) && new URL(item.origin).hostname === new URL(origin).hostname) || rules.find(item => originMatches(item.origin, origin));
+    const rule = rules.find(item => originMatches(item.origin, origin) && new URL(String(item.origin)).hostname === new URL(origin).hostname) || rules.find(item => originMatches(item.origin, origin));
     const setting = rule?.setting || this.permissions(owner).siteAccess;
     if (setting === 'ask' && task && parse(task.allowed_origins, []).includes(origin)) return 'allow';
     return setting;
@@ -296,16 +321,16 @@ export class BrowserStore {
       .run(ref, String(owner), taskId, text(label, 80), this.box.seal(value, 'code:' + owner + ':' + ref), approved ? 'approved' : 'pending_approval', now(), now() + ttlMs);
     return this.code(owner, ref);
   }
-  code(owner, ref) {
+  code(owner, ref): BrowserCode {
     const row = this.db.prepare('SELECT id,owner,task_id,label,status,created_at,expires_at,used_at FROM browser_codes WHERE id=? AND owner=?').get(String(ref || ''), String(owner));
     if (!row) throw fail('验证码引用无效', 404, 'code_not_found');
-    if (row.status !== 'used' && row.expires_at < now()) { this.db.prepare("UPDATE browser_codes SET status='expired' WHERE id=?").run(row.id); row.status = 'expired'; }
-    return row;
+    if (row.status !== 'used' && Number(row.expires_at) < now()) { this.db.prepare("UPDATE browser_codes SET status='expired' WHERE id=?").run(row.id); row.status = 'expired'; }
+    return row as unknown as BrowserCode;
   }
   bindCode(owner, ref, taskId) {
     const row = this.code(owner, ref);
     if (row.task_id && row.task_id !== taskId) throw fail('这个验证码引用属于另一次验证，不能用于此任务', 403, 'code_scope');
-    if (['used', 'expired', 'denied'].includes(row.status)) throw fail('这个验证码引用已失效', 409, 'code_closed');
+    if (['used', 'expired', 'denied'].includes(String(row.status))) throw fail('这个验证码引用已失效', 409, 'code_closed');
     this.db.prepare('UPDATE browser_codes SET task_id=? WHERE id=?').run(taskId, row.id);
     return this.code(owner, ref);
   }
@@ -314,7 +339,7 @@ export class BrowserStore {
     const row = this.code(owner, ref);
     if (row.task_id !== taskId) throw fail('验证码引用不属于这个任务', 403, 'code_scope');
     if (row.status !== 'approved') throw fail(row.status === 'pending_approval' ? '用户还没有批准把验证码分享给浏览器' : '验证码引用已失效', 409, 'code_closed');
-    const sealed = this.db.prepare('SELECT secret FROM browser_codes WHERE id=?').get(row.id).secret;
+    const sealed = this.db.prepare('SELECT secret FROM browser_codes WHERE id=?').get(row.id)!.secret;
     this.db.prepare("UPDATE browser_codes SET status='used',used_at=? WHERE id=? AND status='approved'").run(now(), row.id);
     return this.box.open(sealed, 'code:' + owner + ':' + row.id);
   }
@@ -324,7 +349,7 @@ export class BrowserStore {
     const fileId = id('bf');
     this.db.prepare('INSERT INTO browser_files(id,owner,task_id,kind,filename,mime,size,sha256,attachment_id,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)')
       .run(fileId, String(owner), String(taskId), kind, text(filename, 180), text(mime, 120), Number(size) || 0, sha256, attachmentId || null, now());
-    return this.db.prepare('SELECT * FROM browser_files WHERE id=?').get(fileId);
+    return this.db.prepare('SELECT * FROM browser_files WHERE id=?').get(fileId)!;
   }
   files(owner, taskId) { return this.db.prepare('SELECT id,kind,filename,mime,size,attachment_id,created_at FROM browser_files WHERE owner=? AND task_id=? ORDER BY created_at').all(String(owner), String(taskId)); }
 }
