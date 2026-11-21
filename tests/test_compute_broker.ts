@@ -6,13 +6,22 @@ import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { createComputeBroker } from '../apps/compute/broker.ts';
+interface CallOptions {
+  token?: string;
+  owner?: string | null;
+  lease?: string;
+  method?: string;
+  body?: any;
+  bytes?: any;
+  headers?: Record<string, any>;
+}
 
 const clientToken = 'test-client-' + 'c'.repeat(40);
 const workerToken = 'test-worker-' + 'w'.repeat(40);
 const workerId = 'worker-test-mac';
 const ownerA = 'account:a', ownerB = 'account:b';
 const sha = data => createHash('sha256').update(data).digest('hex');
-const vector = () => Array.from({ length: 1024 }, (_, index) => index === 0 ? 1 : 0);
+const vector = (): number[] => Array.from({ length: 1024 }, (_, index) => index === 0 ? 1 : 0);
 function png(width = 2, height = 3) {
   const bytes = Buffer.alloc(33); Buffer.from([137,80,78,71,13,10,26,10]).copy(bytes);
   bytes.writeUInt32BE(13, 8); bytes.write('IHDR', 12); bytes.writeUInt32BE(width, 16); bytes.writeUInt32BE(height, 20);
@@ -26,7 +35,7 @@ function jpeg(width = 8, height = 12) {
 async function fixture(t, overrides = {}) {
   const root = await mkdtemp(path.join(tmpdir(), 'shiyan-compute-test-'));
   const active = new Set([ownerA, ownerB]); let authorizedWorker = true, clock = 1000000;
-  const config = { dataDir: path.join(root, 'data'), clientToken, workerToken, workerId,
+  const config: any = { dataDir: path.join(root, 'data'), clientToken, workerToken, workerId,
     allowedOwners: [ownerA, ownerB], now: () => clock, authorizeOwner: owner => active.has(owner),
     authorizeWorker: () => authorizedWorker, ...overrides };
   let server, base;
@@ -37,12 +46,12 @@ async function fixture(t, overrides = {}) {
   }
   async function stop() {
     if (!server) return;
-    const closing = new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    const closing = new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
     server.closeIdleConnections(); await closing; server = undefined;
   }
   t.after(async () => { await stop(); await rm(root, { recursive: true, force: true }); });
   await start();
-  async function call(route, { token = clientToken, owner = ownerA, lease, method = 'GET', body, bytes, headers = {} } = {}) {
+  async function call(route, { token = clientToken, owner = ownerA, lease, method = 'GET', body, bytes, headers = {} }: CallOptions = {}) {
     const allHeaders = { Authorization: `Bearer ${token}`, ...headers };
     if (owner !== null) allHeaders['X-Shiyan-Owner'] = owner;
     if (lease) allHeaders['X-Task-Lease'] = lease;
@@ -137,7 +146,7 @@ test('expired lease is reclaimed and old worker cannot progress, fail, or comple
     ['progress', 'POST', { progress: 1, label: 'late' }],
     ['fail', 'POST', { error: '/private/secret', code: 'LATE' }],
     ['result', 'PUT', { embeddings: [vector()], dimensions: 1024, device: 'mps' }],
-  ]) assert.equal((await f.call(`/v1/worker/tasks/${old.id}/${action}`, { token: workerToken, lease: old.lease_token, method, body })).status, 409);
+  ] as [string, string, any][]) assert.equal((await f.call(`/v1/worker/tasks/${old.id}/${action}`, { token: workerToken, lease: old.lease_token, method, body })).status, 409);
   assert.equal((await f.complete(current)).status, 200);
   assert.equal((await f.call(`/v1/tasks/${old.id}`)).data.task.state, 'completed');
 });
@@ -346,10 +355,10 @@ test('concurrent claims cannot allocate two Mac jobs and crash temporaries are r
 });
 
 function fakeCos() {
-  const objects = new Map(), signed = [];
-  return {host:'test-123456.cos.ap-guangzhou.myqcloud.com',objects,signed,
+  const objects = new Map(), signedLog: any[] = [];
+  return {host:'test-123456.cos.ap-guangzhou.myqcloud.com',objects,signedLog,
     async head(key,etag) { const item=objects.get(key); if(!item || etag && etag!==item.etag)throw Error('missing object'); return item; },
-    signed(method,key,headers={},ttl=300) { const value={method,url:`https://test-123456.cos.ap-guangzhou.myqcloud.com/${key}?q-signature=test`,headers,expiresAt:1000000+ttl*1000}; signed.push({key,...value});return value; }
+    signed(method,key,headers={},ttl=300) { const value={method,url:`https://test-123456.cos.ap-guangzhou.myqcloud.com/${key}?q-signature=test`,headers,expiresAt:1000000+ttl*1000}; signedLog.push({key,...value});return value; }
   };
 }
 function cosInput(owner=ownerA) {
