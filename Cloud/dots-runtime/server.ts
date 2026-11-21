@@ -336,7 +336,7 @@ function createOwnerRuntime(owner){
 }
 ownerRegistry.get(PRIVATE_OWNER);
 for(const row of db.prepare('SELECT owner_id FROM managers').all())ownerRegistry.get(row.owner_id);
-let runningGoalId = null;
+let runningGoalId: number | null = null;
 
 const AGENT_SCHEMA = {
   type: "object",
@@ -792,7 +792,7 @@ async function executeSafeActions(goal, actions, run = null) {
     }
     const action = list[i] || {};
     const type = String(action.type || "");
-    let receipt = null;
+    let receipt: any = null;
     try {
       if (run) {
         receipt = durableStore.beginAction(run, i, action);
@@ -805,7 +805,7 @@ async function executeSafeActions(goal, actions, run = null) {
           continue;
         }
       }
-      let detail = "", inspection = null;
+      let detail = "", inspection: any = null;
       if(ownerRegistry.currentOwner()!==PRIVATE_OWNER){
         const owner=ownerRegistry.currentOwner(),cwd='/workspace/dots/'+goal.id;
         const localPath=value=>{const resolved=path.posix.resolve(cwd,String(value||''));if(resolved===cwd||!resolved.startsWith(cwd+'/'))throw Error('文件路径必须位于自己的事项目录');return resolved;};
@@ -894,7 +894,7 @@ async function runGoal(goalId, trigger = "scheduler") {
   if (durableStore && !run) return;
   runningGoalId = Number(goalId);
   const goalStarted = Date.now(); let goalError = '';
-  let heartbeat = null, deadline = null, abort = null, eventIds = [], thread = null, agentRunUsed = null;
+  let heartbeat: ReturnType<typeof setInterval> | null = null, deadline: ReturnType<typeof setTimeout> | null = null, abort: AbortController | null = null, eventIds: any[] = [], thread: any = null, agentRunUsed: any = null;
   if (run) {
     abort = new AbortController();
     deadline = setTimeout(() => abort.abort(new Error(WORKER_MODE === 'agent' ? "Worker agent run timed out" : "Worker planner timed out")), WORKER_MODE === 'agent' ? WORKER_AGENT_TIMEOUT_MS : 300000);
@@ -908,7 +908,7 @@ async function runGoal(goalId, trigger = "scheduler") {
     const timeline = listGoalTimeline(goal.id, 18);
     const events = listPendingEvents(goal.id, 30);
     eventIds = events.map((event) => event.id);
-    let turn, agentRun = null;
+    let turn: any, agentRun: any = null;
     if (WORKER_MODE === 'agent' && run) {
       const owner = ownerRegistry.currentOwner();
       agentRun = await workerAgent.run(goal, { owner, memories, timeline, events, trigger, signal: abort.signal, privateOwner: owner === PRIVATE_OWNER,
@@ -980,7 +980,7 @@ async function runGoal(goalId, trigger = "scheduler") {
       addTimeline(goal.id,"run",summary||"(no summary)",{outputId,status:effectiveStatus,requestedStatus:status,nextStep,wakeAfter,actions:actionResults,usage:turn.usage||null});
       const mustNotify = !writeback.controlPreserved && !writeback.newInputPending && (Boolean(result.notify)||["done","blocked"].includes(effectiveStatus)||effectiveStatus==="needs_approval"&&!autoApproved);
       const level = effectiveStatus==="done"?"success":effectiveStatus==="needs_approval"?"approval":effectiveStatus==="blocked"?"warning":"info";
-      let notificationId = null;
+      let notificationId: number | null = null;
       if (run) {
         if (mustNotify) notificationId=Number(db.prepare("INSERT INTO notifications(goal_id,level,title,body,created_at,output_id) VALUES(?,?,?,?,?,?)").run(goal.id,level,goal.title,notificationText,ts,outputId).lastInsertRowid);
         if (mustNotify || goalStatus !== 'active') durableStore.reportGoal(goal.id,goalStatus,summary||notificationText);
@@ -988,7 +988,7 @@ async function runGoal(goalId, trigger = "scheduler") {
       }
       return {summary,mustNotify,level,notificationText,notificationId,outputId};
     };
-    let autoApprovalRequest=null;
+    let autoApprovalRequest: { approvalId: any; mode: string; grants?: any } | null = null;
     const committed = run ? durableStore.commitRun(run, finalize) : {committed:true,value:finalize()};
     if (committed.committed && autoApprovalRequest) scheduleAutoApproval(autoApprovalRequest.approvalId, goal.id, autoApprovalRequest.mode, 0, autoApprovalRequest.grants||null);
     if (committed.committed && committed.value.mustNotify) {
