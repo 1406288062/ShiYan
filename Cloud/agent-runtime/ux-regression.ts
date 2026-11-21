@@ -2,24 +2,24 @@
 import {generateKeyPairSync,createHash,sign,randomUUID} from 'node:crypto';
 import {readFileSync,writeFileSync,renameSync} from 'node:fs';
 import assert from 'node:assert/strict';
-const file=new URL('./devices.json',import.meta.url), report=[];
+const file=new URL('./devices.json',import.meta.url), report: any[]=[];
 const load=()=>JSON.parse(readFileSync(file,'utf8'));
 const save=v=>{writeFileSync(file.pathname+'.tmp',JSON.stringify(v),{mode:0o600});renameSync(file.pathname+'.tmp',file);};
 const {privateKey,publicKey}=generateKeyPairSync('ed25519');
 const raw=publicKey.export({format:'der',type:'spki'}).subarray(-32);
 const hash=v=>createHash('sha256').update(v).digest('hex'),id=hash(raw),owner='qa-ux-'+randomUUID();
 const devices=load();devices[id]={id,publicKey:raw.toString('base64'),approved:true,owner};save(devices);
-const signed=(method,route,value)=>{
+const signed=(method,route,value?: any)=>{
  const data=value===undefined?'':JSON.stringify(value),time=String(Date.now()),nonce=randomUUID(),sha=hash(data);
  return {method,headers:{'Content-Type':'application/json','X-Shiyan-Device':id,'X-Shiyan-Time':time,'X-Shiyan-Nonce':nonce,'X-Shiyan-Body-Sha':sha,'X-Shiyan-Signature':sign(null,Buffer.from([method,route,time,nonce,sha].join('\n')),privateKey).toString('base64')},body:data||undefined};
 };
 const base='http://127.0.0.1:4323';
-async function request(method,path,data){const route='/shiyan/v1/'+path;const r=await fetch(base+route,{...signed(method,route,data),signal:AbortSignal.timeout(65000)});assert(r.ok,`${r.status} ${await r.clone().text()}`);return r.json();}
+async function request(method,path,data?: any): Promise<any> {const route='/shiyan/v1/'+path;const r=await fetch(base+route,{...signed(method,route,data),signal:AbortSignal.timeout(65000)});assert(r.ok,`${r.status} ${await r.clone().text()}`);return r.json();}
 async function stream(job,onEvent){
  const route='/shiyan/v1/jobs/'+job+'/events?after=0&transport=metadata';
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),60000);let buffer='';
  try{const r=await fetch(base+route,{...signed('GET',route),signal:controller.signal});assert.equal(r.status,200);
- for await(const bytes of r.body){buffer+=Buffer.from(bytes).toString();let end;
+ for await(const bytes of r.body!){buffer+=Buffer.from(bytes).toString();let end;
  while((end=buffer.indexOf('\n\n'))>=0){const frame=buffer.slice(0,end);buffer=buffer.slice(end+2);const data=frame.split('\n').find(x=>x.startsWith('data: '));if(data){const event=JSON.parse(data.slice(6));assert(!event.data,'metadata transport must not contain image bytes');if(await onEvent(event)){controller.abort();return;}}}
  }}finally{clearTimeout(timer);controller.abort();}
 }
