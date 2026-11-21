@@ -53,7 +53,7 @@ test('legacy tasks retain one physical executor across account logins, reports a
   scheduler.host(secondSession, proof(secondSession));
   assert.equal(claim(store, scheduler, secondSession, schedule().nextRunAt, 'daily-claim-20261015').replayed, true);
   assert.throws(() => claim(store, scheduler, secondSession, schedule().nextRunAt, 'another-request-id'), { status: 409 });
-  assert.equal(store.db.prepare('SELECT COUNT(*) AS n FROM schedule_claims').get().n, 1);
+  assert.equal(store.db.prepare('SELECT COUNT(*) AS n FROM schedule_claims').get()!.n, 1);
 
   const tomorrow = { ...report.data, nextRunAt: '2026-10-16T01:00:00Z' };
   store.write(owner, 'scheduledTasks', taskId, tomorrow);
@@ -69,7 +69,7 @@ test('older host heartbeat cannot downgrade an established physical mapping', t 
   store.write(owner, 'scheduledTasks', taskId, schedule());
   assert.equal(prepareScheduleMutation(store, owner, mutation(schedule()), auth).data.executorDeviceId, physical);
   assert.equal(scheduler.listing(auth).host.deviceId, physical);
-  assert.equal(store.db.prepare('SELECT COUNT(*) AS n FROM schedule_hosts WHERE device=?').get(auth.deviceID).n, 0);
+  assert.equal(store.db.prepare('SELECT COUNT(*) AS n FROM schedule_hosts WHERE device=?').get(auth.deviceID)!.n, 0);
   assert.throws(() => scheduler.host(auth, { deviceId: otherPhysical }), { status: 409 });
 });
 
@@ -88,7 +88,7 @@ test('another Mac and another account cannot claim or publish the original execu
   scheduler.host(anotherOwner, {});
   assert.equal(scheduler.listing(anotherOwner).host.deviceId, 'original-session');
   assert.throws(() => scheduler.claim(anotherOwner, taskId, { dueAt: schedule().nextRunAt, requestId: 'other-owner-claim', revision: 1 }), { status: 409 });
-  assert.equal(store.db.prepare('SELECT COUNT(*) AS n FROM schedule_claims').get().n, 1);
+  assert.equal(store.db.prepare('SELECT COUNT(*) AS n FROM schedule_claims').get()!.n, 1);
 });
 
 test('registration preserves legacy clients and rejects invalid devices and mobile host claims', t => {
@@ -112,7 +112,7 @@ test('a same-owner session cannot spoof a Mac or replay its proof across session
   assert.throws(() => scheduler.host(account('another-owner-session', { owner: 'another-owner' }), signed), { status: 403 });
   assert.throws(() => scheduler.host(attacker, proof(attacker, physical, { timestamp: Date.now() - 301000 })), { status: 403 });
   assert.throws(() => scheduler.host(attacker, proof(attacker, physical, { timestamp: Date.now() + 301000 })), { status: 403 });
-  assert.equal(store.db.prepare('SELECT COUNT(*) AS n FROM schedule_host_sessions').get().n, 1);
+  assert.equal(store.db.prepare('SELECT COUNT(*) AS n FROM schedule_host_sessions').get()!.n, 1);
   scheduler.host(original, {});
   assert.equal(scheduler.listing(original).host.deviceId, physical);
 });
@@ -127,9 +127,9 @@ test('upgrading a session-owned old-client task preserves its schedule, reports 
   store.write(foreignOwner, 'scheduledTasks', taskId, oldTask);
   scheduler.host(auth, proof(auth));
   const upgraded = store.get(owner, 'scheduledTasks', taskId);
-  assert.deepEqual(upgraded.data, { ...oldTask, executorDeviceId: physical });
-  assert.equal(store.get(foreignOwner, 'scheduledTasks', taskId).data.executorDeviceId, auth.deviceID);
-  assert.equal(store.db.prepare('SELECT device FROM schedule_claims WHERE owner=?').get(owner).device, physical);
+  assert.deepEqual(upgraded!.data, { ...oldTask, executorDeviceId: physical });
+  assert.equal(store.get(foreignOwner, 'scheduledTasks', taskId)!.data.executorDeviceId, auth.deviceID);
+  assert.equal(store.db.prepare('SELECT device FROM schedule_claims WHERE owner=?').get(owner)!.device, physical);
   assert.equal(claim(store, scheduler, auth, oldTask.nextRunAt, 'old-client-claim').replayed, true);
   assert.equal(prepareScheduleMutation(store, owner, mutation(oldTask), auth).data.executorDeviceId, physical);
   scheduler.host(auth, {});
