@@ -16,25 +16,25 @@
     [/(?<!\d)0\d{2,3}-\d{7,8}(?!\d)/g, '[电话已隐藏]'],
     [/(?:微信号|wxid_?|QQ号?|支付宝账?号?)\s*(?:是|为|:|：)?\s*[A-Za-z0-9_@.-]{5,}/gi, '[账号已隐藏]']
   ];
-  const redact = value => REDACTIONS.reduce((text, [pattern, mark]) => text.replace(pattern, mark), String(value || ''));
-  function parseCSV(text){
+  const redact = (value: any) => REDACTIONS.reduce((text, [pattern, mark]) => text.replace(pattern, mark), String(value || ''));
+  function parseCSV(text: any){
     const rows: any[] = [];let row: any[] = [],field='',quoted=false;
     for(let i=0;i<text.length;i++){const c=text[i];if(c==='"'&&quoted&&text[i+1]==='"'){field+='"';i++;}else if(c==='"')quoted=!quoted;else if(c===','&&!quoted){row.push(field);field='';}else if((c==='\n'||c==='\r')&&!quoted){if(c==='\r'&&text[i+1]==='\n')i++;row.push(field);if(row.some(v=>v.trim()))rows.push(row);row=[];field='';}else field+=c;}
     row.push(field);if(row.some(v=>v.trim()))rows.push(row);return rows;
   }
-  function stamp(value){
+  function stamp(value: any){
     if(typeof value==='number')return value<1e12?value*1000:value;
     if(/^\d{10,13}$/.test(String(value||'').trim()))return stamp(Number(value));
     const normalized=String(value||'').replace(/年/g,'-').replace(/月/g,'-').replace(/日/g,' ');const parsed=Date.parse(normalized);return Number.isFinite(parsed)?parsed:0;
   }
-  const cleanName=value=>String(value||'未知').replace(/[\r\n]/g,' ').trim().slice(0,80)||'未知';
-  function normalizeRecord(raw){
+  const cleanName=(value: any)=>String(value||'未知').replace(/[\r\n]/g,' ').trim().slice(0,80)||'未知';
+  function normalizeRecord(raw: any){
     const name=cleanName(raw.speakerName??raw.speakername??raw.senderName??raw.sendername??raw.talker??raw.speaker??raw.sender??raw.from??raw.nickname??raw.name??raw.username??'未知');
     const content=redact(String(raw.content??raw.text??raw.message??raw.msg??raw.body??raw.strcontent??'').trim());
     if(!content)return null;
     return {speakerName:name,content,timestamp:stamp(raw.timestamp??raw.time??raw.createTime??raw.createtime??raw.datetime??raw.date??raw.strtime)};
   }
-  function parseText(text){
+  function parseText(text: any){
     const rows: any[] = [];let current: any = null;
     const pattern=/^\s*\[?(\d{4}(?:[./-]\d{1,2}[./-]\d{1,2}|年\d{1,2}月\d{1,2}日)[ T]\d{1,2}:\d{2}(?::\d{2})?)\]?\s+([^:：]{1,80})[:：]\s*(.*)$/;
     // 微信常见导出：“昵称 2024-01-02 12:34:56”一行，下一行是内容。
@@ -59,7 +59,7 @@
     flush();
     return rows.map(normalizeRecord).filter(Boolean);
   }
-  function parseFile(text,extension){
+  function parseFile(text: any,extension: any){
     let rows: any[] = [];
     if(extension==='json'){
       const value=JSON.parse(text),items=Array.isArray(value)?value:(value.messages||value.chatRecords||value.records||value.data||[]);
@@ -67,8 +67,8 @@
       rows=items.map(normalizeRecord).filter(Boolean);
     }else if(extension==='csv'){
       const data=parseCSV(text);if(data.length<2)throw Error('CSV 文件里没有可读取的消息');
-      const headers=(data.shift() || []).map(v=>v.trim().toLowerCase());
-      rows=data.map(cells=>normalizeRecord(Object.fromEntries(headers.map((h,i)=>[h,cells[i]||''])))).filter(Boolean);
+      const headers=(data.shift() || []).map((v: any)=>v.trim().toLowerCase());
+      rows=data.map(cells=>normalizeRecord(Object.fromEntries(headers.map((h: any,i: any)=>[h,cells[i]||''])))).filter(Boolean);
     }else if(extension==='html'||extension==='htm'||extension==='xml'){
       const doc=new DOMParser().parseFromString(text,'text/html');
       const table=[...doc.querySelectorAll('tr')];
@@ -79,17 +79,17 @@
     return rows.slice(0,200000).map((row,index)=>({...row,sourceId:String(index)}));
   }
   // 读取并解析文件；按发言数排序发送人，并给出默认的身份对应（名字匹配的是 Ta，否则发言最多的是 Ta，其次是“我”）。
-  async function read(file,personName=''){
+  async function read(file: any,personName=''){
     if(!file||file.size>100*1024*1024)throw Error('文件不能为空且不能超过 100MB');
     const format=(file.name.split('.').pop()||'txt').toLowerCase();
     const bytes=await file.arrayBuffer();let text;try{text=new TextDecoder('utf-8',{fatal:true}).decode(bytes);}catch{text=new TextDecoder('gb18030').decode(bytes);}
     const messages=parseFile(text,format);
-    const counts={};for(const m of messages)counts[m.speakerName]=(counts[m.speakerName]||0)+1;
-    const speakers=Object.keys(counts).sort((a,b)=>counts[b]-counts[a]);
+    const counts={};for(const m of messages)(counts as any)[m.speakerName]=((counts as any)[m.speakerName]||0)+1;
+    const speakers=Object.keys(counts).sort((a,b)=>(counts as any)[b]-(counts as any)[a]);
     const name=String(personName||'').toLowerCase();
     const person=speakers.find(s=>name&&s.toLowerCase().includes(name))||speakers[0];
     const owner=speakers.find(s=>s!==person);
-    const mapping={};for(const s of speakers)mapping[s]=s===person?'person':s===owner?'owner':'other';
+    const mapping={};for(const s of speakers)(mapping as any)[s]=s===person?'person':s===owner?'owner':'other';
     return {messages,speakers,counts,mapping,format};
   }
   window.ShiYanShadowParser={read,redact};

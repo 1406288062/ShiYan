@@ -1,12 +1,12 @@
 (() => {
   'use strict';
-  let root, elements, opened = false, loaded = false, loading = false, busy = false;
+  let root: any, elements: any, opened = false, loaded = false, loading = false, busy = false;
   let enabled = true, page = 'settings', restoreFocus: any, inertElements: any[] = [];
   let quotaLoading = false;
   let topics: any[] = [], topicsLoading = false, topicsBusy = false;
   const additionalPages = new Map();
   const api = (path: any, method?: any, body?: any) => window.shiyan.api(path, method, body);
-  const message = error => error?.message || '暂时无法连接，请重试。';
+  const message = (error: any) => error?.message || '暂时无法连接，请重试。';
   function status(text = '', error = false) {
     elements.notice.textContent = text;
     elements.notice.classList.toggle('is-error', error);
@@ -18,7 +18,7 @@
     elements.retry.disabled = busy || loading;
     elements.setting.setAttribute('aria-busy', String(busy || loading));
   }
-  function readSettings(result) {
+  function readSettings(result: any) {
     if (!result || typeof result.enabled !== 'boolean') throw new Error('记忆设置暂时不可用。');
     enabled = result.enabled;
     loaded = true;
@@ -73,7 +73,7 @@
     inertElements = [];
     if (restore && restoreFocus?.isConnected && restoreFocus.getClientRects().length) restoreFocus.focus();
   }
-  function selectCategory(selected) {
+  function selectCategory(selected: any) {
     for (const button of elements.navigation.querySelectorAll('[data-settings-page]')) {
       if (button.dataset.settingsPage === selected) button.setAttribute('aria-current', 'page');
       else button.removeAttribute('aria-current');
@@ -93,7 +93,7 @@
     const edge = rail?.getClientRects().length ? rail.getBoundingClientRect().right : 0;
     root.style.setProperty('--settings-rail-width', edge > 0 && edge < 130 ? Math.max(0, edge)+'px' : '0px');
   }
-  function activatePage(selected, titleId) {
+  function activatePage(selected: any, titleId: any) {
     page = selected;
     selectCategory(selected);
     elements.dialog.classList.toggle('is-memory-page', selected === 'memory');
@@ -104,7 +104,7 @@
     elements.dialog.setAttribute('aria-labelledby', titleId);
     elements.dialog.removeAttribute('aria-describedby');
   }
-  function showPage(selected) {
+  function showPage(selected: any) {
     if (selected === 'memory') showMemory();
     else if (selected === 'codex') showCodex();
     else if (additionalPages.has(selected)) {
@@ -118,12 +118,12 @@
   const navigationOrder = ['settings', 'memory', 'dots', 'codex', 'account', 'devices'];
   function orderNavigation() {
     const buttons = [...elements.navigation.querySelectorAll(':scope > [data-settings-page]')];
-    const rank = button => { const index = navigationOrder.indexOf(button.dataset.settingsPage); return index < 0 ? navigationOrder.length : index; };
+    const rank = (button: any) => { const index = navigationOrder.indexOf(button.dataset.settingsPage); return index < 0 ? navigationOrder.length : index; };
     const sorted = [...buttons].sort((a, b) => rank(a) - rank(b));
     if (sorted.every((button, index) => button === buttons[index])) return;
     for (const button of sorted) elements.navigation.insertBefore(button, elements.navigationEmpty);
   }
-  function registerPage(id, entry) {
+  function registerPage(id: any, entry: any) {
     if (additionalPages.has(id)) return;
     additionalPages.set(id, entry);
     elements.content.append(entry.element);
@@ -144,10 +144,10 @@
     entriesSection.className = 'memory-entries';
     entriesSection.innerHTML = '<header><h3>记忆摘要</h3><small data-memory-summary-state></small></header><div class="memory-summary" data-memory-summary></div><details class="memory-all"><summary><span>管理全部记忆</span><small data-memory-count></small></summary><input type="search" placeholder="搜索" aria-label="搜索记忆" data-memory-search><ul class="memory-entry-list" data-memory-list></ul></details><p class="memory-entry-status" role="status" data-memory-status></p>';
     elements.topicsSection.before(entriesSection);
-    entriesSection.querySelector('[data-memory-search]').addEventListener('input', event => {
+    entriesSection.querySelector('[data-memory-search]').addEventListener('input', (event: any) => {
       clearTimeout(entriesTimer); entriesTimer = setTimeout(() => { entriesQuery = (event.target as any).value.trim(); loadEntries(); }, 250);
     });
-    entriesSection.addEventListener('click', async event => {
+    entriesSection.addEventListener('click', async (event: any) => {
       const item = event.target.closest('[data-memory-id]'); if (!item) return;
       const id = item.dataset.memoryId, entry = entries.find(e => e.id === id); if (!entry) return;
       const status = entriesSection.querySelector('[data-memory-status]');
@@ -174,7 +174,7 @@
     entriesSection.querySelector('[data-memory-count]').textContent = entries.length ? entries.length+' 条' : '';
     const sorted = [...entries].sort((a,b) => (categoryOrder.indexOf(a.category)+9)%9 - (categoryOrder.indexOf(b.category)+9)%9);
     let lastGroup = '';
-    const group = e => { const name = categoryName[e.category] || '其他'; if (name === lastGroup) return ''; lastGroup = name; return '<li class="memory-entry-group">'+escHTML(name)+'</li>'; };
+    const group = (e: any) => { const name = (categoryName as any)[e.category] || '其他'; if (name === lastGroup) return ''; lastGroup = name; return '<li class="memory-entry-group">'+escHTML(name)+'</li>'; };
     list.innerHTML = entries.length ? sorted.map(e => group(e)+'<li data-memory-id="'+escHTML(e.id)+'">'+(editingId === e.id
       ? '<textarea rows="3" maxlength="1200">'+escHTML(e.content)+'</textarea><div class="memory-entry-actions"><button type="button" class="wb-secondary" data-memory-cancel>取消</button><button type="button" class="wb-primary" data-memory-save>保存</button></div>'
       : '<div class="memory-entry-text"><span>'+escHTML(e.content)+'</span><small>'+new Date(e.updatedAt).toLocaleDateString('zh-CN')+'</small></div><div class="memory-entry-actions"><button type="button" class="wb-text-button" data-memory-edit>修改</button><button type="button" class="wb-text-button is-destructive" data-memory-delete>删除</button></div>')+'</li>').join('')
@@ -186,7 +186,7 @@
     try {
       const data = await api('/api/memory/summary');
       const sections = Array.isArray(data?.sections) ? data.sections : [];
-      box.innerHTML = sections.length ? sections.map(s => '<section class="memory-summary-group"><h4>'+escHTML(s.title || categoryName[s.id] || '')+'<small>'+escHTML(data.counts?.[s.id] ? data.counts[s.id]+' 条' : '')+'</small></h4><ul>'+(s.points||[]).map(p => '<li>'+escHTML(p)+'</li>').join('')+'</ul></section>').join('') : '<p class="memory-summary-empty">还没有记住任何内容。在对话里说“记住……”即可。</p>';
+      box.innerHTML = sections.length ? sections.map((s: any) => '<section class="memory-summary-group"><h4>'+escHTML(s.title || (categoryName as any)[s.id] || '')+'<small>'+escHTML(data.counts?.[s.id] ? data.counts[s.id]+' 条' : '')+'</small></h4><ul>'+(s.points||[]).map((p: any) => '<li>'+escHTML(p)+'</li>').join('')+'</ul></section>').join('') : '<p class="memory-summary-empty">还没有记住任何内容。在对话里说“记住……”即可。</p>';
       state.textContent = data?.state === 'generating' ? '正在整理…' : '';
       if (data?.state === 'generating' && summaryTries++ < 15) summaryTimer = setTimeout(loadSummary, 4000); else summaryTries = 0;
     } catch (cause) { box.innerHTML = ''; state.textContent = ''; }
@@ -214,9 +214,9 @@
   function topicsControls() {
     const pending = topicsLoading || topicsBusy;
     elements.topicsSection.setAttribute('aria-busy', String(pending));
-    elements.topicsSection.querySelectorAll('button,input,textarea').forEach(node => { node.disabled = pending; });
+    elements.topicsSection.querySelectorAll('button,input,textarea').forEach((node: any) => { node.disabled = pending; });
   }
-  function readTopics(result) {
+  function readTopics(result: any) {
     if (result?.ok === false || !Array.isArray(result?.relationship?.topics)) throw new Error('共同话题暂时不可用。');
     topics = result.relationship.topics;
   }
@@ -309,24 +309,24 @@
     if (className) element.className = className;
     return element;
   }
-  function quotaDate(value, seconds = true) {
+  function quotaDate(value: any, seconds = true) {
     if (typeof value !== 'number' || !Number.isFinite(value)) return null;
     const date = new Date(value * (seconds ? 1000 : 1));
     if (Number.isNaN(date.getTime())) return null;
     return date.toLocaleString('zh-CN', {year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'});
   }
-  function resetCardStatus(credit) {
+  function resetCardStatus(credit: any) {
     const status = typeof credit.status === 'string' ? credit.status.toLowerCase() : '';
     if (['used', 'consumed', 'redeemed'].includes(status)) return '已使用';
     if (['revoked', 'cancelled', 'canceled'].includes(status)) return '已撤销';
     if (status === 'expired' || (typeof credit.expiresAt === 'number' && Number.isFinite(credit.expiresAt) && credit.expiresAt * 1000 <= Date.now())) return '已过期';
     return new Map([['available','可用'], ['active','可用'], ['pending','待生效']]).get(status) || (status ? '状态：'+credit.status : '状态未提供');
   }
-  function resetCardType(value) {
+  function resetCardType(value: any) {
     const type = typeof value === 'string' ? value.toLowerCase() : '';
     return new Map([['codexratelimits','Codex 额度'], ['weekly','周额度重置卡'], ['week','周额度重置卡'], ['daily','日额度重置卡'], ['five_hour','5 小时额度重置卡'], ['primary','短期额度重置卡'], ['secondary','周额度重置卡']]).get(type) || (typeof value === 'string' && value ? value : '额度重置卡');
   }
-  function renderQuotaWindows(windows) {
+  function renderQuotaWindows(windows: any) {
     const list = codexText('div', '', 'settings-quota-windows');
     for (const window of windows) {
       const item = codexText('section', '', 'settings-quota-window');
@@ -344,10 +344,10 @@
     }
     return list;
   }
-  function validWindows(value) {
+  function validWindows(value: any) {
     return Array.isArray(value) ? value.filter(window => window && typeof window.remainingPercent === 'number' && Number.isFinite(window.remainingPercent)) : [];
   }
-  function renderClaudeQuota(claude) {
+  function renderClaudeQuota(claude: any) {
     if (!claude) return;
     const windows = validWindows(claude.windows);
     elements.codexContent.append(codexText('h3', claude.plan || 'Claude', 'settings-section-title'));
@@ -355,7 +355,7 @@
     else elements.codexContent.append(codexText('p', claude.error || '暂时无法获取 Claude 额度', 'settings-quota-muted'));
     if (claude.extraUsage && typeof claude.extraUsage.utilization === 'number') elements.codexContent.append(codexText('p', '额外用量已使用 '+Math.round(claude.extraUsage.utilization)+'%', 'settings-quota-muted'));
   }
-  function renderCodexQuota(quota) {
+  function renderCodexQuota(quota: any) {
     elements.codexContent.replaceChildren();
     renderClaudeQuota(quota.claude);
     if (quota.available === false) {
@@ -364,7 +364,7 @@
       if (fetched) elements.codexContent.append(codexText('p', '更新于 '+fetched, 'settings-quota-updated settings-quota-muted'));
       return;
     }
-    const windows = Array.isArray(quota.windows) ? quota.windows.filter(window => window && typeof window.remainingPercent === 'number' && Number.isFinite(window.remainingPercent)) : [];
+    const windows = Array.isArray(quota.windows) ? quota.windows.filter((window: any) => window && typeof window.remainingPercent === 'number' && Number.isFinite(window.remainingPercent)) : [];
     if (windows.length) {
       elements.codexContent.append(codexText('h3', 'Codex', 'settings-section-title'));
       const list = codexText('div', '', 'settings-quota-windows');
@@ -393,7 +393,7 @@
       const count = codexText('p', '', 'settings-reset-count');
       count.append(codexText('span', '当前可用'), codexText('strong', reset.availableCount+' 张'));
       cards.append(count);
-      const credits = Array.isArray(reset.credits) ? reset.credits.filter(credit => credit && typeof credit === 'object' && !Array.isArray(credit)) : [];
+      const credits = Array.isArray(reset.credits) ? reset.credits.filter((credit: any) => credit && typeof credit === 'object' && !Array.isArray(credit)) : [];
       if (!credits.length) cards.append(codexText('p', reset.availableCount === 0 ? '当前没有可用的重置卡。' : '账户暂未提供逐张卡片明细。', 'settings-quota-muted'));
       else {
         const list = codexText('ul', '', 'settings-reset-list');
@@ -449,7 +449,7 @@
     root.hidden = true;
     root.innerHTML = '<section class="memory-dialog" role="region" aria-labelledby="memoryTitle"><div class="memory-body settings-layout"><aside class="settings-sidebar"><div class="settings-sidebar-heading"><h2 id="settingsTitle">设置</h2></div><label class="settings-category-search"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="m16 16 5 5" stroke="currentColor" stroke-width="1.7"/></svg><input type="search" placeholder="搜索设置" aria-label="搜索设置"></label><nav aria-label="设置分类"><h3>个人</h3><button type="button" data-settings-page="settings"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="m9 3-.6 2.4-2 .9-2.2-.7-2 3.4 1.7 1.7-.1 2.2-1.6 1.8 2 3.4 2.3-.7 1.9 1 .6 2.4h4l.6-2.4 2-1 2.2.7 2-3.4-1.6-1.8-.1-2.2 1.7-1.7-2-3.4-2.3.7-1.9-.9L15 3z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.4"/></svg><span>常规</span></button><button type="button" data-settings-page="memory"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M3 4h5a5 5 0 0 1 4 2 5 5 0 0 1 4-2h5v15h-5a5 5 0 0 0-4 2 5 5 0 0 0-4-2H3zM12 6v15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg><span>记忆</span></button><p class="settings-category-empty" hidden>没有匹配的设置</p></nav></aside><main class="settings-content"><section class="settings-home"><header class="memory-header"><h2 id="settingsGeneralTitle">常规</h2></header><h3 class="settings-section-title">个性化</h3><button type="button" class="settings-memory-entry" data-settings-memory><span class="settings-entry-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24"><rect x="5" y="5" width="14" height="14" rx="4" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M9 1v4m6-4v4M9 19v4m6-4v4M1 9h4m-4 6h4m14-6h4m-4 6h4M9 9h6v6H9z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="settings-entry-copy"><strong>记忆</strong><span>自动记住重要信息，个性化回复</span></span><svg class="settings-entry-chevron" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="m9 5 7 7-7 7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button></section><section class="settings-memory-page" hidden><header class="memory-header"><button type="button" class="memory-back" data-memory-back aria-label="返回设置"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="m15 5-7 7 7 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>设置</span></button><h2 id="memoryTitle" tabindex="-1">记忆</h2></header><div class="memory-setting"><div><label for="memoryEnabled">使用记忆</label><p>关闭后，不再自动保存或使用记忆。已有记忆会保留。</p></div><input id="memoryEnabled" type="checkbox" role="switch"></div><div class="memory-feedback" hidden><p class="memory-notice" role="status" aria-live="polite"></p><button type="button" data-memory-retry hidden>重试</button></div></section></main></div></section>';
     document.body.append(root);
-    const find = selector => root.querySelector(selector);
+    const find = (selector: any) => root.querySelector(selector);
     elements = {
       body:find('.memory-body'),content:find('.settings-content'),dialog:find('.memory-dialog'),navigation:find('.settings-sidebar nav'),settingsSearch:find('.settings-category-search input'),navigationEmpty:find('.settings-category-empty'),home:find('.settings-home'),memoryPage:find('.settings-memory-page'),memoryEntry:find('[data-settings-memory]'),back:find('[data-memory-back]'),title:find('#memoryTitle'),setting:find('.memory-setting'),enabled:find('#memoryEnabled'),notice:find('.memory-notice'),feedback:find('.memory-feedback'),retry:find('[data-memory-retry]')
     };
@@ -474,7 +474,7 @@
     new MutationObserver(orderNavigation).observe(elements.navigation, {childList:true});
     orderNavigation();
     elements.settingsSearch.addEventListener('input', filterCategories);
-    elements.navigation.addEventListener('click', event => {
+    elements.navigation.addEventListener('click', (event: any) => {
       const button = event.target.closest('[data-settings-page]');
       if (!button) return;
       showPage(button.dataset.settingsPage);
@@ -483,8 +483,8 @@
     elements.retry.addEventListener('click', load);
     elements.memoryEntry.addEventListener('click', showMemory);
     elements.back.addEventListener('click', showSettings);
-    root.addEventListener('click', event => { if (event.target === root) close(); });
-    root.addEventListener('keydown', event => {
+    root.addEventListener('click', (event: any) => { if (event.target === root) close(); });
+    root.addEventListener('keydown', (event: any) => {
       event.stopPropagation();
       if (event.key === 'Escape') { event.preventDefault(); close(); }
 
@@ -506,7 +506,7 @@
     root.hidden = false;
     fitSettings();
     const rail = document.getElementById('activityRail');
-    const collect = element => {
+    const collect = (element: any): any => {
       if (element === root || element === rail || ['SCRIPT','STYLE','LINK'].includes(element.tagName)) return [];
       if (rail && element.contains(rail)) return [...element.children].flatMap(collect);
       return [[element, element.inert]];

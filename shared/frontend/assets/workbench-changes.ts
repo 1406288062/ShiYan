@@ -2,29 +2,29 @@
 (() => {
  'use strict';
  const esc = (v: any) => String(v ?? '').replace(/[&<>"']/g, (c: string): string => (({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'} as Record<string,string>)[c]));
- let C;
+ let C: any;
  const currentState=()=>window.shiyan?.getState();
- const totals=files=>files.reduce((a,f)=>({added:a.added+(f.added||0),removed:a.removed+(f.removed||0)}),{added:0,removed:0});
- const stats=(a,r)=>`<span class="v24-added">+${a}</span><span class="v24-removed">-${r}</span>`;
- const hasStats=f=>Number.isInteger(f.added)&&f.added>=0&&Number.isInteger(f.removed)&&f.removed>=0;
- function recordedCounts(files,missing='历史记录缺少 diff'){
+ const totals=(files: any)=>files.reduce((a: any,f: any)=>({added:a.added+(f.added||0),removed:a.removed+(f.removed||0)}),{added:0,removed:0});
+ const stats=(a: any,r: any)=>`<span class="v24-added">+${a}</span><span class="v24-removed">-${r}</span>`;
+ const hasStats=(f: any)=>Number.isInteger(f.added)&&f.added>=0&&Number.isInteger(f.removed)&&f.removed>=0;
+ function recordedCounts(files: any,missing='历史记录缺少 diff'){
   const recorded=files.filter(hasStats);if(!recorded.length)return `<span class="v24-muted">${missing}</span>`;
   const {added,removed}=totals(recorded);return stats(added,removed)+(recorded.length<files.length?'<span class="v24-muted">部分统计未记录</span>':'');
  }
- function normalize(f){
+ function normalize(f: any){
   if(!f||typeof f!=='object')return null;
   const path=typeof f.path==='string'?f.path:typeof f.name==='string'?f.name:'';if(!path)return null;
   const diff=typeof f.diff==='string'?f.diff:'',lines=diff?diff.split('\n'):[];
-  const count=(value,sign)=>Number.isInteger(value)&&value>=0?value:diff&&f.diffTruncated!==true?lines.filter(l=>l.startsWith(sign)&&!l.startsWith(sign.repeat(3))).length:null;
+  const count=(value: any,sign: any)=>Number.isInteger(value)&&value>=0?value:diff&&f.diffTruncated!==true?lines.filter((l: any)=>l.startsWith(sign)&&!l.startsWith(sign.repeat(3))).length:null;
   return {...f,path,available:f.available===true||f.available!==false&&!!diff,diff,added:count(f.added,'+'),removed:count(f.removed,'-')};
  }
 
- function isImageOutput(file,message){
+ function isImageOutput(file: any,message: any){
   const kind=String(file.kind||'').toLowerCase();
   if(!['','add','create'].includes(kind)||file.beforeSha256||!kind&&file.diff)return false;
   const name=String(file.path||'').replace(/\\/g,'/').split('/').pop() || '';
   if(!/\.(?:png|jpe?g|webp|gif|bmp|tiff?|heic|heif|avif|svg)$/i.test(name))return false;
-  return (Array.isArray(message?.assets)?message.assets:[]).some(asset=>{
+  return (Array.isArray(message?.assets)?message.assets:[]).some((asset: any)=>{
    if(!String(asset?.mimeType||'').toLowerCase().startsWith('image/'))return false;
    const output=String(asset.filename||'').replace(/\\/g,'/').split('/').pop() || '';
    if(output===name)return true;
@@ -33,9 +33,9 @@
     name.replace(/\.[^.]+$/,'')===output.replace(/\.[^.]+$/,'');
   });
  }
- function filesFor(m){
+ function filesFor(m: any){
   const files=new Map();
-  function add(values){
+  function add(values: any){
    for(const f of Array.isArray(values)?values:[]){
     const normalized=normalize(f);if(!normalized)continue;
     const key=normalized.path.replace(/\\/g,'/'),existing=files.get(key);
@@ -61,43 +61,43 @@
   }
   return [...files.values()].filter(file=>!isImageOutput(file,m));
  }
- function relativePath(file,message){
+ function relativePath(file: any,message: any){
   const raw=String(file.relativePath||file.path||file.name||'').replace(/\\/g,'/');
   if(file.relativePath||!/^\/|^[A-Za-z]:\//.test(raw))return raw.replace(/^\.\//,'');
-  const conversation=currentState()?.conversations?.find(c=>(c.messages||[]).some(m=>m.id===message?.id));
-  const project=C?.projects?.find(p=>p.id===conversation?.projectId);
+  const conversation=currentState()?.conversations?.find((c: any)=>(c.messages||[]).some((m: any)=>m.id===message?.id));
+  const project=C?.projects?.find((p: any)=>p.id===conversation?.projectId);
   const roots=[message?.workingDirectory,message?.cwd,message?.workspace,conversation?.workingDirectory,conversation?.workspacePath,conversation?.workspace,project?.path,C?.defaultDirectory].filter(v=>typeof v==='string').map(v=>v.replace(/\\/g,'/').replace(/\/$/,''));
   roots.sort((a,b)=>b.length-a.length);
   for(const root of roots)if(raw.startsWith(root+'/'))return raw.slice(root.length+1);
   const workspace=raw.match(/\/workspaces\/[A-Za-z0-9_-]{16,}\/(.+)$/);if(workspace)return workspace[1];
   const home=raw.match(/^\/(?:Users|home)\/[^/]+\/(.+)$/);return home?'~/'+home[1]:raw.replace(/^\/+/,'');
  }
- function absolutePath(file,message){
+ function absolutePath(file: any,message: any){
   const raw=String(file.absolutePath||file.path||file.name||'').replace(/\\/g,'/');if(/^\/|^[A-Za-z]:\//.test(raw))return raw;
-  const conversation=currentState()?.conversations?.find(c=>(c.messages||[]).some(m=>m.id===message?.id))||window.ShiYanSchedules?.currentConversation?.();
-  const project=C?.projects?.find(p=>p.id===conversation?.projectId);
+  const conversation=currentState()?.conversations?.find((c: any)=>(c.messages||[]).some((m: any)=>m.id===message?.id))||window.ShiYanSchedules?.currentConversation?.();
+  const project=C?.projects?.find((p: any)=>p.id===conversation?.projectId);
   const root=message?.workingDirectory||message?.cwd||conversation?.workspacePath||project?.path||C?.defaultDirectory;
   return typeof root==='string'?root.replace(/\/$/,'')+'/'+raw.replace(/^\.\//,''):raw;
  }
  function summary(m: any, providedFiles?: any) {
   const files=providedFiles||filesFor(m);if(!files.length)return '';
   const execution=window.ShiYanOutput?.executionStats(m)||{total:0,success:0,failed:0,pending:0};
-  return `<section class="v24-change-summary" aria-label="代码修改摘要"><header><span class="v24-change-symbol" aria-hidden="true">${'<svg viewBox="0 0 24 24"><path d="M6 3h12v18H6zM12 7v6M9 10h6M9 17h6"/></svg>'}</span><div><strong>已编辑 ${files.length} 个文件</strong><div class="v24-change-count">${recordedCounts(files)}</div></div><button type="button" data-show-message-changes="${esc(m.id)}">查看变更</button></header><div class="v24-change-files">${files.map((f,i)=>`<button type="button" data-show-message-changes="${esc(m.id)}" data-change-index="${i}" title="${esc(absolutePath(f,m))}"><span>${esc(relativePath(f,m))}</span><span class="v24-change-count">${hasStats(f)?stats(f.added,f.removed):'—'}</span></button>`).join('')}</div><footer class="v24-execution-summary"><button type="button" data-open-execution="${esc(m.id)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5h13M8 12h13M8 19h13M2 5l1.5 1.5L6 3M2 12l1.5 1.5L6 10M2 19l1.5 1.5L6 17"/></svg><span>执行过程</span><svg class="v24-execution-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button><span>工具 ${execution.total} · 成功 ${execution.success} · 失败 ${execution.failed}${execution.pending?' · 未记录结果 '+execution.pending:''}</span></footer></section>`;
+  return `<section class="v24-change-summary" aria-label="代码修改摘要"><header><span class="v24-change-symbol" aria-hidden="true">${'<svg viewBox="0 0 24 24"><path d="M6 3h12v18H6zM12 7v6M9 10h6M9 17h6"/></svg>'}</span><div><strong>已编辑 ${files.length} 个文件</strong><div class="v24-change-count">${recordedCounts(files)}</div></div><button type="button" data-show-message-changes="${esc(m.id)}">查看变更</button></header><div class="v24-change-files">${files.map((f: any,i: any)=>`<button type="button" data-show-message-changes="${esc(m.id)}" data-change-index="${i}" title="${esc(absolutePath(f,m))}"><span>${esc(relativePath(f,m))}</span><span class="v24-change-count">${hasStats(f)?stats(f.added,f.removed):'—'}</span></button>`).join('')}</div><footer class="v24-execution-summary"><button type="button" data-open-execution="${esc(m.id)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5h13M8 12h13M8 19h13M2 5l1.5 1.5L6 3M2 12l1.5 1.5L6 10M2 19l1.5 1.5L6 17"/></svg><span>执行过程</span><svg class="v24-execution-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button><span>工具 ${execution.total} · 成功 ${execution.success} · 失败 ${execution.failed}${execution.pending?' · 未记录结果 '+execution.pending:''}</span></footer></section>`;
  }
- function findMessage(tab){return currentState()?.conversations?.find(c=>c.id===tab.conversationId)?.messages?.find(m=>m.id===tab.messageId)||window.ShiYanSchedules?.message?.(tab.messageId);}
- function openFiles(files,options={}){
-  if(!C)return;const existing=C.tabs.find(t=>t.type==='changes');
+ function findMessage(tab: any){return currentState()?.conversations?.find((c: any)=>c.id===tab.conversationId)?.messages?.find((m: any)=>m.id===tab.messageId)||window.ShiYanSchedules?.message?.(tab.messageId);}
+ function openFiles(files: any,options={}){
+  if(!C)return;const existing=C.tabs.find((t: any)=>t.type==='changes');
   if(existing){Object.assign(existing,{files:files.map(normalize).filter(Boolean),conversationId:undefined,messageId:undefined,...options});renderPane(existing,C.panes.get(existing.id));C.selectTab(existing.id);return existing;}
   return C.openTab({type:'changes',title:'变更',files:files.map(normalize).filter(Boolean),...options});
  }
- function openMessage(id,index){
-  const conversation=currentState()?.conversations?.find(c=>(c.messages||[]).some(m=>m.id===id))||(window.ShiYanSchedules?.message?.(id)?window.ShiYanSchedules.currentConversation():null);const message=conversation?.messages.find(m=>m.id===id);if(!message)return;
+ function openMessage(id: any,index: any){
+  const conversation=currentState()?.conversations?.find((c: any)=>(c.messages||[]).some((m: any)=>m.id===id))||(window.ShiYanSchedules?.message?.(id)?window.ShiYanSchedules.currentConversation():null);const message=conversation?.messages.find((m: any)=>m.id===id);if(!message)return;
   const tab=openFiles(filesFor(message),{conversationId:conversation.id,messageId:id,changeIndex:index});
  }
- function diffHTML(file){
+ function diffHTML(file: any){
   if(!file.diff)return `<p class="v24-diff-empty">${esc(file.available===false?(file.source||'这条历史记录没有保存修改前的内容，暂无 diff。'):'文件与基准一致，没有变更。')}</p>`;
   let old=0,next=0;
-  return '<table class="v24-diff-code"><tbody>'+file.diff.split('\n').map(line=>{
+  return '<table class="v24-diff-code"><tbody>'+file.diff.split('\n').map((line: any)=>{
    if(line.startsWith('--- ')||line.startsWith('+++ '))return '';
    const hunk=line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
    if(hunk){old=Number(hunk[1]);next=Number(hunk[2]);return `<tr class="v24-diff-hunk"><td colspan="4">${esc(line)}</td></tr>`;}
@@ -106,19 +106,19 @@
    return `<tr class="v24-diff-${cls}"><td class="v24-line-number">${a}</td><td class="v24-line-number">${b}</td><td class="v24-diff-sign">${sign===' '?'':sign}</td><td class="v24-diff-text"><code>${esc(line.slice(1))||' '}</code></td></tr>`;
   }).join('')+'</tbody></table>';
  }
- function renderPane(tab,pane){
+ function renderPane(tab: any,pane: any){
   if(!pane)return;pane.classList.add('v24-changes-pane');const compact=findMessage(tab),refresh=()=>renderPane(tab,pane);
   const message=window.ShiYanMessageDetails.resolve(compact,tab.conversationId,refresh,pane);
   if(message?.detailsDeferred){window.ShiYanMessageDetails.placeholder(message,pane,refresh);return;}
   const files=message?filesFor(message):(tab.files||[]);
-  const rounds=currentState()?.conversations?.find(c=>c.id===tab.conversationId)?.messages.filter(m=>m.role==='assistant'&&filesFor(m).length)||[];
-  const roundPicker=rounds.length?`<select data-change-round aria-label="选择修改轮次">${rounds.map((m,i)=>`<option value="${esc(m.id)}" ${m.id===tab.messageId?'selected':''}>${i===rounds.length-1?'上一轮':'第 '+(i+1)+' 轮'}</option>`).join('')}</select>`:'<strong>变更</strong>';
-  pane.innerHTML=`<header class="v24-changes-toolbar"><div>${roundPicker}<span class="v24-change-count">${recordedCounts(files,'未记录统计')}</span></div><span>${files.length} 个文件</span></header><div class="v24-diff-scroll">${files.length?files.map((f,i)=>`<details class="v24-diff-file" data-diff-file="${i}" open><summary>${C.icon('file')}<span title="${esc(f.path)}">${esc(f.path)}</span><span class="v24-change-count">${hasStats(f)?stats(f.added,f.removed):'—'}</span>${C.icon('down')}</summary><div class="v24-diff-content">${diffHTML(f)}</div></details>`).join(''):'<p class="v24-diff-empty">请从消息中的“查看变更”打开修改记录。</p>'}</div>`;
-  pane.querySelector('[data-change-round]')?.addEventListener('change',e=>openMessage(e.target.value, undefined));
+  const rounds=currentState()?.conversations?.find((c: any)=>c.id===tab.conversationId)?.messages.filter((m: any)=>m.role==='assistant'&&filesFor(m).length)||[];
+  const roundPicker=rounds.length?`<select data-change-round aria-label="选择修改轮次">${rounds.map((m: any,i: any)=>`<option value="${esc(m.id)}" ${m.id===tab.messageId?'selected':''}>${i===rounds.length-1?'上一轮':'第 '+(i+1)+' 轮'}</option>`).join('')}</select>`:'<strong>变更</strong>';
+  pane.innerHTML=`<header class="v24-changes-toolbar"><div>${roundPicker}<span class="v24-change-count">${recordedCounts(files,'未记录统计')}</span></div><span>${files.length} 个文件</span></header><div class="v24-diff-scroll">${files.length?files.map((f: any,i: any)=>`<details class="v24-diff-file" data-diff-file="${i}" open><summary>${C.icon('file')}<span title="${esc(f.path)}">${esc(f.path)}</span><span class="v24-change-count">${hasStats(f)?stats(f.added,f.removed):'—'}</span>${C.icon('down')}</summary><div class="v24-diff-content">${diffHTML(f)}</div></details>`).join(''):'<p class="v24-diff-empty">请从消息中的“查看变更”打开修改记录。</p>'}</div>`;
+  pane.querySelector('[data-change-round]')?.addEventListener('change',(e: any)=>openMessage(e.target.value, undefined));
   if(tab.changeIndex!==undefined){const index=tab.changeIndex;delete tab.changeIndex;requestAnimationFrame(()=>pane.querySelector('[data-diff-file="'+index+'"]')?.scrollIntoView({block:'start'}));}
  }
  function refreshVisibleCards(){
-  const messages=new Map<string, any>((currentState()?.conversations||[]).flatMap(c=>(c.messages||[]).map(m=>[m.id,m])));
+  const messages=new Map<string, any>((currentState()?.conversations||[]).flatMap((c: any)=>(c.messages||[]).map((m: any)=>[m.id,m])));
   for(const article of [...document.querySelectorAll('#messages>article[data-message-id]')] as any[]){
    const message=messages.get(article.dataset.messageId);if(!message||message.role!=='assistant'||['submitting','queued','running','reconnecting'].includes(message.state))continue;
    const signature=JSON.stringify([message.assets||[],message.fileChanges||null,message.rawResult||'',message.displayItems||[],message.executionStats||null]);
@@ -133,21 +133,21 @@
    else if(!old&&html){const template=document.createElement('template');template.innerHTML=html;article.insertBefore(template.content.firstElementChild as any,article.querySelector('.v22-message-tools') as any);}
    if(html){const names=new Set(filesFor(message).map(f=>f.path.replace(/\\/g,'/').split('/').pop()));
     for(const asset of article.querySelectorAll('.message-files>[data-asset-id]')){
-     const record=message.assets?.find(a=>a.id===asset.dataset.assetId);
+     const record=message.assets?.find((a: any)=>a.id===asset.dataset.assetId);
      if(record&&names.has(String(record.filename||'').replace(/\\/g,'/').split('/').pop()))asset.remove();
     }
     const container=article.querySelector('.message-files');if(container&&!container.children.length)container.remove();
    }
   }
  }
- function install(context){
+ function install(context: any){
   C=context;window.addEventListener('shiyan-state',refreshVisibleCards);refreshVisibleCards();document.addEventListener('click',e=>{const b=(e as any).target.closest('[data-show-message-changes]');if(b)openMessage(b.dataset.showMessageChanges,b.dataset.changeIndex);});
   window.addEventListener('shiyan-state',()=>{for(const tab of C.tabs)if(tab.type==='changes'&&tab.conversationId){const m=findMessage(tab),signature=JSON.stringify([m?.detailsToken,m?.assets||[],m?.fileChanges||null,m?.displayItems||[],m?.rawResult||null]);if(tab.changeSignature!==signature){tab.changeSignature=signature;renderPane(tab,C.panes.get(tab.id));}}});
   const rail: any = document.getElementById('activityRail'),avatar=document.createElement('button');
   avatar.id='railAvatar';avatar.type='button';avatar.className='wb-icon-button';avatar.title='头像与额度';avatar.setAttribute('aria-label','头像与剩余额度');avatar.setAttribute('aria-haspopup','dialog');avatar.setAttribute('aria-expanded','false');avatar.innerHTML='<svg class="v24-avatar-placeholder" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="12" r="5"/><path d="M6 29v-4a10 10 0 0 1 20 0v4Z"/></svg><img alt="用户头像" hidden>';
   rail.append(avatar);
    const card=document.createElement('section');card.id='avatarQuotaCard';card.className='v26-avatar-card';card.hidden=true;card.tabIndex=-1;card.setAttribute('role','dialog');card.setAttribute('aria-label','头像与剩余额度');
-   card.innerHTML='<header><strong>剩余额度</strong></header><div class="v26-quota-content" role="status">正在获取…</div><footer><button type="button" data-avatar-change><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="8" r="3.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M4 21v-1a8 8 0 0 1 16 0v1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span>更换头像</span></button></footer>';document.body.append(card);let quotaPending;
+   card.innerHTML='<header><strong>剩余额度</strong></header><div class="v26-quota-content" role="status">正在获取…</div><footer><button type="button" data-avatar-change><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="8" r="3.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M4 21v-1a8 8 0 0 1 16 0v1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span>更换头像</span></button></footer>';document.body.append(card);let quotaPending: any;
    function closeCard(){card.hidden=true;avatar.setAttribute('aria-expanded','false');}
    async function loadQuota(){
     if(quotaPending)return quotaPending;

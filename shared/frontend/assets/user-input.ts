@@ -1,17 +1,17 @@
 (() => {
  'use strict';
- const entries=new Map();let timer,requesting=false,lastContext='';
+ const entries=new Map();let timer: any,requesting=false,lastContext='';
  const nextPoll=new Map();
  const terminalStates=new Set(['completed','failed','cancelled','interrupted']);
- function deferPoll(key,delay){nextPoll.set(key,Date.now()+delay);while(nextPoll.size>64)nextPoll.delete(nextPoll.keys().next().value);}
+ function deferPoll(key: any,delay: any){nextPoll.set(key,Date.now()+delay);while(nextPoll.size>64)nextPoll.delete(nextPoll.keys().next().value);}
  const esc = (v: any) => String(v ?? '').replace(/[&<>"']/g, (c: string): string => (({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'} as Record<string,string>)[c]));
  function context(){
-  const s=window.shiyan?.getState(),c=s?.conversations?.find(c=>c.id===s.selectedConversationId);
-  const m=c?.messages?.slice().reverse().find(m=>m.role==='assistant'&&m.remoteJobId);
+  const s=window.shiyan?.getState(),c=s?.conversations?.find((c: any)=>c.id===s.selectedConversationId);
+  const m=c?.messages?.slice().reverse().find((m: any)=>m.role==='assistant'&&m.remoteJobId);
   if(m&&terminalStates.has(m.state))return null;
   return c&&m?{conversationId:c.id,messageId:m.id,jobId:m.remoteJobId,key:c.id+':'+m.remoteJobId}:null;
  }
- function valid(questions,form){
+ function valid(questions: any,form: any){
   const answers={};
   for(const q of questions){
    const group=form.querySelector('[data-question-id="'+CSS.escape(q.id)+'"]');
@@ -19,11 +19,11 @@
    const text=group.querySelector('textarea')?.value.trim()||'';
    const value=q.options?.length?(selected?.dataset.custom?text:selected?.value):text;
    if(!value)return null;
-   answers[q.id]={answers:[value]};
+   (answers as any)[q.id]={answers:[value]};
   }
   return answers;
  }
- function refresh(entry){
+ function refresh(entry: any){
   const {node,request:r}=entry;
   if(r.status==='cancelled'||r.status==='expired'){node.innerHTML='<div class="user-input-heading">'+(r.status==='cancelled'?'问题已取消':'问题已过期')+'</div>';return;}
   if(r.status==='answered'){node.remove();return;}
@@ -32,13 +32,13 @@
   const button=form.querySelector('button[type=submit]');button.disabled=entry.submitting||!valid(r.questions,form);button.textContent=entry.submitting?'提交中…':'确认';
   const status=node.querySelector('[data-answer-status]');status.textContent=entry.error||'';
  }
- function create(r,ctx){
+ function create(r: any,ctx: any){
   const node=document.createElement('section');node.className='user-input-card';node.setAttribute('aria-label','回答问题');
   const entry={node,request:r,context:ctx,submitting:false,error:''};
-  node.innerHTML='<div class="user-input-heading">请选择</div><form>'+r.questions.map((q,i)=>'<fieldset data-question-id="'+esc(q.id)+'"><legend>'+esc(q.question)+'</legend>'+(q.options?.length?q.options.map((o,j)=>'<label class="user-input-option"><input type="radio" name="question-'+i+'" value="'+esc(o.label)+'"><span><strong>'+esc(o.label)+'</strong>'+(o.description?'<small>'+esc(o.description)+'</small>':'')+'</span></label>').join('')+'<label class="user-input-option"><input type="radio" name="question-'+i+'" data-custom="true"><span><strong>其他</strong></span></label>':'')+'<textarea aria-label="'+esc(q.options?.length?'填写自己的回答':q.question)+'" placeholder="'+(q.options?.length?'填写其他回答':'填写回答')+'" rows="2" maxlength="10000"></textarea></fieldset>').join('')+'<footer><span data-answer-status role="status" aria-live="polite"></span><button type="submit" disabled>确认</button></footer></form>';
+  node.innerHTML='<div class="user-input-heading">请选择</div><form>'+r.questions.map((q: any,i: any)=>'<fieldset data-question-id="'+esc(q.id)+'"><legend>'+esc(q.question)+'</legend>'+(q.options?.length?q.options.map((o: any,j: any)=>'<label class="user-input-option"><input type="radio" name="question-'+i+'" value="'+esc(o.label)+'"><span><strong>'+esc(o.label)+'</strong>'+(o.description?'<small>'+esc(o.description)+'</small>':'')+'</span></label>').join('')+'<label class="user-input-option"><input type="radio" name="question-'+i+'" data-custom="true"><span><strong>其他</strong></span></label>':'')+'<textarea aria-label="'+esc(q.options?.length?'填写自己的回答':q.question)+'" placeholder="'+(q.options?.length?'填写其他回答':'填写回答')+'" rows="2" maxlength="10000"></textarea></fieldset>').join('')+'<footer><span data-answer-status role="status" aria-live="polite"></span><button type="submit" disabled>确认</button></footer></form>';
   node.addEventListener('input',e=>{const group=(e.target as any).closest('fieldset');if((e.target as any).matches('textarea')&&group){const custom=group.querySelector('[data-custom]');if(custom)custom.checked=true;}entry.error='';refresh(entry);});
   node.addEventListener('change',()=>{entry.error='';refresh(entry);});
-  (node.querySelector('form') as any).addEventListener('submit',async e=>{
+  (node.querySelector('form') as any).addEventListener('submit',async (e: any)=>{
    e.preventDefault();if(entry.submitting||entry.request.status!=='pending')return;
    const answers=valid(entry.request.questions,e.target);if(!answers)return;
    entry.submitting=true;entry.error='';refresh(entry);
@@ -50,7 +50,7 @@
   });
   refresh(entry);return entry;
  }
- function mount(ctx){
+ function mount(ctx: any){
   for(const entry of entries.values()){
    if(entry.request.status==='answered'||!ctx||entry.context.key!==ctx.key||window.shiyan?.getView?.()!=='agent'){entry.node.remove();continue;}
    const article=document.querySelector('#messages>article[data-message-id="'+CSS.escape(ctx.messageId)+'"]');

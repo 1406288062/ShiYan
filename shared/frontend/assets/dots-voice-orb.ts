@@ -3,11 +3,11 @@
  * presentation only. It never starts, pauses or stops the voice session. */
 (() => {
   'use strict';
-  const clamp = (n, a = 0, b = 1) => Math.min(b, Math.max(a, n));
-  const mix = (a, b, t) => a + (b - a) * t;
-  const smooth = t => { t = clamp(t); return t * t * (3 - 2 * t); };
+  const clamp = (n: any, a = 0, b = 1) => Math.min(b, Math.max(a, n));
+  const mix = (a: any, b: any, t: any) => a + (b - a) * t;
+  const smooth = (t: any) => { t = clamp(t); return t * t * (3 - 2 * t); };
   const palette = [[78,175,234], [94,96,237], [171,99,223], [243,129,134], [88,190,220]];
-  const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${clamp(a)})`;
+  const rgba = (c: any, a: any) => `rgba(${c[0]},${c[1]},${c[2]},${clamp(a)})`;
   const labels = {idle:'准备就绪',listening:'我在听',waiting:'正在思考',thinking:'正在思考',sending:'正在思考',starting:'正在准备语音',speaking:'正在回应',muted:'麦克风已静音',paused:'已暂停聆听'};
   const duration = 3600;
 
@@ -123,11 +123,11 @@
       this.hit.setAttribute('role', 'button');
       this.hit.setAttribute('aria-label', '将语音球融入输入框，语音交流继续');
       this.hit.addEventListener('click', () => this.collapse());
-      this.hit.addEventListener('pointerenter', event => this.moveHover(event));
-      this.hit.addEventListener('pointermove', event => this.moveHover(event));
+      this.hit.addEventListener('pointerenter', (event: any) => this.moveHover(event));
+      this.hit.addEventListener('pointermove', (event: any) => this.moveHover(event));
       this.hit.addEventListener('pointerleave', () => this.resetHover());
       this.hit.addEventListener('pointercancel', () => this.resetHover());
-      this.hit.addEventListener('keydown', event => {
+      this.hit.addEventListener('keydown', (event: any) => {
         if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); this.collapse(); }
       });
       this.caption = document.createElement('div');
@@ -162,7 +162,7 @@
       });
     }
 
-    attach(view, composerSurface) {
+    attach(view: any, composerSurface: any) {
       if (this.destroyed || !view) return this;
       let changed = false;
       if (this.view !== view) {
@@ -209,7 +209,7 @@
         this.drag = null; this.animation = null; this.progress = 0; this.mode = 'orb';
         this.releasePointer(); this.emit();
       }
-      this.phaseLabel.textContent = labels[this.state.phase] || '语音交流中';
+      this.phaseLabel.textContent = (labels as any)[this.state.phase] || '语音交流中';
       this.updatePresentation();
       this.syncVisibility();
       return this;
@@ -219,7 +219,7 @@
       return {mode:this.mode, progress:this.progress, active:this.state.active, visible:this.state.visible};
     }
 
-    moveHover(event) {
+    moveHover(event: any) {
       if (event.pointerType !== 'mouse' || !this.renderShown || this.mode !== 'orb' || this.reducedMotion.matches) return;
       const rect = this.hit.getBoundingClientRect();
       if (!rect.width || !rect.height) return;
@@ -238,7 +238,7 @@
       } else this.wake();
     }
 
-    updateHover(dt) {
+    updateHover(dt: any) {
       const hover = this.hover;
       const strength = 1-Math.exp(-dt/(hover.target ? 150 : 210));
       hover.amount += (hover.target-hover.amount)*strength;
@@ -346,13 +346,13 @@
       this.animate(1, 'draining', duration);
     }
 
-    animate(to, mode, milliseconds) {
+    animate(to: any, mode: any, milliseconds: any) {
       this.mode = mode;
       this.animation = {from:this.progress, to, elapsed:0, duration:this.reducedMotion.matches ? Math.min(milliseconds, 800) : milliseconds};
       this.emit(); this.wake();
     }
 
-    beginDrag(event) {
+    beginDrag(event: any) {
       if (event.button !== 0 || !this.state.active || !this.state.visible || this.mode !== 'fused') return;
       event.preventDefault(); event.stopPropagation();
       if (this.layoutDirty) this.measure();
@@ -362,7 +362,7 @@
       this.wake();
     }
 
-    moveDrag(event) {
+    moveDrag(event: any) {
       if (!this.drag || event.pointerId !== this.drag.id) return;
       event.preventDefault(); event.stopPropagation();
       const distance = Math.max(0, this.drag.startY - event.clientY);
@@ -385,7 +385,7 @@
 
     threshold() { return clamp((this.geometry?.sink.y - this.geometry?.cy) * .34, 96, 136); }
 
-    endDrag(event, cancelled = false) {
+    endDrag(event: any, cancelled = false) {
       if (!this.drag || event.pointerId !== this.drag.id) return;
       event.preventDefault(); event.stopPropagation(); this.finishDrag(cancelled);
     }
@@ -396,7 +396,7 @@
       if (id !== undefined && id !== null) { try { this.handle.releasePointerCapture(id); } catch {} }
     }
 
-    finishDrag(cancelled) {
+    finishDrag(cancelled: any) {
       if (!this.drag) return;
       const drag = this.drag;
       this.drag = null;
@@ -445,7 +445,7 @@
       this.layoutDirty = false;
     }
 
-    tick(now) {
+    tick(now: any) {
       this.frame = 0;
       if (this.destroyed || !this.state.active || !this.state.visible || document.hidden) { this.lastFrame = 0; return; }
       const elapsed = this.lastFrame ? Math.max(0, now - this.lastFrame) : 16;
@@ -524,7 +524,7 @@
       this.drawInk(t);
     }
 
-    drawOrb(ctx,ball,t) {
+    drawOrb(ctx: any,ball: any,t: any) {
       if(ball.r<.5)return;
       const diameter=ball.r*2;
       const edge=ball.y+ball.r*(1-2*ball.erosion);
@@ -570,7 +570,7 @@
       }
     }
 
-    drawSand(ctx,ball,t) {
+    drawSand(ctx: any,ball: any,t: any) {
       const g=this.geometry, rising=['dragging','gathering','returning'].includes(this.mode);
       const flow=rising?1-this.progress:this.progress;
       if(flow<=0||flow>=1)return;
@@ -615,7 +615,7 @@
       ctx.restore();
     }
 
-    drawInk(t) {
+    drawInk(t: any) {
       const ctx=this.inkContext,g=this.geometry;
       if(!ctx||!this.surface)return;
       ctx.setTransform(g.dpr,0,0,g.dpr,0,0);ctx.clearRect(0,0,g.surfaceWidth,g.surfaceHeight);
@@ -635,7 +635,7 @@
       ctx.globalAlpha=amount*.30;
       ctx.fillStyle=field;ctx.fillRect(0,0,width,height);
       ctx.globalAlpha=1;
-      const pool=(x,y,rx,ry,colour,alpha)=>{
+      const pool=(x: any,y: any,rx: any,ry: any,colour: any,alpha: any)=>{
         ctx.save();ctx.translate(x,y);ctx.scale(rx,ry);
         const glow=ctx.createRadialGradient(0,0,0,0,0,1);
         glow.addColorStop(0,rgba(colour,alpha));glow.addColorStop(.45,rgba(colour,alpha*.62));glow.addColorStop(1,rgba(colour,0));
@@ -683,7 +683,7 @@
         strength:smooth((position-start)/(peak-start))*smooth((1-position)/(1-peak))};
     }
 
-    drawComposerFinish(ctx,g,amount) {
+    drawComposerFinish(ctx: any,g: any,amount: any) {
       const finish=this.lastGrainState();
       if(!finish)return;
       const phase=finish.phase;
@@ -708,7 +708,7 @@
       ctx.restore();
     }
 
-    drawGatherFinish(ctx,ball) {
+    drawGatherFinish(ctx: any,ball: any) {
       const finish=this.lastGrainState();
       if(!finish?.rising || ball.r<1)return;
       ctx.save();ctx.globalCompositeOperation='source-over';
@@ -730,7 +730,7 @@
       ctx.restore();
     }
 
-    drawGlassRipples(ctx, g) {
+    drawGlassRipples(ctx: any, g: any) {
       // Reuse the material clock and canvas; never paint a continuous baseline.
       if(this.mode !== 'draining' || this.reducedMotion.matches)return;
       const contact=clamp((this.progress-.13)/.87);
@@ -742,7 +742,7 @@
       ctx.save();
       ctx.beginPath();ctx.rect(0,0,g.surfaceWidth,Math.min(12,g.surfaceHeight));ctx.clip();
       ctx.lineCap='round';ctx.lineJoin='round';
-      const trace=(x,halfWidth,strength,profile)=>{
+      const trace=(x: any,halfWidth: any,strength: any,profile: any)=>{
         if(strength<.001)return;
         const path=new Path2D();
         for(let step=0;step<=24;step++) {
@@ -762,7 +762,7 @@
       };
       const depression=2.6*Math.sin(contact*Math.PI);
       trace(centre,28,envelope*Math.sin(contact*Math.PI),
-        offset=>depression*Math.exp(-Math.pow(offset/15,2)));
+        (offset: any)=>depression*Math.exp(-Math.pow(offset/15,2)));
       for(const start of [0,.32]) {
         const age=(contact-start)/.68;
         if(age<=0 || age>=1)continue;
@@ -770,13 +770,13 @@
         const front=10+(reach-10)*age;
         for(const side of [-1,1]) {
           trace(centre+side*front,19,envelope*amplitude,
-            offset=>2.1*amplitude*Math.cos(offset*.16)*Math.exp(-Math.pow(offset/18,2)));
+            (offset: any)=>2.1*amplitude*Math.cos(offset*.16)*Math.exp(-Math.pow(offset/18,2)));
         }
       }
       ctx.restore();
     }
 
-    clearView(view) {
+    clearView(view: any) {
       view.classList.remove('dots-voice-immersive','dots-voice-live');
       delete view.dataset.dotsVoiceForm;
       const records=view.querySelector('.dots-records');

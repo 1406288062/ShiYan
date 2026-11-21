@@ -27,7 +27,7 @@ declare const FitAddon: any;
     arrow:'M4 12h15m-6-6 6 6-6 6', search:'M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM15.7 15.7 21 21'
   };
   const iosSymbols = {newChat:"square.and.pencil",folder:"folder",folderOpen:"folder.fill",copy:"reply-copy"};
-  const icon = (name, extra='') => iosSymbols[name] ? `<span class="wb-icon wb-ios-icon ${extra}" style="--ios-symbol:url('/assets/symbols/${iosSymbols[name]}.png')" aria-hidden="true"></span>` : `<svg class="wb-icon ${extra} ${name==='search'?'wb-search-icon':''}" viewBox="0 0 24 24" aria-hidden="true"><path d="${paths[name] || paths.file}"></path></svg>`;
+  const icon = (name: any, extra='') => (iosSymbols as any)[name] ? `<span class="wb-icon wb-ios-icon ${extra}" style="--ios-symbol:url('/assets/symbols/${(iosSymbols as any)[name]}.png')" aria-hidden="true"></span>` : `<svg class="wb-icon ${extra} ${name==='search'?'wb-search-icon':''}" viewBox="0 0 24 24" aria-hidden="true"><path d="${(paths as any)[name] || paths.file}"></path></svg>`;
    
   const toolbarGlyphs = {
     search:{box:'-1.7 -1.7 26.4 26.4',path:paths.search},
@@ -41,30 +41,30 @@ declare const FitAddon: any;
     contract:{box:'3.25 3.25 17.5 17.5',path:'M18 10h-4V6M6 14h4v4'},
     plus:{box:'2 2 20 20',path:'M12 5v14M5 12h14'}
   };
-  const toolbarIcon = name => {
-    const glyph=toolbarGlyphs[name==='right'?'addPanel':name];
+  const toolbarIcon = (name: any) => {
+    const glyph=(toolbarGlyphs as any)[name==='right'?'addPanel':name];
     if(!glyph)return icon(name);
     return `<svg class="wb-icon toolbar-glyph ${name==='search'?'wb-search-icon':''}" viewBox="${glyph.box}" aria-hidden="true">${glyph.body || '<path d="'+glyph.path+'"></path>'}</svg>`;
   };
   const rightWorkspaceEnabled=window.ShiYanPlatform?.get('ui.rightWorkspace',true)!==false;
   const toolbarButtonIds=new Set(['sidebarSearch','toggleLeftSidebar','toggleRightWorkspace','addWorkspaceTab']);
-  const button = (id, name, title, extra='') => `<button id="${id}" class="wb-icon-button ${extra}" type="button" title="${esc(title)}" aria-label="${esc(title)}">${toolbarButtonIds.has(id)?toolbarIcon(name):icon(name)}</button>`;
+  const button = (id: any, name: any, title: any, extra='') => `<button id="${id}" class="wb-icon-button ${extra}" type="button" title="${esc(title)}" aria-label="${esc(title)}">${toolbarButtonIds.has(id)?toolbarIcon(name):icon(name)}</button>`;
   const uuid = () => crypto.randomUUID();
   let token = '', projects: any[] = [], prefs: any = {leftOpen:true,rightOpen:false,leftWidth:window.ShiYanPlatform?.mode==='web'?248:262,rightWidth:460,groups:{pinned:true,projects:true,recent:true}}, tabs: any[] = [], activeTab = '', defaultDirectory = '', lastSelected = '';
   let browserState: any = {tabs:[],history:[],bookmarks:[],downloads:[],searchEngine:'bing'};
-  let ready = false, saveTimer, resizeRAF, loading = true;
+  let ready = false, saveTimer: any, resizeRAF: any, loading = true;
    
   let compactPane = 'left', wasCompact = false;
   let v2: any = null;
   const panes = new Map(), sessions = new Map(), openedBrowsers = new Set(), pickerRequests = new Map();
   const nativeAvailable = () => !!window.ShiYanAccount?.user?.serverAccess && (window.ShiYanPlatform?.adapter('native')?.available?.() ?? !!window.webkit?.messageHandlers?.native);
-  function native(op, data={}) {
+  function native(op: any, data={}) {
     if(!nativeAvailable() || !window.ShiYanAccount?.user?.serverAccess) return false;
     if(window.ShiYanPlatform)return window.ShiYanPlatform.postNative('workbench',{op,...data});
     window.webkit.messageHandlers.native.postMessage({action:'workbench',op,...data});
     return true;
   }
-  function notify(text) { window.shiyan?.toast?.(String(text)); }
+  function notify(text: any) { window.shiyan?.toast?.(String(text)); }
   async function api(path: any, method: any = 'GET', body?: any) {
     const headers: any = {'X-Shiyan-Local':'1'};
     if(token) headers['X-Shiyan-Workspace'] = token;
@@ -170,10 +170,10 @@ declare const FitAddon: any;
     const box=pane?.getBoundingClientRect();
     native('show',{tabId:tab?.id||'',visible,rect:box?{x:box.x,y:box.y,width:box.width,height:box.height}:undefined});
   }
-  function renderState(state) {
+  function renderState(state: any) {
     if(!state) return;
     if(Array.isArray(state.projects)) projects=state.projects;
-    const current=state.conversations?.find(c=>c.id===state.selectedConversationId);
+    const current=state.conversations?.find((c: any)=>c.id===state.selectedConversationId);
     if(current && current.id!==lastSelected) {
       lastSelected=current.id;
       prefs.selectedProjectId=current.projectId||null;
@@ -203,32 +203,32 @@ declare const FitAddon: any;
     $('projectName').value='';$('projectPath').value=defaultDirectory;
     setProjectMode(create);scheduleNative();$('projectName').focus();
   }
-  function setProjectMode(create) {
+  function setProjectMode(create: any) {
     createProject=create;
     $('projectDialogTitle').textContent=create?'新建项目':'打开项目';
     $('projectPathLabel').textContent=create?'创建位置（在此目录下新建项目文件夹）':'项目目录';
     $('submitProject').textContent=create?'创建项目':'打开项目';
     $('createProjectMode').classList.toggle('selected',create);$('importProjectMode').classList.toggle('selected',!create);
   }
-  function pick(op,path='') {
+  function pick(op: any,path='') {
     if(!window.ShiYanAccount?.user?.serverAccess) return Promise.reject(Error('请在项目目录中填写自己的工作区路径，例如 /workspace'));
     if(!nativeAvailable()) return Promise.reject(Error('请在桌面应用中选择文件；本机网页可直接填写项目路径'));
     return new Promise<any>(resolve=>{const id=uuid();pickerRequests.set(id,resolve);native(op,{id,path});});
   }
-  async function selectProject(id) {
+  async function selectProject(id: any) {
     await api('/projects/'+encodeURIComponent(id)+'/select','POST',{});
     prefs.selectedProjectId=id;persist();renderProjects();
     window.shiyan.navigate('agent');
     openTab({type:'files',title:'文件',projectId:id},true);
   }
-  function normalizeAddress(raw) {
+  function normalizeAddress(raw: any) {
     raw=String(raw||'').trim();if(!raw)return '';
     if(/^https?:\/\//i.test(raw)) {const u=new URL(raw);if(u.username||u.password)throw Error('地址不能包含账号或密码');return u.href;}
     if(/^[a-z][a-z\d+.-]*:/i.test(raw)&&!/^localhost:\d/i.test(raw)&&!/^\d+\.\d+\.\d+\.\d+:\d/.test(raw))throw Error('仅支持 HTTP 或 HTTPS 网页');
     if(!/\s/.test(raw) && /^(localhost(?::\d+)?|[\w.-]+\.[a-z\d.-]+|\d+\.\d+\.\d+\.\d+)(?::\d+)?(?:[/?#]|$)/i.test(raw)) {
       return new URL((/^(localhost|127\.|10\.|192\.168\.)/.test(raw)?'http://':'https://')+raw).href;
     }
-    const base={bing:'https://www.bing.com/search?q=',baidu:'https://www.baidu.com/s?wd=',duckduckgo:'https://duckduckgo.com/?q='}[browserState.searchEngine]||'https://www.bing.com/search?q=';
+    const base=({bing:'https://www.bing.com/search?q=',baidu:'https://www.baidu.com/s?wd=',duckduckgo:'https://duckduckgo.com/?q='} as any)[browserState.searchEngine]||'https://www.bing.com/search?q=';
     return base+encodeURIComponent(raw);
   }
   function openTab(options: any = {type:'browser',title:'新标签页',url:''}, reuse: any = false) {
@@ -239,8 +239,8 @@ declare const FitAddon: any;
     if(tabs.length>=30){notify('最多保留 30 个标签，请先关闭不需要的标签');return null;}
     const tab={id:uuid(),...options};tabs.push(tab);prefs.rightOpen=true;selectTab(tab.id);return tab;
   }
-  function selectTab(id) { activeTab=id;prefs.rightOpen=true;v2?.revealRight();if(window.innerWidth<1140)compactPane='right';renderTabs();layout();persist(); }
-  async function closeTab(id) {
+  function selectTab(id: any) { activeTab=id;prefs.rightOpen=true;v2?.revealRight();if(window.innerWidth<1140)compactPane='right';renderTabs();layout();persist(); }
+  async function closeTab(id: any) {
     v2?.onCloseTab(id);
     const term=sessions.get(id);
     if(term){try{if(term.sessionId)await api('/terminals/'+term.sessionId,'DELETE');}catch(e){notify('终端关闭未确认：'+(e as any).message);}term.controller?.abort();term.observer?.disconnect();term.term?.dispose();sessions.delete(id);}
@@ -261,10 +261,10 @@ declare const FitAddon: any;
     $('browserAddressBar').hidden=tab.type!=='browser';
     if(tab.type==='browser'){
       if(document.activeElement!==$('browserAddress'))$('browserAddress').value=tab.url||'';
-      const state=browserState.tabs.find(s=>s.id===tab.id)||{};
+      const state=browserState.tabs.find((s: any)=>s.id===tab.id)||{};
       $('browserBack').disabled=!state.canBack;$('browserForward').disabled=!state.canForward;
       $('bookmarkPage').disabled=!tab.url;
-      $('bookmarkPage').classList.toggle('bookmarked',browserState.bookmarks.some(b=>b.url===tab.url));
+      $('bookmarkPage').classList.toggle('bookmarked',browserState.bookmarks.some((b: any)=>b.url===tab.url));
       $('browserReload').classList.toggle('loading',!!state.loading);
       if(tab.url&&!openedBrowsers.has(tab.id)&&nativeAvailable()){openedBrowsers.add(tab.id);native('navigate',{tabId:tab.id,url:tab.url});}
       renderBrowserPane(tab,pane);
@@ -274,7 +274,7 @@ declare const FitAddon: any;
     v2?.decorateTabs();
     requestAnimationFrame(()=>{$('workspaceTabs').querySelector('[aria-selected="true"]')?.scrollIntoView({block:'nearest',inline:'nearest'});fitTerminals();scheduleNative();});
   }
-  function initPane(tab,pane) {
+  function initPane(tab: any,pane: any) {
     if(tab.type==='temporary'){window.ShiYanV22?.renderTemporaryPane(tab,pane);return;}
     if(tab.type==='execution'){window.ShiYanExecution?.renderPane(tab,pane);return;}
     if(tab.type==='changes'){window.ShiYanChanges?.renderPane(tab,pane);return;}
@@ -290,8 +290,8 @@ declare const FitAddon: any;
       v2?.decorateTerminal(tab,pane);
     } else renderManager(tab,pane);
   }
-  function renderBrowserPane(tab,pane) {
-    const state=browserState.tabs.find(s=>s.id===tab.id)||{};
+  function renderBrowserPane(tab: any,pane: any) {
+    const state=browserState.tabs.find((s: any)=>s.id===tab.id)||{};
     if(tab.url){
       const error=state.error||(!nativeAvailable()?'网页标签请在拾燕桌面应用中打开':'');
       if(pane.dataset.mode!==`page:${error}`){pane.dataset.mode=`page:${error}`;pane.innerHTML=error?`<div class="browser-error">${icon('globe')}<h3>网页暂时无法打开</h3><p>${esc(error)}</p><button type="button" class="wb-secondary" data-browser-retry>重试</button></div>`:'';}
@@ -300,21 +300,21 @@ declare const FitAddon: any;
     if(pane.dataset.mode==='start')return;pane.dataset.mode='start';
     pane.innerHTML=`<div class="browser-start"><h3>工具</h3><div class="browser-tool-grid"><button type="button" data-workspace-tool="files">${icon('folder')}<span>文件</span><kbd>⌘O</kbd></button><div class="v21-terminal-tool"><button type="button" data-workspace-tool="terminal">${icon('terminal')}<span>终端</span></button><button type="button" data-tool-terminal-more aria-label="终端更多选项" title="终端更多">${icon('more')}</button></div><button type="button" data-workspace-temporary>${icon('newChat')}<span>临时聊天</span></button></div><h3>浏览器</h3><div class="browser-shortcuts"><button type="button" data-workspace-tool="history">${icon('history')}<span>历史记录</span></button><button type="button" data-workspace-tool="bookmarks">${icon('star')}<span>书签</span></button><button type="button" data-workspace-tool="downloads">${icon('download')}<span>下载</span></button><button type="button" data-workspace-tool="settings">${icon('settings')}<span>设置</span></button></div></div>`;
   }
-  function renderManager(tab,pane) {
+  function renderManager(tab: any,pane: any) {
     if(tab.type==='settings'){
       pane.innerHTML=`<div class="browser-manager"><h2>浏览器设置</h2><div class="manager-tool-links"><button data-workspace-tool="files">${icon('folder')}文件</button><button data-workspace-tool="terminal">${icon('terminal')}终端</button><button data-workspace-tool="history">${icon('history')}历史记录</button><button data-workspace-tool="bookmarks">${icon('star')}书签</button><button data-workspace-tool="downloads">${icon('download')}下载</button></div>
         <label class="settings-row">默认搜索引擎<select id="searchEngineSelect"><option value="bing">Bing</option><option value="baidu">百度</option><option value="duckduckgo">DuckDuckGo</option></select></label>
         <div class="settings-row"><span>浏览记录</span><button class="wb-secondary" data-clear-history>清除历史记录</button></div><div class="settings-row"><span>网站数据</span><button class="wb-secondary" data-clear-browser-data>清除 Cookie 和缓存</button></div>
         <p class="settings-note">浏览器记录、聊天记录、图片历史分开保存。</p></div>`;
       $('searchEngineSelect').value=browserState.searchEngine||'bing';
-      $('searchEngineSelect').onchange=e=>native('searchEngine',{value:(e as any).target.value});
+      $('searchEngineSelect').onchange=(e: any)=>native('searchEngine',{value:(e as any).target.value});
       return;
     }
-    const rows=browserState[tab.type]||[], title={history:'浏览历史',bookmarks:'书签',downloads:'下载记录'}[tab.type];
+    const rows=browserState[tab.type]||[], title=({history:'浏览历史',bookmarks:'书签',downloads:'下载记录'} as any)[tab.type];
     pane.innerHTML=`<div class="browser-manager"><header><h2>${title}</h2>${tab.type==='history'?'<button type="button" class="wb-text-button" data-clear-history>清除</button>':tab.type==='downloads'?'<button type="button" class="wb-text-button" data-clear-downloads>清除记录</button>':''}</header>
-      ${rows.length?rows.map(row=>tab.type==='downloads'?`<div class="browser-list-item"><div>${icon('download')}<span><strong>${esc(row.name)}</strong><small>${esc(({downloading:'正在下载',completed:'已完成',failed:'下载失败',interrupted:'已中断'})[row.status]||row.status)}</small></span></div>${row.status==='completed'?`<button class="wb-text-button" type="button" data-reveal-download="${esc(row.id)}">在 Finder 中显示</button>`:''}</div>`:`<div class="browser-list-item"><button class="browser-history-link" type="button" data-open-url="${esc(row.url)}">${icon(tab.type==='bookmarks'?'star':'globe')}<span><strong>${esc(row.title||row.url)}</strong><small>${esc(row.url)}</small></span></button>${tab.type==='bookmarks'?`<button class="wb-icon-button" type="button" data-delete-bookmark="${esc(row.url)}" aria-label="删除书签">${icon('close')}</button>`:''}</div>`).join(''):`<p class="wb-empty">暂无${title}</p>`}</div>`;
+      ${rows.length?rows.map((row: any)=>tab.type==='downloads'?`<div class="browser-list-item"><div>${icon('download')}<span><strong>${esc(row.name)}</strong><small>${esc((({downloading:'正在下载',completed:'已完成',failed:'下载失败',interrupted:'已中断'}) as any)[row.status]||row.status)}</small></span></div>${row.status==='completed'?`<button class="wb-text-button" type="button" data-reveal-download="${esc(row.id)}">在 Finder 中显示</button>`:''}</div>`:`<div class="browser-list-item"><button class="browser-history-link" type="button" data-open-url="${esc(row.url)}">${icon(tab.type==='bookmarks'?'star':'globe')}<span><strong>${esc(row.title||row.url)}</strong><small>${esc(row.url)}</small></span></button>${tab.type==='bookmarks'?`<button class="wb-icon-button" type="button" data-delete-bookmark="${esc(row.url)}" aria-label="删除书签">${icon('close')}</button>`:''}</div>`).join(''):`<p class="wb-empty">暂无${title}</p>`}</div>`;
   }
-  async function renderFiles(tab,pane) {
+  async function renderFiles(tab: any,pane: any) {
     pane.innerHTML=`<div class="files-toolbar"><span>文件</span><span class="toolbar-spacer"></span><button class="wb-text-button" type="button" data-open-file>打开文件</button><button class="wb-text-button" type="button" data-open-project>打开项目</button></div><div class="file-tree"></div>`;
     const tree=pane.querySelector('.file-tree');
     const project=projects.find(p=>p.id===(tab.projectId||prefs.selectedProjectId));
@@ -324,7 +324,7 @@ declare const FitAddon: any;
     const root=document.createElement('div');tree.appendChild(root);
     try{await loadDirectory(root,project.id,'');}catch(e){root.innerHTML=`<p class="wb-error">${esc((e as any).message)}</p>`;}
   }
-  async function loadDirectory(container,projectId,path) {
+  async function loadDirectory(container: any,projectId: any,path: any) {
     const result=await api('/directory?projectId='+encodeURIComponent(projectId)+'&path='+encodeURIComponent(path));
     container.innerHTML='';
     for(const entry of result.entries){
@@ -338,13 +338,13 @@ declare const FitAddon: any;
     if(result.truncated){const p=document.createElement('p');p.className='wb-empty';p.textContent='此目录仅显示前 600 项。';container.appendChild(p);}
     if(!result.entries.length)container.innerHTML='<p class="wb-empty tree-empty">空目录</p>';
   }
-  function highlight(source) {
+  function highlight(source: any) {
     const rx=/(\/\*[\s\S]*?\*\/|\/\/[^\n]*|#[^\n]*|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\b(?:const|let|var|function|async|await|return|if|else|for|while|class|import|from|export|default|def|self|try|except|catch|throw|new|public|private|static|void|int|String|struct|enum|final|guard|case|switch|break|continue|in|of|true|false|None|null|True|False)\b|\b\d+(?:\.\d+)?\b)/g;
     let out='',index=0;for(const match of source.matchAll(rx)){out+=esc(source.slice(index,match.index));const t=match[0],kind=/^(\/\/|\/\*|#)/.test(t)?'comment':/^['"`]/.test(t)?'string':/^\d/.test(t)?'number':'keyword';out+=`<span class="syntax-${kind}">${esc(t)}</span>`;index=match.index+t.length;}
     return out+esc(source.slice(index));
   }
   // Word 文档（.docx）在浏览器里解压出正文，按标题 / 段落 / 表格显示；不再把二进制当文本显示成乱码。
-  async function zipEntry(buffer,name){
+  async function zipEntry(buffer: any,name: any){
     const view=new DataView(buffer),bytes=new Uint8Array(buffer);let end=-1;
     for(let i=bytes.length-22;i>=Math.max(0,bytes.length-65557);i--)if(view.getUint32(i,true)===0x06054b50){end=i;break;}
     if(end<0)throw Error('文件不是有效的 Word 文档');
@@ -361,11 +361,11 @@ declare const FitAddon: any;
     }
     throw Error('Word 文档里没有正文');
   }
-  async function docxHTML(buffer){
+  async function docxHTML(buffer: any){
     const xml=new DOMParser().parseFromString(await zipEntry(buffer,'word/document.xml'),'application/xml');
     const W='http://schemas.openxmlformats.org/wordprocessingml/2006/main', text: any[] = [];
-    const runText=p=>[...p.getElementsByTagNameNS(W,'*')].map(n=>n.localName==='t'?n.textContent:n.localName==='tab'?'\t':n.localName==='br'?'\n':'').join('');
-    const para=p=>{const style=p.getElementsByTagNameNS(W,'pStyle')[0]?.getAttributeNS(W,'val')||p.getElementsByTagNameNS(W,'pStyle')[0]?.getAttribute('w:val')||'',value=runText(p);text.push(value);if(!value.trim())return '';
+    const runText=(p: any)=>[...p.getElementsByTagNameNS(W,'*')].map(n=>n.localName==='t'?n.textContent:n.localName==='tab'?'\t':n.localName==='br'?'\n':'').join('');
+    const para=(p: any)=>{const style=p.getElementsByTagNameNS(W,'pStyle')[0]?.getAttributeNS(W,'val')||p.getElementsByTagNameNS(W,'pStyle')[0]?.getAttribute('w:val')||'',value=runText(p);text.push(value);if(!value.trim())return '';
       const level=/^title$/i.test(style)?1:Number((/heading\s*(\d)/i.exec(style)||/^(\d)$/.exec(style)||[])[1]||0);
       const list=p.getElementsByTagNameNS(W,'numPr').length;
       return level?'<h'+Math.min(level+1,4)+'>'+esc(value)+'</h'+Math.min(level+1,4)+'>':list?'<p class="dots-docx-li">• '+esc(value)+'</p>':'<p>'+esc(value).replace(/\n/g,'<br>')+'</p>';};
@@ -376,7 +376,7 @@ declare const FitAddon: any;
       return '';}).join('');
     return {html,text:text.join('\n')};
   }
-  async function renderDotsOutput(tab,pane) {
+  async function renderDotsOutput(tab: any,pane: any) {
     const outputId=tab.outputId||tab.dotsOutputId,filename=tab.title||'任务结果';
     const url=tab.downloadUrl||('/api/dots/outputs/'+encodeURIComponent(String(outputId))+'/file');
     pane.innerHTML='<p class="wb-empty">正在读取文件…</p>';
@@ -417,8 +417,8 @@ declare const FitAddon: any;
     showRendered();
     const moreBtn=pane.querySelector('.dots-output-more');
     const closeMenu=()=>{const m=pane.querySelector('.dots-output-menu');if(m)m.remove();document.removeEventListener('click',onDocClick);};
-    const onDocClick=e=>{if(!(e as any).target.closest('.dots-output-menu')&&!(e as any).target.closest('.dots-output-more'))closeMenu();};
-    moreBtn.onclick=e=>{
+    const onDocClick=(e: any)=>{if(!(e as any).target.closest('.dots-output-menu')&&!(e as any).target.closest('.dots-output-more'))closeMenu();};
+    moreBtn.onclick=(e: any)=>{
       e.stopPropagation();
       if(pane.querySelector('.dots-output-menu')){closeMenu();return;}
       const menu=document.createElement('div');
@@ -439,20 +439,20 @@ declare const FitAddon: any;
     const label=$('workspaceTabs').querySelector('[data-tab="'+tab.id+'"] > span');if(label)label.textContent=filename;
     persist();
   }
-  async function readFileTab(tab,pane) {
+  async function readFileTab(tab: any,pane: any) {
     pane.innerHTML='<p class="wb-empty">正在读取文件…</p>';
     try{
       const {file}=await api('/files/read','POST',tab.fileId?{fileId:tab.fileId}:{projectId:tab.projectId,path:tab.path});
       displayFile(tab,pane,file);
     }catch(e){pane.innerHTML=`<p class="wb-error file-error">${esc((e as any).message)}</p>`;}
   }
-  function displayFile(tab,pane,file) {
+  function displayFile(tab: any,pane: any,file: any) {
     tab.title=file.name;tab.file=file;
     pane.innerHTML=`<div class="file-preview-toolbar"><span title="${esc(file.path)}">${esc(file.name)}</span><span class="toolbar-spacer"></span>${file.kind==='text'?'<button type="button" class="wb-text-button" data-copy-file>复制</button><button type="button" class="wb-text-button" data-context-file>加入对话</button>':''}</div>`;
     if(file.kind==='image'){pane.insertAdjacentHTML('beforeend',`<div class="file-image-stage"><img alt="${esc(file.name)}" src="${esc(file.dataUrl)}"></div>`);}
     else if(file.kind==='text'){
       const lines=file.text.split('\n'),limited=lines.slice(0,4000),code=document.createElement('div');code.className='code-reader';
-      code.innerHTML=`<pre class="line-numbers" aria-hidden="true">${limited.map((_,i)=>i+1).join('\n')}</pre><pre class="source-code"><code>${highlight(limited.join('\n'))}</code></pre>`;pane.appendChild(code);
+      code.innerHTML=`<pre class="line-numbers" aria-hidden="true">${limited.map((_: any,i: any)=>i+1).join('\n')}</pre><pre class="source-code"><code>${highlight(limited.join('\n'))}</code></pre>`;pane.appendChild(code);
       if(lines.length>4000)pane.insertAdjacentHTML('beforeend','<p class="file-preview-note">预览前 4000 行；复制按钮可复制完整已读取文本。</p>');
       pane.querySelector('[data-copy-file]').onclick=()=>window.shiyan.copyText(file.text);
       const context=pane.querySelector('[data-context-file]');context.disabled=!!file.sensitive;context.title=file.sensitive?'可能含凭证，不能直接加入云端对话':'把文件内容加入草稿，由你确认后发送';
@@ -471,7 +471,7 @@ declare const FitAddon: any;
     const tab=openTab({type:'file',title:file.name,path:file.path,fileId:file.fileId},true);
     if(tab)displayFile(tab,panes.get(tab.id),file);
   }
-  async function startTerminal(tab) {
+  async function startTerminal(tab: any) {
     let session=sessions.get(tab.id);if(session?.sessionId&&!session.exited)return;
     if(!window.Terminal||!window.FitAddon)throw Error('终端组件未加载，请重新打开应用');
     const pane=panes.get(tab.id);pane.querySelector('.terminal-launch').hidden=true;
@@ -482,16 +482,16 @@ declare const FitAddon: any;
     const term=new Terminal({cursorBlink:true,fontFamily:'SFMono-Regular, Menlo, monospace',fontSize:13,scrollback:3000,theme:window.ShiYanV22.terminalTheme(),allowProposedApi:false});
     const fit=new FitAddon.FitAddon();term.loadAddon(fit);term.open(host);
     const controller=new AbortController();session={term,fit,controller,sessionId:terminal.id,pid:terminal.pid,cwd:terminal.cwd,exited:false,writeQueue:Promise.resolve(),input:''};sessions.set(tab.id,session);
-    term.parser.registerOscHandler(7,value=>{try{const url=new URL(value);if(url.protocol==='file:'){session.cwd=decodeURIComponent(url.pathname);tab.cwd=session.cwd;status.title=session.cwd;window.dispatchEvent(new CustomEvent('shiyan-terminal'));persist();}}catch(_){}return true;});
+    term.parser.registerOscHandler(7,(value: any)=>{try{const url=new URL(value);if(url.protocol==='file:'){session.cwd=decodeURIComponent(url.pathname);tab.cwd=session.cwd;status.title=session.cwd;window.dispatchEvent(new CustomEvent('shiyan-terminal'));persist();}}catch(_){}return true;});
     tab.cwd=terminal.cwd;status.textContent='已连接';status.title=terminal.cwd;
     window.dispatchEvent(new CustomEvent('shiyan-terminal',{detail:{tabId:tab.id}}));
-    term.onData(data=>{session.input+=data;if(!session.inputTimer)session.inputTimer=setTimeout(()=>{session.inputTimer=null;const input=session.input;session.input='';session.writeQueue=session.writeQueue.then(()=>api('/terminals/'+session.sessionId+'/input','POST',{data:input})).catch(e=>{status.textContent=(e as any).message;});},12);});
-    term.onResize(({cols,rows})=>{if(!session.exited)api('/terminals/'+session.sessionId+'/resize','POST',{cols:Math.max(20,Math.min(500,cols)),rows:Math.max(5,Math.min(200,rows))}).catch(()=>{});});
+    term.onData((data: any)=>{session.input+=data;if(!session.inputTimer)session.inputTimer=setTimeout(()=>{session.inputTimer=null;const input=session.input;session.input='';session.writeQueue=session.writeQueue.then(()=>api('/terminals/'+session.sessionId+'/input','POST',{data:input})).catch((e: any)=>{status.textContent=(e as any).message;});},12);});
+    term.onResize(({cols,rows}: any)=>{if(!session.exited)api('/terminals/'+session.sessionId+'/resize','POST',{cols:Math.max(20,Math.min(500,cols)),rows:Math.max(5,Math.min(200,rows))}).catch(()=>{});});
     session.observer=new ResizeObserver(()=>{if(!pane.hidden&&!$('rightWorkspace').hidden)try{fit.fit();}catch(_){}});session.observer.observe(host);
     requestAnimationFrame(()=>{try{fit.fit();term.focus();}catch(_){}});
     readTerminal(session,status,pane).catch(e=>{if(e.name!=='AbortError'){status.textContent='连接中断';notify('终端连接中断：'+(e as any).message);}});
   }
-  async function readTerminal(session,status,pane) {
+  async function readTerminal(session: any,status: any,pane: any) {
     const response=await fetch('/api/workspace/terminals/'+session.sessionId+'/events',{headers:{'X-Shiyan-Workspace':token},signal:session.controller.signal});
     if(!response.ok)throw Error('终端订阅被拒绝 ('+response.status+')');
     const reader=(response.body as any).getReader(),decoder=new TextDecoder();let pending='';
@@ -520,10 +520,10 @@ declare const FitAddon: any;
     if(!chatSearchModal||chatSearchModal.hidden||chatSearchComposing)return;
     const term=$('wbChatSearchInput').value.trim().toLocaleLowerCase();
     const all=window.shiyan.getState()?.conversations||[];
-    const matches=all.filter(c=>(c.messages||[]).some(m=>m.role==='user') && (!term||[c.title,projects.find(p=>p.id===c.projectId)?.name,...(c.messages||[]).map(m=>m.text)].some(v=>String(v||'').toLocaleLowerCase().includes(term))))
-      .sort((a,b)=>new Date(b.lastOpenedAt||b.updatedAt||0).getTime()-new Date(a.lastOpenedAt||a.updatedAt||0).getTime());
+    const matches=all.filter((c: any)=>(c.messages||[]).some((m: any)=>m.role==='user') && (!term||[c.title,projects.find(p=>p.id===c.projectId)?.name,...(c.messages||[]).map((m: any)=>m.text)].some(v=>String(v||'').toLocaleLowerCase().includes(term))))
+      .sort((a: any,b: any)=>new Date(b.lastOpenedAt||b.updatedAt||0).getTime()-new Date(a.lastOpenedAt||a.updatedAt||0).getTime());
     const results=matches.slice(0,term?50:12);
-    $('wbChatSearchResults').innerHTML=results.length?results.map(c=>{
+    $('wbChatSearchResults').innerHTML=results.length?results.map((c: any)=>{
       const project=projects.find(p=>p.id===c.projectId);
       return `<button type="button" class="wb-chat-search-row" data-chat-search-id="${esc(c.id)}"><span class="wb-chat-search-title">${esc(c.title||'新聊天')}</span><span class="wb-chat-search-project" title="${esc(project?.name||'')}">${esc(project?.name||'')}</span></button>`;
     }).join(''):`<p class="wb-chat-search-empty">${term?'没有找到相关聊天':'还没有聊天记录'}</p>`;
@@ -536,14 +536,14 @@ declare const FitAddon: any;
       const input=$('wbChatSearchInput');input.addEventListener('input',renderChatSearch);
       input.addEventListener('compositionstart',()=>{chatSearchComposing=true});
       input.addEventListener('compositionend',()=>{chatSearchComposing=false;renderChatSearch()});
-      chatSearchModal.addEventListener('click',async e=>{
+      chatSearchModal.addEventListener('click',async (e: any)=>{
         if((e as any).target===chatSearchModal){closeChatSearch();return;}
         const row=(e as any).target.closest('[data-chat-search-id]');if(!row||row.disabled)return;
         row.disabled=true;
         try{await window.shiyan.selectConversation(row.dataset.chatSearchId);closeChatSearch(false);}
         catch(error){window.shiyan.toast((error as any).message);if(row.isConnected)row.disabled=false;}
       });
-      chatSearchModal.addEventListener('keydown',e=>{
+      chatSearchModal.addEventListener('keydown',(e: any)=>{
         if(e.isComposing||e.keyCode===229)return;
         if(e.key==='Escape'){e.preventDefault();e.stopPropagation();closeChatSearch();return;}
         if(e.key==='Tab'){
@@ -560,9 +560,9 @@ declare const FitAddon: any;
     $('sidebarSearch').setAttribute('aria-expanded','true');renderChatSearch();scheduleNative();
     $('wbChatSearchInput').focus({preventScroll:true});
   }
-  function workspaceTool(type) {
+  function workspaceTool(type: any) {
     if(type==='execution'){window.ShiYanExecution?.openLatest();return;}
-    const title={files:'文件',terminal:'终端',history:'浏览历史',bookmarks:'书签',downloads:'下载记录',settings:'浏览器设置'}[type];
+    const title=({files:'文件',terminal:'终端',history:'浏览历史',bookmarks:'书签',downloads:'下载记录',settings:'浏览器设置'} as any)[type];
     const tab=openTab({type,title,projectId:['files','terminal'].includes(type)?prefs.selectedProjectId||undefined:undefined},type!=='terminal');
     if(type==='terminal'&&tab)startTerminal(tab).catch(e=>notify((e as any).message));
   }
@@ -586,26 +586,26 @@ declare const FitAddon: any;
       layout();persist();
     };
     for(const[name,id]of Object.entries({pinned:'pinnedGroup',projects:'projectsGroup',recent:'recentGroup'}))$(id).addEventListener('toggle',()=>{prefs.groups={...prefs.groups,[name]:$(id).open};persist();});
-    $('addProjectButton').onclick=e=>{e.preventDefault();e.stopPropagation();projectDialog(false);};
+    $('addProjectButton').onclick=(e: any)=>{e.preventDefault();e.stopPropagation();projectDialog(false);};
     $('cancelProject').onclick=()=>{$('workbenchModal').hidden=true;scheduleNative();};
     $('importProjectMode').onclick=()=>setProjectMode(false);$('createProjectMode').onclick=()=>setProjectMode(true);
     $('chooseProjectDirectory').onclick=async()=>{try{const result=await pick('chooseDirectory',$('projectPath').value);if(result&&!result.cancelled){$('projectPath').value=result.path;if(!$('projectName').value&&!createProject)$('projectName').value=result.path.split('/').filter(Boolean).pop();}}catch(e){notify((e as any).message);}};
-    $('projectForm').onsubmit=async e=>{
+    $('projectForm').onsubmit=async (e: any)=>{
       e.preventDefault();$('submitProject').disabled=true;$('projectFormError').hidden=true;
       try{const result=await api('/projects','POST',{name:$('projectName').value,path:$('projectPath').value,create:createProject});projects=result.projects;renderProjects();$('workbenchModal').hidden=true;await selectProject(result.project.id);}
       catch(error){$('projectFormError').textContent=(error as any).message;$('projectFormError').hidden=false;}
       finally{$('submitProject').disabled=false;scheduleNative();}
     };
-    $('projectList').onclick=e=>{const p=(e as any).target.closest('[data-project]');if(p)selectProject(p.dataset.project).catch(error=>notify((error as any).message));};
+    $('projectList').onclick=(e: any)=>{const p=(e as any).target.closest('[data-project]');if(p)selectProject(p.dataset.project).catch(error=>notify((error as any).message));};
     $('addWorkspaceTab').onclick=()=>openTab();
-    $('workspaceTabs').onclick=e=>{const close=(e as any).target.closest('[data-close-tab]');if(close){e.stopPropagation();closeTab(close.dataset.closeTab);return;}const t=(e as any).target.closest('[data-tab]');if(t)selectTab(t.dataset.tab);};
-    $('workspaceTabs').onkeydown=e=>{if(e.key==='Enter'||e.key===' '){const t=(e as any).target.closest('[data-tab]');if(t){e.preventDefault();selectTab(t.dataset.tab);}}};
-    $('addressForm').onsubmit=e=>{e.preventDefault();try{const t=tabs.find(t=>t.id===activeTab);if(t?.type!=='browser')return;const url=normalizeAddress($('browserAddress').value);if(!url)return;t.url=url;t.title=new URL(url).hostname;openedBrowsers.add(t.id);native('navigate',{tabId:t.id,url});renderTabs();persist();}catch(error){notify((error as any).message);}};
+    $('workspaceTabs').onclick=(e: any)=>{const close=(e as any).target.closest('[data-close-tab]');if(close){e.stopPropagation();closeTab(close.dataset.closeTab);return;}const t=(e as any).target.closest('[data-tab]');if(t)selectTab(t.dataset.tab);};
+    $('workspaceTabs').onkeydown=(e: any)=>{if(e.key==='Enter'||e.key===' '){const t=(e as any).target.closest('[data-tab]');if(t){e.preventDefault();selectTab(t.dataset.tab);}}};
+    $('addressForm').onsubmit=(e: any)=>{e.preventDefault();try{const t=tabs.find(t=>t.id===activeTab);if(t?.type!=='browser')return;const url=normalizeAddress($('browserAddress').value);if(!url)return;t.url=url;t.title=new URL(url).hostname;openedBrowsers.add(t.id);native('navigate',{tabId:t.id,url});renderTabs();persist();}catch(error){notify((error as any).message);}};
     $('browserBack').onclick=()=>native('back',{tabId:activeTab});$('browserForward').onclick=()=>native('forward',{tabId:activeTab});
     $('browserReload').onclick=()=>{const tab=tabs.find(t=>t.id===activeTab);native('reload',{tabId:activeTab,url:tab?.url});};
     $('browserTools').onclick=()=>workspaceTool('settings');
     $('bookmarkPage').onclick=()=>{const t=tabs.find(t=>t.id===activeTab);if(t?.url)native('bookmark',{url:t.url,title:t.title});};
-    $('rightContent').addEventListener('click',async e=>{
+    $('rightContent').addEventListener('click',async (e: any)=>{
       const b=(e as any).target.closest('button');if(!b)return;
       try{
         if(b.dataset.workspaceTool)workspaceTool(b.dataset.workspaceTool);
@@ -648,8 +648,8 @@ declare const FitAddon: any;
     window.addEventListener('resize',layout);
     for(const[id,which]of [['leftResizeHandle','left'],['rightResizeHandle','right']]){
       let drag: any = null;const handle=$(id);
-      handle.onpointerdown=e=>{if(e.button!==0)return;drag={x:e.clientX,value:prefs[which+'Width']};handle.setPointerCapture(e.pointerId);document.body.classList.add('resizing-workbench');};
-      handle.onpointermove=e=>{if(!drag)return;const amount=(e.clientX-drag.x)*(which==='right'?-1:1);prefs[which+'Width']=Math.max(which==='left'?210:280,Math.min(which==='left'?350:900,drag.value+amount));layout();};
+      handle.onpointerdown=(e: any)=>{if(e.button!==0)return;drag={x:e.clientX,value:prefs[which+'Width']};handle.setPointerCapture(e.pointerId);document.body.classList.add('resizing-workbench');};
+      handle.onpointermove=(e: any)=>{if(!drag)return;const amount=(e.clientX-drag.x)*(which==='right'?-1:1);prefs[which+'Width']=Math.max(which==='left'?210:280,Math.min(which==='left'?350:900,drag.value+amount));layout();};
       handle.onpointerup=handle.onpointercancel=()=>{if(drag){drag=null;document.body.classList.remove('resizing-workbench');persist();}};
     }
     document.addEventListener('keydown',e=>{
@@ -672,11 +672,11 @@ declare const FitAddon: any;
       get defaultDirectory(){return defaultDirectory;},get ready(){return ready;},
       panes,sessions,icon,toolbarIcon,api,native,nativeAvailable,persist,scheduleNative,
       selectProject,openTab,selectTab,closeTab,renderTabs,startTerminal,workspaceTool,highlight,pick,
-      setActiveId:value=>{activeTab=value;},setProjects:value=>{projects=value;}
+      setActiveId:(value: any)=>{activeTab=value;},setProjects:(value: any)=>{projects=value;}
     });
     layout();
-    window.workbench={get ready(){return ready&&!!v2?.inspect().booted;},selectedProjectId:()=>prefs.selectedProjectId||null,openTool:workspaceTool,openAsset:asset=>v2.openAsset(asset),
-      refreshOverlays:scheduleNative,revealConversationProject:(id,projectId)=>{if(window.shiyan.getState()?.selectedConversationId===id){prefs.selectedProjectId=projectId;persist();}v2?.revealConversationProject(projectId);},
+    window.workbench={get ready(){return ready&&!!v2?.inspect().booted;},selectedProjectId:()=>prefs.selectedProjectId||null,openTool:workspaceTool,openAsset:(asset: any)=>v2.openAsset(asset),
+      refreshOverlays:scheduleNative,revealConversationProject:(id: any,projectId: any)=>{if(window.shiyan.getState()?.selectedConversationId===id){prefs.selectedProjectId=projectId;persist();}v2?.revealConversationProject(projectId);},
       getLayout:()=>({...v2?.inspect(),leftOpen:prefs.leftOpen,rightOpen:prefs.rightOpen,groups:{...prefs.groups},tabCount:tabs.length,activeTab,nativeBrowser:nativeAvailable(),projects:projects.map(p=>({id:p.id,name:p.name,path:p.path})),terminals:[...sessions.values()].map(s=>({id:s.sessionId,pid:s.pid,exited:!!s.exited})),rects:Object.fromEntries(['activityRail','leftContainer','mainWorkspace','rightWorkspace'].map(id=>{const r=$(id).getBoundingClientRect();return[id,{x:r.x,y:r.y,width:r.width,height:r.height}];}))})};
     try{
       const data=await api('/bootstrap','POST',{});token=data.token;projects=data.projects||[];defaultDirectory=data.defaultDirectory;
@@ -686,7 +686,7 @@ declare const FitAddon: any;
       if(window.ShiYanPlatform?.mode==='web')prefs.leftWidth=248;
        
       if(Number(data.preferences?.rightWidth)===590){prefs.rightWidth=460;persist();}
-      tabs=(data.preferences?.tabs||[]).filter(t=>t.id&&t.type&&t.type!=='temporary').map(t=>({...t}));
+      tabs=(data.preferences?.tabs||[]).filter((t: any)=>t.id&&t.type&&t.type!=='temporary').map((t: any)=>({...t}));
       activeTab=data.preferences?.activeTab||tabs[0]?.id||'';
       ready=true;loading=false;lastSelected='';
       for(const[name,id]of Object.entries({pinned:'pinnedGroup',projects:'projectsGroup',recent:'recentGroup'}))$(id).open=prefs.groups[name]!==false;

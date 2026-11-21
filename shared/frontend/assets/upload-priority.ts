@@ -10,13 +10,13 @@
     return ()=>{if(released)return;released=true;if(--count===0){changed();for(const resolve of waiting)resolve();waiting.clear();}};
   }
   const wait=()=>count?new Promise(resolve=>waiting.add(resolve)):Promise.resolve();
-  function upload(path,body,onProgress){
+  function upload(path: any,body: any,onProgress: any){
     return new Promise((resolve,reject)=>{
-      const xhr=new XMLHttpRequest();let settled=false,timer;
+      const xhr=new XMLHttpRequest();let settled=false,timer: any;
       const finish=(error: any, data?: any)=>{if(settled)return;settled=true;clearTimeout(timer);error?reject(error):resolve(data);};
       const fail=(message: any, status?: any)=>Object.assign(new Error(message),status?{status}:{});
       const alive=()=>{clearTimeout(timer);timer=setTimeout(()=>{finish(fail('图片上传长时间没有进展，请检查网络后重试',408));xhr.abort();},120000);};
-      const progress=value=>{try{onProgress?.(value);}catch(_){}};
+      const progress=(value: any)=>{try{onProgress?.(value);}catch(_){}};
       xhr.open('POST',path);xhr.withCredentials=true;xhr.setRequestHeader('X-Shiyan-Local','1');
       xhr.upload.onprogress=e=>{alive();progress({loaded:e.loaded,total:e.total,percent:e.lengthComputable&&e.total?Math.min(100,Math.floor(e.loaded/e.total*100)):null,sent:false});};
       xhr.upload.onload=e=>{alive();progress({loaded:e.loaded,total:e.total,percent:100,sent:true});};

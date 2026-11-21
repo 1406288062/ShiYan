@@ -2,24 +2,24 @@
 (() => {
   'use strict';
   const esc = (v: any) => String(v ?? '').replace(/[&<>"']/g, (c: string): string => (({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'} as Record<string,string>)[c]));
-  const limit = (v, n=4000) => String(v ?? '').slice(0,n);
+  const limit = (v: any, n=4000) => String(v ?? '').slice(0,n);
   const allowed = new Set(['reasoning','command_execution','mcp_tool_call','todo_list','web_search','file_change','collab_tool_call','image_generation','error']);
-  function safeURL(value, image=false) {
+  function safeURL(value: any, image=false) {
     try { const u=new URL(String(value),location.href);return (image?['http:','https:']:['http:','https:','mailto:']).includes(u.protocol)?u.href:''; } catch { return ''; }
   }
-  function generatedFileLink(value) {
+  function generatedFileLink(value: any) {
     return /^(?:sandbox:|\/Users\/|\/home\/|\/mnt\/data\/|\/?outputs\/|\/?artifacts\/)/.test(String(value||''));
   }
   const generatedDocuments=new Set(['doc','docx','docm','dot','dotx','dotm','rtf','odt','pdf','xls','xlsx','xlsm','xlsb','xlt','xltx','xltm','csv','ods','ppt','pptx','pptm','pot','potx','potm','pps','ppsx','ppsm','odp','pages','numbers']);
   const generatedImages=new Set(['png','jpg','jpeg','webp','gif','heic','heif','tif','tiff','bmp','avif','svg']);
-  function generatedAssetVisible(asset) {
+  function generatedAssetVisible(asset: any) {
     if(!asset||typeof asset.filename!=='string')return false;
     const parts=asset.filename.replace(/\\/g,'/').split('/');
-    if(parts.some(part=>part.startsWith('.')||['inputs','node_modules','__pycache__'].includes(part.toLowerCase())))return false;
+    if(parts.some((part: any)=>part.startsWith('.')||['inputs','node_modules','__pycache__'].includes(part.toLowerCase())))return false;
     const extension=parts.at(-1).split('.').at(-1).toLowerCase();
     return generatedDocuments.has(extension)||generatedImages.has(extension);
   }
-  function generatedDocumentVisible(asset) {
+  function generatedDocumentVisible(asset: any) {
     return generatedAssetVisible(asset)&&!(asset.mimeType||'').startsWith('image/')&&generatedDocuments.has(asset.filename.split('.').at(-1).toLowerCase());
   }
   const parsers=new Map();
@@ -31,14 +31,14 @@
       parser.disable('code');
       // Email HTML often leaves layout-sized runs of non-breaking spaces.
       // Normalize text tokens only: fenced code, URLs and Markdown structure stay intact.
-      parser.core.ruler.after('text_join','shiyan-prose-spacing',state=>{
+      parser.core.ruler.after('text_join','shiyan-prose-spacing',(state: any)=>{
         for(const block of state.tokens){
           if(block.type!=='inline'||!block.children)continue;
-          block.children=block.children.flatMap(token=>{
+          block.children=block.children.flatMap((token: any)=>{
             if(token.type!=='text')return [token];
             const parts=token.content.replace(/[ \t\u00a0\u3000]{4,}/g,'\n').split('\n');
             const result: any[] = [];
-            parts.forEach((part,index)=>{
+            parts.forEach((part: any,index: any)=>{
               if(index)result.push(new state.Token('softbreak','br',0));
               const text=new state.Token('text','',0);
               text.content=part.replace(/[ \t\u00a0\u3000]+/g,' ');
@@ -52,9 +52,9 @@
       });
     }
     parsers.set(prose,parser);
-    parser.validateLink=href=>generatedFileLink(href)||!!safeURL(href);
-    const link=parser.renderer.rules.link_open || ((t,i,o,e,s)=>s.renderToken(t,i,o));
-    parser.renderer.rules.link_open=(tokens,index,options,env,self)=>{
+    parser.validateLink=(href: any)=>generatedFileLink(href)||!!safeURL(href);
+    const link=parser.renderer.rules.link_open || ((t: any,i: any,o: any,e: any,s: any)=>s.renderToken(t,i,o));
+    parser.renderer.rules.link_open=(tokens: any,index: any,options: any,env: any,self: any)=>{
       const t=tokens[index],raw=t.attrGet('href');
       if(generatedFileLink(raw)){t.attrSet('data-generated-file',raw);t.attrSet('href','#');}
       else {
@@ -73,19 +73,19 @@
       }
       return link(tokens,index,options,env,self);
     };
-    parser.renderer.rules.image=(tokens,index,options,env,self)=>{
+    parser.renderer.rules.image=(tokens: any,index: any,options: any,env: any,self: any)=>{
       const t=tokens[index],src=safeURL(t.attrGet('src'),true),alt=self.renderInlineAsText(t.children||[],options,env);
       if(!src)return esc(alt);
       return '<img src="'+esc(src)+'" alt="'+esc(alt)+'" loading="lazy" decoding="async">';
     };
-    function code(tokens,index,options,env) {
+    function code(tokens: any,index: any,options: any,env: any) {
       const t=tokens[index],source=t.content,label=limit((t.info||'').trim().split(/\s+/)[0]||'代码',40);
       return '<section class="code-block"><div class="code-header"><span>'+esc(label)+'</span><button type="button" data-copy-code="'+esc(source)+'" aria-label="复制代码">'+(env.copyIcon||'')+'<span>复制</span></button></div><pre><code>'+esc(source)+'</code></pre></section>';
     }
     parser.renderer.rules.fence=code;parser.renderer.rules.code_block=code;
     parser.renderer.rules.table_open=()=>'<div class="table-scroll"><table>';
     parser.renderer.rules.table_close=()=>'</table></div>';
-    parser.core.ruler.after('inline','shiyan-task-list',state=>{
+    parser.core.ruler.after('inline','shiyan-task-list',(state: any)=>{
       for(let i=2;i<state.tokens.length;i++){
         const t=state.tokens[i],first=t.children?.[0];
         if(t.type!=='inline'||state.tokens[i-1].type!=='paragraph_open'||state.tokens[i-2].type!=='list_item_open'||first?.type!=='text')continue;
@@ -97,16 +97,16 @@
     });
     return parser;
   }
-  function markdown(text,copyIcon='',{prose=false}={}) {
+  function markdown(text: any,copyIcon='',{prose=false}={}) {
     const p=getParser(prose);return p?p.render(String(text??''),{copyIcon}):'<p>'+esc(text).replace(/\n/g,'<br>')+'</p>';
   }
-  function itemsFor(message) {
-    if(Array.isArray(message.displayItems))return message.displayItems.filter(i=>i&&allowed.has(i.type)).slice(-60);
+  function itemsFor(message: any) {
+    if(Array.isArray(message.displayItems))return message.displayItems.filter((i: any)=>i&&allowed.has(i.type)).slice(-60);
     let raw=message.rawResult;
     if(typeof raw==='string'){if(raw.length>1000000)return [];try{raw=JSON.parse(raw);}catch{return [];}}
     return (Array.isArray(raw)?raw:[]).filter(i=>i&&allowed.has(i.type)).slice(-60);
   }
-  function status(item) {
+  function status(item: any) {
     const failed=item.type==='error'||item.status==='failed'||!!item.error||item.result?.isError===true||(item.type==='command_execution'&&Number.isFinite(item.exit_code)&&item.exit_code!==0);
     if(failed)return {key:'failed',label:'失败'};
     if(['cancelled','canceled','interrupted'].includes(item.status))return {key:'cancelled',label:'已停止'};
@@ -114,17 +114,17 @@
     if(item.status==='completed')return {key:'completed',label:'已完成'};
     return {key:'recorded',label:'已记录'};
   }
-  function output(text,label) {
+  function output(text: any,label: any) {
     if(!text)return '';const raw=String(text);
     return '<div class="output-log-label">'+esc(label)+'</div><pre class="output-log">'+esc(limit(raw))+'</pre>'+(raw.length>4000?'<p class="output-truncated">较长输出已显示前 4000 个字符</p>':'');
   }
-  function toolText(item) {
+  function toolText(item: any) {
     if(typeof item.result_text==='string')return item.result_text;
     const content=item.result?.content;
     return Array.isArray(content)?content.filter(c=>c?.type==='text'&&typeof c.text==='string').map(c=>c.text).join('\n'):'';
   }
   // 每一步用一句话说明在做什么（按命令 / 工具推断，推断不出就不写）。
-  function commandPurpose(command){
+  function commandPurpose(command: any){
     let c=String(command||'').trim();
     const wrapped=c.match(/^(?:\/bin\/)?(?:ba|z)?sh\s+-l?c\s+(['"])([\s\S]*)\1$/);if(wrapped)c=wrapped[2];
     c=c.replace(/^(?:cd\s+\S+\s*&&\s*)+/,'').trim();
@@ -139,7 +139,7 @@
     for(const [re,text] of rules)if(re.test(c))return text;
     return '';
   }
-  function toolPurpose(item){
+  function toolPurpose(item: any){
     const server=String(item.server||'').toLowerCase(),tool=String(item.tool||'').toLowerCase();
     if(server==='shiyan-input')return '向你确认信息';
     if(/memory/.test(server+tool))return '读取或更新记忆';
@@ -149,8 +149,8 @@
     if(/search/.test(tool))return '搜索资料';
     return '';
   }
-  function purposeHTML(text){return text?'<p class="output-purpose">'+esc(text)+'</p>':'';}
-  function itemHTML(item) {
+  function purposeHTML(text: any){return text?'<p class="output-purpose">'+esc(text)+'</p>':'';}
+  function itemHTML(item: any) {
     const s=status(item);let label='',body='';
     if(item.type==='reasoning'){
       const text=String(item.text||'').trim();
@@ -164,10 +164,10 @@
       body=purposeHTML(toolPurpose(item))+output(toolText(item),'工具结果');
       if(item.error)body+='<p class="output-error">'+esc(limit(typeof item.error==='string'?item.error:item.error.message||'工具调用失败'))+'</p>';
     }else if(item.type==='todo_list'){
-      label='执行计划';const rows=(Array.isArray(item.items)?item.items:[]).slice(0,50);s.label=rows.filter(t=>t.completed).length+'/'+rows.length+' 已完成';
-      body='<ul class="output-plan">'+rows.map(t=>'<li'+(t.completed?' class="is-done"':'')+'><input type="checkbox" disabled'+(t.completed?' checked':'')+' aria-label="'+(t.completed?'已完成':'未完成')+'"><span>'+esc(limit(t.text,1000))+'</span></li>').join('')+'</ul>';
+      label='执行计划';const rows=(Array.isArray(item.items)?item.items:[]).slice(0,50);s.label=rows.filter((t: any)=>t.completed).length+'/'+rows.length+' 已完成';
+      body='<ul class="output-plan">'+rows.map((t: any)=>'<li'+(t.completed?' class="is-done"':'')+'><input type="checkbox" disabled'+(t.completed?' checked':'')+' aria-label="'+(t.completed?'已完成':'未完成')+'"><span>'+esc(limit(t.text,1000))+'</span></li>').join('')+'</ul>';
     }else if(item.type==='file_change'){
-      label='文件修改';body=purposeHTML('修改了 '+(Array.isArray(item.changes)?item.changes.length:0)+' 个文件')+'<ul class="output-files">'+(Array.isArray(item.changes)?item.changes:[]).slice(0,50).map(f=>'<li><span>'+esc(limit(f.path,1000))+'</span><small>'+esc(({add:'新增',delete:'删除',update:'修改'})[f.kind]||limit(f.kind,40))+'</small></li>').join('')+'</ul>';
+      label='文件修改';body=purposeHTML('修改了 '+(Array.isArray(item.changes)?item.changes.length:0)+' 个文件')+'<ul class="output-files">'+(Array.isArray(item.changes)?item.changes:[]).slice(0,50).map((f: any)=>'<li><span>'+esc(limit(f.path,1000))+'</span><small>'+esc((({add:'新增',delete:'删除',update:'修改'}) as any)[f.kind]||limit(f.kind,40))+'</small></li>').join('')+'</ul>';
     }else if(item.type==='web_search'){
       label='搜索网页';body='<p class="output-query">'+esc(limit(item.query,1000))+'</p>';
     }else if(item.type==='collab_tool_call'){
@@ -179,12 +179,12 @@
     }
     return '<section class="output-item" data-output-id="'+esc(item.id||'')+'" data-output-status="'+s.key+'"><header><span>'+esc(label)+'</span><small>'+s.label+'</small></header>'+body+'</section>';
   }
-  function executionStats(message) {
+  function executionStats(message: any) {
     const stored=message.executionStats;
     if(stored&&['total','success','failed','pending'].every(k=>Number.isSafeInteger(stored[k])&&stored[k]>=0)&&stored.total===stored.success+stored.failed+stored.pending)return {total:stored.total,success:stored.success,failed:stored.failed,pending:stored.pending};
     let raw=message.rawResult;
     if(typeof raw==='string'&&raw.length<=16000000){try{raw=JSON.parse(raw);}catch{raw=null;}}
-    const projected = new Map<any, any>((message.displayItems||[]).map(item=>[item.id,item]));
+    const projected = new Map<any, any>((message.displayItems||[]).map((item: any)=>[item.id,item]));
     const source=Array.isArray(raw)?raw.map(item=>item&&typeof item==='object'?{...projected.get(item.id),...item,status:item.status||projected.get(item.id)?.status}:item):Array.isArray(message.displayItems)?message.displayItems:[];
     const byID=new Map();let anonymous=0;
     for(const item of source){if(!item||!['command_execution','mcp_tool_call','web_search','file_change','collab_tool_call','image_generation'].includes(item.type))continue;byID.set(item.id||'anonymous:'+anonymous++,item);}
@@ -209,14 +209,14 @@
     image_generation:'M4.5 5.5h15v13h-15zM4.5 15l4-4 4 4 2.5-2.5 4.5 4.5M15.5 9.5h.01',
     error:'M12 9v4M12 16.5h.01M12 4l8.5 15h-17z'
   };
-  const glyph=type=>'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="'+(glyphs[type]||glyphs.mcp_tool_call)+'"/></svg>';
+  const glyph=(type: any)=>'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="'+((glyphs as any)[type]||glyphs.mcp_tool_call)+'"/></svg>';
   const toolNames={'shiyan-input':'向你确认',web:'网页',fetch:'读取网页',filesystem:'文件',memory:'记忆'};
-  function stepTitle(item){
+  function stepTitle(item: any){
     switch(item.type){
       case 'reasoning':return '思考';
       case 'command_execution':return '运行命令';
       case 'web_search':return '搜索网页';
-      case 'mcp_tool_call':return '使用工具'+(item.tool?' · '+(toolNames[item.server]||limit(item.server,40)||'')+(item.server?' / ':'')+limit(item.tool,60):'');
+      case 'mcp_tool_call':return '使用工具'+(item.tool?' · '+((toolNames as any)[item.server]||limit(item.server,40)||'')+(item.server?' / ':'')+limit(item.tool,60):'');
       case 'todo_list':return '制定计划';
       case 'file_change':{const n=(item.changes||[]).length;return n?'修改 '+n+' 个文件':'修改文件';}
       case 'collab_tool_call':return '分派协作任务';
@@ -225,16 +225,16 @@
     }
     return '处理';
   }
-  function liveLabel(item){
+  function liveLabel(item: any){
     if(!item)return '正在思考';
-    return ({reasoning:'正在思考',command_execution:'正在运行命令',web_search:'正在搜索网页',mcp_tool_call:'正在使用工具',todo_list:'正在规划',file_change:'正在修改文件',collab_tool_call:'正在协作处理',image_generation:'正在生成图片'})[item.type]||'正在处理';
+    return (({reasoning:'正在思考',command_execution:'正在运行命令',web_search:'正在搜索网页',mcp_tool_call:'正在使用工具',todo_list:'正在规划',file_change:'正在修改文件',collab_tool_call:'正在协作处理',image_generation:'正在生成图片'}) as any)[item.type]||'正在处理';
   }
-  function thoughtHTML(item,live){
+  function thoughtHTML(item: any,live: any){
     const raw=String(item.text||'').trim();if(!raw)return '';
     const text=live&&raw.length>360?'…'+raw.slice(-360):raw;
     return '<div class="exec-thought'+(live?' is-live':'')+'" title="'+(live?'':'点击展开 / 收起')+'">'+esc(limit(text,8000)).replace(/\n{2,}/g,'\n').replace(/\n/g,'<br>')+'</div>';
   }
-  function stepBody(item,live){
+  function stepBody(item: any,live: any){
     if(item.type==='reasoning')return thoughtHTML(item,live);
     if(item.type==='command_execution'){
       const out=String(item.aggregated_output||'').trim();
@@ -247,34 +247,34 @@
     }
     if(item.type==='todo_list'){
       const rows=(Array.isArray(item.items)?item.items:[]).slice(0,30);
-      return '<ul class="exec-plan">'+rows.map(t=>'<li class="'+(t.completed?'is-done':'')+'"><i></i><span>'+esc(limit(t.text,300))+'</span></li>').join('')+'</ul>';
+      return '<ul class="exec-plan">'+rows.map((t: any)=>'<li class="'+(t.completed?'is-done':'')+'"><i></i><span>'+esc(limit(t.text,300))+'</span></li>').join('')+'</ul>';
     }
-    if(item.type==='file_change')return '<ul class="exec-files">'+(item.changes||[]).slice(0,30).map(f=>'<li><span>'+esc(limit(String(f.path).split('/').slice(-2).join('/'),200))+'</span><small class="is-'+esc(f.kind||'update')+'">'+esc(({add:'新增',delete:'删除',update:'修改'})[f.kind]||'修改')+'</small></li>').join('')+'</ul>';
+    if(item.type==='file_change')return '<ul class="exec-files">'+(item.changes||[]).slice(0,30).map((f: any)=>'<li><span>'+esc(limit(String(f.path).split('/').slice(-2).join('/'),200))+'</span><small class="is-'+esc(f.kind||'update')+'">'+esc((({add:'新增',delete:'删除',update:'修改'}) as any)[f.kind]||'修改')+'</small></li>').join('')+'</ul>';
     if(item.type==='collab_tool_call'){const count=item.agents_count??item.count;return Number.isFinite(count)?'<p class="exec-quote">'+esc(count)+' 个子任务</p>':'';}
     if(item.type==='error')return '<p class="exec-error">'+esc(limit(item.message||'执行时发生错误',600))+'</p>';
     return '';
   }
-  function timelineHTML(items,busy){
+  function timelineHTML(items: any,busy: any){
     const last=items[items.length-1];
-    return '<ol class="exec-timeline">'+items.map(item=>{
+    return '<ol class="exec-timeline">'+items.map((item: any)=>{
       const s=status(item),live=busy&&item===last&&s.key!=='failed';
       const state=s.key==='failed'?'failed':live||s.key==='running'?'running':'done';
       return '<li class="exec-step" data-kind="'+esc(item.type)+'" data-state="'+state+'"><span class="exec-node">'+glyph(item.type)+'</span><div class="exec-main"><div class="exec-title"><span>'+esc(stepTitle(item))+'</span>'+(state==='failed'?'<em>失败</em>':'')+'</div>'+(!busy||item===last||state==='failed'?stepBody(item,live):'')+'</div></li>';
     }).join('')+'</ol>';
   }
-  function summaryText(items){
-    const thoughts=items.filter(i=>i.type==='reasoning').length,steps=items.filter(i=>i.type!=='reasoning'&&i.type!=='todo_list').length;
-    const failed=items.filter(i=>status(i).key==='failed').length;
+  function summaryText(items: any){
+    const thoughts=items.filter((i: any)=>i.type==='reasoning').length,steps=items.filter((i: any)=>i.type!=='reasoning'&&i.type!=='todo_list').length;
+    const failed=items.filter((i: any)=>status(i).key==='failed').length;
     const parts: string[] = [];if(thoughts)parts.push('已思考');if(steps)parts.push('执行 '+steps+' 步');if(!parts.length)parts.push('处理过程');
     return parts.join(' · ')+(failed?' · <b>'+failed+' 步失败</b>':'');
   }
   // 聊天气泡内的执行过程：进行中展开并实时显示思考，完成后收起为一行。
-  function inline(message,busy){
+  function inline(message: any,busy: any){
     const items=itemsFor(message);
     if(!items.length&&!busy)return '';
     if(busy){
       const last=items[items.length-1],label=message.phase&&!/处理中|正在回复/.test(message.phase)?message.phase:liveLabel(last);
-      return '<div class="exec is-live" aria-live="polite"><div class="exec-head"><span class="exec-pulse" aria-hidden="true"></span><span class="exec-shimmer">'+esc(label)+'</span>'+(items.length>1?'<small>'+items.filter(i=>i.type!=='reasoning').length+' 步</small>':'')+'</div>'+(items.length?timelineHTML(items.slice(-6),true):'')+'</div>';
+      return '<div class="exec is-live" aria-live="polite"><div class="exec-head"><span class="exec-pulse" aria-hidden="true"></span><span class="exec-shimmer">'+esc(label)+'</span>'+(items.length>1?'<small>'+items.filter((i: any)=>i.type!=='reasoning').length+' 步</small>':'')+'</div>'+(items.length?timelineHTML(items.slice(-6),true):'')+'</div>';
     }
     return '<details class="exec"><summary class="exec-head"><span class="exec-done" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5.5 12.5l4 4 9-9"/></svg></span><span>'+summaryText(items)+'</span><svg class="exec-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></summary>'+timelineHTML(items,false)+'</details>';
   }
@@ -282,9 +282,9 @@
     const thought=(event.target as any).closest?.('.exec-thought:not(.is-live)');
     if(thought&&!String(window.getSelection?.()||''))thought.classList.toggle('is-expanded');
   });
-  function details(message,busy) {
+  function details(message: any,busy: any) {
     const items=itemsFor(message);if(!items.length)return '';
-    const errors=items.filter(i=>status(i).key==='failed').length,steps=items.filter(i=>i.type!=='reasoning').length;
+    const errors=items.filter((i: any)=>status(i).key==='failed').length,steps=items.filter((i: any)=>i.type!=='reasoning').length;
     return '<details class="output-details"'+(busy?' open':'')+'><summary><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg><span>执行过程</span><small>'+steps+' 项'+(errors?' · '+errors+' 项失败':'')+'</small></summary><div class="output-detail-body">'+items.map(itemHTML).join('')+'</div></details>';
   }
   window.ShiYanOutput={markdown,details,inline,itemsFor,executionStats,generatedAssetVisible,generatedDocumentVisible};

@@ -1,7 +1,7 @@
 /* Diagnostics only: opaque IDs and timings; never file names, URLs or pixels. */
 (() => {
   'use strict';
-  const send = record => {
+  const send = (record: any) => {
     try {
       console.info('[ShiYan enhancement timing]',JSON.stringify({event:'enhancement_timing',source:'browser',...record}));
       if(record.status==='started')return;
@@ -13,16 +13,16 @@
     const start=performance.now(),startedAtMs=performance.timeOrigin+start;
     const attemptId=crypto.randomUUID(),base={stage:'upload',attemptId,startedAtMs};
     send({...base,status:'started'});let done=false;
-    return (status,assetId,bytes)=>{if(done)return;done=true;send({...base,status,...(assetId?{assetId}:{}),bytes,
+    return (status: any,assetId: any,bytes: any)=>{if(done)return;done=true;send({...base,status,...(assetId?{assetId}:{}),bytes,
       durationMs:performance.now()-start,endedAtMs:performance.timeOrigin+performance.now()});};
   };
-  const observeResource = entry => {
+  const observeResource = (entry: any) => {
     try {
       const url=new URL(entry.name,location.href);
       if(url.origin!==location.origin||entry.initiatorType!=='img'||entry.responseEnd<=0)return;
       const match=url.pathname.match(/^\/api\/assets\/([A-Za-z0-9_-]+)\/file$/);
       if(!match)return;
-      const job=window.shiyan?.getState()?.photoJobs?.find(j=>j.feature==='enhance'&&j.outputAssetId===match[1]);
+      const job=window.shiyan?.getState()?.photoJobs?.find((j: any)=>j.feature==='enhance'&&j.outputAssetId===match[1]);
       if(!job)return;
       send({stage:'web_download',status:'completed',photoJobId:job.id,assetId:match[1],
         startedAtMs:performance.timeOrigin+entry.startTime,endedAtMs:performance.timeOrigin+entry.responseEnd,

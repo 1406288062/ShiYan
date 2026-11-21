@@ -2,14 +2,14 @@
   'use strict';
   const $: any = (id: string): any => document.getElementById(id);
   const esc = (value: any): any => String(value ?? '').replace(/[&<>"']/g, (c: string): string => (({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'} as Record<string,string>)[c]));
-  const isOwner = account => account?.owner === 'shiyan-private-owner';
+  const isOwner = (account: any) => account?.owner === 'shiyan-private-owner';
   const originalFetch = window.fetch.bind(window);
   let user: any = null, mode = 'login', status: any = null, busy = false, loaded = false, expiring = false, applicationStarted = false;
   let rememberedMode = false, trustedMode = false, hasRemembered = false;
   let confirmationChecked = false;
   let codeSending = false, codeTimer: any = null;
   const codeResendTimes = {register:0, reset:0};
-  const resendAt = () => codeResendTimes[mode] || 0;
+  const resendAt = () => (codeResendTimes as any)[mode] || 0;
   let statusLoad: any;
   let qrMode = false, qrVersion = 0, qrTimer: any = null, qrId: any = null, qrExpiry = 0;
   const startupTimings: any = window.__ShiYanAccountTimings = {};
@@ -65,7 +65,7 @@
     if (['login','logout','permissions'].includes(event.data?.type)) invalidate();
   });
 
-  function storageKey(key) {
+  function storageKey(key: any) {
     if (!user) throw new Error('请先登录');
     const scoped = 'shiyan.account.' + encodeURIComponent(user.id) + '.' + key;
     if (isOwner(user) && localStorage.getItem(scoped) === null) {
@@ -75,7 +75,7 @@
     return scoped;
   }
 
-  function showError(message, retry = false) {
+  function showError(message: any, retry = false) {
     $('accountError').textContent = message || '';
     $('accountError').hidden = !message;
     $('accountRetry').hidden = !retry;
@@ -154,7 +154,7 @@
     return statusLoad;
   }
 
-  async function loadApplication(nextUser) {
+  async function loadApplication(nextUser: any) {
     if (expiring) return;
     if (!nextUser?.id || nextUser.status !== 'active') throw new Error('账户不可用，请联系管理员');
     stopQR();
@@ -222,12 +222,12 @@
       } catch (_) { /* Password/QR login remains available if the remembered profile is absent. */ }
       busy = false; render();
       if (mode === 'login' && hasRemembered) showAvatarLogin();
-      loadStatus().catch(error => { if (!loaded && !applicationStarted && !busy) showError((error as any).message, true); });
+      loadStatus().catch((error: any) => { if (!loaded && !applicationStarted && !busy) showError((error as any).message, true); });
     } catch (error) { showError((error as any).message, true); }
     finally { busy = false; if (!loaded) render(); }
   }
 
-  async function authenticate(event) {
+  async function authenticate(event: any) {
     event.preventDefault();
     if (applicationStarted) { location.reload(); return; }
     if (busy) return;
@@ -278,7 +278,7 @@
     $('accountRememberedStatus').textContent = '';
     showError(''); render();
   }
-  async function transparentQRImage(png) {
+  async function transparentQRImage(png: any) {
     const image = new Image();
     image.src = 'data:image/png;base64,' + png;
     await image.decode();
@@ -326,7 +326,7 @@
     } catch (error) { if (qrMode && version === qrVersion) $('accountQRStatus').textContent = (error as any).message; }
     finally { if (version === qrVersion) $('accountQRRefresh').disabled = false; }
   }
-  async function pollQR(version) {
+  async function pollQR(version: any) {
     if (!qrMode || version !== qrVersion || loaded || document.hidden) {
       if (qrMode && version === qrVersion && !loaded) qrTimer = setTimeout(() => pollQR(version), 1500);
       return;
@@ -375,7 +375,7 @@
   };
   window.addEventListener('pagehide', stopQR);
 
-  async function logout(button) {
+  async function logout(button: any) {
     button.disabled = true;
     try {
       await request('/auth/logout', 'POST', {});
@@ -411,7 +411,7 @@
     if (user.role !== 'admin') section.querySelector('#accountUsersSection')?.remove();
     $('accountSettings')?.remove();
     window.ShiYanSettings.registerPage('account', {element:section, titleId:'settingsAccountTitle', onShow:showAccount});
-    $('accountLogout').onclick = event => logout(event.currentTarget);
+    $('accountLogout').onclick = (event: any) => logout(event.currentTarget);
     if ($('accountRefreshUsers')) $('accountRefreshUsers').onclick = loadUsers;
   }
 
@@ -447,11 +447,11 @@
     } finally { usersLoading = false; refresh.disabled = false; }
   }
 
-  function renderUsers(users) {
-    $('accountUsers').innerHTML = users.map(item => `<form class="account-user-row" data-user="${esc(item.id)}"><div class="account-user-identity"><strong>${esc(item.displayName || item.username || item.email)}</strong><small>${esc(item.email)}</small>${isOwner(item) ? '<span class="account-owner">所有者</span>' : ''}</div><div class="account-user-controls"><label>角色<select name="role" ${isOwner(item)?'disabled':''}><option value="user" ${item.role==='user'?'selected':''}>普通用户</option><option value="admin" ${item.role==='admin'?'selected':''}>管理员</option></select></label><label>状态<select name="status" ${isOwner(item)?'disabled':''}><option value="active" ${item.status==='active'?'selected':''}>已启用</option><option value="disabled" ${item.status==='disabled'?'selected':''}>已停用</option></select></label><label class="account-server-toggle"><input name="serverAccess" type="checkbox" ${item.serverAccess?'checked':''} ${isOwner(item)?'disabled':''}>服务器访问</label><button type="submit" class="wb-secondary" ${isOwner(item)?'disabled':''}>保存</button></div><p class="account-user-result" role="status" hidden></p></form>`).join('');
+  function renderUsers(users: any) {
+    $('accountUsers').innerHTML = users.map((item: any) => `<form class="account-user-row" data-user="${esc(item.id)}"><div class="account-user-identity"><strong>${esc(item.displayName || item.username || item.email)}</strong><small>${esc(item.email)}</small>${isOwner(item) ? '<span class="account-owner">所有者</span>' : ''}</div><div class="account-user-controls"><label>角色<select name="role" ${isOwner(item)?'disabled':''}><option value="user" ${item.role==='user'?'selected':''}>普通用户</option><option value="admin" ${item.role==='admin'?'selected':''}>管理员</option></select></label><label>状态<select name="status" ${isOwner(item)?'disabled':''}><option value="active" ${item.status==='active'?'selected':''}>已启用</option><option value="disabled" ${item.status==='disabled'?'selected':''}>已停用</option></select></label><label class="account-server-toggle"><input name="serverAccess" type="checkbox" ${item.serverAccess?'checked':''} ${isOwner(item)?'disabled':''}>服务器访问</label><button type="submit" class="wb-secondary" ${isOwner(item)?'disabled':''}>保存</button></div><p class="account-user-result" role="status" hidden></p></form>`).join('');
     for (const form of $('accountUsers').querySelectorAll('form')) {
-      const item = users.find(value => value.id === form.dataset.user);
-      form.onsubmit = async event => {
+      const item = users.find((value: any) => value.id === form.dataset.user);
+      form.onsubmit = async (event: any) => {
         event.preventDefault();
         const button = form.querySelector('button'), note = form.querySelector('.account-user-result');
         const controls = [...form.querySelectorAll('input,select,button')];
@@ -479,7 +479,7 @@
     codeSending = true; showError(''); $('accountCodeStatus').textContent = ''; render();
     try {
       const result = await request(mode === 'reset' ? '/auth/password-reset-code' : '/auth/register-code', 'POST', {email});
-      codeResendTimes[mode] = Date.now() + result.resendAfter * 1000;
+      (codeResendTimes as any)[mode] = Date.now() + result.resendAfter * 1000;
       $('accountCodeStatus').textContent = mode === 'reset' ? '如邮箱已注册，验证码将发送到邮箱，10 分钟内有效，请留意垃圾邮件。' : '验证码已发送，10 分钟内有效，请留意垃圾邮件。';
       clearInterval(codeTimer);
       codeTimer = setInterval(() => { if (Date.now() >= Math.max(...Object.values(codeResendTimes))) clearInterval(codeTimer); if (!loaded) render(); }, 1000);
@@ -489,7 +489,7 @@
   };
   $('accountVerificationCode').addEventListener('input', () => { $('accountVerificationCode').value = $('accountVerificationCode').value.replace(/[^0-9]/g, '').slice(0, 6); });
   $('accountEmail').addEventListener('input', () => { $('accountVerificationCode').value = ''; $('accountCodeStatus').textContent = ''; });
-  function setPasswordVisibility(button, visible) {
+  function setPasswordVisibility(button: any, visible: any) {
     const input = $((button as any).dataset.passwordTarget);
     input.type = visible ? 'text' : 'password';
     button.setAttribute('aria-pressed', String(visible));

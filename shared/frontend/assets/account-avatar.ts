@@ -14,7 +14,7 @@
   input.type = 'file'; input.accept = 'image/*'; input.hidden = true; input.id = 'avatarInput';
   document.body.append(input);
 
-  function validAvatar(value) {
+  function validAvatar(value: any) {
     return value && typeof value === 'object' && Number.isSafeInteger(value.revision) &&
       value.revision >= 0 && (value.data === null || (typeof value.data === 'string' &&
         value.data.length <= 1400000 && /^[A-Za-z0-9+/]*={0,2}$/.test(value.data)));
@@ -34,7 +34,7 @@
     return null;
   }
 
-  function cacheProfile(value) {
+  function cacheProfile(value: any) {
     if (!cacheKey) return;
     try {
       localStorage.setItem(cacheKey, JSON.stringify({revision: value.revision, data: value.data}));
@@ -61,14 +61,14 @@
     }
   }
 
-  function bind(image, placeholder) {
+  function bind(image: any, placeholder: any) {
     const view = {image, placeholder, source: null};
     images.add(view);
     image.onerror = () => { image.hidden = true; placeholder.removeAttribute('hidden'); };
     render();
   }
 
-  function accept(result) {
+  function accept(result: any) {
     if (!active()) return;
     const value = result?.avatar;
     if (!validAvatar(value)) return;
@@ -89,7 +89,7 @@
     return pending;
   }
 
-  async function jpeg(file) {
+  async function jpeg(file: any) {
     if (!file.size || file.size > 20 * 1024 * 1024) throw new Error('请选择不超过 20 MB 的图片');
     const url = URL.createObjectURL(file);
     try {
@@ -125,7 +125,7 @@
     }
   }
 
-  async function update(file) {
+  async function update(file: any) {
     if (!active() || busy) return;
     busy = true; render();
     try {

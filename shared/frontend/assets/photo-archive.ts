@@ -6,11 +6,11 @@
     for (let n = 0; n < 8; n++) value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
     return value >>> 0;
   });
-  function header(length, signature) {
+  function header(length: any, signature: any) {
     const bytes = new Uint8Array(length), view = new DataView(bytes.buffer);
     view.setUint32(0, signature, true); return {bytes, view};
   }
-  function filename(value, names) {
+  function filename(value: any, names: any) {
     const safe = String(value || '图片.jpg').replace(/[\\/\x00-\x1f]/g, '_').replace(/^\.+/, '_').slice(0,180) || '图片.jpg';
     const dot = safe.lastIndexOf('.'), stem = dot > 0 ? safe.slice(0,dot) : safe, suffix = dot > 0 ? safe.slice(dot) : '';
     let result = safe, index = 1;
@@ -20,7 +20,7 @@
   async function writeZip(items: any, sink: any, {onProgress, limit = 0xffffffff}: any = {}) {
     if (!items.length || items.length > 10) throw Error('一次最多下载 10 张增强图片');
     let offset = 0, totalBytes = 0; const entries: any[] = [], names = new Set();
-    const write = async bytes => {
+    const write = async (bytes: any) => {
       if (offset + bytes.byteLength > limit) throw Error('图片总大小较大，请分别下载单张图片');
       await sink.write(bytes); offset += bytes.byteLength;
     };
@@ -58,11 +58,11 @@
     end.view.setUint32(12, offset - centralStart, true); end.view.setUint32(16, centralStart, true);
     await write(end.bytes); return offset;
   }
-  function archiveFilename(assets, date = new Date()) {
+  function archiveFilename(assets: any, date = new Date()) {
     const labels = new Map([['general','通用增强'], ['x4','通用增强'], ['通用增强','通用增强'], ['anime','动漫增强'], ['x4anime','动漫增强'], ['动漫增强','动漫增强']]);
-    const kinds = new Set(assets.map(asset => labels.get(asset.enhancementModel) || labels.get(asset.modelName) || '增强图片'));
+    const kinds = new Set(assets.map((asset: any) => labels.get(asset.enhancementModel) || labels.get(asset.modelName) || '增强图片'));
     const kind = kinds.size > 1 ? '混合增强' : kinds.values().next().value || '增强图片';
-    const pad = value => String(value).padStart(2, '0');
+    const pad = (value: any) => String(value).padStart(2, '0');
     const day = String(date.getFullYear()) + pad(date.getMonth() + 1) + pad(date.getDate());
     const time = pad(date.getHours()) + pad(date.getMinutes()) + pad(date.getSeconds());
     return '拾燕_' + kind + '_' + day + '_' + time + '.zip';
@@ -74,11 +74,11 @@
     if (typeof window.showSaveFilePicker === 'function') {
       const handle = await window.showSaveFilePicker({suggestedName: name, types: [{description:'ZIP 压缩包',accept:{'application/zip':['.zip']}}]});
       writable = await handle.createWritable();
-    } else if (assets.reduce((sum, asset) => sum + (Number(asset.bytes) || 0), 0) > memoryLimit) {
+    } else if (assets.reduce((sum: any, asset: any) => sum + (Number(asset.bytes) || 0), 0) > memoryLimit) {
       throw Error('图片总大小较大，请分别下载单张图片，或使用支持直接保存文件的浏览器');
     }
     try {
-      const entries = assets.map(asset => ({filename: asset.filename, chunks: async function* () {
+      const entries = assets.map((asset: any) => ({filename: asset.filename, chunks: async function* () {
         const url = new URL(asset.downloadUrl || '/api/assets/' + encodeURIComponent(asset.id) + '/file?download=1', location.href);
         if (url.origin !== location.origin || !/^\/api\/assets\/[^/]+\/file$/.test(url.pathname))
           throw Error('图片下载地址无效，请刷新后重试');
@@ -91,7 +91,7 @@
         finally { try { await reader.cancel(); } catch (_) {} reader.releaseLock(); }
         if (Number(asset.bytes) > 0 && received !== Number(asset.bytes)) throw Error('图片下载不完整，请重试；未生成下载包');
       }}));
-      await writeZip(entries, writable || {write: async bytes => chunks.push(bytes)}, {
+      await writeZip(entries, writable || {write: async (bytes: any) => chunks.push(bytes)}, {
         limit: writable ? 0xffffffff : memoryLimit, onProgress,
       });
       if (writable) await writable.close();

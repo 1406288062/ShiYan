@@ -13,7 +13,7 @@
   }
   function restoreRail() {
     const view = window.shiyan?.getView?.();
-    const id = {agent:'railHome', search:'railHome', dots:'railHome', home:'railEnhance', history:'railHistory', schedules:'railSchedules'}[view];
+    const id = ({agent:'railHome', search:'railHome', dots:'railHome', home:'railEnhance', history:'railHistory', schedules:'railSchedules'} as any)[view];
     const restored = id ? [id] : previousActive;
     for (const button of document.querySelectorAll('#activityRail > button')) {
       button.classList.toggle('is-active', restored.includes(button.id));
@@ -73,7 +73,7 @@
     fit();
     const rail: any = document.getElementById('activityRail');
     previousActive = [...rail.querySelectorAll('button.is-active')].map(button => button.id);
-    const collect = element => {
+    const collect = (element: any): any => {
       if (element === root || element === rail || ['SCRIPT','STYLE','LINK'].includes(element.tagName)) return [];
       if (rail && element.contains(rail)) return [...element.children].flatMap(collect);
       return [[element, element.inert]];

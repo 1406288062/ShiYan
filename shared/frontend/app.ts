@@ -14,8 +14,8 @@
     selection:new Set(), selecting:false, sessionMenuId: null as any, deletingSessionId: null as any,
     preview: null as any, previewGalleryAssets: null as any, renamingSessionId: null as any, zoom:1, panX:0, panY:0, previewPointer: null as any, searchTerm:'', restoring:false, historyReturnView:'agent'
   };
-  const esc = value => String(value == null ? '' : value).replace(/[&<>"']/g, c => (({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'} as Record<string, string>)[c] || ''));
-  const icon = name => '<span class="symbol" data-symbol="' + esc(name) + '" style="--symbol:url(\'/assets/symbols/' + esc(name) + '.png\')" aria-hidden="true"></span>';
+  const esc = (value: any) => String(value == null ? '' : value).replace(/[&<>"']/g, c => (({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'} as Record<string, string>)[c] || ''));
+  const icon = (name: any) => '<span class="symbol" data-symbol="' + esc(name) + '" style="--symbol:url(\'/assets/symbols/' + esc(name) + '.png\')" aria-hidden="true"></span>';
   const sessionMenuPaths = {
     rename:'M4.5 19.5l1-4L16.8 4.2a1.8 1.8 0 0 1 2.5 0l.5.5a1.8 1.8 0 0 1 0 2.5L8.5 18.5l-4 1zM14.8 6.2l3 3',
     pin:'M8 3h8v6.8l2 2.2 1 4.5H5L6 12l2-2.2V3ZM12 16.5V22',
@@ -24,11 +24,11 @@
     folderRemove:'M3 8V6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v5M3 8h18M3 8v10a2 2 0 0 0 2 2h7M16 16l5 5M21 16l-5 5',
     check:'m5 12 4 4L19 6',chevron:'m9 5 7 7-7 7'
   };
-  const sessionMenuIcon = name => '<svg class="session-menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="'+sessionMenuPaths[name==='unpin'?'pin':name]+'"'+(name==='pin'||name==='unpin'?' transform="rotate(45 12 12)"':'')+'></path>'+(name==='unpin'?'<path d="M3 3l18 18"></path>':'')+'</svg>';
+  const sessionMenuIcon = (name: any) => '<svg class="session-menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="'+(sessionMenuPaths as any)[name==='unpin'?'pin':name]+'"'+(name==='pin'||name==='unpin'?' transform="rotate(45 12 12)"':'')+'></path>'+(name==='unpin'?'<path d="M3 3l18 18"></path>':'')+'</svg>';
    
   const messageEditIcon = () => sessionMenuIcon('rename').replace('viewBox="0 0 24 24"', 'viewBox="3.7 2.895 17.405 17.405"');
   let sessionProjectCloseTimer: any = 0;
-  const show = (id, visible = true) => {
+  const show = (id: any, visible = true) => {
     const el=$(id);
     if (!el) return;
     if (id==='latestButton') {
@@ -42,24 +42,24 @@
     }
     if (el.hidden!==!visible) el.hidden=!visible;
   };
-  const setText = (id, value) => { const el=$(id); if(el){const text=value == null ? '' : String(value);if(el.textContent!==text)el.textContent=text;} };
-  const current = () => state && state.conversations.find(c => c.id === state.selectedConversationId);
-  let pendingSelection = null;
+  const setText = (id: any, value: any) => { const el=$(id); if(el){const text=value == null ? '' : String(value);if(el.textContent!==text)el.textContent=text;} };
+  const current = () => state && state.conversations.find((c: any) => c.id === state.selectedConversationId);
+  let pendingSelection: any = null;
   const visibleConversation = () => ui.view==='schedules'?(window.ShiYanSchedules?.currentConversation?.()||current()):current();
-  const visibleMessage = id => (ui.view==='schedules'?window.ShiYanSchedules?.message?.(id):null)||visibleConversation()?.messages?.find(m=>m.id===id);
-  const isBusy = c => !!(c && (c.pendingMessageId || (c.messages || []).some(m => busyStates.has(m.state))));
-  const assetUrl = (a, download=false) => a && ((download ? a.downloadUrl : a.url) || '/api/assets/' + encodeURIComponent(a.id) + '/file' + (download ? '?download=1' : ''));
-  function remember(a) { if(a && a.id) assets.set(a.id,a); return a; }
-  function toast(message) {
+  const visibleMessage = (id: any) => (ui.view==='schedules'?window.ShiYanSchedules?.message?.(id):null)||visibleConversation()?.messages?.find((m: any)=>m.id===id);
+  const isBusy = (c: any) => !!(c && (c.pendingMessageId || (c.messages || []).some((m: any) => busyStates.has(m.state))));
+  const assetUrl = (a: any, download=false) => a && ((download ? a.downloadUrl : a.url) || '/api/assets/' + encodeURIComponent(a.id) + '/file' + (download ? '?download=1' : ''));
+  function remember(a: any) { if(a && a.id) assets.set(a.id,a); return a; }
+  function toast(message: any) {
     setText('toastText', message); show('toast'); clearTimeout(toastTimer);
     toastTimer=setTimeout(() => show('toast',false),4000);
   }
-  function humanError(error) {
+  function humanError(error: any) {
     if (!error) return '操作失败，请重试';
     if(typeof error === 'object') return (error as any).message || error.error || JSON.stringify(error);
     return String(error);
   }
-  function isApplicationStateSnapshot(value) {
+  function isApplicationStateSnapshot(value: any) {
     return !!value && typeof value === 'object' && !Array.isArray(value)
       && Array.isArray(value.conversations);
   }
@@ -83,7 +83,7 @@
     if(isApplicationStateSnapshot(data.state)) applyState(data.state);
     return data;
   }
-  async function upload(files,kind='input') {
+  async function upload(files: any,kind='input') {
     const form=new FormData();
     for(const file of files) form.append('files',file,file.name || 'image.png');
     form.append('kind',kind);
@@ -93,7 +93,7 @@
     const release=priority?.begin();
     try {
       const path='/api/assets'+(kind==='input'?'?compact=1':'');
-      const progress=value=>{
+      const progress=(value: any)=>{
         ui.photoUploadLabel=value.sent?'图片已发送，正在确认':value.percent===null?'正在上传图片':'正在上传图片 '+value.percent+'%';
         renderPhoto();
       };
@@ -106,7 +106,7 @@
     }catch(error){finishTiming?.('failed');throw error;}
     finally{release?.();}
   }
-  async function resolveAsset(id) {
+  async function resolveAsset(id: any) {
     if(!id) return null;
     if(assets.has(id)) return assets.get(id);
     try { const data=await api('/api/assets/'+encodeURIComponent(id));return remember(data.asset); }
@@ -114,31 +114,31 @@
   }
   function draftFor(c=current()) {
     if(!c) return {text:'',assets:[],reasoning:'low',dirty:false,revision:0};
-    if(!drafts.has(c.id)) drafts.set(c.id,{text:c.draft || '',assets:(c.draftAssets || []).map(a=>typeof a==='string' ? assets.get(a) : remember(a)).filter(Boolean),reasoning:c.reasoning || 'low',model:c.model || state?.capabilities?.model,dirty:false,revision:0});
+    if(!drafts.has(c.id)) drafts.set(c.id,{text:c.draft || '',assets:(c.draftAssets || []).map((a: any)=>typeof a==='string' ? assets.get(a) : remember(a)).filter(Boolean),reasoning:c.reasoning || 'low',model:c.model || state?.capabilities?.model,dirty:false,revision:0});
     return drafts.get(c.id);
   }
-  function changeDraft(fn, textOnly=false) {
+  function changeDraft(fn: any, textOnly=false) {
     const c=current();if(!c)return;
     const d=draftFor(c);fn(d);d.dirty=true;d.revision++;
     clearTimeout(draftTimer);draftTimer=setTimeout(()=>flushDraft(c.id).catch(e=>notice((e as any).message)),350);
     renderComposer(false,textOnly);
   }
-  async function flushDraft(id) {
+  async function flushDraft(id: any) {
     clearTimeout(draftTimer);
     const d=drafts.get(id);if(!d || !d.dirty)return;
     const revision=d.revision;
-    await api('/api/conversations/'+encodeURIComponent(id),'PATCH',{draft:d.text,draftAssets:d.assets.map(a=>a.id),reasoning:d.reasoning,...(d.model?{model:d.model}:{})});
+    await api('/api/conversations/'+encodeURIComponent(id),'PATCH',{draft:d.text,draftAssets:d.assets.map((a: any)=>a.id),reasoning:d.reasoning,...(d.model?{model:d.model}:{})});
     if(d.revision===revision)d.dirty=false;
   }
-  function notice(message) {setText('agentNotice',message || '');show('agentNotice',!!message);}
-  function safeLink(value) {
+  function notice(message: any) {setText('agentNotice',message || '');show('agentNotice',!!message);}
+  function safeLink(value: any) {
     try { const u=new URL(value,location.href);return ['http:','https:','mailto:'].includes(u.protocol) ? u.href : '#';}
     catch (_) {return '#';}
   }
-  function markdown(raw) {
+  function markdown(raw: any) {
     return window.ShiYanOutput?window.ShiYanOutput.markdown(raw,icon('reply-copy')):'<p>'+esc(raw).replace(/\n/g,'<br>')+'</p>';
   }
-  function dateText(value,full=false) {
+  function dateText(value: any,full=false) {
     const d=new Date(value);if(Number.isNaN(d.getTime()))return '';
     if(full)return new Intl.DateTimeFormat('zh-CN',{year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit'}).format(d);
     const today=new Date();const yesterday=new Date();yesterday.setDate(today.getDate()-1);
@@ -152,7 +152,7 @@
     ui.historyReturnView=ui.view==='home'?'home':'agent';
     setView('history');
   }
-  function setView(view) {
+  function setView(view: any) {
     const enteringAgent=ui.view!=='agent' && view==='agent';
     if(ui.view==='agent' && view!=='agent'){saveReadingPosition();cancelSpeech();const c=current();if(c)flushDraft(c.id).catch(()=>{});}
     closePopovers();ui.view=view;
@@ -165,7 +165,7 @@
     if(view==='search'){renderSearch();setTimeout(()=>$('searchInput').focus(),60);}
     if(view==='home'){renderPhoto();requestAnimationFrame(resizeMask);}
   }
-  function applyState(next) {
+  function applyState(next: any) {
     if(!next)return;
     if(state && Number(next.version)<Number(state.version))return;
     if(pendingSelection && next.selectedConversationId!==pendingSelection)next.selectedConversationId=pendingSelection;
@@ -173,12 +173,12 @@
     next=window.ShiYanPhotoStatus.mergeSnapshot(next,state);
     state=next;state.conversations=state.conversations || [];state.history=state.history || [];state.settings=state.settings || {};state.photoJobs=state.photoJobs || [];
     (state.assets || []).forEach(remember);
-    state.history.forEach(h=>remember(h.asset));
-    state.conversations.forEach(c=>{
-      (c.messages || []).forEach(m=>(m.assets || []).forEach(remember));
-      (c.draftAssets || []).forEach(a=>typeof a==='object' && remember(a));
+    state.history.forEach((h: any)=>remember(h.asset));
+    state.conversations.forEach((c: any)=>{
+      (c.messages || []).forEach((m: any)=>(m.assets || []).forEach(remember));
+      (c.draftAssets || []).forEach((a: any)=>typeof a==='object' && remember(a));
       const d=drafts.get(c.id);
-      if(d && !d.dirty && !(ui.editing && ui.editing.conversationId===c.id)){d.text=c.draft || '';d.assets=(c.draftAssets || []).map(a=>typeof a==='string'?assets.get(a):a).filter(Boolean);d.reasoning=c.reasoning || 'low';d.model=c.model || state.capabilities?.model;}
+      if(d && !d.dirty && !(ui.editing && ui.editing.conversationId===c.id)){d.text=c.draft || '';d.assets=(c.draftAssets || []).map((a: any)=>typeof a==='string'?assets.get(a):a).filter(Boolean);d.reasoning=c.reasoning || 'low';d.model=c.model || state.capabilities?.model;}
     });
     if(previousId && previousId!==state.selectedConversationId){cancelSpeech();ui.editing=null;notice('');}
     renderConnection();renderSessions();renderMessages(previousId!==state.selectedConversationId);renderComposer(previousId!==state.selectedConversationId);renderPhoto();renderHistory();
@@ -204,10 +204,10 @@
     finally {if(button)button.disabled=false;}
   }
   function sortedConversations() {
-    return [...(state ? state.conversations : [])].filter(c=>(c.messages || []).some(m=>m.role==='user')).sort((a,b)=>Number(b.isPinned)-Number(a.isPinned)||new Date(b.updatedAt).getTime()-new Date(a.updatedAt).getTime());
+    return [...(state ? state.conversations : [])].filter(c=>(c.messages || []).some((m: any)=>m.role==='user')).sort((a,b)=>Number(b.isPinned)-Number(a.isPinned)||new Date(b.updatedAt).getTime()-new Date(a.updatedAt).getTime());
   }
   function conversationIcon() {const t=$('sessionRowTemplate');const svg=t && t.content.querySelector('svg');return svg?svg.outerHTML:icon('bubble.left.and.bubble.right');}
-  function sessionHTML(c) {
+  function sessionHTML(c: any) {
     const selected=c.id===state.selectedConversationId;
     return '<button type="button" class="session-row'+(selected?' is-selected':'')+(c.isPinned?' is-pinned':'')+'" data-session-id="'+esc(c.id)+'" aria-label="'+esc(c.title || '新对话')+'" aria-current="'+(selected?'true':'false')+'">'+
       (c.isPinned?conversationIcon():'')+'<span class="session-title">'+esc(c.title || '新对话')+'</span>'+
@@ -221,38 +221,38 @@
     {const list=$('pinnedSessions'),html=pins.map(sessionHTML).join('');if(list.__sessionHTML!==html){list.innerHTML=html;list.__sessionHTML=html;}}
     {const list=$('recentSessions'),html=recent.map(sessionHTML).join('');if(list.__sessionHTML!==html){list.innerHTML=html;list.__sessionHTML=html;}}
   }
-  function fileDescription(a) {
+  function fileDescription(a: any) {
     const ext=(a.filename||'').split('.').pop().toLowerCase();
-    const kind=({md:'Markdown',docx:'Word',doc:'Word',pdf:'PDF',xlsx:'Excel',xls:'Excel',pptx:'PowerPoint',ppt:'PowerPoint',json:'JSON',txt:'文本',csv:'CSV',html:'HTML',zip:'ZIP'})[ext]||ext.toUpperCase()||'文件';
+    const kind=(({md:'Markdown',docx:'Word',doc:'Word',pdf:'PDF',xlsx:'Excel',xls:'Excel',pptx:'PowerPoint',ppt:'PowerPoint',json:'JSON',txt:'文本',csv:'CSV',html:'HTML',zip:'ZIP'}) as any)[ext]||ext.toUpperCase()||'文件';
     const bytes=Number(a.bytes),size=bytes>0?(bytes<1024?bytes+' B':bytes<1048576?(bytes/1024).toFixed(1)+' KB':(bytes/1048576).toFixed(1)+' MB'):'';
     return kind+(size?' · '+size:'');
   }
-  function assetTypeIcon(a) {
+  function assetTypeIcon(a: any) {
     const ext=(a.filename||'').split('.').pop().toLowerCase();
     const types={docx:['word','W'],doc:['word','W'],pdf:['pdf','PDF'],xlsx:['excel','X'],xls:['excel','X'],csv:['excel','CSV'],pptx:['slides','P'],ppt:['slides','P'],md:['markdown','M↓'],json:['json','{}'],jsonl:['json','{}'],zip:['archive','ZIP'],'7z':['archive','7Z'],svg:['vector','SVG'],txt:['text','TXT'],html:['code','<>'],js:['code','JS'],py:['code','Py']};
-    const [kind,label]=types[ext]||['text',(ext||'FILE').toUpperCase().slice(0,4)];
+    const [kind,label]=(types as any)[ext]||['text',(ext||'FILE').toUpperCase().slice(0,4)];
     return '<span class="asset-type-icon type-'+kind+'" aria-hidden="true">'+icon('doc')+'<span>'+esc(label)+'</span></span>';
   }
-  function assetHTML(a) {
+  function assetHTML(a: any) {
     const isImage=(a.mimeType || '').startsWith('image/');
     return '<button type="button" class="asset-card '+(isImage?'is-image':'is-file')+'" data-asset-id="'+esc(a.id)+'" aria-label="'+esc(isImage?'预览图片 '+(a.filename || ''):a.filename || '打开文件')+'">'+
       (isImage?'<img class="asset-image" src="'+esc(assetUrl(a))+'" alt="'+esc(a.filename || '图片')+'" '+(a.width&&a.height?'width="'+Number(a.width)+'" height="'+Number(a.height)+'" style="aspect-ratio:'+Number(a.width)+' / '+Number(a.height)+';height:auto" ':'')+'decoding="async">':assetTypeIcon(a)+'<span class="asset-file-info"><span class="asset-name" title="'+esc(a.filename || '文件')+'">'+esc(a.filename || '文件')+'</span><span class="file-kind">'+esc(fileDescription(a))+'</span></span>')+'</button>';
   }
-  function canRetryConnection(m) {
+  function canRetryConnection(m: any) {
     if(m.role!=='assistant' || !m.error)return false;
     if(current()?.messages?.at(-1)?.id!==m.id)return false;
     if(m.state==='reconnecting')return true;
     return m.state==='failed' && /连接中断|检查网络|网络连接|无法连接|接收中断|connection|network|timed out/i.test(m.error);
   }
-  function messageHTML(m) {
+  function messageHTML(m: any) {
     const user=m.role==='user',busy=busyStates.has(m.state),retry=canRetryConnection(m);
     const at=user?m.createdAt:m.completedAt;
     const time=at?'<time datetime="'+esc(at)+'" title="'+esc(dateText(at,true))+'">'+esc(dateText(at))+'</time>':'';
     const tools='<div class="v22-message-tools">'+(user?time:'')+'<button type="button" data-copy-message="'+esc(m.id)+'" aria-label="复制消息">'+icon('reply-copy')+'</button>'+(retry?'<button type="button" data-retry-message="'+esc(m.id)+'" aria-label="重试" title="重试">'+icon('arrow.clockwise')+'</button>':'')+(user?'<button type="button" data-edit-message="'+esc(m.id)+'" aria-label="编辑消息">'+messageEditIcon()+'</button>':time)+'</div>';
     const changeFiles=!user&&!busy?(window.ShiYanChanges?.filesFor(m)||[]):[];
     const changeSummary=!user&&!busy?(window.ShiYanChanges?.summary(m,changeFiles)||''):'';
-    const changedNames=new Set(changeSummary?changeFiles.map(f=>String(f.path).replace(/\\/g,'/').split('/').pop()):[]);
-    const attachments=(m.assets||[]).filter(a=>user||window.ShiYanOutput.generatedAssetVisible(a)),images=attachments.filter(a=>(a.mimeType||'').startsWith('image/')),files=attachments.filter(a=>!(a.mimeType||'').startsWith('image/')&&!changedNames.has(String(a.filename||'').replace(/\\/g,'/').split('/').pop()));
+    const changedNames=new Set(changeSummary?changeFiles.map((f: any)=>String(f.path).replace(/\\/g,'/').split('/').pop()):[]);
+    const attachments=(m.assets||[]).filter((a: any)=>user||window.ShiYanOutput.generatedAssetVisible(a)),images=attachments.filter((a: any)=>(a.mimeType||'').startsWith('image/')),files=attachments.filter((a: any)=>!(a.mimeType||'').startsWith('image/')&&!changedNames.has(String(a.filename||'').replace(/\\/g,'/').split('/').pop()));
     let inner=(user?attachments:images).length?'<div class="message-assets">'+(user?attachments:images).map(assetHTML).join('')+'</div>':'';
     if(m.text)inner+='<div class="message-body">'+(user?esc(m.text).replace(/\n/g,'<br>'):markdown(m.text))+'</div>';
     if(!user&&files.length)inner+='<div class="message-files" aria-label="生成的文件">'+files.map(assetHTML).join('')+'</div>';
@@ -297,8 +297,8 @@
     const delta=messageAnchor.el.getBoundingClientRect().top-scroller.getBoundingClientRect().top-messageAnchor.offset;
     if(Math.abs(delta)>=1){scroller.scrollTop+=delta;messageLastScrollTop=scroller.scrollTop;}
   }
-  function restoreReadingPosition(id){
-    if(!id)return;const generation=++readingRestoreGeneration;const saved=readingPositions.get(id)||state?.conversations.find(c=>c.id===id)?.readingPosition||{followLatest:true};
+  function restoreReadingPosition(id: any){
+    if(!id)return;const generation=++readingRestoreGeneration;const saved=readingPositions.get(id)||state?.conversations.find((c: any)=>c.id===id)?.readingPosition||{followLatest:true};
     messageAutoFollow=!saved.anchorMessageId && saved.followLatest===true;restoringReadingPosition=true;
     hideMessagesUntilPlaced();
     const restore=()=>{if(generation!==readingRestoreGeneration || lastRenderedConversation!==id)return false;const scroller=$('messagesScroller'),bounds=scroller.getBoundingClientRect(),anchor=saved.anchorMessageId&&$('messages').querySelector('[data-message-id="'+CSS.escape(saved.anchorMessageId)+'"]');
@@ -352,7 +352,7 @@
       if(!changedConversation && article){
         const oldAssets: any = article.querySelector(".message-content>.message-assets"), newAssets: any = fresh.querySelector(".message-content>.message-assets");
         // 附件缩略图：同一组文件时保留原来的节点，不重新加载；模型输出期间同步偶尔让用户消息短暂丢失附件，也沿用原节点。
-        const assetIds=node=>[...node.querySelectorAll('[data-asset-id]')].map(e=>e.dataset.assetId).join('|');
+        const assetIds=(node: any)=>[...node.querySelectorAll('[data-asset-id]')].map(e=>e.dataset.assetId).join('|');
         if(oldAssets && newAssets && (oldAssets.outerHTML===newAssets.outerHTML||assetIds(oldAssets)===assetIds(newAssets)))newAssets.replaceWith(oldAssets);
         else if(oldAssets && newAssets){
           // 图片增减时，已有的缩略图沿用原节点，不重新加载，避免闪烁和页面跳动。
@@ -405,7 +405,7 @@
   let composerSizeFrame: any = 0, composerMeasureInput: any = null;
   let composerTypingConversation='',composerTypingEmpty: any = null;
   let composerComposing=false,composerCompositionEnding=false,composerRefreshDeferred=false,composerCompositionFrame=0;
-  function bindComposerComposition(input) {
+  function bindComposerComposition(input: any) {
     input.addEventListener('compositionstart',()=>{
       cancelAnimationFrame(composerCompositionFrame);
       composerComposing=true;composerCompositionEnding=false;
@@ -436,14 +436,14 @@
       }
       const mirror=composerMeasureInput;
       for(const property of ['width','minHeight','boxSizing','font','lineHeight','letterSpacing','padding','border','whiteSpace','wordBreak','overflowWrap','textIndent','tabSize','direction']){
-        if(mirror.style[property]!==style[property])mirror.style[property]=style[property];
+        if((mirror.style as any)[property]!==(style as any)[property])(mirror.style as any)[property]=(style as any)[property];
       }
       mirror.wrap=input.wrap;mirror.placeholder=input.placeholder;mirror.value=input.value;
       const height=Math.min(156,Math.max(32,mirror.scrollHeight))+'px';
       if(input.style.height!==height)input.style.height=height;
     });
   }
-  function attachmentItemHTML(a) {const image=(a.mimeType||'').startsWith('image/');return '<div class="attachment-item'+(image?'':' attachment-document')+'"><button type="button" data-asset-id="'+esc(a.id)+'" aria-label="'+esc('预览 '+(a.filename||'附件'))+'" title="'+esc(a.filename||'附件')+'">'+(image?'<img class="attachment-image" src="'+esc(assetUrl(a))+'" alt="'+esc(a.filename || '附件')+'">':assetTypeIcon(a)+'<span class="attachment-filename">'+esc(a.filename||'文件')+'</span>')+'</button><button type="button" class="attachment-remove" data-remove-attachment="'+esc(a.id)+'" aria-label="移除附件">'+icon('xmark')+'</button></div>';}
+  function attachmentItemHTML(a: any) {const image=(a.mimeType||'').startsWith('image/');return '<div class="attachment-item'+(image?'':' attachment-document')+'"><button type="button" data-asset-id="'+esc(a.id)+'" aria-label="'+esc('预览 '+(a.filename||'附件'))+'" title="'+esc(a.filename||'附件')+'">'+(image?'<img class="attachment-image" src="'+esc(assetUrl(a))+'" alt="'+esc(a.filename || '附件')+'">':assetTypeIcon(a)+'<span class="attachment-filename">'+esc(a.filename||'文件')+'</span>')+'</button><button type="button" class="attachment-remove" data-remove-attachment="'+esc(a.id)+'" aria-label="移除附件">'+icon('xmark')+'</button></div>';}
   function renderComposer(force=false, textOnly=false) {
     if(force){composerComposing=false;composerCompositionEnding=false;composerRefreshDeferred=false;cancelAnimationFrame(composerCompositionFrame);}
     if(composerComposing || composerCompositionEnding){composerRefreshDeferred=true;return;}
@@ -467,7 +467,7 @@
     send.setAttribute('aria-label',actionLabel);send.title=actionLabel;send.setAttribute('aria-busy',String(stopping));
     $('sendIcon').dataset.symbol=stopMode?'stop.fill':'arrow.up';
     $('addImageButton').disabled=ui.submitting || d.assets.length>=maxImages();
-    const queued=c?.messageQueue || [],queueElement=$('messageQueue');const queueHTML=queued.map((m,i)=>'<div class="message-queue-row"><span class="message-queue-label">'+(m.urgent?'优先等待':('等待 '+(i+1)))+'</span><span class="message-queue-text">'+esc(m.text || '附件消息')+'</span><button type="button" class="queue-return-button" data-priority-queued="'+esc(m.id)+'" aria-label="优先处理这条等待消息" title="优先处理"'+(m.urgent?' disabled':'')+'><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 5v8a3 3 0 0 1-3 3H5m5-5-5 5 5 5"/></svg></button><button type="button" data-remove-queued="'+esc(m.id)+'" aria-label="移除等待消息">×</button></div>').join('')+(c?.queueError?'<div class="message-queue-error">'+esc(c.queueError)+'</div>':'');if(queueElement.__queueHTML!==queueHTML){queueElement.innerHTML=queueHTML;queueElement.__queueHTML=queueHTML;}show('messageQueue',!!queued.length);
+    const queued=c?.messageQueue || [],queueElement=$('messageQueue');const queueHTML=queued.map((m: any,i: any)=>'<div class="message-queue-row"><span class="message-queue-label">'+(m.urgent?'优先等待':('等待 '+(i+1)))+'</span><span class="message-queue-text">'+esc(m.text || '附件消息')+'</span><button type="button" class="queue-return-button" data-priority-queued="'+esc(m.id)+'" aria-label="优先处理这条等待消息" title="优先处理"'+(m.urgent?' disabled':'')+'><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 5v8a3 3 0 0 1-3 3H5m5-5-5 5 5 5"/></svg></button><button type="button" data-remove-queued="'+esc(m.id)+'" aria-label="移除等待消息">×</button></div>').join('')+(c?.queueError?'<div class="message-queue-error">'+esc(c.queueError)+'</div>':'');if(queueElement.__queueHTML!==queueHTML){queueElement.innerHTML=queueHTML;queueElement.__queueHTML=queueHTML;}show('messageQueue',!!queued.length);
     $('speechButton').classList.toggle('is-recording',ui.speech);
     $('speechButton').querySelector('.symbol').dataset.symbol=ui.speech?'stop.fill':'mic';
     $('composerForm').classList.toggle('is-recording',ui.speech);$('composerForm').classList.toggle('is-reasoning-open',ui.reasoning);
@@ -486,18 +486,18 @@
     return caps.models?.length?caps.models:[{id:caps.model,displayName:caps.model,reasoningEfforts:caps.reasoningEfforts || [],defaultReasoning:caps.defaultReasoning}];
   }
   // 服务端按模型提供方（GPT、Claude…）标注 provider；多于一个提供方时分组展示。
-  function modelGroups(choices){
+  function modelGroups(choices: any){
     const groups: any[] = [];
     for(const m of choices){const key=m.provider||'';let group=groups.find(g=>g.key===key);if(!group)groups.push(group={key,label:m.providerLabel||m.provider||'模型',models:[]});group.models.push(m);}
     return groups;
   }
-  function modelCapability(){const choices=modelChoices(),d=draftFor();return choices.find(m=>m.id===d.model)||choices.find(m=>m.id===state?.capabilities?.model)||choices[0];}
+  function modelCapability(){const choices=modelChoices(),d=draftFor();return choices.find((m: any)=>m.id===d.model)||choices.find((m: any)=>m.id===state?.capabilities?.model)||choices[0];}
   function efforts(){return modelCapability()?.reasoningEfforts || [];}
-  function slideReasoningText(node,text,index) {
+  function slideReasoningText(node: any,text: any,index: any) {
     if(!node)return;
     const previous=node.dataset.reasoningText,previousIndex=Number(node.dataset.reasoningIndex);
     if(previous===text){node.dataset.reasoningIndex=index;return;}
-    node.querySelectorAll('span').forEach(span=>span.getAnimations().forEach(a=>a.cancel()));
+    node.querySelectorAll('span').forEach((span: any)=>span.getAnimations().forEach((a: any)=>a.cancel()));
     node.dataset.reasoningText=text;node.dataset.reasoningIndex=index;
     node.classList.add('reasoning-text-slot');node.setAttribute('aria-label',text);
     const current=document.createElement('span');current.className='reasoning-text-current';node.replaceChildren(current);
@@ -505,7 +505,7 @@
     const columns=Math.max(previousChars.length,nextChars.length);
     const animate=previous!==undefined&&previousIndex!==index&&node.getClientRects().length&&!matchMedia('(prefers-reduced-motion: reduce)').matches;
     const direction=index>previousIndex?1:-1,options={duration:180,easing:'cubic-bezier(.22,.8,.3,1)',fill:'none'};
-    const createCharacter=(value,parent,position,count)=>{
+    const createCharacter=(value: any,parent: any,position: any,count: any)=>{
       const span=document.createElement('span');span.className='reasoning-character';
       span.style.left='calc(50% + '+(position-count/2)+'em)';
       span.textContent=value;parent.append(span);return span;
@@ -530,16 +530,16 @@
     const range=$('reasoningRange'),available=values.length>0;
     range.min=0;range.max=Math.max(0,values.length-1);range.step='0.001';range.disabled=!available;
     range.value=ui.reasoningDragging?ui.reasoningPosition:index;
-    range.setAttribute('aria-valuetext',reasoningNames[values[index]] || values[index] || '能力暂不可用');
-    slideReasoningText($('reasoningTitle'),available?(reasoningNames[values[index]] || values[index]):'暂不可用',index);
-    $('reasoningDots').innerHTML=values.map((value,i)=>'<span class="reasoning-dot'+(i<=Number(range.value)?' is-passed':'')+'" title="'+esc(reasoningNames[value] || value)+'"></span>').join('');
+    range.setAttribute('aria-valuetext',(reasoningNames as any)[values[index]] || values[index] || '能力暂不可用');
+    slideReasoningText($('reasoningTitle'),available?((reasoningNames as any)[values[index]] || values[index]):'暂不可用',index);
+    $('reasoningDots').innerHTML=values.map((value: any,i: any)=>'<span class="reasoning-dot'+(i<=Number(range.value)?' is-passed':'')+'" title="'+esc((reasoningNames as any)[value] || value)+'"></span>').join('');
     const composerModel=modelCapability();$('reasoningButton').querySelector('.v23-composer-model').textContent=composerModel?.displayName||composerModel?.id||'';
-    slideReasoningText($('reasoningButton').querySelector('.v22-strength-label'),available?(reasoningNames[values[index]]||values[index]):'暂不可用',index);
-    $('reasoningButton').setAttribute('aria-label','选择推理强度：'+(reasoningNames[values[index]] || '暂不可用'));
+    slideReasoningText($('reasoningButton').querySelector('.v22-strength-label'),available?((reasoningNames as any)[values[index]]||values[index]):'暂不可用',index);
+    $('reasoningButton').setAttribute('aria-label','选择推理强度：'+((reasoningNames as any)[values[index]] || '暂不可用'));
     $('reasoningButton').setAttribute('aria-expanded',String(ui.reasoning));show('reasoningPanel',ui.reasoning);show('reasoningBackdrop',ui.reasoning);
     const selected=modelCapability(),choices=modelChoices(),modelSelect=$('reasoningModel');
     if(modelSelect){
-      const groups=modelGroups(choices),optionHTML=m=>'<option value="'+esc(m.id)+'">'+esc(m.displayName || m.id)+'</option>';
+      const groups=modelGroups(choices),optionHTML=(m: any)=>'<option value="'+esc(m.id)+'">'+esc(m.displayName || m.id)+'</option>';
       const html=(groups.length>1?groups.map(g=>'<optgroup label="'+esc(g.label)+'">'+g.models.map(optionHTML).join('')+'</optgroup>').join(''):choices.map(optionHTML).join('')) || '<option value="">云端能力暂不可用</option>';
       if(modelSelect.innerHTML!==html)modelSelect.innerHTML=html;
       modelSelect.value=selected?.id || '';modelSelect.disabled=!choices.length;const measure=document.createElement('canvas').getContext('2d');if(measure){measure.font=getComputedStyle(modelSelect).font;modelSelect.style.width=Math.ceil(measure.measureText(modelSelect.selectedOptions[0]?.textContent||'').width+24)+'px';}
@@ -548,7 +548,7 @@
     const ratio=values.length>1?Number(range.value)/(values.length-1):0;
     $('reasoningTrack').style.setProperty('--reasoning-progress',String(ratio));$('reasoningTrack').classList.toggle('is-minimum',ratio===0);
     window.dispatchEvent(new CustomEvent('shiyan-reasoning'));
-    const radians=degrees=>degrees*Math.PI/180,angle=135+270*(.30+.67*ratio);
+    const radians=(degrees: any)=>degrees*Math.PI/180,angle=135+270*(.30+.67*ratio);
     const sx=14+12*Math.cos(radians(135)),sy=14+12*Math.sin(radians(135));
     const ex=14+12*Math.cos(radians(angle)),ey=14+12*Math.sin(radians(angle));
     $('gaugeActive').setAttribute('d','M'+sx+' '+sy+' A12 12 0 '+(angle-135>180?1:0)+' 1 '+ex+' '+ey);
@@ -557,7 +557,7 @@
     $('gaugePointer').setAttribute('d','M'+(14+3.3*Math.cos(radians(angle)))+' '+(14+3.3*Math.sin(radians(angle)))+' L'+(14+8.5*Math.cos(radians(angle)))+' '+(14+8.5*Math.sin(radians(angle))));
   }
 
-  async function selectConversation(id) {
+  async function selectConversation(id: any) {
     cancelSpeech();const c=current(),previous=c && c.id!==id?c.id:null;
     ui.editing=null;notice('');pendingSelection=id;
     // Switch locally first; the server confirmation and full messages arrive in the background.
@@ -574,7 +574,7 @@
     await api('/api/conversations','POST',{projectId:typeof projectId==='string'?projectId:null});
     setDrawer(false);setView('agent');$('messageInput').focus();
   }
-  function setDrawer(open) {
+  function setDrawer(open: any) {
     if(window.workbench){closePopovers();return;}
     ui.drawer=open;
     $('agentStage').classList.toggle('is-drawer-open',open);
@@ -586,18 +586,18 @@
   }
   function validateAttachmentFiles(files: any, existing: any = []) {
     if(files.length>maxImages()-existing.length)throw new Error('每次最多添加 '+maxImages()+' 个附件');
-    const image=f=>(f.type||'').startsWith('image/') || /\.(heic|heif)$/i.test(f.name||'');
-    if(files.some(f=>!image(f) && f.size>10*1024*1024))throw new Error('单个文档不能超过 10 MB');
-    if((files.some(f=>!image(f)) || existing.some(a=>!(a.mimeType||'').startsWith('image/'))) && files.reduce((n,f)=>n+f.size,existing.reduce((n,a)=>n+(a.bytes||0),0))>24*1024*1024)throw new Error('图片与文档合计不能超过 24 MB');
+    const image=(f: any)=>(f.type||'').startsWith('image/') || /\.(heic|heif)$/i.test(f.name||'');
+    if(files.some((f: any)=>!image(f) && f.size>10*1024*1024))throw new Error('单个文档不能超过 10 MB');
+    if((files.some((f: any)=>!image(f)) || existing.some((a: any)=>!(a.mimeType||'').startsWith('image/'))) && files.reduce((n: any,f: any)=>n+f.size,existing.reduce((n: any,a: any)=>n+(a.bytes||0),0))>24*1024*1024)throw new Error('图片与文档合计不能超过 24 MB');
   }
-  async function addAttachments(files) {
+  async function addAttachments(files: any) {
     const c=current();if(!c)await newConversation();
     if(!files.length)return;
     try {validateAttachmentFiles(files,draftFor().assets);} catch(error){notice((error as any).message);return;}
     $('addImageButton').disabled=true;
     try {
       const result=await upload(files,'attachment');
-      changeDraft(d=>{d.assets.push(...result);});
+      changeDraft((d: any)=>{d.assets.push(...result);});
       await flushDraft(current().id);
     } catch(e){notice((e as any).message);}
     finally {$('attachmentInput').value='';renderComposer();}
@@ -611,7 +611,7 @@
       await stopSpeech();
       if(!current() || current().id!==c.id)return;
       await flushDraft(c.id);
-      const payload: any = {text:d.text,assetIds:d.assets.map(a=>a.id),priority:"normal"};
+      const payload: any = {text:d.text,assetIds:d.assets.map((a: any)=>a.id),priority:"normal"};
       if(ui.editing && ui.editing.conversationId===c.id)payload.editingMessageId=ui.editing.messageId;
       await api('/api/conversations/'+encodeURIComponent(c.id)+'/send','POST',payload);
       const updated=draftFor(c);updated.text='';updated.assets=[];updated.dirty=false;updated.revision++;
@@ -631,9 +631,9 @@
     try {await api('/api/conversations/'+encodeURIComponent(c.id)+'/retry','POST',{});notice('');}
     catch(e){notice((e as any).message);}
   }
-  function editMessage(id) {
+  function editMessage(id: any) {
     const c=current();if(!c || isBusy(c)){toast('请先等待当前回复完成');return;}
-    const m=(c.messages || []).find(m=>m.id===id && m.role==='user');if(!m)return;
+    const m=(c.messages || []).find((m: any)=>m.id===id && m.role==='user');if(!m)return;
     const d=draftFor(c);
     ui.editing={conversationId:c.id,messageId:m.id,original:{text:d.text,assets:[...d.assets],reasoning:d.reasoning}};
     d.text=m.text || '';d.assets=[...(m.assets || [])];if(m.reasoning)d.reasoning=m.reasoning;d.dirty=true;d.revision++;
@@ -648,7 +648,7 @@
   function renderSearch() {
     if(!state)return;
     const term=ui.searchTerm.trim().toLocaleLowerCase();
-    let results=sortedConversations().filter(c=>!term || (c.title || '').toLocaleLowerCase().includes(term) || (c.messages || []).some(m=>(m.text || '').toLocaleLowerCase().includes(term)));
+    let results=sortedConversations().filter(c=>!term || (c.title || '').toLocaleLowerCase().includes(term) || (c.messages || []).some((m: any)=>(m.text || '').toLocaleLowerCase().includes(term)));
     if(!term)results=results.sort((a,b)=>new Date(b.lastOpenedAt || b.updatedAt).getTime()-new Date(a.lastOpenedAt || a.updatedAt).getTime());
     setText('searchHeading',term?'搜索结果':'最近打开');
     $('searchResults').innerHTML=results.length?results.map(c=>{const message=[...(c.messages || [])].reverse().find(m=>m.text && m.text.trim());const excerpt=message?message.text.replace(/\s+/g,' ').slice(0,100):'新对话';return '<button type="button" class="search-result" data-search-session="'+esc(c.id)+'"><span class="search-result-icon">'+conversationIcon()+'</span><span class="search-result-copy"><strong class="search-result-title">'+esc(c.title || '新对话')+'</strong><span class="search-result-excerpt">'+esc(excerpt)+'</span></span></button>';}).join(''):'<div class="empty-state">没有找到对话</div>';
@@ -667,7 +667,7 @@
     }
     ui.input=await resolveAsset(state.settings.homeInputAssetId);
     if(ui.input){
-      const jobs=state.photoJobs.filter(j=>j.inputAssetId===ui.input.id && j.feature===ui.feature).sort((a,b)=>new Date(b.createdAt || 0).getTime()-new Date(a.createdAt || 0).getTime());
+      const jobs=state.photoJobs.filter((j: any)=>j.inputAssetId===ui.input.id && j.feature===ui.feature).sort((a: any,b: any)=>new Date(b.createdAt || 0).getTime()-new Date(a.createdAt || 0).getTime());
       if(jobs[0]){ui.photoJobId=jobs[0].id;ui.result=await resolveAsset(jobs[0].outputAssetId);}
     }
     ui.restoring=false;renderPhoto();
@@ -695,13 +695,13 @@
     for(const entry of entries){
       const verified=assets.get(entry.input?.id);
       if(verified)entry.input={...entry.input,...verified,...(verified.width&&verified.height?{}:{width:entry.input.width,height:entry.input.height}),...(entry.localURL?{url:entry.localURL}:{})};
-      const job=(state?.photoJobs||[]).find(item=>item.id===entry.jobId);
+      const job=(state?.photoJobs||[]).find((item: any)=>item.id===entry.jobId);
       if(job?.outputAssetId)entry.result=assets.get(job.outputAssetId)||entry.result;
     }
     const selected=entries[ui.photoBatchIndex]||entries[0];
     ui.input=selected.input;ui.result=selected.result||null;ui.photoJobId=selected.jobId||null;
   }
-  function selectPhotoBatch(index){
+  function selectPhotoBatch(index: any){
     if(!Number.isInteger(index)||!photoBatchEntries()[index])return;
     ui.photoBatchIndex=index;ui.showOriginal=false;ui.photoError=photoBatchEntries()[index].error||'';
     syncPhotoBatchSelection();renderPhoto();
@@ -710,7 +710,7 @@
   function photoBatchSummary(){
     const entries=photoBatchEntries();let completed=0,failed=0,waiting=0;
     for(const entry of entries){
-      const job=(state?.photoJobs||[]).find(item=>item.id===entry.jobId);
+      const job=(state?.photoJobs||[]).find((item: any)=>item.id===entry.jobId);
       if(entry.result||job?.state==='completed')completed++;
       else if(entry.error||['failed','cancelled'].includes(job?.state))failed++;
       else waiting++;
@@ -741,12 +741,12 @@
     ui.photoError=entries[ui.photoBatchIndex]?.error||'';ui.showOriginal=false;ui.strokes=[];
     renderPhoto();saveWorkspace().catch(error=>toast((error as any).message));
   }
-  async function chooseHomeImages(files){
+  async function chooseHomeImages(files: any){
     const items: any[] = Array.from(files||[]);if(!items.length)return;
     if(items.length>10){toast('一次最多选择 10 张图片');$('homeFileInput').value='';return;}
     if(photoBusy()||ui.photoExporting||ui.restoring){toast('请先等待当前处理完成');return;}
     if(items.some(file=>!(file.type||'').startsWith('image/')&&!/\.(?:jpe?g|png|webp|heic|heif)$/i.test(file.name||''))){toast('请选择 JPG、PNG、WebP 或 HEIC 图片');return;}
-    const previous=photoBatchEntries(), jobs: any = new Map((state?.photoJobs||[]).map(job=>[job.id,job]));
+    const previous=photoBatchEntries(), jobs: any = new Map((state?.photoJobs||[]).map((job: any)=>[job.id,job]));
     const hasResults=!!ui.result||!!jobs.get(ui.photoJobId)?.outputAssetId||previous.some(entry=>entry.result||jobs.get(entry.jobId)?.outputAssetId);
     const append=ui.feature==='enhance'&&!!ui.input&&!hasResults;
     const retained=append?(previous.length?previous.slice():[{input:ui.input,file:ui.photoUploadFile||null,localURL:ui.photoLocalURL||null,result:null,jobId:ui.photoJobId||null,error:ui.photoError||''}]):[];
@@ -784,31 +784,31 @@
       if(!ui.photoError)saveWorkspace().catch(error=>toast((error as any).message));
     }finally{ui.photoUploading=false;$('homeFileInput').disabled=false;$('homeFileInput').value='';renderPhoto();}
   }
-  async function restorePhotoBatch(ids,batchId){
+  async function restorePhotoBatch(ids: any,batchId: any){
     const version=ui.photoSelectionVersion||0;
     const inputs=await Promise.all(ids.map(resolveAsset));if(version!==(ui.photoSelectionVersion||0))return;
     ui.photoBatchEntries=inputs.filter(Boolean).map(input=>{
-      const job=(state.photoJobs||[]).filter(job=>job.inputAssetId===input.id).sort((a,b)=>new Date(b.createdAt||0).getTime()-new Date(a.createdAt||0).getTime())[0];
+      const job=(state.photoJobs||[]).filter((job: any)=>job.inputAssetId===input.id).sort((a: any,b: any)=>new Date(b.createdAt||0).getTime()-new Date(a.createdAt||0).getTime())[0];
       return {input,jobId:job?.id||null,result:job?.outputAssetId?assets.get(job.outputAssetId):null,error:'',file:null,localURL:null};
     });
     ui.photoBatchIndex=Math.max(0,ui.photoBatchEntries.findIndex(entry=>entry.input.id===state.settings.homeInputAssetId));
     if(batchId)try{applyPhotoBatchStatus({...await api('/api/photo/batches/'+encodeURIComponent(batchId)),photoSelectionVersion:version});}catch(error){ui.photoError='恢复批量状态失败：'+(error as any).message;}
     syncPhotoBatchSelection();
   }
-  function applyPhotoBatchStatus(data){
+  function applyPhotoBatchStatus(data: any){
     if(!state||!data?.batch||!photoBatchEntries().length)return;
     if(data.photoSelectionVersion!==undefined&&data.photoSelectionVersion!==(ui.photoSelectionVersion||0))return;
     if(ui.photoBatch?.id&&ui.photoBatch.id!==data.batch.id)return;
     if(ui.photoBatch?.updatedAt&&data.batch.updatedAt&&Date.parse(data.batch.updatedAt)<Date.parse(ui.photoBatch.updatedAt))return;
     ui.photoBatch=data.batch;
-    const jobs=new Map((state.photoJobs||[]).map(job=>[job.id,job]));
+    const jobs=new Map((state.photoJobs||[]).map((job: any)=>[job.id,job]));
     for(const job of data.jobs||[]){
       if(window.ShiYanPhotoStatus.newer(job,jobs.get(job.id)))jobs.set(job.id,job);
       const entry=photoBatchEntries().find(entry=>entry.input?.id===job.inputAssetId);
       if(entry)entry.jobId=job.id;
     }
     state.photoJobs=[...jobs.values()];(data.assets||[]).forEach(remember);
-    const history=new Map((state.history||[]).map(item=>[item.id,item]));
+    const history=new Map((state.history||[]).map((item: any)=>[item.id,item]));
     for(const item of data.history||[]){history.set(item.id,item);remember(item.asset);}
     state.history=[...history.values()];syncPhotoBatchSelection();renderPhoto();
     if(data.history?.length)renderHistory();
@@ -817,7 +817,7 @@
     if(photoBusy())return;
     if(photoBatchEntries().some(entry=>entry.file)){await uploadPhotoBatch();return;}
     const pending=photoBatchEntries().filter(entry=>{
-      const job=(state.photoJobs||[]).find(job=>job.id===entry.jobId);
+      const job=(state.photoJobs||[]).find((job: any)=>job.id===entry.jobId);
       return !entry.result&&(!job||['failed','cancelled'].includes(job.state));
     });
     const targets=pending.length?pending:photoBatchEntries();
@@ -832,11 +832,11 @@
     }catch(error){ui.photoError=(error as any).message;}
     finally{ui.photoSubmitting=false;renderPhoto();}
   }
-  function photoArchiveAssets(items){
-    return items.map(asset=>{
-      const history=(state?.history||[]).find(item=>item.assetId===asset.id||item.asset?.id===asset.id);
-      const job=(state?.photoJobs||[]).find(item=>item.feature==='enhance'&&
-        (item.outputAssetId===asset.id||(item.outputAssets||[]).some(output=>output.id===asset.id)));
+  function photoArchiveAssets(items: any){
+    return items.map((asset: any)=>{
+      const history=(state?.history||[]).find((item: any)=>item.assetId===asset.id||item.asset?.id===asset.id);
+      const job=(state?.photoJobs||[]).find((item: any)=>item.feature==='enhance'&&
+        (item.outputAssetId===asset.id||(item.outputAssets||[]).some((output: any)=>output.id===asset.id)));
       return {...asset,filename:exportFilename(asset),enhancementModel:job?.model||history?.modelName};
     });
   }
@@ -847,19 +847,19 @@
     try{
       if(results.length===1){await saveAsset(results[0]);}
       else if(window.ShiYanPlatform?.mode==='desktop'){
-        const ids=results.map(asset=>(state.history||[]).find(item=>item.assetId===asset.id)?.id);
+        const ids=results.map(asset=>(state.history||[]).find((item: any)=>item.assetId===asset.id)?.id);
         if(ids.some(id=>!id))throw Error('部分增强结果尚未保存，请稍后重试');
         const data=await api('/api/history/export','POST',{ids});await saveAsset(data.asset);
       }else await window.ShiYanPhotoArchive.download(photoArchiveAssets(results),{
-        onProgress:({completed,total})=>{ui.photoExportLabel='正在打包 '+completed+'/'+total;renderPhotoBatch();}
+        onProgress:({completed,total}: any)=>{ui.photoExportLabel='正在打包 '+completed+'/'+total;renderPhotoBatch();}
       });
     }catch(error){if((error as any).name!=='AbortError')toast((error as any).message);}
     finally{ui.photoExporting=false;renderPhoto();}
   }
 
-  async function choosePreviewHomeImage(file) {
+  async function choosePreviewHomeImage(file: any) {
     const keys=['input','result','showOriginal','photoJobId','strokes','photoError','photoUploadFile','photoLocalURL'];
-    const previous=Object.fromEntries(keys.map(key=>[key,ui[key]]));
+    const previous=Object.fromEntries(keys.map(key=>[key,(ui as any)[key]]));
     const url=URL.createObjectURL(file);
     const local={id:'local:'+url,url,filename:file.name,mimeType:file.type};
     ui.input=local;ui.result=null;ui.showOriginal=false;ui.photoJobId=null;ui.strokes=[];
@@ -891,32 +891,32 @@
       $('homeFileInput').disabled=false;$('homeFileInput').value='';renderPhoto();
     }
   }
-  async function chooseHomeImage(file) {
+  async function chooseHomeImage(file: any) {
     if(!file)return;
     if(photoBusy()){toast('请先停止当前处理');return;}
     return choosePreviewHomeImage(file);
   }
-  function applyPhotoStatus(data){
+  function applyPhotoStatus(data: any){
     if(!state||!data?.job)return;
-    const job=data.job,prior=state.photoJobs.find(j=>j.id===job.id);
+    const job=data.job,prior=state.photoJobs.find((j: any)=>j.id===job.id);
     if(prior&&!window.ShiYanPhotoStatus.newer(job,prior))return;
-    state.photoJobs=[job,...state.photoJobs.filter(j=>j.id!==job.id)];
+    state.photoJobs=[job,...state.photoJobs.filter((j: any)=>j.id!==job.id)];
     (data.assets||[]).forEach(remember);
-    const history=new Map((state.history||[]).map(h=>[h.id,h]));
+    const history=new Map((state.history||[]).map((h: any)=>[h.id,h]));
     for(const h of data.history||[]){history.set(h.id,h);remember(h.asset);}
     state.history=[...history.values()];
     renderPhoto();
     if(data.history?.length)renderHistory();
   }
   const photoStatusPoll=window.ShiYanPhotoStatus.create({
-    request:async(id,signal)=>{
+    request:async(id: any,signal: any)=>{
       const response=await fetch('/api/photo/jobs/'+encodeURIComponent(id),{credentials:'same-origin',signal});
       if(!response.ok)throw Error('增强状态暂不可用');
       const data=await response.json();if(data.ok===false)throw Error('增强状态暂不可用');return data;
     },apply:applyPhotoStatus,isVisible:()=>!document.hidden
   });
   const photoBatchPoll=window.ShiYanPhotoStatus.create({
-    request:async(id,signal)=>{
+    request:async(id: any,signal: any)=>{
       const version=ui.photoSelectionVersion||0;
       const response=await fetch('/api/photo/batches/'+encodeURIComponent(id),{credentials:'same-origin',signal});
       if(!response.ok)throw Error('批量增强状态暂不可用');
@@ -929,9 +929,9 @@
   window.addEventListener('online',()=>{photoStatusPoll.refresh();photoBatchPoll.refresh();});
   window.addEventListener('pagehide',()=>{photoStatusPoll.stop();photoBatchPoll.stop();});
   window.addEventListener('pageshow',()=>renderPhoto());
-  function photoJob(){return state && (state.photoJobs || []).find(j=>j.id===ui.photoJobId);}
+  function photoJob(){return state && (state.photoJobs || []).find((j: any)=>j.id===ui.photoJobId);}
   function photoBusy(){const j=photoJob();return ui.photoUploading || ui.photoSubmitting || busyStates.has(ui.photoBatch?.state) || !!(j && busyStates.has(j.state));}
-  function setFeature(feature) {
+  function setFeature(feature: any) {
     if(feature==='agent'){setView('agent');return;}
     if(feature!=='enhance'){toast('此图片工具已下线');return;}
     if(photoBusy()){toast('请先停止当前处理');return;}
@@ -1007,7 +1007,7 @@
     if(canvas.width!==w || canvas.height!==h){canvas.width=w;canvas.height=h;}
     drawMask();
   }
-  function paintStrokes(ctx,w,h,mask=false) {
+  function paintStrokes(ctx: any,w: any,h: any,mask=false) {
     for(const stroke of ui.strokes){
       const points=stroke.points;if(!points.length)continue;
       ctx.strokeStyle=mask?'#fff':'rgba(255,107,138,.62)';ctx.fillStyle=ctx.strokeStyle;
@@ -1019,7 +1019,7 @@
     }
   }
   function drawMask() {const canvas=$('maskCanvas'),ctx=canvas.getContext('2d');ctx.clearRect(0,0,canvas.width,canvas.height);paintStrokes(ctx,canvas.width,canvas.height);}
-  function brushPoint(event) {
+  function brushPoint(event: any) {
     const rect=$('maskCanvas').getBoundingClientRect();
     return {x:Math.max(0,Math.min(1,(event.clientX-rect.left)/rect.width)),y:Math.max(0,Math.min(1,(event.clientY-rect.top)/rect.height))};
   }
@@ -1052,7 +1052,7 @@
     try{applyPhotoStatus(await api('/api/photo/jobs/'+encodeURIComponent(ui.photoJobId)+'/cancel','POST',{}));}
     catch(e){ui.photoError='停止尚未确认：'+(e as any).message;setText('photoError',ui.photoError);show('photoError');}
   }
-  function historyHTML(item) {
+  function historyHTML(item: any) {
     const a=item.asset,selected=ui.selection.has(item.id);
     if(!a)return '';
     const model=item.modelName || (item.feature==='remove'?'AI 消除':item.feature==='colorize'?'老照片上色':'增强图片');
@@ -1072,28 +1072,28 @@
     $('historyGridButton').classList.toggle('is-selected',items.dataset.mode==='grid');$('historyListButton').classList.toggle('is-selected',items.dataset.mode==='list');
     $('historyGridButton').setAttribute('aria-checked',String(items.dataset.mode==='grid'));$('historyListButton').setAttribute('aria-checked',String(items.dataset.mode==='list'));
   }
-  async function setHistoryMode(mode) {await api('/api/settings','PATCH',{historyViewMode:mode});show('historyMenu',false);}
+  async function setHistoryMode(mode: any) {await api('/api/settings','PATCH',{historyViewMode:mode});show('historyMenu',false);}
   async function deleteHistory() {
     if(!ui.selection.size)return;
     if(!await confirmAction('删除所选图片？','将从历史记录中删除 '+ui.selection.size+' 张图片。','删除'))return;
     try {await api('/api/history/delete','POST',{ids:[...ui.selection]});ui.selection.clear();renderHistory();toast('已删除');}
     catch(e){toast((e as any).message);}
   }
-  function native(action,extra={}) {
+  function native(action: any,extra={}) {
     if(window.ShiYanPlatform)return window.ShiYanPlatform.postNative(action,extra);
     const bridge=window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.native;
     if(!bridge)return false;bridge.postMessage(Object.assign({action},extra));return true;
   }
-  function exportFilename(a) {
+  function exportFilename(a: any) {
     const filename=a.filename || '拾燕作品';
-    const anime=(state?.history || []).some(h=>h.assetId===a.id && h.modelName==='动漫增强') ||
-      (state?.photoJobs || []).some(j=>j.feature==='enhance' && j.model==='anime' &&
-        (j.outputAssetId===a.id || (j.outputAssets || []).some(output=>output.id===a.id)));
+    const anime=(state?.history || []).some((h: any)=>h.assetId===a.id && h.modelName==='动漫增强') ||
+      (state?.photoJobs || []).some((j: any)=>j.feature==='enhance' && j.model==='anime' &&
+        (j.outputAssetId===a.id || (j.outputAssets || []).some((output: any)=>output.id===a.id)));
     if(!anime)return filename;
     const dot=filename.lastIndexOf('.'),stem=dot>0?filename.slice(0,dot):filename,suffix=dot>0?filename.slice(dot):'';
     return /_anime(?:_4x)?$/i.test(stem)?filename:stem+'_anime'+suffix;
   }
-  async function saveAsset(a) {
+  async function saveAsset(a: any) {
     if(!a)return;
     const filename=exportFilename(a);
     // ZIPs use WebKit's file download path instead of the size-limited preview fetch.
@@ -1101,32 +1101,32 @@
     if(!archiveDownload && native('save',{url:new URL(assetUrl(a,true),location.href).href,filename}))return;
     const anchor=document.createElement('a');anchor.href=assetUrl(a,true);anchor.download=filename;document.body.appendChild(anchor);anchor.click();anchor.remove();
   }
-  async function shareAssets(items) {
+  async function shareAssets(items: any) {
     if(!items.length)return;
-    if(native('share',{assets:items.map(a=>({url:new URL(assetUrl(a,true),location.href).href,filename:exportFilename(a)}))}))return;
+    if(native('share',{assets:items.map((a: any)=>({url:new URL(assetUrl(a,true),location.href).href,filename:exportFilename(a)}))}))return;
     if(items.length===1){await saveAsset(items[0]);return;}
     try {
       if(window.ShiYanPlatform?.mode==='web'){await window.ShiYanPhotoArchive.download(photoArchiveAssets(items));return;}
-      const ids=state.history.filter(h=>items.some(a=>h.asset && h.asset.id===a.id)).map(h=>h.id);
+      const ids=state.history.filter((h: any)=>items.some((a: any)=>h.asset && h.asset.id===a.id)).map((h: any)=>h.id);
       const data=await api('/api/history/export','POST',{ids});remember(data.asset);await saveAsset(data.asset);
     }catch(e){toast((e as any).message);}
   }
-  async function openGeneratedDocument(a) {
+  async function openGeneratedDocument(a: any) {
     if(window.workbench?.openAsset)return window.workbench.openAsset(a);
     toast('文件工具正在加载，请稍后重试');
   }
-  function generatedLinkAsset(link) {
+  function generatedLinkAsset(link: any) {
     const raw=link.dataset.generatedFile||link.getAttribute('href')||'';
     const id=raw.match(/\/(?:api\/assets|v1\/artifacts)\/([\w-]+)/)?.[1];
     const message=visibleMessage(link.closest('[data-message-id]')?.dataset.messageId);
     const candidates=message?.assets||[];
-    if(id){const matches=candidates.filter(a=>a.id===id||a.remoteId===id);return matches.length===1?matches[0]:null;}
+    if(id){const matches=candidates.filter((a: any)=>a.id===id||a.remoteId===id);return matches.length===1?matches[0]:null;}
     let filename;
     try {filename=decodeURIComponent(raw.replace(/^sandbox:/,'').split(/[?#]/)[0]).replace(/:\d+(?::\d+)?$/,'').split('/').pop();}catch{return null;}
-    const matches=candidates.filter(a=>a.filename===filename);
+    const matches=candidates.filter((a: any)=>a.filename===filename);
     return matches.length===1?matches[0]:null;
   }
-  async function openPreview(a, galleryAssets=null) {
+  async function openPreview(a: any, galleryAssets=null) {
     if(!a)return;ui.preview=a;ui.previewGalleryAssets=Array.isArray(galleryAssets)?galleryAssets:null;ui.zoom=1;ui.panX=ui.panY=0;ui.previewPointer=null;
     const image=(a.mimeType || '').startsWith('image/');
     if(!image && native('preview',{url:new URL(assetUrl(a,true),location.href).href,filename:a.filename || '文件'}))return;
@@ -1140,13 +1140,13 @@
   }
   function closePreview() {show('imagePreview',false);$('filePreview').src='about:blank';ui.preview=null;ui.previewGalleryAssets=null;ui.zoom=1;ui.panX=ui.panY=0;}
   function previewGallery() {
-    const image=a=>a&&(a.mimeType||'').startsWith('image/');
+    const image=(a: any)=>a&&(a.mimeType||'').startsWith('image/');
     if(Array.isArray(ui.previewGalleryAssets))return [...new Map([...ui.previewGalleryAssets.filter(image),ui.preview].filter(image).map(a=>[a.id,a])).values()];
-    const conversation=state?.conversations?.find(c=>(c.messages||[]).some(m=>(m.assets||[]).some(a=>a.id===ui.preview?.id)));
-    const source=conversation?(conversation.messages||[]).flatMap(m=>m.assets||[]):(state?.history||[]).map(h=>h.asset);
+    const conversation=state?.conversations?.find((c: any)=>(c.messages||[]).some((m: any)=>(m.assets||[]).some((a: any)=>a.id===ui.preview?.id)));
+    const source=conversation?(conversation.messages||[]).flatMap((m: any)=>m.assets||[]):(state?.history||[]).map((h: any)=>h.asset);
     return [...new Map([...(source.filter(image)),ui.preview].filter(image).map(a=>[a.id,a])).values()];
   }
-  function stepPreview(direction) {const gallery=previewGallery(),i=gallery.findIndex(a=>a.id===ui.preview?.id),next=gallery[i+direction];if(next)openPreview(next,ui.previewGalleryAssets);}
+  function stepPreview(direction: any) {const gallery=previewGallery(),i=gallery.findIndex(a=>a.id===ui.preview?.id),next=gallery[i+direction];if(next)openPreview(next,ui.previewGalleryAssets);}
   function previewFit() {const image=$('previewImage'),box=$('previewViewport').getBoundingClientRect();return image.naturalWidth?Math.min(1,(box.width-120)/image.naturalWidth,(box.height-12)/image.naturalHeight):1;}
   function updateZoom() {
     const image=$('previewImage');image.style.transform='translate('+ui.panX+'px,'+ui.panY+'px) scale('+ui.zoom+')';
@@ -1156,27 +1156,27 @@
     show('previewZoom',(ui.preview?.mimeType||'').startsWith('image/'));
   }
 
-  function openDialog(id) {const el=$(id);show(id);if(typeof el.showModal==='function' && !el.open)el.showModal();}
-  function closeDialog(id) {const el=$(id);if(typeof el.close==='function' && el.open)el.close();show(id,false);}
-  function confirmAction(title,message,accept='确认') {
+  function openDialog(id: any) {const el=$(id);show(id);if(typeof el.showModal==='function' && !el.open)el.showModal();}
+  function closeDialog(id: any) {const el=$(id);if(typeof el.close==='function' && el.open)el.close();show(id,false);}
+  function confirmAction(title: any,message: any,accept='确认') {
     return new Promise(resolve=>{
       // 确认框总是放在最外层：挂到 body 末尾，避免被其他面板（如 Dots 弹窗）盖住。
       const confirmNode=$('confirmDialog');if(confirmNode&&confirmNode.parentElement!==document.body||confirmNode?.nextElementSibling)document.body.appendChild(confirmNode);
       setText('confirmTitle',title);setText('confirmMessage',message);setText('confirmAcceptButton',accept);$('confirmAcceptButton').classList.toggle('danger-action',accept==='删除');openDialog('confirmDialog');
-      const finish=value=>{closeDialog('confirmDialog');resolve(value);};
+      const finish=(value: any)=>{closeDialog('confirmDialog');resolve(value);};
       $('confirmCancelButton').onclick=()=>finish(false);$('confirmAcceptButton').onclick=()=>finish(true);
-      $('confirmDialog').oncancel=e=>{e.preventDefault();finish(false);};
+      $('confirmDialog').oncancel=(e: any)=>{e.preventDefault();finish(false);};
     });
   }
-  function positionMenu(menu,x,y,within=null) {
+  function positionMenu(menu: any,x: any,y: any,within=null) {
     menu.hidden=false;menu.style.position='fixed';menu.style.left='0px';menu.style.top='0px';
     const rect=menu.getBoundingClientRect(),bounds=within || {left:8,top:8,right:innerWidth-8,bottom:innerHeight-8};
     menu.style.left=Math.max(bounds.left+8,Math.min(x,bounds.right-rect.width-8))+'px';
     menu.style.top=Math.max(bounds.top+8,Math.min(y,bounds.bottom-rect.height-8))+'px';
   }
-  function showSessionMenu(id,event) {
+  function showSessionMenu(id: any,event: any) {
     if(!ui.drawer)setDrawer(true);closePopovers();ui.sessionMenuId=id;
-    const c=state.conversations.find(c=>c.id===id);if(!c)return;
+    const c=state.conversations.find((c: any)=>c.id===id);if(!c)return;
     const menu=$('sessionMenu');
     menu.innerHTML='<button type="button" data-session-action="rename" role="menuitem">'+sessionMenuIcon('rename')+'<span>重命名</span></button>'+
       '<button type="button" data-session-action="pin" role="menuitem">'+sessionMenuIcon(c.isPinned?'unpin':'pin')+'<span>'+(c.isPinned?'取消置顶':'置顶')+'</span></button>'+
@@ -1185,8 +1185,8 @@
     const projectButton=menu.querySelector('[data-session-action="project"]');
     projectButton.onpointerenter=()=>showSessionProjectMenu();
     projectButton.onpointerleave=scheduleSessionProjectClose;
-    projectButton.onkeydown=e=>{if(e.key==='ArrowRight'){e.preventDefault();showSessionProjectMenu(true);}};
-    menu.onpointerover=e=>{const button=e.target.closest('[data-session-action]');if(button&&button!==projectButton)closeSessionProjectMenu();};
+    projectButton.onkeydown=(e: any)=>{if(e.key==='ArrowRight'){e.preventDefault();showSessionProjectMenu(true);}};
+    menu.onpointerover=(e: any)=>{const button=e.target.closest('[data-session-action]');if(button&&button!==projectButton)closeSessionProjectMenu();};
     const row=$$('.session-row').find(el=>el.dataset.sessionId===id),r=row?row.getBoundingClientRect():{left:20,bottom:120};
     positionMenu(menu,event && event.clientX || r.left+12,event && event.clientY || r.bottom+5,$('agentSidebar').getBoundingClientRect());
     window.workbench?.refreshOverlays?.();
@@ -1198,19 +1198,19 @@
   function scheduleSessionProjectClose(){clearTimeout(sessionProjectCloseTimer);sessionProjectCloseTimer=setTimeout(closeSessionProjectMenu,180);}
   function showSessionProjectMenu(focus=false){
     clearTimeout(sessionProjectCloseTimer);
-    const c=state?.conversations.find(c=>c.id===ui.sessionMenuId),anchor=$('sessionMenu')?.querySelector('[data-session-action="project"]');
+    const c=state?.conversations.find((c: any)=>c.id===ui.sessionMenuId),anchor=$('sessionMenu')?.querySelector('[data-session-action="project"]');
     if(!c||!anchor||$('sessionMenu').hidden)return;
     const menu=ensureMenu('sessionProjectMenu'),projects=window.workbench?.getLayout?.().projects||state?.projects||[];
-    const rows=projects.filter(p=>p.id!==c.projectId),currentProject=projects.find(p=>p.id===c.projectId);
+    const rows=projects.filter((p: any)=>p.id!==c.projectId),currentProject=projects.find((p: any)=>p.id===c.projectId);
     menu.setAttribute('role','menu');menu.setAttribute('tabindex','-1');menu.setAttribute('aria-label','移动会话到项目');
-    menu.innerHTML=rows.map(p=>'<button type="button" data-session-project="'+esc(p.id)+'" role="menuitem" title="'+esc(p.name)+'">'+
+    menu.innerHTML=rows.map((p: any)=>'<button type="button" data-session-project="'+esc(p.id)+'" role="menuitem" title="'+esc(p.name)+'">'+
       sessionMenuIcon('folder')+'<span class="session-project-name">'+esc(p.name)+'</span></button>').join('');
     if(c.projectId){
       const label=currentProject?'从“'+currentProject.name+'”中移除':'从原项目中移除';
       menu.innerHTML+='<button type="button" data-session-project="" class="session-project-remove" role="menuitem" title="'+esc(label)+'">'+sessionMenuIcon('folderRemove')+'<span class="session-project-name">'+esc(label)+'</span></button>';
     }else if(!rows.length)menu.innerHTML='<p class="session-project-empty" role="status">暂无可选项目</p>';
     menu.onpointerenter=()=>clearTimeout(sessionProjectCloseTimer);menu.onpointerleave=scheduleSessionProjectClose;
-    menu.onkeydown=e=>{
+    menu.onkeydown=(e: any)=>{
       const buttons=[...menu.querySelectorAll('button:not(:disabled)')],index=buttons.indexOf(document.activeElement);
       if(e.key==='ArrowLeft'){e.preventDefault();e.stopPropagation();closeSessionProjectMenu();anchor.focus({preventScroll:true});}
       else if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();if(!buttons.length)return;buttons[(index+(e.key==='ArrowDown'?1:buttons.length-1))%buttons.length]?.focus({preventScroll:true});}
@@ -1222,14 +1222,14 @@
     anchor.setAttribute('aria-expanded','true');if(focus)(menu.querySelector('button:not(:disabled)')||menu).focus({preventScroll:true});
     window.workbench?.refreshOverlays?.();
   }
-  async function moveSessionProject(projectId){
-    const id=ui.sessionMenuId,c=state?.conversations.find(c=>c.id===id);if(!c)return;
+  async function moveSessionProject(projectId: any){
+    const id=ui.sessionMenuId,c=state?.conversations.find((c: any)=>c.id===id);if(!c)return;
     closePopovers();if((c.projectId||null)===projectId)return;
     try{await api('/api/conversations/'+encodeURIComponent(id),'PATCH',{projectId});window.workbench?.revealConversationProject?.(id,projectId);}
     catch(e){toast((e as any).message);}
   }
-  async function handleSessionAction(action) {
-    const id=ui.sessionMenuId,c=state.conversations.find(c=>c.id===id);if(!c)return;
+  async function handleSessionAction(action: any) {
+    const id=ui.sessionMenuId,c=state.conversations.find((c: any)=>c.id===id);if(!c)return;
     if(action==='project'){showSessionProjectMenu();return;}
     const menuRect=$('sessionMenu').getBoundingClientRect();closePopovers();
     if(action==='pin'){try{await api('/api/conversations/'+encodeURIComponent(id),'PATCH',{isPinned:!c.isPinned});}catch(e){toast((e as any).message);}}
@@ -1243,19 +1243,19 @@
     catch(e){toast((e as any).message);}
     finally {$('confirmSessionDeleteButton').disabled=false;ui.deletingSessionId=null;}
   }
-  async function renameConversation(event) {
+  async function renameConversation(event: any) {
     event.preventDefault();const title=$('renameInput').value.trim();if(!title || !ui.renamingSessionId)return;
     $('saveRenameButton').disabled=true;
     try {await api('/api/conversations/'+encodeURIComponent(ui.renamingSessionId),'PATCH',{title});closeDialog('renameDialog');}
     catch(e){toast((e as any).message);}
     finally {$('saveRenameButton').disabled=false;}
   }
-  async function copyText(text) {
+  async function copyText(text: any) {
     try {await navigator.clipboard.writeText(text);toast('已复制');}
     catch (_) {const el=document.createElement('textarea');el.value=text;el.style.cssText='position:fixed;left:-10000px';document.body.appendChild(el);el.select();const ok=document.execCommand('copy');el.remove();toast(ok?'已复制':'无法访问剪贴板');}
   }
-  function ensureMenu(id) {let el=$(id);if(!el){el=document.createElement('div');el.id=id;el.className='context-menu glass-popover';el.hidden=true;document.body.appendChild(el);}return el;}
-  function showMessageMenu(id,event) {
+  function ensureMenu(id: any) {let el=$(id);if(!el){el=document.createElement('div');el.id=id;el.className='context-menu glass-popover';el.hidden=true;document.body.appendChild(el);}return el;}
+  function showMessageMenu(id: any,event: any) {
     closePopovers();const c=visibleConversation(),m=visibleMessage(id);if(!m)return;
     const menu=ensureMenu('messageMenu');
     menu.innerHTML='<div class="menu-caption">'+esc(dateText(m.createdAt,true))+'</div><button type="button" data-copy-message="'+esc(id)+'">'+icon('reply-copy')+'<span>复制</span></button>'+
@@ -1263,7 +1263,7 @@
     const target=$$('[data-message-id]').find(el=>el.dataset.messageId===id),r=target?target.getBoundingClientRect():{left:innerWidth/2,bottom:100};
     positionMenu(menu,event && event.clientX || r.left,event && event.clientY || r.bottom);
   }
-  function showAssetMenu(id,event) {
+  function showAssetMenu(id: any,event: any) {
     closePopovers();const a=assets.get(id);if(!a)return;
     const menu=ensureMenu('assetMenu'),image=(a.mimeType || '').startsWith('image/');
     menu.innerHTML=(image?'<button type="button" data-use-asset="'+esc(id)+'">'+icon('photo')+'<span>使用这张图片</span></button>':'')+
@@ -1271,13 +1271,13 @@
       '<button type="button" data-share-asset="'+esc(id)+'">'+icon('square.and.arrow.up')+'<span>分享</span></button>';
     positionMenu(menu,event.clientX,event.clientY);
   }
-  async function useAsset(id) {
+  async function useAsset(id: any) {
     const a=assets.get(id);if(!a)return;
     if(ui.view!=='agent')setView('agent');if(!current())await newConversation();
     if(isBusy(current())){toast('请等待当前回复完成');return;}
-    const d=draftFor();if(d.assets.some(item=>item.id===id)){toast('图片已在输入栏中');return;}
+    const d=draftFor();if(d.assets.some((item: any)=>item.id===id)){toast('图片已在输入栏中');return;}
     if(d.assets.length>=maxImages()){toast('每次最多添加 '+maxImages()+' 个附件');return;}
-    changeDraft(d=>d.assets.push(a));closePopovers();closePreview();$('messageInput').focus();
+    changeDraft((d: any)=>d.assets.push(a));closePopovers();closePreview();$('messageInput').focus();
   }
   let webSpeech: any = null, speechStopPromise: any = null, speechStopResolve: any = null, speechStopTimer: any = 0, webSpeechToken=0;
   function finishSpeech() {
@@ -1298,18 +1298,18 @@
     if(!Recognition){finishSpeech();notice('此浏览器不支持语音输入，请在拾燕桌面应用中使用');return;}
     const token=++webSpeechToken;
     webSpeech=new Recognition();webSpeech.lang='zh-CN';webSpeech.continuous=true;webSpeech.interimResults=true;
-    webSpeech.onresult=event=>{
+    webSpeech.onresult=(event: any)=>{
       if(token!==webSpeechToken)return;
       const text=Array.from(event.results).map((r: any)=>r[0].transcript).join('');
       receiveSpeech(text,false);
     };
-    webSpeech.onerror=event=>{if(token!==webSpeechToken)return;notice(event.error==='not-allowed'?'请允许麦克风和语音识别权限':'语音输入失败：'+event.error);cancelSpeech();};
+    webSpeech.onerror=(event: any)=>{if(token!==webSpeechToken)return;notice(event.error==='not-allowed'?'请允许麦克风和语音识别权限':'语音输入失败：'+event.error);cancelSpeech();};
     webSpeech.onend=()=>{if(token===webSpeechToken){webSpeech=null;finishSpeech();}};
     try{webSpeech.start();}catch(e){notice((e as any).message);cancelSpeech();}
   }
-  function receiveSpeech(text,isFinal) {
+  function receiveSpeech(text: any,isFinal: any) {
     if(!ui.speech || !current() || ui.recordingConversation!==current().id)return;
-    changeDraft(d=>{d.text=ui.speechPrefix+(ui.speechPrefix && text?'\n':'')+text;});$('messageInput').value=draftFor().text;
+    changeDraft((d: any)=>{d.text=ui.speechPrefix+(ui.speechPrefix && text?'\n':'')+text;});$('messageInput').value=draftFor().text;
     if(isFinal)finishSpeech();
   }
   function stopSpeech() {
@@ -1341,7 +1341,7 @@
     else if(d.type==='saved')toast('已保存');
     else if(d.type==='openFiles' && Array.isArray(d.files))toast('请通过选择图片导入文件');
   });
-  function bindClick(id,fn) {const el=$(id);if(el)el.addEventListener('click',event=>{const result=fn(event);if(result && result.catch)result.catch(e=>toast((e as any).message));});}
+  function bindClick(id: any,fn: any) {const el=$(id);if(el)el.addEventListener('click',(event: any)=>{const result=fn(event);if(result && result.catch)result.catch((e: any)=>toast((e as any).message));});}
   function initEvents() {
     $('reasoningDots').setAttribute('aria-hidden','true');
     if(window.ResizeObserver)new ResizeObserver(()=>{$('chatPanel').style.setProperty('--composer-height',Math.ceil($('composerForm').getBoundingClientRect().height+24)+'px');}).observe($('composerForm'));
@@ -1358,8 +1358,8 @@
     bindClick('openSearchButton',()=>setView('search'));
     bindClick('closeSearchButton',()=>{setView('agent');setDrawer(window.innerWidth<760);});
     bindClick('clearSearchButton',()=>{ui.searchTerm='';$('searchInput').value='';renderSearch();$('searchInput').focus();});
-    $('searchInput').addEventListener('input',event=>{ui.searchTerm=event.target.value;renderSearch();});
-    $('messageQueue').addEventListener('click',async event=>{
+    $('searchInput').addEventListener('input',(event: any)=>{ui.searchTerm=event.target.value;renderSearch();});
+    $('messageQueue').addEventListener('click',async (event: any)=>{
       const remove=event.target.closest('[data-remove-queued]'),priority=event.target.closest('[data-priority-queued]'),c=current();
       if(!c)return;
       try{
@@ -1369,27 +1369,27 @@
         await api('/api/conversations/'+encodeURIComponent(c.id)+'/queue/'+encodeURIComponent(id)+'/priority','POST',{confirmed:true});
       }catch(error){notice((error as any).message);}
     });
-    $('composerForm').addEventListener('submit',event=>submitMessage(event).catch(e=>notice((e as any).message)));
-    $('sendButton').addEventListener('click',event=>{
+    $('composerForm').addEventListener('submit',(event: any)=>submitMessage(event).catch(e=>notice((e as any).message)));
+    $('sendButton').addEventListener('click',(event: any)=>{
       if($('sendButton').dataset.action!=='stop')return;
       event.preventDefault();stopGeneration().catch(e=>notice((e as any).message));
     });
-    $('messageInput').addEventListener('input',event=>changeDraft(d=>{d.text=event.target.value;},true));
+    $('messageInput').addEventListener('input',(event: any)=>changeDraft((d: any)=>{d.text=event.target.value;},true));
     bindComposerComposition($('messageInput'));
     $('messageInput').addEventListener('focus',()=>renderComposer());
     $('messageInput').addEventListener('blur',()=>setTimeout(()=>renderComposer(),100));
-    $('messageInput').addEventListener('keydown',event=>{if(!event.isComposing && event.keyCode!==229 && !composerComposing && !composerCompositionEnding)window.ShiYanComposerKeys.handleEnter(event,()=>submitMessage().catch(e=>notice((e as any).message)));});
+    $('messageInput').addEventListener('keydown',(event: any)=>{if(!event.isComposing && event.keyCode!==229 && !composerComposing && !composerCompositionEnding)window.ShiYanComposerKeys.handleEnter(event,()=>submitMessage().catch(e=>notice((e as any).message)));});
     bindClick('cancelEditButton',cancelEdit);
     bindClick('addImageButton',()=>$('attachmentInput').click());
-    $('attachmentInput').addEventListener('change',event=>addAttachments([...event.target.files]));
+    $('attachmentInput').addEventListener('change',(event: any)=>addAttachments([...event.target.files]));
     bindClick('reasoningButton',()=>{const panel=$('reasoningPanel'),modelMenuWasOpen=panel.style.opacity==='0';panel.style.opacity='';ui.reasoning=modelMenuWasOpen||!ui.reasoning;renderComposer();});
     bindClick('reasoningBackdrop',()=>{ui.reasoning=false;renderComposer();});
     const reasoningRange=$('reasoningRange');
     reasoningRange.addEventListener('pointerdown',()=>{ui.reasoningDragging=true;ui.reasoningPosition=Number(reasoningRange.value);});
-    reasoningRange.addEventListener('input',event=>{ui.reasoningPosition=Number(event.target.value);const value=efforts()[Math.round(ui.reasoningPosition)];if(value)changeDraft(d=>{d.reasoning=value;});});
+    reasoningRange.addEventListener('input',(event: any)=>{ui.reasoningPosition=Number(event.target.value);const value=efforts()[Math.round(ui.reasoningPosition)];if(value)changeDraft((d: any)=>{d.reasoning=value;});});
     const finishReasoning=()=>{if(!ui.reasoningDragging)return;ui.reasoningDragging=false;renderReasoning();if(current())flushDraft(current().id).catch(e=>notice((e as any).message));};
     window.addEventListener('pointerup',finishReasoning);window.addEventListener('pointercancel',finishReasoning);window.addEventListener('blur',finishReasoning);
-    reasoningRange.addEventListener('keydown',event=>{const keys=['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'];if(!keys.includes(event.key))return;event.preventDefault();const values=efforts(),index=Math.max(0,values.indexOf(draftFor().reasoning));const target=event.key==='Home'?0:event.key==='End'?values.length-1:Math.max(0,Math.min(values.length-1,index+(['ArrowLeft','ArrowDown'].includes(event.key)?-1:1)));if(values[target])changeDraft(d=>{d.reasoning=values[target];});});
+    reasoningRange.addEventListener('keydown',(event: any)=>{const keys=['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'];if(!keys.includes(event.key))return;event.preventDefault();const values=efforts(),index=Math.max(0,values.indexOf(draftFor().reasoning));const target=event.key==='Home'?0:event.key==='End'?values.length-1:Math.max(0,Math.min(values.length-1,index+(['ArrowLeft','ArrowDown'].includes(event.key)?-1:1)));if(values[target])changeDraft((d: any)=>{d.reasoning=values[target];});});
     const reasoningModel=$('reasoningModel');
     const modelMenu=document.createElement('div');
     modelMenu.id='reasoningModelMenu';modelMenu.hidden=true;
@@ -1420,7 +1420,7 @@
         if(!section){section={group,items:[]};sections.push(section);}
         section.items.push(option);
       }
-      const makeOption=option=>{
+      const makeOption=(option: any)=>{
         const button=document.createElement('button');button.type='button';button.setAttribute('role','option');
         const selected=option.value===selectedValue;
         button.setAttribute('aria-selected',String(selected));button.disabled=option.disabled;
@@ -1433,9 +1433,9 @@
         return button;
       };
       for(const section of sections){
-        if(!section.group){section.items.forEach(option=>modelMenu.appendChild(makeOption(option)));continue;}
+        if(!section.group){section.items.forEach((option: any)=>modelMenu.appendChild(makeOption(option)));continue;}
         const panel=document.createElement('div');panel.className='model-menu-group-panel';
-        const expanded=section.items.some(option=>option.value===selectedValue);
+        const expanded=section.items.some((option: any)=>option.value===selectedValue);
         const toggle=document.createElement('button');toggle.type='button';toggle.className='model-menu-group';
         toggle.setAttribute('aria-expanded',String(expanded));
         const title=document.createElement('span');title.textContent=section.group.label;
@@ -1443,7 +1443,7 @@
         const chevron=document.createElement('span');chevron.className='model-menu-chevron';chevron.setAttribute('aria-hidden','true');chevron.textContent='›';
         toggle.append(title,count,chevron);
         const list=document.createElement('div');list.className='model-menu-group-items';list.hidden=!expanded;
-        section.items.forEach(option=>list.appendChild(makeOption(option)));
+        section.items.forEach((option: any)=>list.appendChild(makeOption(option)));
         toggle.onclick=()=>{const open=list.hidden;list.hidden=!open;toggle.setAttribute('aria-expanded',String(open));positionModelMenu();};
         panel.append(toggle,list);modelMenu.appendChild(panel);
       }
@@ -1451,8 +1451,8 @@
       reasoningModel.setAttribute('aria-expanded','true');positionModelMenu();
       (modelMenu.querySelector('[aria-selected="true"]:not(:disabled)') as any)?.focus({preventScroll:true});
     };
-    reasoningModel?.addEventListener('pointerdown',event=>{if(event.button!==0)return;event.preventDefault();openModelMenu();});
-    reasoningModel?.addEventListener('keydown',event=>{
+    reasoningModel?.addEventListener('pointerdown',(event: any)=>{if(event.button!==0)return;event.preventDefault();openModelMenu();});
+    reasoningModel?.addEventListener('keydown',(event: any)=>{
       if(['Enter',' ','F4','ArrowDown','ArrowUp'].includes(event.key)){event.preventDefault();openModelMenu();}
     });
     modelMenu.addEventListener('keydown',event=>{
@@ -1472,8 +1472,8 @@
       if(!ui.reasoning){modelMenu.hidden=true;reasoningModel?.setAttribute('aria-expanded','false');}
       else positionModelMenu();
     });
-    reasoningModel?.addEventListener('change',event=>{ui.reasoning=false;const model=modelChoices().find(m=>m.id===event.target.value);if(model)changeDraft(d=>{d.model=model.id;if(!model.reasoningEfforts.includes(d.reasoning))d.reasoning=model.defaultReasoning;});});
-    bindClick('reasoningReset',()=>{const model=modelCapability();if(model)changeDraft(d=>{d.reasoning=model.defaultReasoning;});});
+    reasoningModel?.addEventListener('change',(event: any)=>{ui.reasoning=false;const model=modelChoices().find((m: any)=>m.id===event.target.value);if(model)changeDraft((d: any)=>{d.model=model.id;if(!model.reasoningEfforts.includes(d.reasoning))d.reasoning=model.defaultReasoning;});});
+    bindClick('reasoningReset',()=>{const model=modelCapability();if(model)changeDraft((d: any)=>{d.reasoning=model.defaultReasoning;});});
     bindClick('speechButton',startSpeech);
     bindClick('latestButton',scrollToLatest);
     const messagesScroller=$('messagesScroller');
@@ -1484,10 +1484,10 @@
     if(window.ResizeObserver){const keeper=new ResizeObserver(()=>{keepMessagesInPlace();rememberMessageAnchor();});keeper.observe($('messages'));keeper.observe(messagesScroller);}
     let anchorFrame=0;
     const noteUserScroll=()=>{messageUserScrollUntil=performance.now()+1000;};
-    messagesScroller.addEventListener('wheel',event=>{noteUserScroll();if(event.deltaY<0)pauseMessageFollow();},{passive:true});
+    messagesScroller.addEventListener('wheel',(event: any)=>{noteUserScroll();if(event.deltaY<0)pauseMessageFollow();},{passive:true});
     messagesScroller.addEventListener('pointerdown',noteUserScroll,{passive:true});
-    messagesScroller.addEventListener('pointermove',event=>{if(event.buttons)noteUserScroll();},{passive:true});
-    messagesScroller.addEventListener('keydown',event=>{if(['ArrowUp','PageUp','Home','ArrowDown','PageDown','End'].includes(event.key))noteUserScroll();if(['ArrowUp','PageUp','Home'].includes(event.key))pauseMessageFollow();});
+    messagesScroller.addEventListener('pointermove',(event: any)=>{if(event.buttons)noteUserScroll();},{passive:true});
+    messagesScroller.addEventListener('keydown',(event: any)=>{if(['ArrowUp','PageUp','Home','ArrowDown','PageDown','End'].includes(event.key))noteUserScroll();if(['ArrowUp','PageUp','Home'].includes(event.key))pauseMessageFollow();});
     messagesScroller.addEventListener('scroll',()=>{
       const top=messagesScroller.scrollTop,gap=messagesScroller.scrollHeight-top-messagesScroller.clientHeight;
       if(restoringReadingPosition){messageLastScrollTop=top;return;}
@@ -1497,7 +1497,7 @@
       show('latestButton',!messageAutoFollow && !!current()?.messages?.length);saveReadingPosition();
       if(!messagesPlacing){cancelAnimationFrame(anchorFrame);anchorFrame=requestAnimationFrame(rememberMessageAnchor);}
     },{passive:true});
-    $('homeFileInput').addEventListener('change',event=>chooseHomeImages(event.target.files));
+    $('homeFileInput').addEventListener('change',(event: any)=>chooseHomeImages(event.target.files));
     bindClick('imageEmptyState',()=>$('homeFileInput').click());
     bindClick('changeImageButton',()=>$('homeFileInput').click());
     bindClick('previewHomeButton',()=>openPreview(ui.showOriginal || !ui.result?ui.input:ui.result));
@@ -1505,29 +1505,29 @@
     bindClick('showResultButton',()=>{ui.showOriginal=false;renderPhoto();});
     $('homeImage').addEventListener('load',resizeMask);
     $('homeImage').addEventListener('click',()=>{if(ui.feature!=='remove' && !photoBusy())openPreview(ui.showOriginal || !ui.result?ui.input:ui.result);});
-    $('brushWidth').addEventListener('input',event=>{ui.brush=Number(event.target.value);});
+    $('brushWidth').addEventListener('input',(event: any)=>{ui.brush=Number(event.target.value);});
     bindClick('undoStrokeButton',()=>{ui.strokes.pop();renderPhoto();});
     bindClick('clearStrokesButton',()=>{ui.strokes=[];renderPhoto();});
     bindClick('processButton',processPhoto);
     bindClick('saveResultButton',savePhotoBatch);
     bindClick('cancelProcessButton',cancelPhoto);
     const canvas=$('maskCanvas');
-    canvas.addEventListener('pointerdown',event=>{
+    canvas.addEventListener('pointerdown',(event: any)=>{
       if(photoBusy() || !ui.input || ui.feature!=='remove')return;
       event.preventDefault();event.stopPropagation();canvas.setPointerCapture(event.pointerId);
       ui.currentStroke={width:ui.brush,points:[brushPoint(event)]};ui.strokes.push(ui.currentStroke);drawMask();
     });
-    canvas.addEventListener('pointermove',event=>{if(!ui.currentStroke)return;event.preventDefault();ui.currentStroke.points.push(brushPoint(event));drawMask();});
+    canvas.addEventListener('pointermove',(event: any)=>{if(!ui.currentStroke)return;event.preventDefault();ui.currentStroke.points.push(brushPoint(event));drawMask();});
     const finishStroke=()=>{if(ui.currentStroke){ui.currentStroke=null;renderPhoto();}};
     canvas.addEventListener('pointerup',finishStroke);canvas.addEventListener('pointercancel',finishStroke);
-    bindClick('historyMenuButton',event=>{event.stopPropagation();const menu=$('historyMenu'),open=menu.hidden;closePopovers();if(open){const r=event.currentTarget.getBoundingClientRect();positionMenu(menu,r.right-230,r.bottom+8);}});
+    bindClick('historyMenuButton',(event: any)=>{event.stopPropagation();const menu=$('historyMenu'),open=menu.hidden;closePopovers();if(open){const r=event.currentTarget.getBoundingClientRect();positionMenu(menu,r.right-230,r.bottom+8);}});
     bindClick('historySelectButton',()=>{ui.selecting=true;ui.selection.clear();show('historyMenu',false);renderHistory();});
     bindClick('historyCloseSelectionButton',()=>{ui.selecting=false;ui.selection.clear();renderHistory();});
     bindClick('historyGridButton',()=>setHistoryMode('grid'));bindClick('historyListButton',()=>setHistoryMode('list'));
     bindClick('historyDeleteButton',deleteHistory);
-    bindClick('historyShareButton',()=>shareAssets(state.history.filter(h=>ui.selection.has(h.id)).map(h=>h.asset)));
+    bindClick('historyShareButton',()=>shareAssets(state.history.filter((h: any)=>ui.selection.has(h.id)).map((h: any)=>h.asset)));
     bindClick('previousPreviewButton',()=>stepPreview(-1));bindClick('nextPreviewButton',()=>stepPreview(1));
-    $('previewZoom').addEventListener('change',event=>{ui.zoom=event.target.value==='fit'?1:Number(event.target.value)/previewFit();ui.panX=ui.panY=0;updateZoom();});
+    $('previewZoom').addEventListener('change',(event: any)=>{ui.zoom=event.target.value==='fit'?1:Number(event.target.value)/previewFit();ui.panX=ui.panY=0;updateZoom();});
     $('previewImage').addEventListener('load',updateZoom);window.addEventListener('resize',()=>{if(ui.preview)updateZoom();});
     bindClick('closePreviewButton',closePreview);bindClick('savePreviewButton',()=>saveAsset(ui.preview));
     bindClick('cancelSessionDeleteButton',()=>show('sessionDeletePopover',false));bindClick('confirmSessionDeleteButton',deleteConversation);
@@ -1543,9 +1543,9 @@
       const search=target.closest('[data-search-session]');if(search){selectConversation(search.dataset.searchSession).catch(e=>toast((e as any).message));return;}
       const projectTarget=target.closest('[data-session-project]');if(projectTarget){moveSessionProject(projectTarget.dataset.sessionProject||null);return;}
       const sessionAction=target.closest('[data-session-action]');if(sessionAction){handleSessionAction(sessionAction.dataset.sessionAction);return;}
-      const remove=target.closest('[data-remove-attachment]');if(remove){changeDraft(d=>d.assets=d.assets.filter(a=>a.id!==remove.dataset.removeAttachment));return;}
+      const remove=target.closest('[data-remove-attachment]');if(remove){changeDraft((d: any)=>d.assets=d.assets.filter((a: any)=>a.id!==remove.dataset.removeAttachment));return;}
       const messageMenu=target.closest('[data-message-menu]');if(messageMenu){showMessageMenu(messageMenu.dataset.messageMenu,event);return;}
-      const retry=target.closest('[data-retry-message]');if(retry){const m=current()?.messages?.find(m=>m.id===retry.dataset.retryMessage);if(m&&canRetryConnection(m)&&!retry.disabled){retry.disabled=true;retryReceive().finally(()=>{retry.disabled=false;});}return;}
+      const retry=target.closest('[data-retry-message]');if(retry){const m=current()?.messages?.find((m: any)=>m.id===retry.dataset.retryMessage);if(m&&canRetryConnection(m)&&!retry.disabled){retry.disabled=true;retryReceive().finally(()=>{retry.disabled=false;});}return;}
       const copy=target.closest('[data-copy-message]');if(copy){const m=visibleMessage(copy.dataset.copyMessage);if(m)copyText(m.text || '');closePopovers();return;}
       const edit=target.closest('[data-edit-message]');if(edit){editMessage(edit.dataset.editMessage);return;}
       const copyCode=target.closest('[data-copy-code]');if(copyCode){copyText(copyCode.dataset.copyCode);return;}
@@ -1554,7 +1554,7 @@
       const share=target.closest('[data-share-asset]');if(share){shareAssets([assets.get(share.dataset.shareAsset)]);closePopovers();return;}
       const history=target.closest('[data-history-id]');if(history){
         const id=history.dataset.historyId;if(ui.selecting){ui.selection.has(id)?ui.selection.delete(id):ui.selection.add(id);renderHistory();}
-        else {const h=state.history.find(h=>h.id===id);if(h)openPreview(h.asset);}return;
+        else {const h=state.history.find((h: any)=>h.id===id);if(h)openPreview(h.asset);}return;
       }
       const documentLink=target.closest('a[data-generated-file],a[href*="/api/assets/"],a[href*="/v1/artifacts/"]');
       if(documentLink&&documentLink.closest('[data-message-id]')){
@@ -1564,7 +1564,7 @@
         return;
       }
       const asset=target.closest('[data-asset-id]');if(asset){const file=assets.get(asset.dataset.assetId);if(file&&(file.mimeType||'').startsWith('image/'))openPreview(file);else if(file)openGeneratedDocument(file).catch(error=>toast((error as any).message));return;}
-      const reasoning=target.closest('[data-reasoning]');if(reasoning){changeDraft(d=>d.reasoning=reasoning.dataset.reasoning);return;}
+      const reasoning=target.closest('[data-reasoning]');if(reasoning){changeDraft((d: any)=>d.reasoning=reasoning.dataset.reasoning);return;}
       if(target.closest('[data-action="retry-receive"]')){retryReceive();return;}
       if(!target.closest('.context-menu,.glass-popover,#sessionMenu,#sessionDeletePopover,#historyMenu'))closePopovers();
     });
@@ -1584,10 +1584,10 @@
     document.addEventListener('pointerup',()=>{clearTimeout(hold);hold=null;});document.addEventListener('pointercancel',()=>{clearTimeout(hold);hold=null;});
     document.addEventListener('pointermove',event=>{if(hold && holdOrigin && Math.hypot(event.clientX-holdOrigin.x,event.clientY-holdOrigin.y)>8){clearTimeout(hold);hold=null;}},{passive:true});
     const viewport=$('previewViewport');
-    viewport.addEventListener('wheel',event=>{if(!ui.preview || !(ui.preview.mimeType || '').startsWith('image/'))return;event.preventDefault();ui.zoom=Math.max(.1/previewFit(),Math.min(8/previewFit(),ui.zoom*Math.exp(-event.deltaY*.002)));if(ui.zoom===1)ui.panX=ui.panY=0;updateZoom();},{passive:false});
-    viewport.addEventListener('dblclick',event=>{event.preventDefault();ui.zoom=ui.zoom===1?2.5:1;ui.panX=ui.panY=0;updateZoom();});
-    viewport.addEventListener('pointerdown',event=>{if(event.target.closest('button') || ui.zoom===1)return;ui.previewPointer={x:event.clientX,y:event.clientY,panX:ui.panX,panY:ui.panY};viewport.setPointerCapture(event.pointerId);});
-    viewport.addEventListener('pointermove',event=>{if(!ui.previewPointer)return;ui.panX=ui.previewPointer.panX+event.clientX-ui.previewPointer.x;ui.panY=ui.previewPointer.panY+event.clientY-ui.previewPointer.y;updateZoom();});
+    viewport.addEventListener('wheel',(event: any)=>{if(!ui.preview || !(ui.preview.mimeType || '').startsWith('image/'))return;event.preventDefault();ui.zoom=Math.max(.1/previewFit(),Math.min(8/previewFit(),ui.zoom*Math.exp(-event.deltaY*.002)));if(ui.zoom===1)ui.panX=ui.panY=0;updateZoom();},{passive:false});
+    viewport.addEventListener('dblclick',(event: any)=>{event.preventDefault();ui.zoom=ui.zoom===1?2.5:1;ui.panX=ui.panY=0;updateZoom();});
+    viewport.addEventListener('pointerdown',(event: any)=>{if(event.target.closest('button') || ui.zoom===1)return;ui.previewPointer={x:event.clientX,y:event.clientY,panX:ui.panX,panY:ui.panY};viewport.setPointerCapture(event.pointerId);});
+    viewport.addEventListener('pointermove',(event: any)=>{if(!ui.previewPointer)return;ui.panX=ui.previewPointer.panX+event.clientX-ui.previewPointer.x;ui.panY=ui.previewPointer.panY+event.clientY-ui.previewPointer.y;updateZoom();});
     viewport.addEventListener('pointerup',()=>ui.previewPointer=null);viewport.addEventListener('pointercancel',()=>ui.previewPointer=null);
 
     document.addEventListener('keydown',event=>{
@@ -1604,7 +1604,7 @@
       }
     });
     let drag: any = null;
-    $('chatPanel').addEventListener('pointerdown',event=>{if(window.workbench)return;if(window.innerWidth>=760 || event.button!==0 || event.target.closest('button,input,textarea,a,canvas'))return;drag={x:event.clientX,y:event.clientY,start:performance.now(),progress:ui.drawer?1:0,moved:false};});
+    $('chatPanel').addEventListener('pointerdown',(event: any)=>{if(window.workbench)return;if(window.innerWidth>=760 || event.button!==0 || event.target.closest('button,input,textarea,a,canvas'))return;drag={x:event.clientX,y:event.clientY,start:performance.now(),progress:ui.drawer?1:0,moved:false};});
     window.addEventListener('pointermove',event=>{
       if(!drag)return;const dx=event.clientX-drag.x,dy=event.clientY-drag.y;
       if(!drag.moved && Math.abs(dy)>Math.abs(dx)+6){drag=null;return;}
@@ -1630,7 +1630,7 @@
     if(window.ShiYanPlatform?.deferUntilLoaded?.(connectStateEvents))return;
     if(eventSource)eventSource.close();
     eventSource=new EventSource('/api/events');
-    eventSource.addEventListener('state',event=>{try {applyState(JSON.parse(event.data));}catch(e){console.error('Invalid state event',e);}});
+    eventSource.addEventListener('state',(event: any)=>{try {applyState(JSON.parse(event.data));}catch(e){console.error('Invalid state event',e);}});
     eventSource.onopen=()=>{if(state)renderConnection();};
     eventSource.onerror=()=>{
       if(window.ShiYanPlatform?.mode==='web')return;
@@ -1671,7 +1671,7 @@
     showHistory:openHistory,stopSpeech,
     getState:()=>state,editMessage,flushDraft,getDraft:()=>draftFor(),
     getView:()=>ui.view,renderMessage:messageHTML,renderAttachment:attachmentItemHTML,
-    uploadAttachments:(files,existing=[])=>{validateAttachmentFiles(files,existing);return upload(files,'attachment');},
+    uploadAttachments:(files: any,existing=[])=>{validateAttachmentFiles(files,existing);return upload(files,'attachment');},
     navigate:setView,toast,copyText,confirmAction,api,sessionHTML,sessionMenuIcon,openPreview,openGeneratedDocument,saveAsset,shareAssets,
     previousPhoto:()=>selectPhotoBatch(ui.photoBatchIndex-1),nextPhoto:()=>selectPhotoBatch(ui.photoBatchIndex+1),removePhoto:removeCurrentPhoto,
     getPhotoState:()=>{
@@ -1685,10 +1685,10 @@
         itemUploading,itemState:job?.state||'',submitting:!!ui.photoSubmitting,
         progress:job?.progress||0,label,error:ui.feature==='enhance'?window.ShiYanPhotoStatus.error(job?.error||ui.photoError):job?.error||ui.photoError};
     },
-    addContext:async text=>{
+    addContext:async (text: any)=>{
       if(!current())await newConversation();
       setView('agent');
-      changeDraft(d=>{d.text+=(d.text?'\n\n':'')+String(text);});
+      changeDraft((d: any)=>{d.text+=(d.text?'\n\n':'')+String(text);});
       renderComposer(true);$('messageInput').focus();
     }
   };

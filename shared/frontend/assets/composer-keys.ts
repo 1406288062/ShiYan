@@ -1,7 +1,7 @@
 /* Shared desktop composer keys. Callers retain their own IME/send guards. */
 (() => {
   'use strict';
-  function handleEnter(event, send) {
+  function handleEnter(event: any, send: any) {
     if (!['Enter', 'NumpadEnter'].includes(event.key) && !['Enter', 'NumpadEnter'].includes(event.code)) return false;
     if (event.isComposing || event.keyCode === 229) return false;
     const input = event.currentTarget || event.target;
