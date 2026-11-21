@@ -1,11 +1,11 @@
 // Run completion must respect commands received while Codex or a safe action
 // was awaiting. The caller reads the latest goal and pending events immediately
 // before its synchronous database writeback.
-export function canApplyGoalActions(goal) {
+export function canApplyGoalActions(goal: any) {
   return goal?.status === "active";
 }
 
-export function assertGoalActionAllowed(goal, action, { hasPendingApproval = false } = {}) {
+export function assertGoalActionAllowed(goal: any, action: any, { hasPendingApproval = false } = {}) {
   const status = goal?.status;
   if (!goal) {
     const error = new Error("goal not found");
@@ -29,25 +29,25 @@ export function assertGoalActionAllowed(goal, action, { hasPendingApproval = fal
   }
 }
 
-export function mayActivateGoalForEvent(goal, { resumeAfterApproval = false, hasPendingApproval = false } = {}) {
+export function mayActivateGoalForEvent(goal: any, { resumeAfterApproval = false, hasPendingApproval = false } = {}) {
   if (hasPendingApproval) return false;
   return ["active", "blocked"].includes(goal?.status) ||
     (goal?.status === "waiting_approval" && resumeAfterApproval);
 }
 
 // Goals whose title or instruction describes ongoing monitoring (监测/监控/盯盘/走势) wait at least one hour between self-scheduled runs.
-export function monitoringMinIntervalSec(goal) {
+export function monitoringMinIntervalSec(goal: any) {
   return /监测|监控|盯盘|走势/.test(`${goal?.title || ''} ${goal?.instruction || ''}`) ? 3600 : 0;
 }
 
-export function resolveGoalRunState(goal, {
+export function resolveGoalRunState(goal: any, {
   requestedStatus,
   actionCount = 0,
   hasPendingEvents = false,
   nowSec,
   wakeAfterSeconds = 900,
   minIntervalSec = 0
-}) {
+}: any) {
   if (!canApplyGoalActions(goal)) {
     return {
       goalStatus: goal?.status || "cancelled",
@@ -84,7 +84,7 @@ export function classifyGoalRunFailure(errorMessage = "") {
   return "non_retryable";
 }
 
-export function resolveGoalRunFailure(goal, { nowSec, hasPendingEvents = false, errorMessage = "" }) {
+export function resolveGoalRunFailure(goal: any, { nowSec, hasPendingEvents = false, errorMessage = "" }: any) {
   const retryKind = classifyGoalRunFailure(errorMessage);
   const networkHours = [1, 2, 4, 8, 24];
   const failureCount = Math.max(0, Number(goal?.failure_count) || 0);

@@ -13,7 +13,7 @@ assert.deepEqual(commandSignatures('cd app && git pull && npm run build'), ['cd'
 let clock = 1_000_000;
 const db = new DatabaseSync(':memory:');
 const grants = createGrantStore(db, { now: () => clock });
-const safe = segment => /^(cd|ls|cat|echo)\b/.test(segment);
+const safe = (segment: any) => /^(cd|ls|cat|echo)\b/.test(segment);
 
 assert.equal(grants.covers({ owner: 'a', goalId: 1, command: 'git push' }), null, 'no grants yet');
 const g = grants.create({ owner: 'a', goalId: 1, command: 'cd repo && git push origin main', scope: 'hour' });
@@ -33,7 +33,7 @@ const forever = grants.create({ owner: 'a', command: 'bash -lc "make deploy"', s
 assert.deepEqual(grants.covers({ owner: 'a', goalId: 2, command: 'bash -lc "make deploy"' }), [forever.id]);
 assert.equal(grants.covers({ owner: 'a', goalId: 2, command: 'bash -lc "rm -rf ~"' }), null, 'interpreters match exactly only');
 grants.markUsed([forever.id]);
-assert.equal(grants.list('a').find(x => x.id === forever.id).uses, 1);
+assert.equal(grants.list('a').find((x: any) => x.id === forever.id).uses, 1);
 assert.equal(grants.list('a').length, 2);
 grants.revoke('a', forever.id);
 assert.throws(() => grants.revoke('b', t.id), /不存在/);

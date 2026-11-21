@@ -5,9 +5,9 @@ import {createHash} from 'node:crypto';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 const exec=promisify(execFile);
-const hash=v=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
-const text=v=>String(v??'').replace(/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/g,' ').slice(0,800).replace(/[\\`*_{}\[\]()<>!|]/g,'\\$&');
-export async function readSubscriptionConfig(file){
+const hash=(v: any)=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
+const text=(v: any)=>String(v??'').replace(/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/g,' ').slice(0,800).replace(/[\\`*_{}\[\]()<>!|]/g,'\\$&');
+export async function readSubscriptionConfig(file: any){
  let f;try{f=await open(file,constants.O_RDONLY|constants.O_NOFOLLOW);}catch(e){if((e as any).code==='ENOENT')return null;throw Error('config_unreadable');}
  try{const s=await f.stat();if(!s.isFile()||(s.mode&0o077)||s.uid!==process.getuid!()||s.size>16384)throw Error('config_permissions');const v=JSON.parse(await f.readFile('utf8'));return v.enabled===false?null:v;}finally{await f.close();}
 }
@@ -24,7 +24,7 @@ export interface AppSubscriptionsOptions {
   logger?: Console;
 }
 export function createAppSubscriptions({store,dataDir,fetchImpl=fetch,summarizeGithub=null,loadConfig=readSubscriptionConfig,githubToken=async()=>{const r=await exec('/usr/bin/gh',['auth','token','--hostname','github.com'],{timeout:10000,maxBuffer:8192});return r.stdout.trim();},now=()=>Math.floor(Date.now()/1000),intervalMs=60000,cycleTimeoutMs=90000,logger=console}: AppSubscriptionsOptions){
- const {db,managerId}=store;let stopped=false,timer;const lanes=new Map(),tokens=new Map();
+ const {db,managerId}=store;let stopped=false,timer: any;const lanes=new Map(),tokens=new Map();
  if(!Number.isFinite(intervalMs)||intervalMs<1000||!Number.isFinite(cycleTimeoutMs)||cycleTimeoutMs<1000)throw Error('invalid_subscription_options');
  db.exec(`CREATE TABLE IF NOT EXISTS dots_app_sources(manager_id TEXT,source TEXT,cursor TEXT,status TEXT,error_code TEXT,updated_at INTEGER,PRIMARY KEY(manager_id,source));CREATE TABLE IF NOT EXISTS dots_app_events(manager_id TEXT,source TEXT,event_key TEXT,message_id INTEGER,PRIMARY KEY(manager_id,source,event_key));`);
  db.exec(`CREATE TABLE IF NOT EXISTS dots_app_health(manager_id TEXT,provider TEXT,failures INTEGER NOT NULL DEFAULT 0,retry_at INTEGER NOT NULL DEFAULT 0,last_success INTEGER,last_duration_ms INTEGER NOT NULL DEFAULT 0,checks INTEGER NOT NULL DEFAULT 0,status TEXT,error_code TEXT,PRIMARY KEY(manager_id,provider));`);
@@ -39,16 +39,16 @@ export function createAppSubscriptions({store,dataDir,fetchImpl=fetch,summarizeG
    db.prepare('INSERT OR IGNORE INTO dots_github_summary_jobs(manager_id,source,event_key,event_json,retry_at,error_code) VALUES(?,?,?,?,?,?)').run(managerId,row.source,row.event_key,JSON.stringify(event),now(),'legacy_summary_unavailable');
   }
  }
- const state=s=>db.prepare('SELECT * FROM dots_app_sources WHERE manager_id=? AND source=?').get(managerId,s);
- const status=(s,v,e='')=>db.prepare('INSERT INTO dots_app_sources(manager_id,source,status,error_code,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(manager_id,source) DO UPDATE SET status=excluded.status,error_code=excluded.error_code,updated_at=excluded.updated_at').run(managerId,s,v,e,now());
- async function request(url,options={},signal){
+ const state=(s: any)=>db.prepare('SELECT * FROM dots_app_sources WHERE manager_id=? AND source=?').get(managerId,s);
+ const status=(s: any,v: any,e='')=>db.prepare('INSERT INTO dots_app_sources(manager_id,source,status,error_code,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(manager_id,source) DO UPDATE SET status=excluded.status,error_code=excluded.error_code,updated_at=excluded.updated_at').run(managerId,s,v,e,now());
+ async function request(url: any,options={},signal: any){
   const r=await fetchImpl(url,{...options,redirect:'error',signal:AbortSignal.any([signal,AbortSignal.timeout(20000)])});
   if(r.status===304)return {unchanged:true};
   if(!r.ok)throw Object.assign(Error('http_'+r.status),{status:r.status,retryAfter:r.headers.get('retry-after'),rateReset:r.headers.get('x-ratelimit-reset'),rateRemaining:r.headers.get('x-ratelimit-remaining')});
   const reader=r.body?.getReader();let raw='';if(reader){const chunks: Buffer[]=[];let size=0;for(;;){const x=await reader.read();if(x.done)break;size+=x.value.length;if(size>4*1024*1024){await reader.cancel();throw Error('response_too_large');}chunks.push(Buffer.from(x.value));}raw=Buffer.concat(chunks).toString('utf8');}else raw=await r.text();
   return {data:JSON.parse(raw),etag:r.headers.get('etag')};
  }
- function commit(source,cursor,events,baseline=false,signal){
+ function commit(source: any,cursor: any,events: any,baseline=false,signal: any){
   if(stopped||signal.aborted)return;
   store.transaction(()=>{
    for(const event of events){
@@ -61,7 +61,7 @@ export function createAppSubscriptions({store,dataDir,fetchImpl=fetch,summarizeG
    db.prepare("INSERT INTO dots_app_sources(manager_id,source,cursor,status,error_code,updated_at) VALUES(?,?,?,'listening','',?) ON CONFLICT(manager_id,source) DO UPDATE SET cursor=excluded.cursor,status='listening',error_code='',updated_at=excluded.updated_at").run(managerId,source,JSON.stringify(cursor),now());
   });
  }
- async function github(signal){
+ async function github(signal: any){
   const cfg=await loadConfig(dataDir+'/github-events.json');if(!cfg){status('github','waiting_configuration');return 'waiting_configuration';}
   if(!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(cfg.repository))throw Error('github_config_invalid');
   const source='github:'+cfg.repository,prior=state(source),cursor=prior?.cursor?JSON.parse(prior.cursor):null;
@@ -72,11 +72,11 @@ export function createAppSubscriptions({store,dataDir,fetchImpl=fetch,summarizeG
   // Keep enrichment bounded independently of event-list fetching. Failure to read
   // details publishes an accurate unavailable/partial label, never a made-up zero.
   const detailSignal=AbortSignal.any([signal,AbortSignal.timeout(55000)]),details=new Map();
-  const load=path=>{if(!details.has(path))details.set(path,request(base+path,{headers},detailSignal).then(r=>r.data));return details.get(path);};
+  const load=(path: any)=>{if(!details.has(path))details.set(path,request(base+path,{headers},detailSignal).then(r=>r.data));return details.get(path);};
   for(const [kind,path] of [['events','/events'],['runs','/actions/runs']]){
    let page=1,matched=false;
    do{
-    const h={...headers};if(page===1&&cursor?.[kind+'Etag'])h['If-None-Match']=cursor[kind+'Etag'];
+    const h={...headers};if(page===1&&cursor?.[kind+'Etag'])(h as any)['If-None-Match']=cursor[kind+'Etag'];
     const result=await request(base+path+'?per_page=100&page='+page,{headers:h},signal);
     if(result.unchanged){matched=true;break;}
     if(page===1)next[kind+'Etag']=result.etag;
@@ -124,7 +124,7 @@ export function createAppSubscriptions({store,dataDir,fetchImpl=fetch,summarizeG
   if(hash(await loadConfig(dataDir+'/github-events.json'))!==hash(cfg))return;
   commit(source,next,events.reverse(),!cursor,signal);return 'listening';
  }
- async function retryGithubSummary(signal){
+ async function retryGithubSummary(signal: any){
   if(!summarizeGithub||!store.refreshAppEvent)return 'unavailable';
   const cfg=await loadConfig(dataDir+'/github-events.json');if(!cfg||!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(cfg.repository))return 'waiting_configuration';
   const source='github:'+cfg.repository;
@@ -146,7 +146,7 @@ export function createAppSubscriptions({store,dataDir,fetchImpl=fetch,summarizeG
   }
   return 'listening';
  }
- async function calendar(signal){
+ async function calendar(signal: any){
   const cfg=await loadConfig(dataDir+'/google-calendar.json');if(!cfg){tokens.clear();status('google-calendar','waiting_authorization');return 'waiting_authorization';}
   if(!cfg.clientId||!cfg.clientSecret||!cfg.refreshToken)throw Error('calendar_authorization_missing');
   const account=cfg.accountKey||hash(cfg.refreshToken).slice(0,16),calendarId=cfg.calendarId||'primary',source='calendar:'+account+':'+calendarId;
@@ -175,26 +175,26 @@ export function createAppSubscriptions({store,dataDir,fetchImpl=fetch,summarizeG
  }
  // RSS / Atom：每 15 分钟检查一次；首次只记基线，之后每个源每轮最多推 5 条新内容。
  let rssCheckedAt=0;
- const unxml=v=>String(v||'').replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g,'$1').replace(/<[^>]+>/g,' ').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;|&apos;/g,"'").replace(/&amp;/g,'&').replace(/\s+/g,' ').trim();
- const tag=(block,name)=>{const m=block.match(new RegExp('<'+name+'(?:\\s[^>]*)?>([\\s\\S]*?)</'+name+'>','i'));return m?m[1]:'';};
- function publicFeedURL(raw){
+ const unxml=(v: any)=>String(v||'').replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g,'$1').replace(/<[^>]+>/g,' ').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;|&apos;/g,"'").replace(/&amp;/g,'&').replace(/\s+/g,' ').trim();
+ const tag=(block: any,name: any)=>{const m=block.match(new RegExp('<'+name+'(?:\\s[^>]*)?>([\\s\\S]*?)</'+name+'>','i'));return m?m[1]:'';};
+ function publicFeedURL(raw: any){
   let u;try{u=new URL(raw);}catch{return null;}
   if(!['http:','https:'].includes(u.protocol)||u.username||u.password)return null;
   const h=u.hostname.toLowerCase();
   if(h==='localhost'||h.endsWith('.local')||h.endsWith('.internal')||/^(127\.|10\.|0\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(h)||h.includes(':'))return null;
   return u;
  }
- async function fetchFeed(url,signal){
+ async function fetchFeed(url: any,signal: any){
   const r=await fetchImpl(url,{headers:{'User-Agent':'ShiYan-Dots/1.0 (+RSS)',Accept:'application/rss+xml,application/atom+xml,application/xml,text/xml;q=0.9,*/*;q=0.5'},redirect:'follow',signal:AbortSignal.any([signal,AbortSignal.timeout(20000)])});
   if(!r.ok)throw Object.assign(Error('http_'+r.status),{status:r.status});
   if(r.url&&!publicFeedURL(r.url))throw Error('feed_redirect_blocked');
   const raw=(await r.text()).slice(0,3*1024*1024);
   const title=unxml(tag(raw.replace(/<(item|entry)[\s>][\s\S]*$/i,''),'title'))||new URL(url).hostname;
   const blocks=raw.match(/<item[\s>][\s\S]*?<\/item>/gi)||raw.match(/<entry[\s>][\s\S]*?<\/entry>/gi)||[];
-  const items=blocks.slice(0,50).map(b=>{const link=unxml(tag(b,'link'))||(b.match(/<link[^>]*href="([^"]+)"/i)?.[1]||'');const id=unxml(tag(b,'guid'))||unxml(tag(b,'id'))||link||unxml(tag(b,'title'));return {id,title:unxml(tag(b,'title'))||'（无标题）',link:/^https?:\/\//.test(link)?link:'',summary:unxml(tag(b,'description')||tag(b,'summary')).slice(0,240)};}).filter(i=>i.id);
+  const items=blocks.slice(0,50).map((b: any)=>{const link=unxml(tag(b,'link'))||(b.match(/<link[^>]*href="([^"]+)"/i)?.[1]||'');const id=unxml(tag(b,'guid'))||unxml(tag(b,'id'))||link||unxml(tag(b,'title'));return {id,title:unxml(tag(b,'title'))||'（无标题）',link:/^https?:\/\//.test(link)?link:'',summary:unxml(tag(b,'description')||tag(b,'summary')).slice(0,240)};}).filter((i: any)=>i.id);
   return {title,items};
  }
- async function rss(signal){
+ async function rss(signal: any){
   const cfg=await loadConfig(dataDir+'/rss-feeds.json');if(!cfg||!Array.isArray(cfg.feeds)||!cfg.feeds.length){status('rss','waiting_configuration');return 'waiting_configuration';}
   if(now()-rssCheckedAt<900)return 'listening';rssCheckedAt=now();
   let failures=0;
@@ -203,21 +203,21 @@ export function createAppSubscriptions({store,dataDir,fetchImpl=fetch,summarizeG
    const source='rss:'+hash(url).slice(0,24),prior=state(source);
    try{
     const feed=await fetchFeed(url,signal);
-    const events=feed.items.slice(0,prior?5:50).reverse().map(i=>({key:hash(i.id).slice(0,32),content:`RSS · ${text(feed.title)}\n\n${text(i.title)}\n${i.summary?text(i.summary)+'\n':''}${i.link}`}));
+    const events=feed.items.slice(0,prior?5:50).reverse().map((i: any)=>({key:hash(i.id).slice(0,32),content:`RSS · ${text(feed.title)}\n\n${text(i.title)}\n${i.summary?text(i.summary)+'\n':''}${i.link}`}));
     commit(source,{url},events,!prior,signal);
    }catch(error){if(signal.aborted)throw error;failures++;status(source,'backoff',String((error as any).message||'feed_failed').slice(0,60));}
   }
   if(failures&&failures===cfg.feeds.length)throw Error('rss_all_feeds_failed');
   return 'listening';
  }
- const health=provider=>db.prepare('SELECT * FROM dots_app_health WHERE manager_id=? AND provider=?').get(managerId,provider);
- function retryDelay(error,failures){
+ const health=(provider: any)=>db.prepare('SELECT * FROM dots_app_health WHERE manager_id=? AND provider=?').get(managerId,provider);
+ function retryDelay(error: any,failures: any){
   const exponential=Math.min(3600,60*2**Math.min(failures-1,6));
   const raw=error.retryAfter,seconds=raw&&Number.isFinite(Number(raw))?Number(raw):raw?(Date.parse(raw)/1000-now()):0;
   const reset=error.rateRemaining==='0'?Number(error.rateReset)-now():0;
   return Math.max(exponential,Math.min(86400,Math.max(0,seconds||0,reset||0)));
  }
- async function runLane(provider,fn){
+ async function runLane(provider: any,fn: any){
   if(stopped||lanes.has(provider)||health(provider)?.retry_at>now())return;
   const controller=new AbortController(),deadline=AbortSignal.timeout(cycleTimeoutMs),signal=AbortSignal.any([controller.signal,deadline]);
   lanes.set(provider,controller);const started=performance.now();

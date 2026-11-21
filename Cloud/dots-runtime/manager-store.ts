@@ -4,13 +4,13 @@ import {createDotsRelationship} from './dots-relationship.ts';
 import { mkdirSync } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 
-const stable = value => Array.isArray(value) ? value.map(stable) : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])])) : value;
-const encode = value => JSON.stringify(stable(value));
+const stable = (value: any): any => Array.isArray(value) ? value.map(stable) : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])])) : value;
+const encode = (value: any) => JSON.stringify(stable(value));
 // 2100-01-01（秒）。next_wake_at 不小于此值表示因模型登录失效而停放。
 export const AUTH_PARKED_UNTIL = 4102444800;
-const decode = (value, fallback: any = {}) => { try { return JSON.parse(value); } catch { return fallback; } };
-const error = (message, statusCode = 409) => Object.assign(new Error(message), { statusCode });
-const terminal = status => ['done', 'cancelled'].includes(status);
+const decode = (value: any, fallback: any = {}) => { try { return JSON.parse(value); } catch { return fallback; } };
+const error = (message: any, statusCode = 409) => Object.assign(new Error(message), { statusCode });
+const terminal = (status: any) => ['done', 'cancelled'].includes(status);
 
 // Logical managers share a database while all private state is bound to managerId.
 // Only the original owner may adopt legacy records without an owner.
@@ -27,18 +27,18 @@ export function createManagerStore({ db, ownerId = 'shiyan-private-owner', works
   const managerId = 'manager:' + ownerId;
   let transactionId = 0,transactionDepth=0;
   const afterCommit: any[]=[];
-  const committedEffect=fn=>{if(transactionDepth)afterCommit.push(fn);else fn();};
-  const transaction = fn => {
+  const committedEffect=(fn: any)=>{if(transactionDepth)afterCommit.push(fn);else fn();};
+  const transaction = (fn: any) => {
     const name = 'manager_store_' + (++transactionId);
     const effectsStart=afterCommit.length;db.exec('SAVEPOINT ' + name);transactionDepth++;
     try { const result = fn(); db.exec('RELEASE ' + name);transactionDepth--;if(!transactionDepth)for(const effect of afterCommit.splice(0))try{effect();}catch{}return result; }
     catch (cause) { db.exec('ROLLBACK TO ' + name); db.exec('RELEASE ' + name);transactionDepth--;afterCommit.splice(effectsStart);throw cause; }
   };
-  const columns = new Set(db.prepare('PRAGMA table_info(goals)').all().map(row => row.name));
+  const columns = new Set(db.prepare('PRAGMA table_info(goals)').all().map((row: any) => row.name));
   for (const [name, type] of Object.entries({manager_id:'TEXT', control_revision:'INTEGER NOT NULL DEFAULT 0', acceptance_status:"TEXT NOT NULL DEFAULT 'pending'", acceptance_criteria:"TEXT NOT NULL DEFAULT ''", resource_key:"TEXT NOT NULL DEFAULT ''", origin_host:"TEXT NOT NULL DEFAULT 'other'", legacy_imported:'INTEGER NOT NULL DEFAULT 0'})) {
     if (!columns.has(name)) db.exec('ALTER TABLE goals ADD COLUMN ' + name + ' ' + type);
   }
-  const approvalColumns=new Set(db.prepare('PRAGMA table_info(approvals)').all().map(row=>row.name));
+  const approvalColumns=new Set(db.prepare('PRAGMA table_info(approvals)').all().map((row: any)=>row.name));
   for(const [name,type] of Object.entries({control_revision:'INTEGER',payload_hash:'TEXT'}))if(!approvalColumns.has(name))db.exec('ALTER TABLE approvals ADD COLUMN '+name+' '+type);
   db.exec(`
     CREATE TABLE IF NOT EXISTS manager_registration_notices(event_id TEXT PRIMARY KEY,source TEXT NOT NULL,username TEXT NOT NULL,email TEXT NOT NULL DEFAULT '',registered_at INTEGER NOT NULL,message_id INTEGER NOT NULL);
@@ -57,34 +57,34 @@ export function createManagerStore({ db, ownerId = 'shiyan-private-owner', works
     CREATE TABLE IF NOT EXISTS manager_actions(id TEXT PRIMARY KEY,run_id TEXT NOT NULL,ordinal INTEGER NOT NULL,payload TEXT NOT NULL,payload_hash TEXT NOT NULL,state TEXT NOT NULL,result TEXT,checkpoint TEXT,started_at INTEGER NOT NULL,finished_at INTEGER,UNIQUE(run_id,ordinal));
     CREATE TABLE IF NOT EXISTS manager_resources(resource_key TEXT PRIMARY KEY,run_id TEXT NOT NULL,lease_expires_at INTEGER NOT NULL);
   `);
-  if (!db.prepare('PRAGMA table_info(manager_registration_notices)').all().some(column => column.name === 'email')) {
+  if (!db.prepare('PRAGMA table_info(manager_registration_notices)').all().some((column: any) => column.name === 'email')) {
     db.exec("ALTER TABLE manager_registration_notices ADD COLUMN email TEXT NOT NULL DEFAULT ''");
   }
-  if (!db.prepare('PRAGMA table_info(manager_messages)').all().some(column => column.name === 'responds_to_message_ids')) {
+  if (!db.prepare('PRAGMA table_info(manager_messages)').all().some((column: any) => column.name === 'responds_to_message_ids')) {
     db.exec("ALTER TABLE manager_messages ADD COLUMN responds_to_message_ids TEXT NOT NULL DEFAULT '[]'");
   }
 
-  const deliveryColumns=new Set(db.prepare('PRAGMA table_info(manager_messages)').all().map(column=>column.name));
+  const deliveryColumns=new Set(db.prepare('PRAGMA table_info(manager_messages)').all().map((column: any)=>column.name));
   for(const [name,type] of Object.entries({delivery_state:"TEXT NOT NULL DEFAULT 'completed'",revision:'INTEGER NOT NULL DEFAULT 0',stream_run_id:'TEXT',origin:"TEXT NOT NULL DEFAULT 'reply'",topic_id:'TEXT',proactive_reason:"TEXT NOT NULL DEFAULT ''",card:"TEXT NOT NULL DEFAULT ''"}))if(!deliveryColumns.has(name))db.exec('ALTER TABLE manager_messages ADD COLUMN '+name+' '+type);
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_manager_message_stream_run ON manager_messages(stream_run_id) WHERE stream_run_id IS NOT NULL');
 
-  const runColumns=new Set(db.prepare('PRAGMA table_info(manager_runs)').all().map(column=>column.name));
+  const runColumns=new Set(db.prepare('PRAGMA table_info(manager_runs)').all().map((column: any)=>column.name));
   for(const [name,type] of Object.entries({purpose:"TEXT NOT NULL DEFAULT 'reply'",content_candidate_id:'TEXT',reflection_id:'TEXT'}))if(!runColumns.has(name))db.exec('ALTER TABLE manager_runs ADD COLUMN '+name+' '+type);
   const conversationListeners=new Set<any>();
-  const subscribeConversationEvents=listener=>{conversationListeners.add(listener);return ()=>conversationListeners.delete(listener);};
+  const subscribeConversationEvents=(listener: any)=>{conversationListeners.add(listener);return ()=>conversationListeners.delete(listener);};
   const conversationChanged=()=>committedEffect(()=>{for(const listener of conversationListeners)try{listener();}catch{}});
   const contentListeners=new Set<any>();
-  const subscribeContentEvents=listener=>{contentListeners.add(listener);return ()=>contentListeners.delete(listener);};
+  const subscribeContentEvents=(listener: any)=>{contentListeners.add(listener);return ()=>contentListeners.delete(listener);};
   let relationship: any,mailReplies: any=null;
   const managerRow = () => db.prepare('SELECT * FROM managers WHERE id=?').get(managerId);
-  const goal = id => db.prepare('SELECT * FROM goals WHERE id=? AND manager_id=?').get(Number(id), managerId);
-  const requireGoal = id => { const row = goal(id); if (!row) throw error('Task not found', 404); return row; };
-  const requireOwner = value => { if (value !== undefined && value !== ownerId) throw error('Manager not found', 404); };
-  const activityEvent = (kind, message, data = {}, taskId: number | null = null) => {
+  const goal = (id: any) => db.prepare('SELECT * FROM goals WHERE id=? AND manager_id=?').get(Number(id), managerId);
+  const requireGoal = (id: any) => { const row = goal(id); if (!row) throw error('Task not found', 404); return row; };
+  const requireOwner = (value: any) => { if (value !== undefined && value !== ownerId) throw error('Manager not found', 404); };
+  const activityEvent = (kind: any, message: any, data = {}, taskId: number | null = null) => {
     const inserted = db.prepare('INSERT INTO manager_activity(manager_id,task_id,kind,message,data,created_at) VALUES(?,?,?,?,?,?)').run(managerId,taskId,kind,String(message),encode(data),now());
     return Number(inserted.lastInsertRowid);
   };
-  const enqueue = (type, payload) => {
+  const enqueue = (type: any, payload: any) => {
     db.prepare('INSERT INTO manager_inbox(manager_id,type,payload,created_at) VALUES(?,?,?,?)').run(managerId,type,encode(payload),now());
     const current=managerRow(),due=type==='worker_report'?now()+2:now();
     // 模型登录失效时总管处于“停放”状态：只有用户新消息能唤醒，后台事件不触发重试。
@@ -98,15 +98,15 @@ export function createManagerStore({ db, ownerId = 'shiyan-private-owner', works
     return managerRow();
   };
   ensure();
-  const approvalHash=(row,revision)=>createHash('sha256').update(encode({goalId:Number(row.goal_id),reason:row.reason,command:row.command,controlRevision:Number(revision)})).digest('hex');
+  const approvalHash=(row: any,revision: any)=>createHash('sha256').update(encode({goalId:Number(row.goal_id),reason:row.reason,command:row.command,controlRevision:Number(revision)})).digest('hex');
   for(const row of db.prepare("SELECT * FROM approvals WHERE payload_hash IS NULL AND status='pending'").all()){
     const parent=goal(row.goal_id);if(parent)db.prepare('UPDATE approvals SET control_revision=?,payload_hash=? WHERE id=?').run(parent.control_revision,approvalHash(row,parent.control_revision),row.id);
   }
-  const projectResourceKey = value => {
+  const projectResourceKey = (value: any) => {
     const key=String(value||'');
     return key.startsWith('mac:/')?'mac:'+(path.posix.normalize(key.slice(4)).replace(/\/+$/,'')||'/'):key;
   };
-  const taskResourceKey = row => {
+  const taskResourceKey = (row: any) => {
     if(row.resource_key!=='mac:executor')return projectResourceKey(row.resource_key);
     // Older versions replaced project identity with the shared executor lock.
     // Recover the original project's durable Mac path, never treat that lock
@@ -118,24 +118,24 @@ export function createManagerStore({ db, ownerId = 'shiyan-private-owner', works
     }
     return row.resource_key;
   };
-  const task = row => ({id:Number(row.id),managerId,title:row.title,instruction:row.instruction,status:row.status,acceptanceStatus:row.acceptance_status,acceptanceCriteria:row.acceptance_criteria,dependencies:db.prepare('SELECT depends_on FROM manager_task_dependencies WHERE task_id=? ORDER BY depends_on').all(row.id).map(item=>Number(item.depends_on)),controlRevision:Number(row.control_revision),createdAt:row.created_at,updatedAt:row.updated_at,nextWakeAt:row.next_wake_at,lastSummary:row.last_summary,runCount:row.run_count,originHost:row.origin_host,resourceKey:taskResourceKey(row),legacyImported:Boolean(row.legacy_imported)});
-  const messageRow = row => ({id:Number(row.id),role:row.role,content:row.content,taskId:row.task_id,requestId:row.request_id,host:row.host,createdAt:row.created_at,respondsToMessageIds:decode(row.responds_to_message_ids,[]),deliveryState:row.delivery_state||'completed',revision:Number(row.revision||0),origin:row.origin||'reply',topicId:row.topic_id||null,proactiveReason:row.proactive_reason||'',...(row.card?{card:decode(row.card,null)}:{}),...(row.origin==='proactive'?feedbackOf(row.id):{})});
-  const feedbackOf=id=>{try{const f=db.prepare('SELECT value FROM dots_message_feedback WHERE manager_id=? AND message_id=?').get(managerId,Number(id));return f?{feedback:f.value}:{};}catch{return {};}};
+  const task = (row: any) => ({id:Number(row.id),managerId,title:row.title,instruction:row.instruction,status:row.status,acceptanceStatus:row.acceptance_status,acceptanceCriteria:row.acceptance_criteria,dependencies:db.prepare('SELECT depends_on FROM manager_task_dependencies WHERE task_id=? ORDER BY depends_on').all(row.id).map((item: any)=>Number(item.depends_on)),controlRevision:Number(row.control_revision),createdAt:row.created_at,updatedAt:row.updated_at,nextWakeAt:row.next_wake_at,lastSummary:row.last_summary,runCount:row.run_count,originHost:row.origin_host,resourceKey:taskResourceKey(row),legacyImported:Boolean(row.legacy_imported)});
+  const messageRow = (row: any) => ({id:Number(row.id),role:row.role,content:row.content,taskId:row.task_id,requestId:row.request_id,host:row.host,createdAt:row.created_at,respondsToMessageIds:decode(row.responds_to_message_ids,[]),deliveryState:row.delivery_state||'completed',revision:Number(row.revision||0),origin:row.origin||'reply',topicId:row.topic_id||null,proactiveReason:row.proactive_reason||'',...(row.card?{card:decode(row.card,null)}:{}),...(row.origin==='proactive'?feedbackOf(row.id):{})});
+  const feedbackOf=(id: any)=>{try{const f=db.prepare('SELECT value FROM dots_message_feedback WHERE manager_id=? AND message_id=?').get(managerId,Number(id));return f?{feedback:f.value}:{};}catch{return {};}};
   // Correlate the committed run's actual input, never the latest user message.
   // Background task reports do not complete a waiting voice turn. Checking the
   // persisted source also keeps malformed/foreign inbox payloads out of replies.
-  const respondsToMessageIds = (run, inbox) => {
+  const respondsToMessageIds = (run: any, inbox: any) => {
     if (run.manager_id !== managerId || run.kind !== 'manager') return [];
     const source = db.prepare("SELECT 1 FROM manager_messages WHERE id=? AND manager_id=? AND role='user'");
-    return [...new Set(inbox.filter(item => item.type === 'user_message').map(item => decode(item.payload).id)
-      .filter(id => Number.isSafeInteger(id) && id > 0 && source.get(id,managerId)))];
+    return [...new Set(inbox.filter((item: any) => item.type === 'user_message').map((item: any) => decode(item.payload).id)
+      .filter((id: any) => Number.isSafeInteger(id) && id > 0 && source.get(id,managerId)))];
   };
   const snapshot = () => {
     const row = managerRow();
     const history=messages({limit:100});
-    return {id:row.id,ownerId:row.owner_id,name:row.name,status:row.status,activityCursor:Number(db.prepare('SELECT COALESCE(MAX(id),0) AS id FROM manager_activity WHERE manager_id=?').get(managerId).id),controlRevision:Number(row.control_revision),createdAt:row.created_at,updatedAt:row.updated_at,lastSummary:row.last_summary,workerLimit,runningWorkers:Number(db.prepare("SELECT COUNT(*) AS n FROM manager_runs WHERE manager_id=? AND kind='worker' AND state='running'").get(managerId).n),tasks:db.prepare('SELECT * FROM goals WHERE manager_id=? ORDER BY id DESC LIMIT 500').all(managerId).map(task),messages:history.messages,hasMoreMessages:history.hasMore,oldestMessageId:history.nextBeforeId,notes:db.prepare('SELECT * FROM manager_notes WHERE manager_id=? ORDER BY updated_at DESC LIMIT 50').all(managerId).map(note=>({id:note.id,key:note.note_key,scope:note.scope,content:note.content,sourceMessageId:note.source_message_id,updatedAt:note.updated_at})),capabilities:{manager:true,delegation:true,dependencies:true,durableRuns:true,workerConcurrency:workerLimit,apns:false,hardBudgets:false,recurringSchedules:false}};
+    return {id:row.id,ownerId:row.owner_id,name:row.name,status:row.status,activityCursor:Number(db.prepare('SELECT COALESCE(MAX(id),0) AS id FROM manager_activity WHERE manager_id=?').get(managerId).id),controlRevision:Number(row.control_revision),createdAt:row.created_at,updatedAt:row.updated_at,lastSummary:row.last_summary,workerLimit,runningWorkers:Number(db.prepare("SELECT COUNT(*) AS n FROM manager_runs WHERE manager_id=? AND kind='worker' AND state='running'").get(managerId).n),tasks:db.prepare('SELECT * FROM goals WHERE manager_id=? ORDER BY id DESC LIMIT 500').all(managerId).map(task),messages:history.messages,hasMoreMessages:history.hasMore,oldestMessageId:history.nextBeforeId,notes:db.prepare('SELECT * FROM manager_notes WHERE manager_id=? ORDER BY updated_at DESC LIMIT 50').all(managerId).map((note: any)=>({id:note.id,key:note.note_key,scope:note.scope,content:note.content,sourceMessageId:note.source_message_id,updatedAt:note.updated_at})),capabilities:{manager:true,delegation:true,dependencies:true,durableRuns:true,workerConcurrency:workerLimit,apns:false,hardBudgets:false,recurringSchedules:false}};
   };
-  const receipt = (requestId, operation, payload, mutate) => transaction(() => {
+  const receipt = (requestId: any, operation: any, payload: any, mutate: any) => transaction(() => {
     if (typeof requestId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(requestId)) throw error('A valid requestId is required',400);
     const fingerprint=createHash('sha256').update(encode(payload)).digest('hex');
     const prior=importLegacyGoals?db.prepare('SELECT * FROM manager_requests WHERE request_id=?').get(requestId):db.prepare('SELECT * FROM manager_scoped_requests WHERE manager_id=? AND request_id=?').get(managerId,requestId);
@@ -146,7 +146,7 @@ export function createManagerStore({ db, ownerId = 'shiyan-private-owner', works
     return response;
   });
   // deferManager：先交给“对话订阅”识别，确认不是订阅请求后再 releaseToManager 交给总管。
-  const message = (input,{deferManager=false}={}) => {
+  const message = (input: any,{deferManager=false}={}) => {
     const content=String(input.message||'').trim();
     if(!content||content.length>20000)throw error('message must contain 1–20000 characters',400);
     const taskId=input.taskId==null?null:Number(input.taskId);
@@ -161,7 +161,7 @@ export function createManagerStore({ db, ownerId = 'shiyan-private-owner', works
       return {ok:true,accepted:true,message:row,manager:snapshot()};
     });
   };
-  const controlTask = (id, action, {message: instruction}: {message?: any} = {}) => {
+  const controlTask = (id: any, action: any, {message: instruction}: {message?: any} = {}) => {
     const row=requireGoal(id);
     if(terminal(row.status)){if(action==='cancel'&&row.status==='cancelled')return;throw error('Terminal tasks cannot be restarted');}
     const pending=db.prepare("SELECT id FROM approvals WHERE goal_id=? AND status IN ('pending','executing') LIMIT 1").get(row.id);
@@ -176,7 +176,7 @@ export function createManagerStore({ db, ownerId = 'shiyan-private-owner', works
     }else throw error('Unsupported task control',400);
     activityEvent('task_control',action+': '+row.title,{action},row.id);
   };
-  const control = input => receipt(input.requestId||randomUUID(),'manager:control',{action:input.action},()=>{
+  const control = (input: any) => receipt(input.requestId||randomUUID(),'manager:control',{action:input.action},()=>{
     if(!['pause','resume','cancel','wake'].includes(input.action))throw error('Unsupported manager control',400);
     if(input.action==='wake'&&managerRow().status!=='active')throw error('Resume the manager explicitly before waking it');
     const status=input.action==='pause'?'paused':input.action==='cancel'?'cancelled':'active';
@@ -185,21 +185,21 @@ export function createManagerStore({ db, ownerId = 'shiyan-private-owner', works
     activityEvent('manager_control',input.action,{action:input.action});enqueue('manager_control',{action:input.action});
     return {ok:true,manager:snapshot()};
   });
-  const createTasks = (items, {host='other'}={}) => transaction(()=>{
+  const createTasks = (items: any, {host='other'}={}) => transaction(()=>{
     if(managerRow().status!=='active'&&items.length)throw error('Manager dispatch is paused');
     if(!Array.isArray(items)||items.length>8)throw error('At most 8 tasks per plan',400);
     const byKey=new Map();
     for(const item of items){if(typeof item.key!=='string'||!item.key.trim()||byKey.has(item.key))throw error('Task keys must be unique',400);byKey.set(item.key,item);if(!String(item.title||'').trim()||!String(item.instruction||'').trim())throw error('Task title and instruction required',400);}
-    const issueTitle=value=>String(value).normalize('NFKC').replace(/\s+/gu,' ').trim().toLocaleLowerCase('en-US');
+    const issueTitle=(value: any)=>String(value).normalize('NFKC').replace(/\s+/gu,' ').trim().toLocaleLowerCase('en-US');
     const existing=db.prepare("SELECT id,title,resource_key FROM goals WHERE manager_id=? AND legacy_imported=0 AND (status NOT IN ('done','cancelled') OR (status='done' AND acceptance_status<>'accepted'))").all(managerId);
-    const issueTitles=new Set(existing.map(row=>issueTitle(row.title)+'\0'+taskResourceKey(row)));
+    const issueTitles=new Set(existing.map((row: any)=>issueTitle(row.title)+'\0'+taskResourceKey(row)));
     for(const item of items){
       const title=issueTitle(String(item.title).slice(0,200))+'\0'+projectResourceKey(String(item.resourceKey||item.resource_key||'').slice(0,1000));
       if(issueTitles.has(title))throw error('This issue already has a task: '+String(item.title)+'. Continue the existing task with instructions, controls or review instead of creating a duplicate.',409);
       issueTitles.add(title);
     }
     const seen=new Set(),visiting=new Set();
-    const visit=key=>{if(visiting.has(key))throw error('Dependency cycle',400);if(seen.has(key))return;visiting.add(key);for(const dependency of byKey.get(key).dependencies||[]){if(byKey.has(dependency))visit(dependency);else if(/^task:\d+$/.test(dependency))requireGoal(Number(dependency.slice(5)));else throw error('Unknown dependency '+dependency,400);}visiting.delete(key);seen.add(key);};
+    const visit=(key: any)=>{if(visiting.has(key))throw error('Dependency cycle',400);if(seen.has(key))return;visiting.add(key);for(const dependency of byKey.get(key).dependencies||[]){if(byKey.has(dependency))visit(dependency);else if(/^task:\d+$/.test(dependency))requireGoal(Number(dependency.slice(5)));else throw error('Unknown dependency '+dependency,400);}visiting.delete(key);seen.add(key);};
     for(const key of byKey.keys())visit(key);
     const ids=new Map();
     for(const item of items){
@@ -210,11 +210,11 @@ export function createManagerStore({ db, ownerId = 'shiyan-private-owner', works
     for(const item of items)for(const dependency of item.dependencies||[])db.prepare('INSERT INTO manager_task_dependencies(task_id,depends_on) VALUES(?,?)').run(ids.get(item.key),ids.get(dependency)||Number(dependency.slice(5)));
     return [...ids.values()].map(id=>task(goal(id)));
   });
-  const taskEligibility = id => {
+  const taskEligibility = (id: any) => {
     const row=goal(id);
     return Boolean(row&&row.status==='active'&&row.next_wake_at!==null&&row.next_wake_at<=now()&&managerRow().status==='active'&&!db.prepare("SELECT 1 FROM manager_task_dependencies d JOIN goals g ON g.id=d.depends_on WHERE d.task_id=? AND (g.status<>'done' OR g.acceptance_status<>'accepted') LIMIT 1").get(row.id)&&!db.prepare("SELECT 1 FROM approvals WHERE goal_id=? AND status IN ('pending','executing') LIMIT 1").get(row.id)&&!db.prepare("SELECT 1 FROM manager_actions a JOIN manager_runs r ON a.run_id=r.id WHERE r.goal_id=? AND a.state='unknown' LIMIT 1").get(row.id));
   };
-  const claim = (kind, goalId, workerId) => transaction(()=>{
+  const claim = (kind: any, goalId: any, workerId: any) => transaction(()=>{
     // Obsolete unbacked opportunities are never ordinary manager input.
     if(kind==='manager')db.prepare("UPDATE manager_inbox SET consumed_at=? WHERE manager_id=? AND type='proactive_opportunity' AND consumed_at IS NULL").run(now(),managerId);
     const row=goalId==null?managerRow():goal(goalId);if(!row)return null;
@@ -241,17 +241,17 @@ export function createManagerStore({ db, ownerId = 'shiyan-private-owner', works
     if(!relationship.bindRun(candidate,run))throw error('Content candidate is no longer pending');
     return run;
   });
-  const isCurrent = run => {
+  const isCurrent = (run: any) => {
     if(!run||run.manager_id!==managerId)return false;
     const live=db.prepare('SELECT * FROM manager_runs WHERE id=?').get(run.id),row=run.goal_id==null?managerRow():goal(run.goal_id);
     return Boolean(live&&row&&live.state==='running'&&Number(live.fence)===Number(run.fence)&&live.lease_expires_at>now()&&Number(row.control_revision)===Number(run.control_revision)&&(run.kind==='manager'||(run.kind==='approval'?row.status==='waiting_approval':row.status==='active')));
   };
-  const renewRun = (runId,fence) => transaction(()=>{
+  const renewRun = (runId: any,fence: any) => transaction(()=>{
     const result=db.prepare("UPDATE manager_runs SET heartbeat_at=?,lease_expires_at=? WHERE id=? AND manager_id=? AND fence=? AND state='running' AND lease_expires_at>?").run(now(),now()+leaseSeconds,runId,managerId,fence,now());
     if(result.changes)db.prepare('UPDATE manager_resources SET lease_expires_at=? WHERE run_id=?').run(now()+leaseSeconds,runId);
     return Boolean(result.changes);
   });
-  const checkpointThread = (run, threadId) => transaction(()=>{
+  const checkpointThread = (run: any, threadId: any) => transaction(()=>{
     if(relationship?.forRun(run))return;
     if(!threadId||!db.prepare("SELECT 1 FROM manager_runs WHERE id=? AND manager_id=? AND fence=? AND state='running'").get(run.id,managerId,run.fence))return;
     db.prepare('UPDATE manager_runs SET thread_id=? WHERE id=?').run(threadId,run.id);
@@ -260,7 +260,7 @@ export function createManagerStore({ db, ownerId = 'shiyan-private-owner', works
     if(run.kind==='manager'&&db.prepare('SELECT purpose FROM manager_runs WHERE id=? AND fence=?').get(run.id,run.fence)?.purpose!=='content_review')db.prepare('UPDATE managers SET thread_id=? WHERE id=?').run(threadId,managerId);
     else db.prepare('UPDATE goals SET thread_id=? WHERE id=?').run(threadId,run.goal_id);
   });
-  const planActions = (run,actions) => transaction(()=>{
+  const planActions = (run: any,actions: any) => transaction(()=>{
     if(relationship.forRun(run))throw error('Content reviews cannot plan actions');
     if(!isCurrent(run))return false;
     for(const [ordinal,action] of (actions||[]).slice(0,8).entries()){
@@ -269,7 +269,7 @@ export function createManagerStore({ db, ownerId = 'shiyan-private-owner', works
     }
     return true;
   });
-  const beginAction = (run,ordinal,action) => transaction(()=>{
+  const beginAction = (run: any,ordinal: any,action: any) => transaction(()=>{
     if(relationship.forRun(run))throw error('Content reviews cannot execute actions');
     if(!isCurrent(run))throw error('Run superseded before action');
     const id=run.id+':'+ordinal,payload=encode(action),payloadHash=createHash('sha256').update(payload).digest('hex');
@@ -291,7 +291,7 @@ export function createManagerStore({ db, ownerId = 'shiyan-private-owner', works
     else db.prepare("INSERT INTO manager_actions(id,run_id,ordinal,payload,payload_hash,state,started_at) VALUES(?,?,?,?,?,'started',?)").run(id,run.id,ordinal,payload,payloadHash,now());
     return db.prepare('SELECT * FROM manager_actions WHERE id=?').get(id);
   });
-  const finishAction = (actionId,result) => transaction(()=>{
+  const finishAction = (actionId: any,result: any) => transaction(()=>{
     const action=db.prepare('SELECT * FROM manager_actions WHERE id=?').get(actionId);if(!action)return false;
     const run=db.prepare('SELECT * FROM manager_runs WHERE id=?').get(action.run_id);
     if(run?.state!=='running'||run.manager_id!==managerId||action.state!=='started')return false;
@@ -301,23 +301,23 @@ export function createManagerStore({ db, ownerId = 'shiyan-private-owner', works
     if(result.uncertain){db.prepare("UPDATE goals SET status='blocked',next_wake_at=NULL,control_revision=control_revision+1 WHERE id=? AND status IN ('active','waiting_approval')").run(run.goal_id);reportGoal(run.goal_id,'blocked','执行结果不明，操作 '+actionId+' 已锁定；核查后可通过明确结果确认恢复。');}
     return true;
   });
-  const finishRun = (run,{summary='',status='completed',threadId}: {summary?: string; status?: string; threadId?: any} = {}) => {
+  const finishRun = (run: any,{summary='',status='completed',threadId}: {summary?: string; status?: string; threadId?: any} = {}) => {
     if(run?.manager_id!==managerId)return false;
     if(threadId)checkpointThread(run,threadId);
     db.prepare("UPDATE manager_runs SET state=?,finished_at=?,summary=? WHERE id=? AND fence=? AND state='running'").run(status,now(),String(summary).slice(0,12000),run.id,run.fence);
     if(!db.prepare("SELECT 1 FROM manager_actions WHERE run_id=? AND state='unknown' LIMIT 1").get(run.id))db.prepare('DELETE FROM manager_resources WHERE run_id=?').run(run.id);
   };
-  const commitRun = (run,fn) => transaction(()=>{
+  const commitRun = (run: any,fn: any) => transaction(()=>{
     if(!isCurrent(run)){relationship?.cancelRun(run,'回合已被新输入取代');endManagerReply(run,'cancelled');finishRun(run,{status:'superseded'});return {committed:false};}
     const value=fn();finishRun(run,{summary:value?.summary||'',status:'completed'});return {committed:true,value};
   });
-  const reportGoal = (id,status,summary) => {
+  const reportGoal = (id: any,status: any,summary: any) => {
     const row=requireGoal(id);
     if(status==='done'&&!row.legacy_imported)db.prepare("UPDATE goals SET acceptance_status='accepted' WHERE id=?").run(id);
     activityEvent('worker_report',summary||status,{status,acceptanceStatus:goal(id).acceptance_status},row.id);
     enqueue('worker_report',{taskId:row.id,status,summary});
   };
-  const acceptTask = (id,{accepted,reason=''}) => {
+  const acceptTask = (id: any,{accepted,reason=''}: any) => {
     const row=requireGoal(id);if(row.status!=='done')throw error('Only reported completed tasks can be accepted');
     if(accepted)db.prepare("UPDATE goals SET acceptance_status='accepted',updated_at=? WHERE id=?").run(now(),row.id);
     else db.prepare("UPDATE goals SET acceptance_status='changes_requested',status='active',control_revision=control_revision+1,next_wake_at=?,updated_at=? WHERE id=?").run(now(),now(),row.id);
@@ -327,7 +327,7 @@ export function createManagerStore({ db, ownerId = 'shiyan-private-owner', works
   // The manager model chooses semantic identity; the store never merges tasks
   // by keyword similarity. A continuation must cite current, authenticated user
   // input and retain the existing task/thread, dependencies and action journal.
-  const continueTask = (command, sourceIds) => {
+  const continueTask = (command: any, sourceIds: any) => {
     const row=requireGoal(command.task_id??command.taskId);
     if(row.status==='cancelled')throw error('Cancelled tasks cannot be continued');
     const sources=[...new Set(command.source_message_ids||[])];
@@ -338,10 +338,10 @@ export function createManagerStore({ db, ownerId = 'shiyan-private-owner', works
     if(existingResource&&existingResource!==resourceKey)throw error('Continuation project does not match the existing task');
     const approvals=db.prepare("SELECT * FROM approvals WHERE goal_id=? AND status IN ('pending','executing','unknown')").all(row.id);
     const uncertain=db.prepare("SELECT 1 FROM manager_actions a JOIN manager_runs r ON a.run_id=r.id WHERE r.goal_id=? AND a.state='unknown' LIMIT 1").get(row.id);
-    const approvalInFlight=approvals.some(approval=>['executing','unknown'].includes(approval.status));
-    const reevaluate=row.status!=='paused'&&!approvalInFlight&&!uncertain&&approvals.some(approval=>approval.status==='pending');
+    const approvalInFlight=approvals.some((approval: any)=>['executing','unknown'].includes(approval.status));
+    const reevaluate=row.status!=='paused'&&!approvalInFlight&&!uncertain&&approvals.some((approval: any)=>approval.status==='pending');
     if(reevaluate){
-      for(const approval of approvals.filter(approval=>approval.status==='pending')){
+      for(const approval of approvals.filter((approval: any)=>approval.status==='pending')){
         const output='Superseded by a new authenticated user requirement; reevaluate without executing this proposal. Source messages: '+sources.join(', ');
         const changed=db.prepare("UPDATE approvals SET status='superseded',decided_at=?,output=? WHERE id=? AND status='pending'").run(now(),output,approval.id);
         if(Number(changed.changes)!==1)throw error('Approval changed during requirement update');
@@ -355,26 +355,26 @@ export function createManagerStore({ db, ownerId = 'shiyan-private-owner', works
     activityEvent('task_continued',message,{reason,sourceMessageIds:sources,deferred,previousStatus:row.status},row.id);
     return task(goal(row.id));
   };
-  const routingTasks = () => db.prepare("SELECT id,title,substr(instruction,1,600) AS instruction,status,acceptance_status,substr(last_summary,1,600) AS last_summary,resource_key,updated_at FROM goals WHERE manager_id=? AND status<>'cancelled' ORDER BY CASE WHEN status='done' AND acceptance_status='accepted' THEN 1 ELSE 0 END,updated_at DESC,id DESC").all(managerId).map(row=>({id:Number(row.id),title:row.title,instruction:row.instruction,status:row.status,acceptanceStatus:row.acceptance_status,lastSummary:row.last_summary,resourceKey:taskResourceKey(row),updatedAt:row.updated_at}));
-  const inspectRoutingTask = request => {
+  const routingTasks = () => db.prepare("SELECT id,title,substr(instruction,1,600) AS instruction,status,acceptance_status,substr(last_summary,1,600) AS last_summary,resource_key,updated_at FROM goals WHERE manager_id=? AND status<>'cancelled' ORDER BY CASE WHEN status='done' AND acceptance_status='accepted' THEN 1 ELSE 0 END,updated_at DESC,id DESC").all(managerId).map((row: any)=>({id:Number(row.id),title:row.title,instruction:row.instruction,status:row.status,acceptanceStatus:row.acceptance_status,lastSummary:row.last_summary,resourceKey:taskResourceKey(row),updatedAt:row.updated_at}));
+  const inspectRoutingTask = (request: any) => {
     if(request.task_id!=null){
       const row=requireGoal(request.task_id),full=task(row);
-      return {task:full,latestInstructions:db.prepare("SELECT payload FROM events WHERE goal_id=? AND type='user_instruction' ORDER BY id DESC LIMIT 3").all(row.id).reverse().map(row=>String(row.payload).slice(0,20000))};
+      return {task:full,latestInstructions:db.prepare("SELECT payload FROM events WHERE goal_id=? AND type='user_instruction' ORDER BY id DESC LIMIT 3").all(row.id).reverse().map((row: any)=>String(row.payload).slice(0,20000))};
     }
     const query=String(request.query||'').trim();
     if(!query||query.length>200)throw error('Task inspection requires an existing task ID or a short search query',400);
     const pattern='%'+query.replace(/[\\%_]/g,value=>'\\'+value)+'%';
     const matches=db.prepare("SELECT id FROM goals WHERE manager_id=? AND status<>'cancelled' AND (title LIKE ? ESCAPE '\\' OR instruction LIKE ? ESCAPE '\\' OR last_summary LIKE ? ESCAPE '\\') ORDER BY updated_at DESC,id DESC LIMIT 12").all(managerId,pattern,pattern,pattern);
-    const byId=new Map(routingTasks().map(task=>[task.id,task]));
-    return {query,matches:matches.map(row=>byId.get(Number(row.id))).filter(Boolean)};
+    const byId=new Map(routingTasks().map((task: any)=>[task.id,task]));
+    return {query,matches:matches.map((row: any)=>byId.get(Number(row.id))).filter(Boolean)};
   };
-  const taskContinuationContext = id => {
+  const taskContinuationContext = (id: any) => {
     requireGoal(id);
-    return db.prepare("SELECT payload FROM events WHERE goal_id=? AND type='user_instruction' ORDER BY id DESC LIMIT 3").all(id).reverse().map(row=>String(row.payload).slice(0,2000));
+    return db.prepare("SELECT payload FROM events WHERE goal_id=? AND type='user_instruction' ORDER BY id DESC LIMIT 3").all(id).reverse().map((row: any)=>String(row.payload).slice(0,2000));
   };
   // Partial user-facing replies are durable message snapshots with a stable
   // positive ID. Internal planner JSON is never stored in this projection.
-  const streamManagerReply = (run,content) => transaction(()=>{
+  const streamManagerReply = (run: any,content: any) => transaction(()=>{
     if(relationship.forRun(run))throw error('Spontaneous messages cannot stream before their final decision');
     if(run?.kind!=='manager'||run.manager_id!==managerId||!isCurrent(run))return null;
     if(typeof content!=='string'||!content||content.length>12000)throw error('Invalid streamed manager reply',400);
@@ -391,7 +391,7 @@ export function createManagerStore({ db, ownerId = 'shiyan-private-owner', works
     const row=messageRow(db.prepare('SELECT * FROM manager_messages WHERE manager_id=? AND stream_run_id=?').get(managerId,run.id));
     activityEvent('assistant_delta',content,{message:row});return row;
   });
-  const endManagerReply = (run,state) => {
+  const endManagerReply = (run: any,state: any) => {
     if(!['failed','cancelled'].includes(state)||run?.kind!=='manager'||run.manager_id!==managerId)return null;
     // Even a fenced-out process may terminalize its own old partial, never the
     // successor run's message. The run UUID and fence remain the authority.
@@ -400,14 +400,14 @@ export function createManagerStore({ db, ownerId = 'shiyan-private-owner', works
     db.prepare('UPDATE manager_messages SET delivery_state=?,revision=revision+1 WHERE id=?').run(state,prior.id);
     const row=messageRow(db.prepare('SELECT * FROM manager_messages WHERE id=?').get(prior.id));activityEvent('assistant_delta',row.content,{message:row});return row;
   };
-  const completeManager = (run,result) => {
+  const completeManager = (run: any,result: any) => {
    run=run&&db.prepare('SELECT * FROM manager_runs WHERE manager_id=? AND id=? AND fence=?').get(managerId,run.id,run.fence);
    if(!run)return {committed:false};
    const committed=commitRun(run,()=>{
     const opportunity=relationship.forRun(run);
     if(opportunity){
       if(['tasks','continuations','reviews','controls','instructions','notes','inspect_tasks','mail_actions'].some(key=>result[key]?.length))throw error('Spontaneous conversation cannot dispatch or control work');
-      const outcome=relationship.finish(opportunity,result,(content,metadata)=>{
+      const outcome=relationship.finish(opportunity,result,(content: any,metadata: any)=>{
         const inserted=db.prepare("INSERT INTO manager_messages(manager_id,role,content,created_at,responds_to_message_ids,delivery_state,revision,stream_run_id,origin,topic_id,proactive_reason) VALUES(?,'assistant',?,?,'[]','completed',1,?,?,?,?)").run(managerId,content,now(),run.id,metadata.origin,metadata.topicId,metadata.proactiveReason);
         const message=messageRow(db.prepare('SELECT * FROM manager_messages WHERE id=?').get(Number(inserted.lastInsertRowid)));
         activityEvent('assistant_message',content,{message,createdTaskIds:[],continuedTaskIds:[]});return message;
@@ -426,7 +426,7 @@ export function createManagerStore({ db, ownerId = 'shiyan-private-owner', works
       mailReplies.enqueue(run,result.mail_actions,responseSources);
       committedEffect(()=>mailReplies.kick());
     }
-    const origin=inbox.map(row=>decode(row.payload)).find(row=>row.host)?.host||'other';
+    const origin=inbox.map((row: any)=>decode(row.payload)).find((row: any)=>row.host)?.host||'other';
     const created=createTasks(result.tasks||[],{host:origin});
     for(const review of result.reviews||[])acceptTask(review.task_id??review.taskId,{accepted:review.accepted,reason:review.reason});
     for(const command of result.controls||[])controlTask(command.task_id??command.taskId,command.action);
@@ -453,11 +453,11 @@ export function createManagerStore({ db, ownerId = 'shiyan-private-owner', works
       const inserted=db.prepare("INSERT INTO manager_messages(manager_id,role,content,created_at,responds_to_message_ids,delivery_state,revision,stream_run_id) VALUES(?,'assistant',?,?,?,'completed',1,?)").run(managerId,content,now(),encode(responseSources),run.id);messageId=Number(inserted.lastInsertRowid);
     }
     const row=messageRow(db.prepare('SELECT * FROM manager_messages WHERE id=?').get(messageId));
-    activityEvent('assistant_message',content,{message:row,createdTaskIds:created.map(item=>item.id),continuedTaskIds:continued.map(item=>item.id)});
+    activityEvent('assistant_message',content,{message:row,createdTaskIds:created.map((item: any)=>item.id),continuedTaskIds:continued.map(item=>item.id)});
     db.prepare('UPDATE manager_inbox SET consumed_at=? WHERE manager_id=? AND id<=? AND consumed_at IS NULL').run(now(),managerId,run.inbox_watermark);
     const pending=db.prepare('SELECT 1 FROM manager_inbox WHERE manager_id=? AND consumed_at IS NULL LIMIT 1').get(managerId);
     db.prepare('UPDATE managers SET last_summary=?,updated_at=?,next_wake_at=? WHERE id=?').run(String(result.summary||content).slice(0,4000),now(),pending?now():null,managerId);
-    const eligible=result.awaiting_user_input===false&&inbox.length>0&&inbox.every(event=>event.type==='user_message')&&!['tasks','continuations','reviews','controls','instructions','inspect_tasks','mail_actions'].some(key=>result[key]?.length);
+    const eligible=result.awaiting_user_input===false&&inbox.length>0&&inbox.every((event: any)=>event.type==='user_message')&&!['tasks','continuations','reviews','controls','instructions','inspect_tasks','mail_actions'].some(key=>result[key]?.length);
     const ordinaryWork=['tasks','continuations','reviews','controls','instructions','inspect_tasks','mail_actions'].some(key=>result[key]?.length);
     relationship.noteConversation({replyMessageId:row.id,awaitingUserInput:result.awaiting_user_input,ordinaryWork,hasUserInput:responseSources.length>0});
     const contentCandidateId=relationship.recordContentEvent({runId:run.id,sourceIds:responseSources,replyMessageId:row.id,changes:topicChanges,eligible});
@@ -469,7 +469,7 @@ export function createManagerStore({ db, ownerId = 'shiyan-private-owner', works
    if(committed.committed&&(committed.value.contentCandidateId||committed.value.reflectionId))committedEffect(()=>{for(const listener of contentListeners)try{listener(committed.value.contentCandidateId||committed.value.reflectionId);}catch{}});
    return committed;
   };
-  const failManager = (run,cause) => transaction(()=>{
+  const failManager = (run: any,cause: any) => transaction(()=>{
     run=run&&db.prepare('SELECT * FROM manager_runs WHERE manager_id=? AND id=? AND fence=?').get(managerId,run.id,run.fence);if(!run)return;
     if(!isCurrent(run)){relationship.cancelRun(run,'回合已被新输入取代');endManagerReply(run,'cancelled');finishRun(run,{status:'superseded',summary:String(cause)});return;}
     if(relationship.forRun(run)){relationship.cancelRun(run,'本次内容评估未完成');finishRun(run,{status:'cancelled',summary:String(cause)});return;}
@@ -523,22 +523,22 @@ export function createManagerStore({ db, ownerId = 'shiyan-private-owner', works
   const activity = ({afterId=0,limit=50}={}) => {
     if(!Number.isSafeInteger(Number(afterId))||Number(afterId)<0||!Number.isSafeInteger(Number(limit))||Number(limit)<1||Number(limit)>200)throw error('Invalid activity cursor or limit',400);
     const rows=db.prepare('SELECT * FROM manager_activity WHERE manager_id=? AND id>? ORDER BY id LIMIT ?').all(managerId,Number(afterId),Number(limit)+1);
-    const visible=rows.slice(0,Number(limit));return {ok:true,activity:visible.map(row=>({id:Number(row.id),managerId:row.manager_id,taskId:row.task_id,kind:row.kind,message:row.message,data:decode(row.data),createdAt:row.created_at})),nextCursor:visible.at(-1)?.id??Number(afterId),hasMore:rows.length>Number(limit)};
+    const visible=rows.slice(0,Number(limit));return {ok:true,activity:visible.map((row: any)=>({id:Number(row.id),managerId:row.manager_id,taskId:row.task_id,kind:row.kind,message:row.message,data:decode(row.data),createdAt:row.created_at})),nextCursor:visible.at(-1)?.id??Number(afterId),hasMore:rows.length>Number(limit)};
   };
   const messages = ({beforeId=0,limit=100}={}) => {
     if(!Number.isSafeInteger(Number(beforeId))||Number(beforeId)<0||!Number.isSafeInteger(Number(limit))||Number(limit)<1||Number(limit)>200)throw error('Invalid message cursor or limit',400);
     const rows=db.prepare('SELECT * FROM manager_messages WHERE manager_id=? AND (?=0 OR id<?) ORDER BY id DESC LIMIT ?').all(managerId,Number(beforeId),Number(beforeId),Number(limit)+1);
     const selected=rows.slice(0,Number(limit)).reverse();return {ok:true,messages:selected.map(messageRow),hasMore:rows.length>Number(limit),nextBeforeId:selected[0]?.id??null};
   };
-  const taskEvidence = id => {requireGoal(id);return ({outputs:db.prepare('SELECT id,status,summary,raw_result FROM agent_outputs WHERE goal_id=? ORDER BY id DESC LIMIT 2').all(id).map(row=>({...row,raw_result:String(row.raw_result||'').slice(0,10000)})),actions:db.prepare('SELECT a.id,a.state,a.payload,a.result FROM manager_actions a JOIN manager_runs r ON r.id=a.run_id WHERE r.goal_id=? ORDER BY a.started_at DESC LIMIT 8').all(id).map(row=>({id:row.id,state:row.state,payload:decode(row.payload),result:decode(row.result)})),uncertainActions:db.prepare("SELECT a.id,a.checkpoint FROM manager_actions a JOIN manager_runs r ON r.id=a.run_id WHERE r.goal_id=? AND a.state='unknown'").all(id).map(row=>({actionId:row.id,checkpoint:decode(row.checkpoint)}))});};
-  const checkpointAction = (actionId,checkpoint) => {
+  const taskEvidence = (id: any) => {requireGoal(id);return ({outputs:db.prepare('SELECT id,status,summary,raw_result FROM agent_outputs WHERE goal_id=? ORDER BY id DESC LIMIT 2').all(id).map((row: any)=>({...row,raw_result:String(row.raw_result||'').slice(0,10000)})),actions:db.prepare('SELECT a.id,a.state,a.payload,a.result FROM manager_actions a JOIN manager_runs r ON r.id=a.run_id WHERE r.goal_id=? ORDER BY a.started_at DESC LIMIT 8').all(id).map((row: any)=>({id:row.id,state:row.state,payload:decode(row.payload),result:decode(row.result)})),uncertainActions:db.prepare("SELECT a.id,a.checkpoint FROM manager_actions a JOIN manager_runs r ON r.id=a.run_id WHERE r.goal_id=? AND a.state='unknown'").all(id).map((row: any)=>({actionId:row.id,checkpoint:decode(row.checkpoint)}))});};
+  const checkpointAction = (actionId: any,checkpoint: any) => {
     const action=db.prepare('SELECT a.* FROM manager_actions a JOIN manager_runs r ON r.id=a.run_id WHERE a.id=? AND r.manager_id=?').get(actionId,managerId);if(!action)return;
     db.prepare('UPDATE manager_actions SET checkpoint=? WHERE id=?').run(encode(checkpoint),actionId);
     const run=db.prepare('SELECT * FROM manager_runs WHERE id=?').get(action.run_id);
     const threadId=checkpoint.threadId||checkpoint.thread_id;
     if(threadId&&run?.state==='running')db.prepare('UPDATE goals SET mac_thread_id=?,mac_last_route=?,updated_at=? WHERE id=?').run(threadId,String(checkpoint.route||checkpoint.routeUsed||''),now(),run.goal_id);
   };
-  const bindApproval = (id,reason,command) => transaction(()=>{
+  const bindApproval = (id: any,reason: any,command: any) => transaction(()=>{
     const parent=requireGoal(id),row={goal_id:parent.id,reason:String(reason),command:String(command)};
     const fingerprint=approvalHash(row,parent.control_revision);
     const pending=db.prepare("SELECT * FROM approvals WHERE goal_id=? AND status='pending' ORDER BY id DESC LIMIT 1").get(parent.id);
@@ -546,12 +546,12 @@ export function createManagerStore({ db, ownerId = 'shiyan-private-owner', works
     if(pending)db.prepare("UPDATE approvals SET status='superseded' WHERE id=?").run(pending.id);
     return Number(db.prepare("INSERT INTO approvals(goal_id,reason,command,status,created_at,control_revision,payload_hash) VALUES(?,?,?,'pending',?,?,?)").run(parent.id,row.reason,row.command,now(),parent.control_revision,fingerprint).lastInsertRowid);
   });
-  const validateApproval = approval => {
+  const validateApproval = (approval: any) => {
     const parent=requireGoal(approval.goal_id);
     if(parent.status!=='waiting_approval'||approval.status!=='pending'||parent.control_revision!==approval.control_revision||approval.payload_hash!==approvalHash(approval,parent.control_revision))throw error('Approval is stale or the task is not awaiting approval; review the current task state');
     return parent;
   };
-  const claimApproval = approval => transaction(()=>{
+  const claimApproval = (approval: any) => transaction(()=>{
     const parent=validateApproval(approval),hostResource=(importLegacyGoals?'':managerId+':')+'host:executor';
     if(db.prepare("SELECT 1 FROM manager_resources WHERE resource_key IN (?,?) LIMIT 1").get(hostResource,'goal:'+parent.id))throw error('Host execution is busy or awaiting reconciliation');
     if(db.prepare("SELECT 1 FROM manager_actions a JOIN manager_runs r ON r.id=a.run_id WHERE r.manager_id=? AND a.state='unknown' AND json_extract(a.payload,'$.type')='host_command' LIMIT 1").get(managerId))throw error('A previous host execution must be reconciled');
@@ -572,7 +572,7 @@ export function createManagerStore({ db, ownerId = 'shiyan-private-owner', works
     if(['active','waiting_approval'].includes(parent.status))db.prepare("UPDATE goals SET status='blocked',next_wake_at=NULL,control_revision=control_revision+1 WHERE id=?").run(parent.id);
     activityEvent('approval_unknown','旧审批执行结果待核查，未重复执行。',{approvalId:approval.id,actionId},parent.id);enqueue('approval_unknown',{taskId:parent.id,actionId});
   });
-  const reconcileAction = input => receipt(input.requestId,'action:reconcile',{actionId:input.actionId,outcome:input.outcome,note:input.note},()=>{
+  const reconcileAction = (input: any) => receipt(input.requestId,'action:reconcile',{actionId:input.actionId,outcome:input.outcome,note:input.note},()=>{
     if(!['succeeded','failed'].includes(input.outcome)||!String(input.note||'').trim())throw error('Confirmed outcome and evidence note are required',400);
     const action=db.prepare('SELECT a.*,r.goal_id,r.manager_id FROM manager_actions a JOIN manager_runs r ON r.id=a.run_id WHERE a.id=?').get(input.actionId);
     if(!action||action.manager_id!==managerId)throw error('Action not found',404);
@@ -603,7 +603,7 @@ export function createManagerStore({ db, ownerId = 'shiyan-private-owner', works
   relationship=createDotsRelationship({db,managerId,now,transaction,retireLegacyOpportunities,activityEvent});
   // Public source discovery creates no user inbox item or task. Publication is
   // atomic with its source candidate receipt; drafts remain entirely private.
-  const publishDiscovery=({content,reason,candidateId})=>{
+  const publishDiscovery=({content,reason,candidateId}: any)=>{
     const candidate=db.prepare("SELECT state,message_id FROM dots_discovery_updates WHERE manager_id=? AND id=?").get(managerId,candidateId);
     if(candidate?.state!=='assessing'||candidate.message_id)throw error('Discovery candidate is no longer current');
     const inserted=db.prepare("INSERT INTO manager_messages(manager_id,role,content,created_at,responds_to_message_ids,delivery_state,revision,origin,proactive_reason) VALUES(?,'assistant',?,?,'[]','completed',1,'proactive',?)").run(managerId,String(content).slice(0,4000),now(),String(reason).slice(0,500));
@@ -611,7 +611,7 @@ export function createManagerStore({ db, ownerId = 'shiyan-private-owner', works
     activityEvent('assistant_message',message.content,{message,createdTaskIds:[],continuedTaskIds:[]});
     return message;
   };
-  const publishCognition=({intentId,content,reason})=>{
+  const publishCognition=({intentId,content,reason}: any)=>{
     const intent=db.prepare('SELECT state,message_id FROM dots_cognition_intents WHERE manager_id=? AND id=?').get(managerId,intentId);
     if(!intent||!['pending','held'].includes(intent.state)||intent.message_id)throw error('Cognitive intention is no longer current');
     const inserted=db.prepare("INSERT INTO manager_messages(manager_id,role,content,created_at,responds_to_message_ids,delivery_state,revision,origin,proactive_reason) VALUES(?,'assistant',?,?,'[]','completed',1,'proactive',?)").run(managerId,String(content).slice(0,5000),now(),String(reason).slice(0,1000));
@@ -620,28 +620,28 @@ export function createManagerStore({ db, ownerId = 'shiyan-private-owner', works
   };
   // —— 对话订阅 ——
   db.exec('CREATE TABLE IF NOT EXISTS dots_subscription_intents(manager_id TEXT NOT NULL,message_id INTEGER NOT NULL,state TEXT NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(manager_id,message_id))');
-  const claimSubscriptionIntent=messageId=>Boolean(db.prepare("INSERT OR IGNORE INTO dots_subscription_intents(manager_id,message_id,state,created_at) VALUES(?,?,'processing',?)").run(managerId,Number(messageId),now()).changes);
-  const releaseToManager=messageId=>transaction(()=>{
+  const claimSubscriptionIntent=(messageId: any)=>Boolean(db.prepare("INSERT OR IGNORE INTO dots_subscription_intents(manager_id,message_id,state,created_at) VALUES(?,?,'processing',?)").run(managerId,Number(messageId),now()).changes);
+  const releaseToManager=(messageId: any)=>transaction(()=>{
     const row=db.prepare("SELECT * FROM manager_messages WHERE manager_id=? AND id=? AND role='user'").get(managerId,Number(messageId));if(!row)return false;
     db.prepare("UPDATE dots_subscription_intents SET state='released' WHERE manager_id=? AND message_id=?").run(managerId,Number(messageId));
     enqueue('user_message',messageRow(row));return true;
   });
-  const postSubscriptionReply=({content,card=null,respondsTo})=>transaction(()=>{
+  const postSubscriptionReply=({content,card=null,respondsTo}: any)=>transaction(()=>{
     const inserted=db.prepare("INSERT INTO manager_messages(manager_id,role,content,created_at,responds_to_message_ids,delivery_state,revision,origin,card) VALUES(?,'assistant',?,?,?,'completed',1,'reply',?)").run(managerId,String(content).slice(0,4000),now(),encode(respondsTo?[Number(respondsTo)]:[]),card?encode(card):'');
     if(respondsTo)db.prepare("UPDATE dots_subscription_intents SET state='handled' WHERE manager_id=? AND message_id=?").run(managerId,Number(respondsTo));
     const message=messageRow(db.prepare('SELECT * FROM manager_messages WHERE id=?').get(Number(inserted.lastInsertRowid)));
     activityEvent('assistant_message',message.content,{message,createdTaskIds:[],continuedTaskIds:[]});conversationChanged();return message;
   });
   // 订阅成功/取消后，把对应的待填写卡片标记为已完成，凭据不写入消息。
-  const resolveSubscriptionCards=(provider,action,state='done')=>transaction(()=>{
+  const resolveSubscriptionCards=(provider: any,action: any,state='done')=>transaction(()=>{
     let changed=0;
     for(const row of db.prepare("SELECT id,card,revision FROM manager_messages WHERE manager_id=? AND card<>''").all(managerId)){
       const card=decode(row.card,null);if(!card||card.provider!==provider||card.action!==action||card.state!=='open')continue;
-      db.prepare('UPDATE manager_messages SET card=?,revision=revision+1 WHERE id=?').run(encode({...card,state,fields:(card.fields||[]).map(f=>f.secret?{...f,value:''}:f)}),row.id);changed++;
+      db.prepare('UPDATE manager_messages SET card=?,revision=revision+1 WHERE id=?').run(encode({...card,state,fields:(card.fields||[]).map((f: any)=>f.secret?{...f,value:''}:f)}),row.id);changed++;
     }
     if(changed)conversationChanged();return changed;
   });
-  const publishMail=({eventId,content})=>{
+  const publishMail=({eventId,content}: any)=>{
     const event=db.prepare('SELECT state,message_id FROM dots_mail_events WHERE id=? AND manager_id=?').get(eventId,managerId);
     if(!event||event.state!=='pending'||event.message_id)throw error('Mail event is no longer current');
     const inserted=db.prepare("INSERT INTO manager_messages(manager_id,role,content,created_at,responds_to_message_ids,delivery_state,revision,origin,proactive_reason) VALUES(?,'assistant',?,?,'[]','completed',1,'proactive','QQ邮箱新邮件事件')").run(managerId,String(content).slice(0,16000),now());
@@ -650,13 +650,13 @@ export function createManagerStore({ db, ownerId = 'shiyan-private-owner', works
   };
   // 通用主动消息（每日简报等），带反馈记录表。
   db.exec("CREATE TABLE IF NOT EXISTS dots_message_feedback(manager_id TEXT NOT NULL,message_id INTEGER NOT NULL,value TEXT NOT NULL,reason TEXT NOT NULL DEFAULT '',excerpt TEXT NOT NULL DEFAULT '',created_at INTEGER NOT NULL,PRIMARY KEY(manager_id,message_id))");
-  const publishProactive=({content,reason})=>{
+  const publishProactive=({content,reason}: any)=>{
     const inserted=db.prepare("INSERT INTO manager_messages(manager_id,role,content,created_at,responds_to_message_ids,delivery_state,revision,origin,proactive_reason) VALUES(?,'assistant',?,?,'[]','completed',1,'proactive',?)").run(managerId,String(content).slice(0,6000),now(),String(reason||'').slice(0,200));
     const message=messageRow(db.prepare('SELECT * FROM manager_messages WHERE id=?').get(Number(inserted.lastInsertRowid)));
     activityEvent('assistant_message',message.content,{message,createdTaskIds:[],continuedTaskIds:[]});conversationChanged?.();return message;
   };
   // 用户对主动消息的反馈：useful / not_useful / clear。只接受本账号的主动消息。
-  const messageFeedback=({messageId,value})=>{
+  const messageFeedback=({messageId,value}: any)=>{
     const row=db.prepare("SELECT id,content,proactive_reason FROM manager_messages WHERE id=? AND manager_id=? AND role='assistant'").get(Number(messageId),managerId);
     if(!row)throw error('Message not found');
     if(value==='clear'){db.prepare('DELETE FROM dots_message_feedback WHERE manager_id=? AND message_id=?').run(managerId,row.id);return {ok:true,messageId:row.id,value:null};}
@@ -664,36 +664,36 @@ export function createManagerStore({ db, ownerId = 'shiyan-private-owner', works
     db.prepare('INSERT INTO dots_message_feedback(manager_id,message_id,value,reason,excerpt,created_at) VALUES(?,?,?,?,?,?) ON CONFLICT(manager_id,message_id) DO UPDATE SET value=excluded.value,created_at=excluded.created_at').run(managerId,row.id,value,String(row.proactive_reason||''),String(row.content||'').replace(/\s+/g,' ').slice(0,160),now());
     return {ok:true,messageId:row.id,value};
   };
-  const feedbackMap=ids=>{const out={};if(!ids.length)return out;for(const row of db.prepare('SELECT message_id,value FROM dots_message_feedback WHERE manager_id=? AND message_id IN ('+ids.map(()=>'?').join(',')+')').all(managerId,...ids))out[row.message_id]=row.value;return out;};
+  const feedbackMap=(ids: any)=>{const out={};if(!ids.length)return out;for(const row of db.prepare('SELECT message_id,value FROM dots_message_feedback WHERE manager_id=? AND message_id IN ('+ids.map(()=>'?').join(',')+')').all(managerId,...ids))(out as any)[row.message_id]=row.value;return out;};
   const recentFeedback=(limit=20)=>db.prepare('SELECT value,reason,excerpt FROM dots_message_feedback WHERE manager_id=? ORDER BY created_at DESC LIMIT ?').all(managerId,limit);
-  const publishAppEvent=({source,eventKey,content})=>{
+  const publishAppEvent=({source,eventKey,content}: any)=>{
     const event=db.prepare('SELECT message_id FROM dots_app_events WHERE manager_id=? AND source=? AND event_key=?').get(managerId,source,eventKey);
     if(!event||event.message_id)throw error('App event is no longer current');
     const inserted=db.prepare("INSERT INTO manager_messages(manager_id,role,content,created_at,responds_to_message_ids,delivery_state,revision,origin,proactive_reason) VALUES(?,'assistant',?,?,'[]','completed',1,'proactive',?)").run(managerId,String(content).slice(0,6000),now(),source.startsWith('github:')?'GitHub 仓库事件':'谷歌日历事件');
     const message=messageRow(db.prepare('SELECT * FROM manager_messages WHERE id=?').get(Number(inserted.lastInsertRowid)));
     activityEvent('assistant_message',message.content,{message,createdTaskIds:[],continuedTaskIds:[]});return message;
   };
-  const refreshAppEvent=({source,eventKey,content})=>transaction(()=>{
+  const refreshAppEvent=({source,eventKey,content}: any)=>transaction(()=>{
     const event=db.prepare('SELECT message_id FROM dots_app_events WHERE manager_id=? AND source=? AND event_key=?').get(managerId,source,eventKey);
     if(!event?.message_id)return null;
     const changed=db.prepare("UPDATE manager_messages SET content=?,revision=revision+1 WHERE id=? AND manager_id=? AND role='assistant' AND origin='proactive' AND content<>?").run(String(content).slice(0,6000),event.message_id,managerId,String(content).slice(0,6000));
     const message=messageRow(db.prepare('SELECT * FROM manager_messages WHERE id=? AND manager_id=?').get(event.message_id,managerId));
     if(changed.changes)activityEvent('assistant_delta',message.content,{message});return message;
   });
-  const refreshMail=({eventId,content})=>transaction(()=>{
+  const refreshMail=({eventId,content}: any)=>transaction(()=>{
     const event=db.prepare("SELECT message_id FROM dots_mail_events WHERE id=? AND manager_id=? AND state='sent'").get(eventId,managerId);
     if(!event?.message_id)throw error('Mail notification not found');
     db.prepare("UPDATE manager_messages SET content=?,revision=revision+1 WHERE id=? AND manager_id=? AND role='assistant' AND origin='proactive'").run(String(content).slice(0,16000),event.message_id,managerId);
     const message=messageRow(db.prepare('SELECT * FROM manager_messages WHERE id=?').get(event.message_id));
     activityEvent('assistant_delta',message.content,{message});return message;
   });
-  const publishMailReplyResult=({jobId,content})=>{
+  const publishMailReplyResult=({jobId,content}: any)=>{
     const job=db.prepare('SELECT state,result_message_id FROM dots_mail_reply_jobs WHERE id=? AND manager_id=?').get(jobId,managerId);
     if(!job||!['drafted','sent','failed','uncertain'].includes(job.state)||job.result_message_id)throw error('Mail reply result not current');
     const inserted=db.prepare("INSERT INTO manager_messages(manager_id,role,content,created_at,responds_to_message_ids,delivery_state,revision,origin,proactive_reason) VALUES(?,'assistant',?,?,'[]','completed',1,'proactive','用户请求的邮件回复结果')").run(managerId,String(content).slice(0,16000),now());
     const message=messageRow(db.prepare('SELECT * FROM manager_messages WHERE id=?').get(Number(inserted.lastInsertRowid)));activityEvent('assistant_message',message.content,{message,createdTaskIds:[],continuedTaskIds:[]});return message;
   };
-  const registrationNotice=input=>transaction(()=>{
+  const registrationNotice=(input: any)=>transaction(()=>{
     // This store API is called only by the private service ingress; neither
     // prompt text nor MCP arguments can select the recipient.
     if(ownerId!=='shiyan-private-owner')throw error('Administrator notification unavailable',404);
@@ -726,5 +726,5 @@ export function createManagerStore({ db, ownerId = 'shiyan-private-owner', works
     if(id)committedEffect(()=>{for(const listener of contentListeners)try{listener(id);}catch{}});
     return id;
   });
-  return {publishProactive,messageFeedback,feedbackMap,recentFeedback,claimSubscriptionIntent,releaseToManager,postSubscriptionReply,resolveSubscriptionCards,registrationNotice,refreshAppEvent,db,ownerId,managerId,workerLimit,relationship,subscribeConversationEvents,publishAppEvent,publishDiscovery,publishCognition,publishMail,refreshMail,publishMailReplyResult,setMailReplies:service=>{mailReplies=service;},mailReplyContext:()=>mailReplies?.context()||{available:false},initializeReflection,subscribeContentEvents,claimContentReview,recoverContentReviews,transaction,ensure,requireOwner,snapshot,routingTasks,inspectRoutingTask,taskContinuationContext,message:(...args: Parameters<typeof message>)=>{const result=message(...args);conversationChanged();return result;},control:(...args: Parameters<typeof control>)=>{const result=control(...args);conversationChanged();return result;},controlTask,activity,messages,taskEvidence,activityEvent,enqueue,createTasks,taskEligibility,claimGoal:(id,options: any={})=>claim('worker',Number(id),options.workerId),claimManager:(options: any={})=>claim('manager',null,options.workerId),renewRun,isCurrent,checkpointThread,planActions,beginAction,finishAction,checkpointAction,reconcileAction,bindApproval,validateApproval,claimApproval,finishRun,commitRun,reportGoal,acceptTask,streamManagerReply,completeManager:(...args: Parameters<typeof completeManager>)=>{const result=completeManager(...args);conversationChanged();return result;},failManager:(...args: Parameters<typeof failManager>)=>{const result=failManager(...args);conversationChanged();return result;},recoverExpired,attachGoal:(id)=>{db.prepare('UPDATE goals SET manager_id=? WHERE id=? AND manager_id IS NULL').run(managerId,id);},unknownActions:()=>db.prepare("SELECT a.*,r.goal_id,r.control_revision FROM manager_actions a JOIN manager_runs r ON r.id=a.run_id WHERE r.manager_id=? AND a.state='unknown'").all(managerId),pendingManagerInbox:(run)=>db.prepare('SELECT id,type,payload FROM manager_inbox WHERE manager_id=? AND id<=? AND consumed_at IS NULL ORDER BY id').all(managerId,run.inbox_watermark)};
+  return {publishProactive,messageFeedback,feedbackMap,recentFeedback,claimSubscriptionIntent,releaseToManager,postSubscriptionReply,resolveSubscriptionCards,registrationNotice,refreshAppEvent,db,ownerId,managerId,workerLimit,relationship,subscribeConversationEvents,publishAppEvent,publishDiscovery,publishCognition,publishMail,refreshMail,publishMailReplyResult,setMailReplies:(service: any)=>{mailReplies=service;},mailReplyContext:()=>mailReplies?.context()||{available:false},initializeReflection,subscribeContentEvents,claimContentReview,recoverContentReviews,transaction,ensure,requireOwner,snapshot,routingTasks,inspectRoutingTask,taskContinuationContext,message:(...args: Parameters<typeof message>)=>{const result=message(...args);conversationChanged();return result;},control:(...args: Parameters<typeof control>)=>{const result=control(...args);conversationChanged();return result;},controlTask,activity,messages,taskEvidence,activityEvent,enqueue,createTasks,taskEligibility,claimGoal:(id: any,options: any={})=>claim('worker',Number(id),options.workerId),claimManager:(options: any={})=>claim('manager',null,options.workerId),renewRun,isCurrent,checkpointThread,planActions,beginAction,finishAction,checkpointAction,reconcileAction,bindApproval,validateApproval,claimApproval,finishRun,commitRun,reportGoal,acceptTask,streamManagerReply,completeManager:(...args: Parameters<typeof completeManager>)=>{const result=completeManager(...args);conversationChanged();return result;},failManager:(...args: Parameters<typeof failManager>)=>{const result=failManager(...args);conversationChanged();return result;},recoverExpired,attachGoal:(id: any)=>{db.prepare('UPDATE goals SET manager_id=? WHERE id=? AND manager_id IS NULL').run(managerId,id);},unknownActions:()=>db.prepare("SELECT a.*,r.goal_id,r.control_revision FROM manager_actions a JOIN manager_runs r ON r.id=a.run_id WHERE r.manager_id=? AND a.state='unknown'").all(managerId),pendingManagerInbox:(run: any)=>db.prepare('SELECT id,type,payload FROM manager_inbox WHERE manager_id=? AND id<=? AND consumed_at IS NULL ORDER BY id').all(managerId,run.inbox_watermark)};
 }

@@ -1,15 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createSubscriptionIntent} from './subscription-intent.ts';
-function fixture(decision,{repoStatus=200,isPrivate=false,configured=[]}: any={}){
+function fixture(decision: any,{repoStatus=200,isPrivate=false,configured=[]}: any={}){
   const replies: any[]=[],updates: any[]=[],claimed=new Set();
-  const store={claimSubscriptionIntent:id=>claimed.has(id)?false:(claimed.add(id),true),postSubscriptionReply:r=>replies.push(r)};
-  const subscriptions={list:async()=>configured,update:async(p,i)=>updates.push([p,i])};
+  const store={claimSubscriptionIntent:(id: any)=>claimed.has(id)?false:(claimed.add(id),true),postSubscriptionReply:(r: any)=>replies.push(r)};
+  const subscriptions={list:async()=>configured,update:async(p: any,i: any)=>updates.push([p,i])};
   const assess=async()=>decision;
   const fetchImpl: any=async()=>({status:repoStatus,ok:repoStatus===200,json:async()=>({private:isPrivate})});
   return {intent:createSubscriptionIntent({store,subscriptions,assess,fetchImpl,logger:{warn(){}} as any}),replies,updates};
 }
-const msg=(id,content)=>({id,content});
+const msg=(id: any,content: any)=>({id,content});
 test('prefilter only triggers on subscription-ish words',()=>{
   const {intent}=fixture({action:'none'});
   assert.equal(intent.candidate('今天天气怎么样'),false);
@@ -26,7 +26,7 @@ test('private repo gets a token card and nothing is saved',async()=>{
   await f.intent.process(msg(2,'订阅我的仓库 me/secret'));
   assert.equal(f.updates.length,0);
   const card=f.replies[0].card;assert.equal(card.provider,'github');assert.equal(card.state,'open');
-  assert.ok(card.fields.find(x=>x.key==='token').secret);assert.equal(card.fields.find(x=>x.key==='token').value,undefined);
+  assert.ok(card.fields.find((x: any)=>x.key==='token').secret);assert.equal(card.fields.find((x: any)=>x.key==='token').value,undefined);
 });
 test('email subscription asks for the authorization code in a card',async()=>{
   const f=fixture({action:'subscribe',provider:'email',repository:'',address:'a@qq.com'});

@@ -14,7 +14,7 @@
 import { tool } from './agent-tools.ts';
 import { timeContext } from './time-context.ts';
 
-const clip = (value, max) => String(value ?? '').slice(0, max);
+const clip = (value: any, max: any) => String(value ?? '').slice(0, max);
 
 export const FINISH_PROPERTIES = {
   status: { type: 'string', enum: ['continue', 'done', 'blocked', 'needs_approval'], description: 'continue：还有后续工作，到 wake_after_seconds 再唤醒；done：目标已达成；blocked：缺只有用户能提供的信息或操作；needs_approval：需要用户批准一条主机级命令（写在 approval_command）' },
@@ -29,8 +29,8 @@ export const FINISH_PROPERTIES = {
 };
 
 export interface BuildWorkerAgentPromptOptions { memories?: any[]; timeline?: any[]; events?: any[]; trigger?: string; cwd?: string; privateOwner?: boolean; resumed?: boolean; }
-export function buildWorkerAgentPrompt(goal, { memories = [], timeline = [], events = [], trigger = '', cwd, privateOwner = false, resumed = false }: BuildWorkerAgentPromptOptions = {}) {
-  const list = (rows, map, empty) => rows.length ? rows.map(map).join('\n') : empty;
+export function buildWorkerAgentPrompt(goal: any, { memories = [], timeline = [], events = [], trigger = '', cwd, privateOwner = false, resumed = false }: BuildWorkerAgentPromptOptions = {}) {
+  const list = (rows: any, map: any, empty: any) => rows.length ? rows.map(map).join('\n') : empty;
   const context = `任务：${goal.title}
 要求：
 ${goal.instruction}
@@ -41,13 +41,13 @@ ${goal.acceptance_criteria ? '验收标准：\n' + goal.acceptance_criteria + '\
 上一轮总结：${goal.last_summary || '（无）'}
 
 长期记忆（以前各轮记下的事实与决定）：
-${list(memories, m => `- ${m.content}`, '（无）')}
+${list(memories, (m: any) => `- ${m.content}`, '（无）')}
 
 最近时间线：
-${list(timeline, t => `- ${t.kind}: ${clip(t.message, 300)}`, '（无）')}
+${list(timeline, (t: any) => `- ${t.kind}: ${clip(t.message, 300)}`, '（无）')}
 
 新事件（用户追加的要求、审批结果、工具回执等）：
-${list(events, e => `- ${e.type}: ${clip(e.payload, 2000)}`, '（无新事件）')}`;
+${list(events, (e: any) => `- ${e.type}: ${clip(e.payload, 2000)}`, '（无新事件）')}`;
   if (resumed) return `新一轮唤醒。会话、文件和你之前的工作都还在。先看新事件和变化，再继续推进。\n\n${context}\n\n结束前调用 mcp__dots__finish_run。`;
   return `你是 Dots 的后台任务智能体，独立负责下面这个长期任务，直到达成。这不是聊天：没有人实时看着你，请自主推进，做完一轮就调用 finish_run 汇报。
 
@@ -87,9 +87,9 @@ export function stepRecord({ name = '', input, output, ok = true }: StepRecordOp
   return { type: 'mcp_tool_call', server: mcp ? mcp[1] : '', tool: mcp ? mcp[2] : name, arguments: args, result_text: text, ...(ok ? {} : { error: text.slice(0, 2000) || '工具调用失败' }), status };
 }
 
-export function createWorkerAgent({ runAgent, route, toolGroups, logger = console }) {
+export function createWorkerAgent({ runAgent, route, toolGroups, logger = console }: any) {
   interface WorkerRunOptions { owner: string; memories?: any[]; timeline?: any[]; events?: any[]; trigger?: string; signal?: AbortSignal; onStep?: (step: any) => any; privateOwner?: boolean; }
-  async function run(goal, { owner, memories, timeline, events, trigger, signal, onStep, privateOwner = false }: WorkerRunOptions) {
+  async function run(goal: any, { owner, memories, timeline, events, trigger, signal, onStep, privateOwner = false }: WorkerRunOptions) {
     const chosen = await route('dots.worker');
     let finished: any = null;
     const finish = tool('finish_run', '结束本轮并汇报结果。每轮最后必须调用一次。', FINISH_PROPERTIES, ['status', 'summary'], args => {
@@ -98,7 +98,7 @@ export function createWorkerAgent({ runAgent, route, toolGroups, logger = consol
         summary: clip(args.summary, 4000), next_step: clip(args.next_step, 2000),
         wake_after_seconds: Number.isFinite(args.wake_after_seconds) ? args.wake_after_seconds : 900,
         notify: args.notify === true, notification: clip(args.notification, 800),
-        memories: Array.isArray(args.memories) ? args.memories.slice(0, 10).map(m => clip(m, 2000)) : [],
+        memories: Array.isArray(args.memories) ? args.memories.slice(0, 10).map((m: any) => clip(m, 2000)) : [],
         approval_reason: clip(args.approval_reason, 2000), approval_command: clip(args.approval_command, 12000), actions: [],
       };
       return { ok: true, note: '已记录。用一句话结束本轮即可。' };
@@ -112,7 +112,7 @@ export function createWorkerAgent({ runAgent, route, toolGroups, logger = consol
         system: 'You are a Dots background-task agent working autonomously inside a per-account Docker sandbox. Follow the task brief in the user message. Always end the run by calling mcp__dots__finish_run.',
         prompt: buildWorkerAgentPrompt(goal, { memories, timeline, events, trigger, cwd, privateOwner, resumed }),
         groups: { ...extra.groups, dots: [finish, ...(extra.groups.dots || [])] }, signal, maxTurns: 300,
-        onEvent: event => { if (event.type === 'tool_result' && !/^mcp__dots__finish_run$/.test(event.name)) onStep?.({ ...event, record: stepRecord(event) }); },
+        onEvent: (event: any) => { if (event.type === 'tool_result' && !/^mcp__dots__finish_run$/.test(event.name)) onStep?.({ ...event, record: stepRecord(event) }); },
       });
       // An agent that forgot finish_run still did real work: record its last message and wake again.
       const result = finished || { status: 'continue', summary: clip(out.text || '本轮结束但没有汇报结果', 4000), next_step: '继续推进并用 finish_run 汇报', wake_after_seconds: 900, notify: false, notification: '', memories: [], approval_reason: '', approval_command: '', actions: [] };

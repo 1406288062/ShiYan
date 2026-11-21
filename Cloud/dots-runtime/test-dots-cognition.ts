@@ -16,7 +16,7 @@ const finalView='旧木头的磨损、藤蔓的生长和当天光影的移动，
 const nextQuestion='把当天移动的光影也放进来，三种速度的时间如何在同一张照片里相遇？';
 const ordinary=(extra={})=>({reply:'门框、藤蔓和光影确实是你散步拍照时留意的细节。',summary:'交流完成',awaiting_user_input:false,tasks:[],continuations:[],reviews:[],controls:[],instructions:[],notes:[],inspect_tasks:[],relationship:{topics:[]},...extra});
 function fixture(){
- const root=mkdtempSync(path.join(os.tmpdir(),'dots-cognition-')),file=path.join(root,'db.sqlite');let clock=1792310000,db=new DatabaseSync(file),store;const engines=new Set<any>();
+ const root=mkdtempSync(path.join(os.tmpdir(),'dots-cognition-')),file=path.join(root,'db.sqlite');let clock=1792310000,db=new DatabaseSync(file),store: any;const engines=new Set<any>();
  db.exec(`CREATE TABLE goals(id INTEGER PRIMARY KEY,title TEXT,instruction TEXT,status TEXT,thread_id TEXT,workspace TEXT,created_at INTEGER,updated_at INTEGER,next_wake_at INTEGER,last_run_at INTEGER,last_summary TEXT DEFAULT '',run_count INTEGER DEFAULT 0);CREATE TABLE approvals(id INTEGER PRIMARY KEY,goal_id INTEGER,reason TEXT,command TEXT,status TEXT,created_at INTEGER,decided_at INTEGER,output TEXT);CREATE TABLE events(id INTEGER PRIMARY KEY,goal_id INTEGER,type TEXT,payload TEXT,created_at INTEGER,consumed_at INTEGER);`);
  const open=()=>store=createManagerStore({db,workspaceRoot:root,now:()=>clock});open();
  const user=store.message({message:source,requestId:'historical-shared-experience'}).message;store.completeManager(store.claimManager(),ordinary());
@@ -33,7 +33,7 @@ function fixture(){
   },...options});engines.add(engine);return engine;
  };
  const counts=()=>({users:db.prepare("SELECT COUNT(*) n FROM manager_messages WHERE role='user'").get()!.n,inbox:db.prepare('SELECT COUNT(*) n FROM manager_inbox').get()!.n,tasks:db.prepare('SELECT COUNT(*) n FROM goals').get()!.n,replies:db.prepare("SELECT COUNT(*) n FROM manager_messages WHERE role='assistant' AND origin='reply'").get()!.n});
- return {root,user,reference,memory,create,ready,message,calls,counts,advance:n=>clock+=n,now:()=>clock,get db(){return db;},get store(){return store;},setDecision:fn=>decide=fn,setStep:fn=>stepFn=fn,setPlan:fn=>planFn=fn,messages:()=>store.snapshot().messages.filter(m=>m.origin==='proactive'),reopen(){for(const e of engines)e.close();engines.clear();db.close();db=new DatabaseSync(file);open();},close(){for(const e of engines)e.close();db.close();rmSync(root,{recursive:true,force:true});}};
+ return {root,user,reference,memory,create,ready,message,calls,counts,advance:(n: any)=>clock+=n,now:()=>clock,get db(){return db;},get store(){return store;},setDecision:(fn: any)=>decide=fn,setStep:(fn: any)=>stepFn=fn,setPlan:(fn: any)=>planFn=fn,messages:()=>store.snapshot().messages.filter((m: any)=>m.origin==='proactive'),reopen(){for(const e of engines)e.close();engines.clear();db.close();db=new DatabaseSync(file);open();},close(){for(const e of engines)e.close();db.close();rmSync(root,{recursive:true,force:true});}};
 }
 
 test('unchanged original evidence supports multiple private steps; only a formed intent can enter moment assessment',async()=>{
@@ -79,7 +79,7 @@ test('repeating a previous view or the same frontier settles the line of thought
 });
 test('a genuine next frontier can create an independently advancing child from the same evidence',async()=>{
  const f=fixture(),e=f.create();try{
-  f.setStep(({step})=>step===1?{...f.ready(),next_question:'如果把照片中的光线当作观看路径，门框会怎样改变人看见藤蔓的顺序？'}:{action:'rest',view:'',new_contribution:'',understanding:'',next_question:'',why_share:'',references:[f.reference]});await e.pump({maxSteps:1});assert.equal(f.db.prepare('SELECT COUNT(*) n FROM dots_cognition_focuses WHERE parent_id IS NOT NULL').get()!.n,1);
+  f.setStep(({step}: any)=>step===1?{...f.ready(),next_question:'如果把照片中的光线当作观看路径，门框会怎样改变人看见藤蔓的顺序？'}:{action:'rest',view:'',new_contribution:'',understanding:'',next_question:'',why_share:'',references:[f.reference]});await e.pump({maxSteps:1});assert.equal(f.db.prepare('SELECT COUNT(*) n FROM dots_cognition_focuses WHERE parent_id IS NOT NULL').get()!.n,1);
   const before=f.counts();await e.pump({maxSteps:1});assert.deepEqual(f.counts(),before);assert.equal(f.db.prepare('SELECT COUNT(*) n FROM dots_cognition_steps').get()!.n,2);assert.equal(f.messages().length,1);
  }finally{f.close();}
 });
@@ -130,8 +130,8 @@ test('compute allowances survive restart and only limit work; clock passage alon
 });
 test('the process lease prevents two cognition runtimes from duplicating the same work',async()=>{
  const f=fixture();let release;const waiting=new Promise<void>(resolve=>{release=resolve;});const e=f.create(),other=f.create();try{
-  f.setPlan(async()=>{await waiting;return {understanding:'',focuses:[]};});const running=e.pump();await new Promise<void>(resolve=>setImmediate(resolve));assert.equal(await other.pump(),false);release();await running;assert.equal(f.calls.length,1);
- }finally{release?.();f.close();}
+  f.setPlan(async()=>{await waiting;return {understanding:'',focuses:[]};});const running=e.pump();await new Promise<void>(resolve=>setImmediate(resolve));assert.equal(await other.pump(),false);(release as any)?.();await running;assert.equal(f.calls.length,1);
+ }finally{(release as any)?.();f.close();}
 });
 test('public updates become observations without a direct news review or a direct message',async()=>{
  const f=fixture(),c=f.create();let available=false,newsCalls=0;try{
@@ -190,7 +190,7 @@ test('a contextual practical suggestion remains eligible without new user input 
   assert.equal(data.sourceContext[0].quote,source);
   assert.equal(data.sourceContext[0].id,f.reference.id);
   assert.ok(data.sourceContext[0].date<data.evaluatedAt.slice(0,10),'old source keeps its original date');
-  assert.ok(data.exchange.every(message=>message.role!=='user'||message.content===source),'no synthetic user message was added');
+  assert.ok(data.exchange.every((message: any)=>message.role!=='user'||message.content===source),'no synthetic user message was added');
  }finally{f.close();}
 });
 

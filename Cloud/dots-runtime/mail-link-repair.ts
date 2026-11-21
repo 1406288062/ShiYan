@@ -2,7 +2,7 @@ import {normalizeMailPresentationLinks} from './qq-mail-content.ts';
 
 // A presentation correction is a real message revision. Otherwise native and
 // browser caches correctly reject changed content carrying the same revision.
-export function repairMailPresentationLinks(store){
+export function repairMailPresentationLinks(store: any){
  const {db,managerId}=store;
  if(!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='dots_mail_events'").get())return 0;
  return store.transaction(()=>{

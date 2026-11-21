@@ -7,29 +7,29 @@ import {canApplyGoalActions} from './goal-run-state.ts';
 
 const source = readFileSync(new URL('./server.mjs', import.meta.url), 'utf8');
 const actionSource = source.slice(source.indexOf('async function executeSafeActions('), source.indexOf('async function runGoal('));
-const action = command => ({type:'inspect_host', command, path:'', content:'', reason:'User requested a current-host read-only check'});
-function fixture(execFile, durable = false) {
+const action = (command: any) => ({type:'inspect_host', command, path:'', content:'', reason:'User requested a current-host read-only check'});
+function fixture(execFile: any, durable = false) {
   let status = 'active';
   const receipts: any[] = [];
   const store = {
     isCurrent:() => true,
-    beginAction:(_run, ordinal) => ({id:'inspection:'+ordinal, state:'started'}),
-    finishAction:(id, result) => receipts.push({id, result})
+    beginAction:(_run: any, ordinal: any) => ({id:'inspection:'+ordinal, state:'started'}),
+    finishAction:(id: any, result: any) => receipts.push({id, result})
   };
   const context = vm.createContext({
     canApplyGoalActions, getGoal:() => ({id:37, status}), addTimeline:() => {},
-    executeHostInspection:input => executeHostInspection(input, {execFile}),
+    executeHostInspection:(input: any) => executeHostInspection(input, {execFile}),
     json:JSON.stringify, ...(durable ? {managerStore:store} : {})
   });
   vm.runInContext(actionSource, context);
   return {
-    run:actions => context.executeSafeActions({id:37, workspace:'/isolated-fixture'}, actions, durable ? {id:'worker-run'} : null),
+    run:(actions: any) => context.executeSafeActions({id:37, workspace:'/isolated-fixture'}, actions, durable ? {id:'worker-run'} : null),
     pause:() => {status = 'paused';}, receipts
   };
 }
 test('actual dispatcher returns a current-host receipt without an approval or workspace container', async () => {
   const commands: any[] = [];
-  const f = fixture((binary,args,options,callback) => {
+  const f = fixture((binary: any,args: any,options: any,callback: any) => {
     commands.push({binary,args,options}); callback(null, 'actual fixed-command output', '');
   }, true);
   const result = (await f.run([action('disk_usage')]))[0];
@@ -44,7 +44,7 @@ test('actual dispatcher returns a current-host receipt without an approval or wo
   assert.equal(f.receipts[0].result.ok, true);
 });
 test('actual dispatcher preserves command failure as a failed durable action', async () => {
-  const f = fixture((_binary,_args,_options,callback) => callback(Object.assign(new Error('denied'), {code:17}), '', 'permission denied'), true);
+  const f = fixture((_binary: any,_args: any,_options: any,callback: any) => callback(Object.assign(new Error('denied'), {code:17}), '', 'permission denied'), true);
   const result = (await f.run([action('network_interfaces')]))[0];
   assert.equal(result.ok, false);
   assert.equal(JSON.parse(result.detail).exitCode, 17);
@@ -60,7 +60,7 @@ test('actual dispatcher cannot turn invalid inspection fields into arbitrary hos
   assert.equal(calls, 0);
 });
 test('read-only timeout keeps its real receipt and does not create an uncertain mutation lock', async () => {
-  const f = fixture((_binary,_args,_options,callback) => callback(Object.assign(new Error('timeout'), {killed:true, signal:'SIGTERM'}), '', ''), true);
+  const f = fixture((_binary: any,_args: any,_options: any,callback: any) => callback(Object.assign(new Error('timeout'), {killed:true, signal:'SIGTERM'}), '', ''), true);
   const result = (await f.run([action('system_uptime')]))[0];
   assert.equal(result.ok, false);
   assert.equal(JSON.parse(result.detail).timedOut, true);
@@ -69,7 +69,7 @@ test('read-only timeout keeps its real receipt and does not create an uncertain 
 });
 test('user pause after an inspection prevents the next inspection from starting', async () => {
   let calls = 0;
-  const f = fixture((_binary,_args,_options,callback) => {calls++; f.pause(); callback(null,'output','');});
+  const f = fixture((_binary: any,_args: any,_options: any,callback: any) => {calls++; f.pause(); callback(null,'output','');});
   const results = await f.run([action('disk_usage'), action('disk_inodes')]);
   assert.equal(calls, 1);
   assert.equal(results.length, 1);

@@ -15,7 +15,7 @@ let toolDefsPromise: any = null;
 export const loadBrowserToolDefs = (dir = BROWSER_AGENT_DIR) => (toolDefsPromise ||= import(path.join(dir, 'browser-tool-defs.ts')));
 export const BROWSER_DOTS_TOOLS = ['browse', 'windows', 'search', 'open', 'find'];
 
-export function request(route, body, { socketPath = BROWSER_SOCKET, timeoutMs = 30_000 } = {}) {
+export function request(route: any, body: any, { socketPath = BROWSER_SOCKET, timeoutMs = 30_000 } = {}) {
   const payload = Buffer.from(JSON.stringify(body || {}));
   return new Promise((resolve, reject) => {
     const req = http.request({ socketPath, path: route, method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': payload.length } }, res => {
@@ -29,12 +29,12 @@ export function request(route, body, { socketPath = BROWSER_SOCKET, timeoutMs = 
 }
 
 // MCP server definitions for a Dots conversation (or worker) thread.
-export function browserMcpServer(owner, origin = 'chat') {
+export function browserMcpServer(owner: any, origin = 'chat') {
   return { command: process.execPath, args: [path.join(BROWSER_AGENT_DIR, 'browser-mcp-proxy.mjs')], env: { SHIYAN_ROOT: ROOT, SHIYAN_BROWSER_SOCKET: BROWSER_SOCKET, SHIYAN_MCP_OWNER: String(owner), SHIYAN_BROWSER_ORIGIN: origin }, tool_timeout_sec: 180 };
 }
 export const browserToolAllowlist = (server = 'browser') => BROWSER_DOTS_TOOLS.map(tool => `mcp__${server}__${tool}`);
 
-export function executorPrompt(task, inputs: any[] = []) {
+export function executorPrompt(task: any, inputs: any[] = []) {
   const fresh = inputs.length ? '\n本轮新输入（追加要求、问题答复或交还说明）：\n' + inputs.map(item => `- [${item.kind}] ${item.text}`).join('\n') + '\n' : '';
   const intro = task.resumed
     ? `继续执行拾燕 Dots 浏览器任务「${task.title}」（task_id ${task.task_id}）。浏览器窗口和登录状态保留着，但页面可能已变化：先 get_task，再 snapshot 查看当前页面。${fresh}`
@@ -79,7 +79,7 @@ export interface BrowserExecutorOptions {
 export function createBrowserExecutor({ runAgent, route, report = () => {}, deliver, socketPath = BROWSER_SOCKET, toolDefs = loadBrowserToolDefs, concurrency = Number(process.env.SHIYAN_BROWSER_EXECUTORS || 1), pollMs = 2000, workerId = 'dots:' + process.pid, maxRunMs = 3 * 60 * 60_000, logger = console, call = request }: BrowserExecutorOptions) {
   const running = new Map();
   let timer: any = null, closed = false, ticking = false, warned = 0;
-  const rpc = (route_, body, options = {}) => call(route_, body, { socketPath, ...options });
+  const rpc = (route_: any, body: any, options = {}) => call(route_, body, { socketPath, ...options });
   async function pumpEvents() {
     const { events = [] } = await rpc('/events/claim', { limit: 50 });
     if (!events.length) return;
@@ -90,7 +90,7 @@ export function createBrowserExecutor({ runAgent, route, report = () => {}, deli
     }
     if (delivered.length) await rpc('/events/ack', { ids: delivered });
   }
-  async function execute(claim) {
+  async function execute(claim: any) {
     const { task, token, new_inputs: inputs = [] } = claim;
     const renew = setInterval(() => { void rpc('/executor/renew', { task_id: task.task_id, token }).catch(() => {}); }, 60_000); renew.unref?.();
     const controller = new AbortController(), limit = setTimeout(() => controller.abort(new Error('浏览器任务单轮执行超过上限')), maxRunMs); limit.unref?.();
@@ -100,7 +100,7 @@ export function createBrowserExecutor({ runAgent, route, report = () => {}, deli
       chosen = await route('dots.browser');
       const { EXEC_TOOLS } = await toolDefs();
       // Each browser action is a host tool bound to this claim; the container never sees the token.
-      const tools = EXEC_TOOLS.map(def => ({ ...def, handler: async args => (await rpc('/exec/call', { task_id: task.task_id, token, tool: def.name, args }, { timeoutMs: 2 * 60 * 60_000 })).result }));
+      const tools = EXEC_TOOLS.map((def: any) => ({ ...def, handler: async (args: any) => (await rpc('/exec/call', { task_id: task.task_id, token, tool: def.name, args }, { timeoutMs: 2 * 60 * 60_000 })).result }));
       const out = await runAgent({ owner: task.owner, provider: chosen.provider, model: chosen.model, reasoning: chosen.reasoning, sessionRef: task.thread_id, cwd: '/workspace/dots/.browser/' + task.task_id,
         system: '你是拾燕 Dots 的浏览器执行者。按用户消息里的规则，用 mcp__browser__ 工具在服务器的真实 Chrome 中完成任务，结束前必须调用 mcp__browser__finish。', prompt: executorPrompt(task, inputs), groups: { browser: tools }, signal: controller.signal, maxTurns: 400 });
       usage = out.usage;
@@ -109,7 +109,7 @@ export function createBrowserExecutor({ runAgent, route, report = () => {}, deli
     finally {
       clearInterval(renew); clearTimeout(limit);
       try { report('dots.browser', { provider: chosen?.provider || '', model: chosen?.model || '', reasoning: chosen?.reasoning || '', account: task.owner, ok: !error, ms: Date.now() - started, error, usage }); } catch {}
-      await rpc('/executor/complete', { task_id: task.task_id, token, error }).catch(cause => logger.warn?.('[browser-executor] complete failed', cause?.message || cause));
+      await rpc('/executor/complete', { task_id: task.task_id, token, error }).catch((cause: any) => logger.warn?.('[browser-executor] complete failed', cause?.message || cause));
     }
   }
   async function tick() {
@@ -136,7 +136,7 @@ export function createBrowserExecutor({ runAgent, route, report = () => {}, deli
 }
 
 // How a browser task event is shown to Dots: it lands in NEW INPUT AND WORKER EVENTS.
-export function inboxEvent(event) {
+export function inboxEvent(event: any) {
   const type = ['browser_task_update', 'browser_task_question', 'browser_task_needs_user'].includes(event.type) ? event.type : 'browser_task_update';
   return { type, payload: { ...event.payload, task_id: event.task_id || event.payload?.task_id } };
 }

@@ -12,14 +12,14 @@ export const CADENCES = { daily: 1, weekly: 7, biweekly: 14, monthly: 30 };
 const CADENCE_NAMES = { daily: '每天', weekly: '每周', biweekly: '每两周', monthly: '每月' };
 const BJ = 8 * 3600_000;
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/, TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
-export const bjDay = ms => new Date(ms + BJ).toISOString().slice(0, 10);
-const bad = message => Object.assign(new Error(message), { statusCode: 400 });
-const clean = (value, max) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
-const validDay = value => DAY_RE.test(value) && !Number.isNaN(Date.parse(value + 'T00:00:00Z'));
+export const bjDay = (ms: any) => new Date(ms + BJ).toISOString().slice(0, 10);
+const bad = (message: any) => Object.assign(new Error(message), { statusCode: 400 });
+const clean = (value: any, max: any) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
+const validDay = (value: any) => DAY_RE.test(value) && !Number.isNaN(Date.parse(value + 'T00:00:00Z'));
 
 // 从 fromMs 所在的北京日期起，往后 days 天，在 time（北京时间）那一刻；如果还没到 fromMs 之后，就再推一个周期。
-export function nextCheckin(fromMs, cadence, time) {
-  const days = CADENCES[cadence] || 7;
+export function nextCheckin(fromMs: any, cadence: any, time: any) {
+  const days = (CADENCES as any)[cadence] || 7;
   const [h, m] = String(time || '20:00').split(':').map(Number);
   const base = Date.parse(bjDay(fromMs) + 'T00:00:00Z') - BJ;
   let at = base + days * 86_400_000 + (h * 60 + m) * 60_000;
@@ -45,17 +45,17 @@ export function createLifeGoals({ store, assess, now = () => Date.now(), interva
   let timer: any = null, running = false, stopped = false;
   const planning = new Set();
   const sec = () => Math.floor(now() / 1000);
-  const parse = value => { try { const list = JSON.parse(value || '[]'); return Array.isArray(list) ? list : []; } catch { return []; } };
-  const get = id => db.prepare('SELECT * FROM dots_life_goals WHERE id=? AND manager_id=?').get(Number(id), managerId);
-  const require = id => { const row = get(id); if (!row) throw Object.assign(new Error('目标不存在'), { statusCode: 404 }); return row; };
-  function present(row) {
+  const parse = (value: any) => { try { const list = JSON.parse(value || '[]'); return Array.isArray(list) ? list : []; } catch { return []; } };
+  const get = (id: any) => db.prepare('SELECT * FROM dots_life_goals WHERE id=? AND manager_id=?').get(Number(id), managerId);
+  const require = (id: any) => { const row = get(id); if (!row) throw Object.assign(new Error('目标不存在'), { statusCode: 404 }); return row; };
+  function present(row: any) {
     const milestones = parse(row.milestones), done = milestones.filter(m => m.done).length;
-    return { id: row.id, title: row.title, why: row.why, targetDate: row.target_date, cadence: row.cadence, cadenceName: CADENCE_NAMES[row.cadence] || row.cadence,
+    return { id: row.id, title: row.title, why: row.why, targetDate: row.target_date, cadence: row.cadence, cadenceName: (CADENCE_NAMES as any)[row.cadence] || row.cadence,
       checkinTime: row.checkin_time, status: row.status, planState: row.plan_state, planSummary: row.plan_summary, milestones,
       progress: milestones.length ? Math.round(done / milestones.length * 100) : 0, nextCheckinAt: row.status === 'active' ? row.next_checkin_at : null,
       lastCheckinAt: row.last_checkin_at, checkins: row.checkins, createdAt: row.created_at, updatedAt: row.updated_at };
   }
-  const save = (id, fields) => {
+  const save = (id: any, fields: any) => {
     const keys = Object.keys(fields); if (!keys.length) return;
     db.prepare(`UPDATE dots_life_goals SET ${keys.map(k => k + '=?').join(',')},updated_at=? WHERE id=? AND manager_id=?`).run(...keys.map(k => fields[k]), sec(), Number(id), managerId);
   };
@@ -70,7 +70,7 @@ export function createLifeGoals({ store, assess, now = () => Date.now(), interva
     return out;
   }
 
-  async function plan(id) {
+  async function plan(id: any) {
     if (planning.has(id)) return; planning.add(id);
     try {
       const row = get(id); if (!row) return;
@@ -81,24 +81,24 @@ export function createLifeGoals({ store, assess, now = () => Date.now(), interva
 目标：${JSON.stringify(row.title)}
 原因：${JSON.stringify(row.why || '')}`;
       const result = await assess(data, PLAN_SCHEMA, { source: 'dots-goals', signal: AbortSignal.timeout(90_000) });
-      const milestones = (result?.milestones || []).map((m, i) => ({ id: 'm' + (i + 1) + '-' + Date.now().toString(36), title: clean(m.title, 120), due: validDay(String(m.due)) ? String(m.due) : null, done: false }))
-        .filter(m => m.title).slice(0, 8);
+      const milestones = (result?.milestones || []).map((m: any, i: any) => ({ id: 'm' + (i + 1) + '-' + Date.now().toString(36), title: clean(m.title, 120), due: validDay(String(m.due)) ? String(m.due) : null, done: false }))
+        .filter((m: any) => m.title).slice(0, 8);
       if (milestones.length < 2) throw new Error('plan_empty');
       const current = get(id); if (!current) return;
       save(id, { milestones: JSON.stringify(milestones), plan_summary: clean(result.summary, 400), plan_state: 'ready', next_checkin_at: current.next_checkin_at || nextCheckin(now(), current.cadence, current.checkin_time) });
-      const lines = milestones.map((m, i) => `${i + 1}. ${m.title}${m.due ? `（${m.due.slice(5).replace('-', '/')} 前）` : ''}`).join('\n');
-      store.publishProactive({ content: `🎯 我为「${current.title}」拟了一个计划：\n\n${lines}\n\n${clean(result.summary, 400)}\n\n我会${CADENCE_NAMES[current.cadence]}${current.checkin_time} 来问你进展。计划可以在「目标」里随时调整。`, reason: '目标计划' });
+      const lines = milestones.map((m: any, i: any) => `${i + 1}. ${m.title}${m.due ? `（${m.due.slice(5).replace('-', '/')} 前）` : ''}`).join('\n');
+      store.publishProactive({ content: `🎯 我为「${current.title}」拟了一个计划：\n\n${lines}\n\n${clean(result.summary, 400)}\n\n我会${(CADENCE_NAMES as any)[current.cadence]}${current.checkin_time} 来问你进展。计划可以在「目标」里随时调整。`, reason: '目标计划' });
     } catch (error) {
       save(id, { plan_state: 'failed' });
       logger.warn?.('[life-goals] plan ' + String((error as any)?.message || error).slice(0, 200));
     } finally { planning.delete(id); }
   }
 
-  async function checkin(row) {
+  async function checkin(row: any) {
     const milestones = parse(row.milestones), next = milestones.find(m => !m.done);
     const since = row.last_checkin_at || row.created_at;
     const said = db.prepare("SELECT content FROM manager_messages WHERE manager_id=? AND role='user' AND created_at>? ORDER BY id DESC LIMIT 20").all(managerId, since)
-      .map(r => clean(r.content, 200)).filter(Boolean);
+      .map((r: any) => clean(r.content, 200)).filter(Boolean);
     let content = '';
     try {
       const data = `你是私人助手 Dots，现在要主动问用户一个长期目标的进展（今天是北京时间 ${bjDay(now())}）。
@@ -142,15 +142,15 @@ export function createLifeGoals({ store, assess, now = () => Date.now(), interva
       void plan(id);
       return { ok: true, goal: present(get(id)) };
     },
-    update(id, input = {}) {
+    update(id: any, input = {}) {
       const row = require(id), fields = validate(input, true);
       if (('cadence' in fields || 'checkin_time' in fields || (fields.status === 'active' && row.status !== 'active')) && row.plan_state === 'ready')
         fields.next_checkin_at = nextCheckin(now(), fields.cadence || row.cadence, fields.checkin_time || row.checkin_time);
       save(row.id, fields);
-      if (fields.status && fields.status !== row.status) onAudit('goal', '目标「' + row.title + '」' + ({ active: '恢复进行', paused: '已暂停', done: '标记为达成', archived: '已归档' })[fields.status]);
+      if (fields.status && fields.status !== row.status) onAudit('goal', '目标「' + row.title + '」' + (({ active: '恢复进行', paused: '已暂停', done: '标记为达成', archived: '已归档' }) as any)[fields.status]);
       return { ok: true, goal: present(get(row.id)) };
     },
-    milestone(id, input: any = {}) {
+    milestone(id: any, input: any = {}) {
       const row = require(id); let milestones = parse(row.milestones);
       if (input.add !== undefined) {
         const title = clean(input.add, 120); if (!title) throw bad('请写下里程碑');
@@ -168,8 +168,8 @@ export function createLifeGoals({ store, assess, now = () => Date.now(), interva
       save(row.id, { milestones: JSON.stringify(milestones), ...(row.plan_state !== 'ready' && milestones.length ? { plan_state: 'ready', next_checkin_at: row.next_checkin_at || nextCheckin(now(), row.cadence, row.checkin_time) } : {}) });
       return { ok: true, goal: present(get(row.id)) };
     },
-    replan(id) { const row = require(id); save(row.id, { plan_state: 'planning' }); void plan(row.id); return { ok: true, goal: present(get(row.id)) }; },
-    remove(id) { const row = require(id); db.prepare('DELETE FROM dots_life_goals WHERE id=? AND manager_id=?').run(row.id, managerId); onAudit('goal', '删除了目标「' + row.title + '」'); return { ok: true }; },
+    replan(id: any) { const row = require(id); save(row.id, { plan_state: 'planning' }); void plan(row.id); return { ok: true, goal: present(get(row.id)) }; },
+    remove(id: any) { const row = require(id); db.prepare('DELETE FROM dots_life_goals WHERE id=? AND manager_id=?').run(row.id, managerId); onAudit('goal', '删除了目标「' + row.title + '」'); return { ok: true }; },
     start() {
       if (timer || stopped) return;
       // 重启时把卡在“规划中”的目标重新规划。

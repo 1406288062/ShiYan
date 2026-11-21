@@ -9,26 +9,26 @@ import {createManagerRuntime} from './manager-runtime.ts';
 
 const source='我喜欢在城市散步时找那些被藤蔓包围的旧门框，会用相机记录它们每天不同的光影';
 const perspective='那些旧门框好像是一种慢镜头：建筑的年岁、藤蔓的生长和当天的光影，被你收进同一张照片。';
-const ordinary=extra=>({reply:'我记住了你这个散步时的小习惯。',summary:'本次交流已结束',awaiting_user_input:false,tasks:[],continuations:[],reviews:[],controls:[],instructions:[],notes:[],inspect_tasks:[],relationship:{topics:[]},...extra});
+const ordinary=(extra: any)=>({reply:'我记住了你这个散步时的小习惯。',summary:'本次交流已结束',awaiting_user_input:false,tasks:[],continuations:[],reviews:[],controls:[],instructions:[],notes:[],inspect_tasks:[],relationship:{topics:[]},...extra});
 let sequence=0;
 function fixture(){
- const root=mkdtempSync(path.join(os.tmpdir(),'dots-autonomous-reflection-')),file=path.join(root,'db.sqlite');let clock=1792000000,db=new DatabaseSync(file),store;const runtimes=new Set<any>();
+ const root=mkdtempSync(path.join(os.tmpdir(),'dots-autonomous-reflection-')),file=path.join(root,'db.sqlite');let clock=1792000000,db=new DatabaseSync(file),store: any;const runtimes=new Set<any>();
  db.exec(`CREATE TABLE goals(id INTEGER PRIMARY KEY,title TEXT,instruction TEXT,status TEXT,thread_id TEXT,workspace TEXT,created_at INTEGER,updated_at INTEGER,next_wake_at INTEGER,last_run_at INTEGER,last_summary TEXT DEFAULT '',run_count INTEGER DEFAULT 0);
  CREATE TABLE approvals(id INTEGER PRIMARY KEY,goal_id INTEGER,reason TEXT,command TEXT,status TEXT,created_at INTEGER,decided_at INTEGER,output TEXT);
  CREATE TABLE events(id INTEGER PRIMARY KEY,goal_id INTEGER,type TEXT,payload TEXT,created_at INTEGER,consumed_at INTEGER);`);
  const open=()=>store=createManagerStore({db,now:()=>clock,workspaceRoot:path.join(root,'work')});open();
- return {root,now:()=>clock,get db(){return db;},get store(){return store;},advance:n=>clock+=n,track:r=>{runtimes.add(r);return r;},reopen(){for(const r of runtimes)r.close();runtimes.clear();db.close();db=new DatabaseSync(file);open();},close(){for(const r of runtimes)r.close();db.close();rmSync(root,{recursive:true,force:true});}};
+ return {root,now:()=>clock,get db(){return db;},get store(){return store;},advance:(n: any)=>clock+=n,track:(r: any)=>{runtimes.add(r);return r;},reopen(){for(const r of runtimes)r.close();runtimes.clear();db.close();db=new DatabaseSync(file);open();},close(){for(const r of runtimes)r.close();db.close();rmSync(root,{recursive:true,force:true});}};
 }
 interface RememberOptions { text?: string; key?: string; title?: string; reply?: string; awaiting?: boolean; learn?: boolean; [key: string]: any; }
-function remember(f,{text=source,key='walk.doorframes',title='散步中的旧门框',reply,awaiting=false,learn=true,...extra}: RememberOptions={}){
+function remember(f: any,{text=source,key='walk.doorframes',title='散步中的旧门框',reply,awaiting=false,learn=true,...extra}: RememberOptions={}){
  const user=f.store.message({message:text,requestId:'reflection-source-'+(++sequence)}).message,run=f.store.claimManager();assert.ok(run);
  const result=f.store.completeManager(run,ordinary({...(reply?{reply}:{}),awaiting_user_input:awaiting,relationship:{topics:learn?[{key,title,summary:text,open_question:'',source_message_ids:[user.id],evidence:[text]}]:[]},...extra}));assert.equal(result.committed,true);
- return {user,reply:result.value.message,topic:f.store.relationship.snapshot().topics.find(topic=>topic.sourceMessageIds.includes(user.id))};
+ return {user,reply:result.value.message,topic:f.store.relationship.snapshot().topics.find((topic: any)=>topic.sourceMessageIds.includes(user.id))};
 }
-function decision(a,extra={}){return {action:'send',idea_kind:'perspective',message:perspective,reason:'已有散步记录可以形成尚未表达的时间视角',insight:'建筑的年岁、藤蔓的生长和当天的光影，在同一张旧门框照片里呈现三种时间尺度',not_covered_by_history:'此前只记住了散步习惯，没有讨论照片里不同时间尺度的叠加',conversation_appropriate:true,source_quotes:[{message_id:a.user.id,quote:a.user.content}],...extra};}
+function decision(a: any,extra={}){return {action:'send',idea_kind:'perspective',message:perspective,reason:'已有散步记录可以形成尚未表达的时间视角',insight:'建筑的年岁、藤蔓的生长和当天的光影，在同一张旧门框照片里呈现三种时间尺度',not_covered_by_history:'此前只记住了散步习惯，没有讨论照片里不同时间尺度的叠加',conversation_appropriate:true,source_quotes:[{message_id:a.user.id,quote:a.user.content}],...extra};}
 const settle=async()=>{for(let i=0;i<8;i++)await new Promise(resolve=>setImmediate(resolve));};
-const proactive=f=>f.store.snapshot().messages.filter(message=>message.origin==='proactive');
-function activityCounts(f){return {
+const proactive=(f: any)=>f.store.snapshot().messages.filter((message: any)=>message.origin==='proactive');
+function activityCounts(f: any){return {
  users:f.db.prepare("SELECT COUNT(*) AS n FROM manager_messages WHERE role='user'").get()!.n,
  userWatermark:f.db.prepare("SELECT MAX(id) AS id FROM manager_messages WHERE role='user'").get()!.id,
  replies:f.db.prepare("SELECT COUNT(*) AS n FROM manager_messages WHERE role='assistant' AND origin='reply'").get()!.n,
@@ -36,10 +36,10 @@ function activityCounts(f){return {
  pending:f.db.prepare('SELECT COUNT(*) AS n FROM manager_inbox WHERE consumed_at IS NULL').get()!.n,
  tasks:f.db.prepare('SELECT COUNT(*) AS n FROM goals').get()!.n
 };}
-function runtime(f,respond){
+function runtime(f: any,respond: any){
  const options: any[]=[],prompts: any[]=[];let calls=0;
- const factory=option=>{options.push(option);return {run:async(prompt,turn)=>{calls++;prompts.push(prompt);return {finalResponse:JSON.stringify(await respond({prompt,turn,call:calls}))};}};};
- const r=f.track(createManagerRuntime({store:f.store,workspaceRoot:f.root,codex:{startThread:factory,resumeThread:(_id,option)=>factory(option)},logger:{error(){},warn(){}}}));
+ const factory=(option: any)=>{options.push(option);return {run:async(prompt: any,turn: any)=>{calls++;prompts.push(prompt);return {finalResponse:JSON.stringify(await respond({prompt,turn,call:calls}))};}};};
+ const r=f.track(createManagerRuntime({store:f.store,workspaceRoot:f.root,codex:{startThread:factory,resumeThread:(_id: any,option: any)=>factory(option)},logger:{error(){},warn(){}}}));
  return {r,options,prompts,get calls(){return calls;}};
 }
 
@@ -109,7 +109,7 @@ test('a worker-only report cannot answer an outstanding user clarification on th
 test('ending an exchange is supplied to semantic review and an unsuitable decision never publishes',async()=>{
  const f=fixture();try{
   const a=remember(f,{text:source+'。今天先聊到这里，我要去睡觉了。',reply:'好，晚安。'});
-  const x=runtime(f,({prompt})=>{assert.ok(prompt.includes('今天先聊到这里'));return decision(a,{conversation_appropriate:false});});await settle();
+  const x=runtime(f,({prompt}: any)=>{assert.ok(prompt.includes('今天先聊到这里'));return decision(a,{conversation_appropriate:false});});await settle();
   assert.equal(proactive(f).length,0);assert.ok(x.calls<=1);assert.equal(await x.r.requestContentReview(),false);
  }finally{f.close();}
 });
@@ -118,34 +118,34 @@ test('a pending user message wins and is not consumed by independent reflection'
  const f=fixture();try{
   const a=remember(f),user=f.store.message({message:'我现在有个新问题，先看这个',requestId:'reflection-new-input'}).message;const before=activityCounts(f);
   const x=runtime(f,()=>decision(a));await settle();assert.equal(x.calls,0);assert.equal(proactive(f).length,0);assert.equal(await x.r.requestContentReview(),false);assert.deepEqual(activityCounts(f),before);
-  assert.ok(f.store.pendingManagerInbox(f.store.claimManager()).some(event=>JSON.parse(event.payload).id===user.id));
+  assert.ok(f.store.pendingManagerInbox(f.store.claimManager()).some((event: any)=>JSON.parse(event.payload).id===user.id));
  }finally{f.close();}
 });
 
 test('new user input while a thought runs invalidates its publication without streaming drafts',async()=>{
  const f=fixture();let release;try{
-  const a=remember(f);let entered;const ready=new Promise(resolve=>entered=resolve),hold=new Promise(resolve=>release=resolve);
+  const a=remember(f);let entered: any;const ready=new Promise(resolve=>entered=resolve),hold=new Promise(resolve=>release=resolve);
   const x=runtime(f,async()=>{entered();await hold;return decision(a);});await ready;
-  assert.equal(proactive(f).length,0);const before=f.store.activity().activity.filter(event=>event.kind==='assistant_delta').length;
-  f.store.message({message:'这件事先放下，我想聊另一件事',requestId:'reflection-interrupt'});x.r.interrupt();release();await settle();
-  assert.equal(proactive(f).length,0);assert.equal(f.store.activity().activity.filter(event=>event.kind==='assistant_delta').length,before);assert.equal(activityCounts(f).pending,1);
- }finally{release?.();await settle();f.close();}
+  assert.equal(proactive(f).length,0);const before=f.store.activity().activity.filter((event: any)=>event.kind==='assistant_delta').length;
+  f.store.message({message:'这件事先放下，我想聊另一件事',requestId:'reflection-interrupt'});x.r.interrupt();(release as any)?.();await settle();
+  assert.equal(proactive(f).length,0);assert.equal(f.store.activity().activity.filter((event: any)=>event.kind==='assistant_delta').length,before);assert.equal(activityCounts(f).pending,1);
+ }finally{(release as any)?.();await settle();f.close();}
 });
 
 test('withdrawn or corrected evidence cannot publish from a previously claimed thought',async t=>{
  for(const kind of ['delete','correct','memory-withdrawal'])await t.test(kind,async()=>{
   const f=fixture();let release;try{
-   f.store.relationship.memoryChanged({generation:0,enabled:true});const a=remember(f);let entered;const ready=new Promise(resolve=>entered=resolve),hold=new Promise(resolve=>release=resolve);
+   f.store.relationship.memoryChanged({generation:0,enabled:true});const a=remember(f);let entered: any;const ready=new Promise(resolve=>entered=resolve),hold=new Promise(resolve=>release=resolve);
    const x=runtime(f,async()=>{entered();await hold;return decision(a);});await ready;
    if(kind==='delete')f.store.relationship.deleteTopic(a.topic.id);
    else if(kind==='correct')f.store.relationship.updateTopic(a.topic.id,{summary:'用户已纠正：记录的是新建筑，并没有旧门框或藤蔓。'});
    else f.store.relationship.memoryChanged({generation:1,enabled:true});
-   release();await settle();assert.equal(proactive(f).length,0);assert.equal(await x.r.requestContentReview(),false);
+   (release as any)?.();await settle();assert.equal(proactive(f).length,0);assert.equal(await x.r.requestContentReview(),false);
    for(const row of f.db.prepare('SELECT materials_json,thought_json FROM dots_relationship_reflections').all()){
     assert.ok(!String(row.materials_json).includes(source));assert.ok(!String(row.thought_json).includes(source));
    }
    f.reopen();const retry=runtime(f,()=>{throw new Error('Revoked evidence must not bootstrap again');});await settle();assert.equal(retry.calls,0);
-  }finally{release?.();await settle();f.close();}
+  }finally{(release as any)?.();await settle();f.close();}
  });
 });
 
@@ -182,7 +182,7 @@ test('rolled-back confirmed material emits no thought work or model call',async(
 
 test('after initial empty startup, a genuine committed topic queues one thought and a replay queues none',async()=>{
  const f=fixture();try{
-  let a;const x=runtime(f,()=>decision(a));await settle();assert.equal(x.calls,0);
+  let a: any;const x=runtime(f,()=>decision(a));await settle();assert.equal(x.calls,0);
   a=remember(f);const before=activityCounts(f);assert.equal(proactive(f).length,0);await settle();
   assert.equal(x.calls,1);assert.deepEqual(activityCounts(f),before);assert.equal(proactive(f).length,1);
   assert.equal(f.store.initializeReflection(),null);await settle();assert.equal(x.calls,1);
@@ -215,12 +215,12 @@ test('an expired claimed thought is terminal and reopening cannot invoke its mod
 
 test('a live thought is not claimed again or cancelled by constructing another runtime',async()=>{
  const f=fixture();let release;try{
-  const a=remember(f);let entered;const ready=new Promise(resolve=>entered=resolve),hold=new Promise(resolve=>release=resolve);
+  const a=remember(f);let entered: any;const ready=new Promise(resolve=>entered=resolve),hold=new Promise(resolve=>release=resolve);
   const first=runtime(f,async()=>{entered();await hold;return decision(a);});await ready;
   const second=runtime(f,()=>{throw new Error('The first runtime still holds the thought lease');});await settle();assert.equal(first.calls,1);assert.equal(second.calls,0);
   assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM manager_runs WHERE state='running' AND purpose='content_review'").get()!.n,1);
-  release();await settle();assert.equal(proactive(f).length,1);assert.equal(first.calls,1);assert.equal(second.calls,0);
- }finally{release?.();await settle();f.close();}
+  (release as any)?.();await settle();assert.equal(proactive(f).length,1);assert.equal(first.calls,1);assert.equal(second.calls,0);
+ }finally{(release as any)?.();await settle();f.close();}
 });
 
 test('an active ordinary run prevents a private thought from occupying the same manager lane',async()=>{
@@ -268,12 +268,12 @@ test('withdrawing either source removes a derived multi-topic insight from later
  const f=fixture();try{
   const a=remember(f),b=remember(f,{text:'爵士乐最吸引我的是鼓点骤然停住的那一拍，旋律在无声处好像还在往前走',key:'music.silence',title:'爵士乐的停顿'});
   const message='旧门框上的藤蔓和爵士乐的鼓点都有一种有趣的节奏：前者缓慢留下生长的轨迹，后者用瞬间的停顿留下听觉的轨迹。';
-  const x=runtime(f,({call,prompt})=>{
+  const x=runtime(f,({call,prompt}: any)=>{
    if(call===1)return decision(a,{idea_kind:'connection',message,insight:'藤蔓在旧门框留下生长轨迹，爵士乐鼓点在听觉中留下时间轨迹，两种节奏通过痕迹被感知',not_covered_by_history:'既有回复没有联系藤蔓的生长轨迹与爵士乐的听觉轨迹',source_quotes:[{message_id:a.user.id,quote:a.user.content},{message_id:b.user.id,quote:b.user.content}]});
    assert.equal(call,2);assert.ok(!prompt.includes(message));assert.ok(prompt.includes(source));return decision(a,{action:'discard',message:''});
   });await settle();assert.equal(proactive(f).length,1);assert.equal(proactive(f)[0].topicId,a.topic.id);
   f.store.relationship.deleteTopic(b.topic.id);assert.equal(proactive(f).length,1);
   remember(f,{text:'深海章鱼的触腕可以独立探索，感兴趣的是它怎样协调各个方向的动作',key:'nature.octopus',title:'章鱼的触腕'});await settle();
-  assert.equal(x.calls,2);assert.equal(proactive(f).length,1);assert.ok(f.store.snapshot().messages.some(item=>item.content===message));
+  assert.equal(x.calls,2);assert.equal(proactive(f).length,1);assert.ok(f.store.snapshot().messages.some((item: any)=>item.content===message));
  }finally{f.close();}
 });

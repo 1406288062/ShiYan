@@ -22,7 +22,7 @@ function fixture({legacy=false}={}) {
   `);
   if(legacy)db.exec("INSERT INTO goals(title,instruction,status,workspace,created_at,updated_at,next_wake_at) VALUES('done','done','done','/old',1,1,NULL),('paused','paused','paused','/old',1,1,NULL),('active','active','active','/old',1,1,80)");
   let store=createManagerStore({db,workspaceRoot:path.join(root,'workspaces'),now:()=>clock});
-  return {root,get db(){return db;},get store(){return store;},advance:n=>{clock+=n;},now:()=>clock,reopen:()=>{db.close();db=new DatabaseSync(database);store=createManagerStore({db,workspaceRoot:path.join(root,'workspaces'),now:()=>clock});},close:()=>{db.close();rmSync(root,{recursive:true,force:true});}};
+  return {root,get db(){return db;},get store(){return store;},advance:(n: any)=>{clock+=n;},now:()=>clock,reopen:()=>{db.close();db=new DatabaseSync(database);store=createManagerStore({db,workspaceRoot:path.join(root,'workspaces'),now:()=>clock});},close:()=>{db.close();rmSync(root,{recursive:true,force:true});}};
 }
 
 test('Dots uses the shared memory context and queues only authenticated user messages after commit',async()=>{
@@ -31,9 +31,9 @@ test('Dots uses the shared memory context and queues only authenticated user mes
   const user=f.store.message({message:'我喜欢简短中文回复',requestId:'memory-user',host:'shiyan_mobile'}).message;
   f.db.prepare("INSERT INTO manager_notes(manager_id,scope,note_key,content,source_message_id,created_at,updated_at) VALUES(?,'user_preference','old','OLD_ARCHIVED_PREFERENCE',?,100,100)").run(f.store.managerId,user.id);
   const contexts: any[]=[],captures: any[]=[],prompts: any[]=[];
-  const memory={context:(owner,options)=>{contexts.push({owner,options});return 'SHARED_PREFERENCE';},enqueue:input=>captures.push(input)};
+  const memory={context:(owner: any,options: any)=>{contexts.push({owner,options});return 'SHARED_PREFERENCE';},enqueue:(input: any)=>captures.push(input)};
   const result={reply:'收到',summary:'已回复',tasks:[],reviews:[],controls:[],instructions:[],notes:[]};
-  const thread={id:'memory-thread',run:async prompt=>{prompts.push(prompt);return {finalResponse:JSON.stringify(result)};}};
+  const thread={id:'memory-thread',run:async (prompt: any)=>{prompts.push(prompt);return {finalResponse:JSON.stringify(result)};}};
   const codex={startThread:()=>thread,resumeThread:()=>thread};
   const runtime=createManagerRuntime({store:f.store,codex,workspaceRoot:path.join(f.root,'runtime'),memory,logger:{warn(){},error(){}}});
   assert.equal(await runtime.wake(),true);
@@ -56,7 +56,7 @@ test('Dots background reports, foreign records and memory failures cannot create
   f.db.prepare("INSERT INTO manager_inbox(manager_id,type,payload,created_at) VALUES(?,'user_message',?,100)").run(f.store.managerId,JSON.stringify({id:Number(foreign.lastInsertRowid),content:'forged'}));
   f.advance(2);
   const captures: any[]=[];let reads=0;
-  const memory={context:()=>{reads++;throw new Error('fixture memory unavailable')},enqueue:input=>captures.push(input)};
+  const memory={context:()=>{reads++;throw new Error('fixture memory unavailable')},enqueue:(input: any)=>captures.push(input)};
   const result={reply:'后台任务状态',summary:'完成',tasks:[],reviews:[],controls:[],instructions:[],notes:[]};
   const thread={run:async()=>({finalResponse:JSON.stringify(result)})};
   const runtime=createManagerRuntime({store:f.store,codex:{startThread:()=>thread},workspaceRoot:path.join(f.root,'runtime'),memory,logger:{warn(){},error(){}}});

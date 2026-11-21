@@ -6,14 +6,14 @@ import { readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 
 // 图片路径 → 中枢需要的 base64；单张不超过 8 MB。
-const hubImages = paths => (paths || []).flatMap(file => { try { if (statSync(file).size > 8 * 1024 * 1024) return []; return [{ data: readFileSync(file).toString('base64'), suffix: path.extname(file).toLowerCase() || '.jpg' }]; } catch { return []; } });
+const hubImages = (paths: any) => (paths || []).flatMap((file: any) => { try { if (statSync(file).size > 8 * 1024 * 1024) return []; return [{ data: readFileSync(file).toString('base64'), suffix: path.extname(file).toLowerCase() || '.jpg' }]; } catch { return []; } });
 
 // Dots 回复的提示词：分隔符前是固定的身份与规则，后面是每轮变化的状态。
 // 经中枢走 Claude 时固定部分放进系统提示，和工具定义一起被缓存，每轮只有状态部分按全价计；
 // 走 Codex 时把分隔符换回空行，内容不变。
 export const DOTS_STATE_SPLIT = '\n\n<<DOTS_STATE>>\n\n';
-const splitPrompt = prompt => { const text = String(prompt ?? ''), i = text.indexOf(DOTS_STATE_SPLIT); return i < 0 ? { prompt: text } : { system: text.slice(0, i), prompt: text.slice(i + DOTS_STATE_SPLIT.length) }; };
-const joinPrompt = prompt => String(prompt ?? '').replace(DOTS_STATE_SPLIT, '\n\n');
+const splitPrompt = (prompt: any) => { const text = String(prompt ?? ''), i = text.indexOf(DOTS_STATE_SPLIT); return i < 0 ? { prompt: text } : { system: text.slice(0, i), prompt: text.slice(i + DOTS_STATE_SPLIT.length) }; };
+const joinPrompt = (prompt: any) => String(prompt ?? '').replace(DOTS_STATE_SPLIT, '\n\n');
 
 // owner|consumer -> 最近一次经中枢完成的时间；用于避免与业务侧上报重复记一条。
 export const lastHubCall = new Map();
@@ -32,7 +32,7 @@ export function hubAwareThread({ hub, owner, consumer, threadId = null, options 
   const getInner = () => (inner ??= createInner());
   const key = createHash('sha256').update(consumer + '\0' + owner + '\0' + String(options.workingDirectory || '')).digest('hex').slice(0, 40);
   const viaHub = async () => { try { const route = await hub.route(consumer); return Boolean(route && route.provider !== 'openai'); } catch { return false; } };
-  async function hubRun(prompt, { outputSchema, signal, images }: {outputSchema?: any; signal?: any; images?: any} = {}) {
+  async function hubRun(prompt: any, { outputSchema, signal, images }: {outputSchema?: any; signal?: any; images?: any} = {}) {
     try {
       const attached = hubImages(images);
       const parts = splitPrompt(prompt);
@@ -40,14 +40,14 @@ export function hubAwareThread({ hub, owner, consumer, threadId = null, options 
       return { finalResponse: out.finalResponse, usage: out.usage || null, items: [] };
     } finally { lastHubCall.set(owner + '|' + consumer, Date.now()); }
   }
-  const once = turn => ({ events: (async function* () {
+  const once = (turn: any) => ({ events: (async function* () {
     yield { type: 'item.completed', item: { id: 'hub-reply', type: 'agent_message', text: turn.finalResponse } };
     yield { type: 'turn.completed', usage: turn.usage };
   })() });
   return {
     get id() { return inner ? inner.id : threadId; },
-    async run(prompt, opts = {}) { return (await viaHub()) ? hubRun(prompt, opts) : getInner().run(joinPrompt(prompt), opts); },
-    async runStreamed(prompt, opts = {}) {
+    async run(prompt: any, opts = {}) { return (await viaHub()) ? hubRun(prompt, opts) : getInner().run(joinPrompt(prompt), opts); },
+    async runStreamed(prompt: any, opts = {}) {
       if (await viaHub()) return once(await hubRun(prompt, opts));
       const thread = getInner();
       return typeof thread.runStreamed === 'function' ? thread.runStreamed(joinPrompt(prompt), opts) : once(await thread.run(joinPrompt(prompt), opts));
@@ -55,4 +55,4 @@ export function hubAwareThread({ hub, owner, consumer, threadId = null, options 
   };
 }
 // 是否刚经中枢完成（中枢已记录，业务侧不再重复上报）。
-export const recentlyViaHub = (owner, consumer, withinMs) => Date.now() - (lastHubCall.get(owner + '|' + consumer) || 0) < withinMs;
+export const recentlyViaHub = (owner: any, consumer: any, withinMs: any) => Date.now() - (lastHubCall.get(owner + '|' + consumer) || 0) < withinMs;

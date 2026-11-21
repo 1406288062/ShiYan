@@ -6,12 +6,12 @@ import {createManagerThread} from './manager-stream-transport.ts';
 
 function server({tool=false,configFailure=false}={}){
   const calls: any[]=[],processes: any[]=[];
-  const spawnProcess=(binary,args)=>{
+  const spawnProcess=(binary: any,args: any)=>{
     const child: any=new EventEmitter();child.stdout=new PassThrough();child.stderr=new PassThrough();child.kill=()=>{child.emit('exit',0);return true;};processes.push({binary,args,child});
-    const emit=message=>child.stdout.write(JSON.stringify(message)+'\n');
+    const emit=(message: any)=>child.stdout.write(JSON.stringify(message)+'\n');
     child.stdin=new Writable({write(chunk,_encoding,done){for(const line of String(chunk).trim().split('\n')){
       const message=JSON.parse(line);calls.push(message);if(message.id===undefined)continue;
-      const reply=result=>queueMicrotask(()=>emit({id:message.id,result}));
+      const reply=(result: any)=>queueMicrotask(()=>emit({id:message.id,result}));
       if(message.method==='initialize')reply({});
       else if(message.method==='config/read')reply(configFailure?{}:{config:{mcp_servers:{'private-server':{command:'unused',tool_timeout_sec:null},'server.with.dots':{url:'unused',environment_id:null}}}});
       else if(message.method==='thread/start'||message.method==='thread/resume')reply({thread:{id:'thread-fixture'}});
@@ -24,7 +24,7 @@ function server({tool=false,configFailure=false}={}){
   };
   return {calls,processes,spawnProcess};
 }
-const consume=async thread=>{const result: any[]=[];const {events}=await thread.runStreamed('synthetic review',{outputSchema:{type:'object'}});for await(const event of events)result.push(event);return result;};
+const consume=async (thread: any)=>{const result: any[]=[];const {events}=await thread.runStreamed('synthetic review',{outputSchema:{type:'object'}});for await(const event of events)result.push(event);return result;};
 
 test('private review uses ephemeral read-only configuration and disables each inherited MCP server',async()=>{
  const fake=server(),thread=createManagerThread({options:{allowTools:false,workingDirectory:'/tmp',sandboxMode:'danger-full-access',approvalPolicy:'on-request'},spawnProcess:fake.spawnProcess});

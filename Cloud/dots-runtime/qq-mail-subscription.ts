@@ -5,7 +5,7 @@ import {constants} from 'node:fs';
 import path from 'node:path';
 import {createMailEventStore,mailAccountKey} from './qq-mail-events.ts';
 const openFile=promisify(open);
-export async function readMailConfig(file){
+export async function readMailConfig(file: any){
  let fd;
  try{fd=await openFile(file,constants.O_RDONLY|constants.O_NOFOLLOW);}catch(error){if((error as any).code==='ENOENT')return null;throw Error('mail_config_unreadable');}
  // Numeric fd API avoids following a swapped symlink after the permission check.
@@ -33,11 +33,11 @@ export interface QQMailSubscriptionOptions {
 export function createQQMailSubscription({store,configPath,clientFactory,prepareMail=null,loadConfig=readMailConfig,logger=console,setTimer=setTimeout,clearTimer=clearTimeout}: QQMailSubscriptionOptions){
  let stopped=false,started=false,client: any=null,retry: any=null,watchdog: any=null,watcher: any=null,reloadTimer: any=null,generation=0,failures=0,status='waiting_configuration';
  let config: any=null,events: any=null,syncOwner: any=null,pending=false,connectionAbort: AbortController | null=null;
- const publishStatus=(code)=>{status=code;logger.info?.('[qq-mail]',code);};
- const dispatch=promise=>{void promise.catch(()=>publishStatus('mail_subscription_failed'));};
+ const publishStatus=(code: any)=>{status=code;logger.info?.('[qq-mail]',code);};
+ const dispatch=(promise: any)=>{void promise.catch(()=>publishStatus('mail_subscription_failed'));};
  const clearRetry=()=>{if(retry)clearTimer(retry);retry=null;};
  function disconnect(){connectionAbort?.abort();connectionAbort=null;clearRetry();if(watchdog)clearTimer(watchdog);watchdog=null;const old=client;client=null;try{old?.close();}catch{}}
- async function synchronize(current,version){
+ async function synchronize(current: any,version: any){
   if(stopped||version!==generation||current!==client)return;
   pending=true;if(syncOwner?.version===version)return;const lock={current,version};syncOwner=lock;
   try{while(pending&&!stopped&&version===generation&&current===client){
@@ -45,7 +45,7 @@ export function createQQMailSubscription({store,configPath,clientFactory,prepare
    const cursor=events.state();const validity=String(current.mailbox?.uidValidity||'');
    if(!cursor||cursor.uid_validity!==validity)throw Error('mail_uidvalidity_changed');
    const found=await current.search({uid:`${cursor.last_uid+1}:*`},{uid:true});
-   const ids: number[]=[...new Set<number>((found||[]).map(Number).filter(uid=>Number.isInteger(uid)&&uid>cursor.last_uid&&uid<=0xffffffff))].sort((a,b)=>a-b);
+   const ids: number[]=[...new Set<number>((found||[]).map(Number).filter((uid: any)=>Number.isInteger(uid)&&uid>cursor.last_uid&&uid<=0xffffffff))].sort((a,b)=>a-b);
    const batch=ids.slice(0,50),selected=new Set(batch),mails: any[]=[];
    if(batch.length)for await(const mail of current.fetch(batch.join(','),{uid:true,envelope:true,internalDate:true,bodyStructure:true},{uid:true})){
     if(stopped||version!==generation||current!==client)return;
@@ -72,12 +72,12 @@ export function createQQMailSubscription({store,configPath,clientFactory,prepare
   }}catch(error){if(!stopped&&version===generation&&current===client){events?.status('reconnecting','sync_failed');try{current.close();}catch{};scheduleReconnect(version);}}
   finally{if(syncOwner===lock){syncOwner=null;if(pending&&!stopped&&client&&version===generation)dispatch(synchronize(client,version));}}
  }
- function scheduleReconnect(version){
+ function scheduleReconnect(version: any){
   if(stopped||version!==generation||retry)return;
   const delay=Math.min(60_000,1000*2**Math.min(failures++,6));
   publishStatus('reconnecting');retry=setTimer(()=>{retry=null;dispatch(connect(version));},delay);retry?.unref?.();
  }
- async function connect(version){
+ async function connect(version: any){
   if(stopped||version!==generation||!config)return;
   disconnect();connectionAbort=new AbortController();let ready=false;const current=clientFactory({host:mailServers(config.address)?.imap||'imap.qq.com',port:993,secure:true,clientInfo:{name:'ShiYan',version:'1.0.0'},auth:{user:config.address,pass:config.authorizationCode},logger:false,emitLogs:false,disableAutoIdle:false,autoIdleDelay:1000,maxIdleTime:25*60_000,connectionTimeout:20_000,greetingTimeout:15_000,socketTimeout:35*60_000,tls:{rejectUnauthorized:true,minVersion:'TLSv1.2'}});client=current;
   current.on('error',()=>{});

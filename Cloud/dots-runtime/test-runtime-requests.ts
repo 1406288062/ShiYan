@@ -13,7 +13,7 @@ function fixture(filename = ":memory:") {
     CREATE TABLE IF NOT EXISTS test_events(id INTEGER PRIMARY KEY,goal_id INTEGER,message TEXT);
   `);
   const store = createRuntimeRequestStore(db);
-  const create = (payload) => store.run({ requestId: "create:stable-key", operation: "goal:create", payload }, () => {
+  const create = (payload: any) => store.run({ requestId: "create:stable-key", operation: "goal:create", payload }, () => {
     const result = db.prepare("INSERT INTO test_goals(title) VALUES(?)").run(payload.title);
     const goalId = Number(result.lastInsertRowid);
     return { goalId, response: { ok: true, goal: { id: goalId, title: payload.title } } };
@@ -48,7 +48,7 @@ test("same request ID cannot be rebound to a different conversation or payload",
 test("instruction retries produce one event and target reuse is rejected", () => {
   const f = fixture();
   try {
-    const send = (goalId, message) => f.store.run({ requestId: "instruct:stable-key", operation: "goal:instruct:" + goalId, payload: { message } }, () => {
+    const send = (goalId: any, message: any) => f.store.run({ requestId: "instruct:stable-key", operation: "goal:instruct:" + goalId, payload: { message } }, () => {
       f.db.prepare("INSERT INTO test_events(goal_id,message) VALUES(?,?)").run(goalId, message);
       return { goalId, response: { ok: true, goalId } };
     });

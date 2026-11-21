@@ -17,17 +17,17 @@ const STALE_TOKEN = -14;
 const LOGIN_TTL_MS = 5 * 60_000;
 const REPLY_WAIT_MS = 10 * 60_000;
 
-const sleep = (ms, signal?) => new Promise<void>(resolve => {
+const sleep = (ms: any, signal?: any) => new Promise<void>(resolve => {
   const timer = setTimeout(resolve, ms); timer.unref?.();
   signal?.addEventListener('abort', () => { clearTimeout(timer); resolve(); }, { once: true });
 });
 const uin = () => Buffer.from(String(randomBytes(4).readUInt32BE(0))).toString('base64');
 const clientId = () => `shiyan-dots:${Date.now()}-${randomBytes(4).toString('hex')}`;
 // 微信消息 ID 是 uint64，解析前先转成字符串，避免精度丢失。
-const parseJSON = text => JSON.parse(String(text).replace(/("(?:message_id|msg_id|svr_id)"\s*:\s*)(-?\d+)/g, '$1"$2"'));
+const parseJSON = (text: any) => JSON.parse(String(text).replace(/("(?:message_id|msg_id|svr_id)"\s*:\s*)(-?\d+)/g, '$1"$2"'));
 
 /** 微信不渲染 Markdown：转成干净的纯文本。 */
-export function plainText(markdown) {
+export function plainText(markdown: any) {
   return String(markdown || '')
     .replace(/```[a-zA-Z0-9_-]*\n?([\s\S]*?)```/g, '$1')
     .replace(/`([^`]+)`/g, '$1')
@@ -42,12 +42,12 @@ export function plainText(markdown) {
     .replace(/\n{3,}/g, '\n\n').trim();
 }
 /** 邮件提醒在 App 里会带完整正文和链接；推到微信只发一条精简版，避免被拆成好几段。 */
-export function weixinMailDigest(content) {
+export function weixinMailDigest(content: any) {
   const text = plainText(content);
   const head = /^收到一封 QQ 邮件(?:（(\d+)\/(\d+)）)?/.exec(text);
   if (!head) return text;
   if (head[1] && head[1] !== '1') return '';
-  const pick = label => (new RegExp('^' + label + '：(.*)$', 'm').exec(text) || [])[1] || '';
+  const pick = (label: any) => (new RegExp('^' + label + '：(.*)$', 'm').exec(text) || [])[1] || '';
   const from = pick('发件人'), subject = pick('主题'), time = pick('收件时间');
   let body = text.slice(text.indexOf('\n\n', text.indexOf('收件时间')) + 2);
   const translated = /中文翻译(?:（第 1\/\d+ 段）)?：\n([\s\S]*?)(?:\n\n(?:（|邮件中的链接：|中文翻译（第)|$)/.exec(body);
@@ -60,21 +60,21 @@ export function weixinMailDigest(content) {
   if (short.length > limit) body = short.slice(0, limit).join('').replace(/\s+\S*$/, '') + '…';
   return ['📮 新邮件', from && '发件人：' + from, subject && '主题：' + subject, time && '时间：' + time, '', body, '', '完整内容和链接在拾燕 Dots 里查看。'].filter(Boolean).join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
-function decryptMedia(data, aesKeyBase64) {
+function decryptMedia(data: any, aesKeyBase64: any) {
   let key = Buffer.from(aesKeyBase64, 'base64');
   if (key.length === 32 && /^[0-9a-fA-F]{32}$/.test(key.toString('ascii'))) key = Buffer.from(key.toString('ascii'), 'hex');
   if (key.length !== 16) throw new Error('weixin_media_key');
   const decipher = createDecipheriv('aes-128-ecb', key, null);
   return Buffer.concat([decipher.update(data), decipher.final()]);
 }
-function imageExtension(data) {
+function imageExtension(data: any) {
   if (data[0] === 0xff && data[1] === 0xd8) return 'jpg';
   if (data.subarray(0, 4).toString('hex') === '89504e47') return 'png';
   if (data.subarray(0, 3).toString('ascii') === 'GIF') return 'gif';
   if (data.subarray(0, 4).toString('ascii') === 'RIFF' && data.subarray(8, 12).toString('ascii') === 'WEBP') return 'webp';
   return 'jpg';
 }
-function chunks(text, size = 3800) {
+function chunks(text: any, size = 3800) {
   const out: string[] = []; let rest = text;
   while (rest.length > size) {
     let cut = rest.lastIndexOf('\n', size); if (cut < size * 0.5) cut = size;
@@ -100,19 +100,19 @@ export function createWeixinBridge({ store, ingest, owner, saveInbound = null, o
     state TEXT NOT NULL DEFAULT 'unbound',context_token TEXT,last_error TEXT NOT NULL DEFAULT '',push_proactive INTEGER NOT NULL DEFAULT 1,last_pushed_id INTEGER NOT NULL DEFAULT 0,
     bound_at INTEGER,last_message_at INTEGER,updated_at INTEGER NOT NULL)`);
   // 失败的推送留在 manager_messages 队列中；记录失败时的入站序号，避免每 10 秒重复撞同一个错误。
-  const columns = new Set(db.prepare('PRAGMA table_info(dots_weixin)').all().map(column => column.name));
+  const columns = new Set(db.prepare('PRAGMA table_info(dots_weixin)').all().map((column: any) => column.name));
   if (!columns.has('inbound_seq')) db.exec('ALTER TABLE dots_weixin ADD COLUMN inbound_seq INTEGER NOT NULL DEFAULT 0');
   if (!columns.has('push_failed_message_id')) db.exec('ALTER TABLE dots_weixin ADD COLUMN push_failed_message_id INTEGER');
   if (!columns.has('push_failed_inbound_seq')) db.exec('ALTER TABLE dots_weixin ADD COLUMN push_failed_inbound_seq INTEGER');
   const row = () => db.prepare('SELECT * FROM dots_weixin WHERE manager_id=?').get(managerId);
-  const save = fields => {
+  const save = (fields: any) => {
     const keys = Object.keys(fields);
     db.prepare(`INSERT INTO dots_weixin(manager_id,${keys.join(',')},updated_at) VALUES(?,${keys.map(() => '?').join(',')},?) ON CONFLICT(manager_id) DO UPDATE SET ${keys.map(k => `${k}=excluded.${k}`).join(',')},updated_at=excluded.updated_at`)
       .run(managerId, ...keys.map(k => fields[k]), Math.floor(now() / 1000));
   };
   let login: any = null, controller: AbortController | null = null, loop: Promise<void> | null = null, queue = Promise.resolve(), typingTicket: string | null = null, typingTicketAt = 0, stopped = false;
 
-  async function call(baseUrl, endpoint, { method = 'POST', body, token, timeoutMs = 15_000, signal }: { method?: string; body?: any; token?: string; timeoutMs?: number; signal?: AbortSignal } = {}) {
+  async function call(baseUrl: any, endpoint: any, { method = 'POST', body, token, timeoutMs = 15_000, signal }: { method?: string; body?: any; token?: string; timeoutMs?: number; signal?: AbortSignal } = {}) {
     const headers = { 'iLink-App-Id': 'bot', 'iLink-App-ClientVersion': CLIENT_VERSION };
     if (method === 'POST') Object.assign(headers, { 'Content-Type': 'application/json', AuthorizationType: 'ilink_bot_token', 'X-WECHAT-UIN': uin(), ...(token ? { Authorization: 'Bearer ' + token } : {}) });
     const timeout = AbortSignal.timeout(timeoutMs);
@@ -135,7 +135,7 @@ export function createWeixinBridge({ store, ingest, owner, saveInbound = null, o
     pollLogin(login);
     return publicStatus();
   }
-  async function pollLogin(current) {
+  async function pollLogin(current: any) {
     while (login === current && now() - current.startedAt < LOGIN_TTL_MS && !stopped) {
       let status;
       try {
@@ -160,7 +160,7 @@ export function createWeixinBridge({ store, ingest, owner, saveInbound = null, o
     }
     if (login === current && current.status === 'wait') current.status = 'expired', current.message = '二维码已过期';
   }
-  function submitVerifyCode(code) {
+  function submitVerifyCode(code: any) {
     if (!login || login.status !== 'need_verifycode') throw Object.assign(new Error('现在不需要输入数字'), { statusCode: 409 });
     if (!/^\d{2,8}$/.test(String(code || ''))) throw Object.assign(new Error('请输入手机微信上显示的数字'), { statusCode: 400 });
     login.verifyCode = String(code); login.message = '';
@@ -168,7 +168,7 @@ export function createWeixinBridge({ store, ingest, owner, saveInbound = null, o
   }
 
   // —— 收消息 ——
-  function textOf(message) {
+  function textOf(message: any) {
     const parts: string[] = [];
     for (const item of message.item_list || []) {
       if (item.type === 1 && item.text_item?.text) parts.push(item.text_item.text);
@@ -179,7 +179,7 @@ export function createWeixinBridge({ store, ingest, owner, saveInbound = null, o
     return parts.join('\n').trim();
   }
   // 图片和文件：从微信 CDN 下载并解密，交给 saveInbound 存进当前账号的工作区，返回给 Dots 看的路径。
-  async function mediaOf(message) {
+  async function mediaOf(message: any) {
     const out: any[] = [];
     if (!saveInbound) return out;
     for (const [index, item] of (message.item_list || []).entries()) {
@@ -263,7 +263,7 @@ export function createWeixinBridge({ store, ingest, owner, saveInbound = null, o
     }
     return out;
   }
-  async function send(text) {
+  async function send(text: any) {
     const r = row(); if (!r?.token || !r.user_id) return false;
     for (const part of chunks(plainText(text))) {
       // 网络抖动时同一条消息（同一个 client_id）重试一次，避免漏发。
@@ -277,10 +277,10 @@ export function createWeixinBridge({ store, ingest, owner, saveInbound = null, o
     return true;
   }
   // “对方正在输入”：typing_ticket 会过期，每轮对话重新取一次；发送失败时换新票据重试一次。
-  async function typing(on, { fresh = false } = {}) {
+  async function typing(on: any, { fresh = false } = {}) {
     const r = row(); if (!r?.token || !r.user_id) return;
     const base = r.base_url || LOGIN_BASE;
-    const ticket = async renew => {
+    const ticket = async (renew: any) => {
       if (renew || !typingTicket || now() - typingTicketAt > 3600_000) {
         const config = await call(base, 'ilink/bot/getconfig', { token: r.token, timeoutMs: 8000, body: { ilink_user_id: r.user_id, context_token: r.context_token || undefined } });
         typingTicket = config.ret && config.ret !== 0 ? null : config.typing_ticket || null; typingTicketAt = now();
@@ -296,7 +296,7 @@ export function createWeixinBridge({ store, ingest, owner, saveInbound = null, o
       }
     } catch (error) { logger.warn?.('[weixin] typing ' + ((error as any)?.message || error)); }
   }
-  async function waitForReply(messageId, signal) {
+  async function waitForReply(messageId: any, signal: any) {
     const deadline = now() + REPLY_WAIT_MS; let keepalive = 0;
     while (now() < deadline && !signal.aborted) {
       const replies = db.prepare("SELECT id,content FROM manager_messages WHERE manager_id=? AND role='assistant' AND id>? AND delivery_state='completed' AND (responds_to_message_ids LIKE ? OR responds_to_message_ids LIKE ? OR responds_to_message_ids LIKE ? OR responds_to_message_ids = ?) ORDER BY id")
@@ -307,7 +307,7 @@ export function createWeixinBridge({ store, ingest, owner, saveInbound = null, o
     }
     return [];
   }
-  async function handle(message, signal) {
+  async function handle(message: any, signal: any) {
     const r = row(); if (!r) return;
     if (message.message_type !== 1) return;
     if (r.user_id && message.from_user_id && message.from_user_id !== r.user_id) return; // 只接受绑定者本人
@@ -350,7 +350,7 @@ export function createWeixinBridge({ store, ingest, owner, saveInbound = null, o
       // 拆成多条的长邮件（如英文原文 + 中文翻译）先拼回一封，再做精简版。
       const part = /^收到一封 QQ 邮件（1\/(\d+)）/.exec(item.content);
       const whole = part ? [item.content, ...db.prepare("SELECT content FROM manager_messages WHERE manager_id=? AND role='assistant' AND id>? AND content LIKE '收到一封 QQ 邮件（%' ORDER BY id LIMIT ?").all(managerId, item.id, Number(part[1]) - 1)
-        .map(next => next.content.slice(next.content.indexOf('\n\n', next.content.indexOf('收件时间')) + 2))].join('\n\n') : item.content;
+        .map((next: any) => next.content.slice(next.content.indexOf('\n\n', next.content.indexOf('收件时间')) + 2))].join('\n\n') : item.content;
       const content = /^收到一封 QQ 邮件/.test(item.content) ? weixinMailDigest(whole) : item.content;
       try { if (content) await send(content); }
       catch (error) {
@@ -363,7 +363,7 @@ export function createWeixinBridge({ store, ingest, owner, saveInbound = null, o
     }
   }
 
-  async function run(signal) {
+  async function run(signal: any) {
     let failures = 0, lastPush = 0;
     while (!signal.aborted) {
       const r = row(); if (!r?.token || r.state !== 'connected') return;
@@ -400,7 +400,7 @@ export function createWeixinBridge({ store, ingest, owner, saveInbound = null, o
     db.prepare('DELETE FROM dots_weixin WHERE manager_id=?').run(managerId);
     return publicStatus();
   }
-  function setPush(enabled) { if (!row()) throw Object.assign(new Error('还没有绑定微信'), { statusCode: 409 }); save({ push_proactive: enabled ? 1 : 0 }); return publicStatus(); }
+  function setPush(enabled: any) { if (!row()) throw Object.assign(new Error('还没有绑定微信'), { statusCode: 409 }); save({ push_proactive: enabled ? 1 : 0 }); return publicStatus(); }
 
   async function publicStatus() {
     const r = row();

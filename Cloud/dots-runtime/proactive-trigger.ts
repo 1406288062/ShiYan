@@ -3,13 +3,13 @@ import {randomUUID} from 'node:crypto';
 
 // Cold-start coefficients, NOT trained TGL weights. No silence/task/relationship
 // labels are inputs. A validated learned predictor can replace this interface.
-export function scoreOpportunity(f){
+export function scoreOpportunity(f: any){
   if(!f.evidence||!f.managerActive)return 0;
   const z=-4.5+3.8*Number(f.inputChanged)+3.7*Number(f.active>0)+4.3*Number(f.pending>0)+3.8*Number(f.explorationDue)+1.2*Number(f.contextChanged&&f.held>0);
   return 1/(1+Math.exp(-z));
 }
 export const PREDICTOR_INFO=Object.freeze({kind:'cold-start-logistic',trained:false,threshold:0.60,features:['evidence','managerActive','inputChanged','active','pending','explorationDue','contextChanged','held']});
-const fault=(code,message,retryAt?: any)=>Object.assign(new Error(message),{code,retryAt});
+const fault=(code: any,message: any,retryAt?: any)=>Object.assign(new Error(message),{code,retryAt});
 
 // 硬性节流（2026-10-29）：
 // 1. 北京时间 22:00–次日 09:00 不调用大模型。
@@ -18,7 +18,7 @@ const fault=(code,message,retryAt?: any)=>Object.assign(new Error(message),{code
 // 3. 每个周期最多 1 次模型调用（发现兴趣 或 认知整理，二选一）。
 // 4. 多账号按排队先后轮流使用名额，避免某个账号独占。
 export const QUIET_START_HOUR=22,QUIET_END_HOUR=9,GLOBAL_GAP_MS=7_200_000,CALLS_PER_CYCLE=1;
-export function inQuietHours(ms){const h=new Date(ms+8*3600_000).getUTCHours();return h>=QUIET_START_HOUR||h<QUIET_END_HOUR;}
+export function inQuietHours(ms: any){const h=new Date(ms+8*3600_000).getUTCHours();return h>=QUIET_START_HOUR||h<QUIET_END_HOUR;}
 
 export interface ProactiveTriggerOptions {
   store: any;
@@ -72,9 +72,9 @@ export function createProactiveTrigger({store,cognition,discovery=null,epoch=()=
     db.prepare('UPDATE dots_proactive_trigger SET wants_since=0,window_start=?,calls=0 WHERE manager_id=?').run(t,managerId);
     return true;
   });
-  function features(work,s){return {evidence:work.evidence??1,managerActive:active(),inputChanged:String(work.inputKey??'')!==s.seen_input,contextChanged:String(work.contextKey??'')!==s.seen_context,active:work.active||0,pending:work.pending||0,held:work.held||0,explorationDue:s.last_explore_at<0||now()-s.last_explore_at>=explorationMs};}
+  function features(work: any,s: any){return {evidence:work.evidence??1,managerActive:active(),inputChanged:String(work.inputKey??'')!==s.seen_input,contextChanged:String(work.contextKey??'')!==s.seen_context,active:work.active||0,pending:work.pending||0,held:work.held||0,explorationDue:s.last_explore_at<0||now()-s.last_explore_at>=explorationMs};}
   // All proactive LLM calls, including source classification, must pass here.
-  async function assess(fn,...args){
+  async function assess(fn: any,...args: any[]){
     try{
       if(!admitted||!busy||!own()||quietHours())throw fault('NOT_ADMITTED','Proactive model call not admitted');
       if(String(epoch())!==turnEpoch)throw fault('STALE_CONTEXT','Proactive input changed');

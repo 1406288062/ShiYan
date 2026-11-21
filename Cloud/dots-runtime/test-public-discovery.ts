@@ -23,7 +23,7 @@ function fixture(){
    calls++;if(schema===INTEREST_SCHEMA)return {interests:[{public_query:'韦布望远镜',source_message_id:user.id,quote,ongoing_interest:true,public_subject:true}]};
    return typeof decision==='function'?decision(prompt,control):decision||{action:'send',message:'NASA 报道了一项韦布望远镜对遥远星系的新观测，你一直关注的星系研究又多了一份材料。',reason:'有实际的新星系观测',interest_quote:quote,event_quote:items[0].title,relevant:true,novel:true,appropriate:true};
  },logger:{warn(){}},...options});
- return {db,store,user,settings,event,counts,create,now:()=>clock,advance:n=>clock+=n,setItems:x=>items=x,setDecision:x=>decision=x,get fetches(){return fetches;},get calls(){return calls;},messages:()=>store.snapshot().messages.filter(m=>m.origin==='proactive'),close(){db.close();rmSync(root,{recursive:true,force:true});}};
+ return {db,store,user,settings,event,counts,create,now:()=>clock,advance:(n: any)=>clock+=n,setItems:(x: any)=>items=x,setDecision:(x: any)=>decision=x,get fetches(){return fetches;},get calls(){return calls;},messages:()=>store.snapshot().messages.filter((m: any)=>m.origin==='proactive'),close(){db.close();rmSync(root,{recursive:true,force:true});}};
 }
 test('after six hours without a user message or task, a real source change initiates a sourced proactive message',async()=>{
  const f=fixture(),r=f.create();try{

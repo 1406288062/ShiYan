@@ -4,8 +4,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { createReminders, createProactivePreferences, parseLocal, formatLocal, nextOccurrence } from './reminders.ts';
 import { timeContext } from './time-context.ts';
 
-const fake = () => { const published: any[] = []; return { db: new DatabaseSync(':memory:'), managerId: 'm1', published, publishProactive(v) { published.push(v); return { id: published.length }; } }; };
-const bj = (d, h, m) => Date.UTC(2026, 10, d, h - 8, m);
+const fake = () => { const published: any[] = []; return { db: new DatabaseSync(':memory:'), managerId: 'm1', published, publishProactive(v: any) { published.push(v); return { id: published.length }; } }; };
+const bj = (d: any, h: any, m: any) => Date.UTC(2026, 10, d, h - 8, m);
 
 test('Beijing time parsing, weekday formatting and repeats', () => {
   assert.equal(parseLocal('2026-11-12 08:00')! * 1000, bj(12, 8, 0));

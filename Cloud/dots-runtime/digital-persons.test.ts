@@ -8,7 +8,7 @@ const vector=()=>Array.from({length:1024},(_,i)=>i===0?1:0);
 function fixture(owner='account-a'){
   const db=new DatabaseSync(':memory:');db.exec('PRAGMA foreign_keys=ON');
   const state={calls:0};
-  const assess=async(prompt,schema)=>{
+  const assess=async(prompt: any,schema: any)=>{
     state.calls++;assert.ok(Buffer.byteLength(prompt)<128*1024);
     if(schema.properties.styleProfile)return {styleProfile:{vocabulary:['嗯嗯'],expression:['短句'],rhythm:'简短',emotion:'克制',personality:['细心'],phrases:['知道啦'],addressing:'宝',punctuation:'很少用句号'},
       memories:[{category:'event',content:'双方曾一起去海边',evidence:'那年一起去了海边',occurredAt:null},{category:'other',content:'没有证据',evidence:'原文里不存在',occurredAt:null}]};
@@ -27,9 +27,9 @@ test('学习对象：导入只调用一次模型，并为 Dots 主对话提供�
   let last;
   for(let i=0;i<messages.length;i+=40)last=await a.service.importBatch(person.id,{importId:'import_12345678',messages:messages.slice(i,i+40),final:i+40>=messages.length});
   assert.equal(a.state.calls,1);
-  assert.equal(last.status,'completed');
-  assert.equal(last.memoryCount,1);
-  assert.equal(last.person.personMessages,300);
+  assert.equal(last!.status,'completed');
+  assert.equal(last!.memoryCount,1);
+  assert.equal(last!.person.personMessages,300);
   assert.equal(Number(a.db.prepare("SELECT COUNT(*) AS n FROM digital_person_import_messages WHERE speaker='other'").get()!.n),0);
   const voice=JSON.parse(await a.service.voiceContext('还记得海边吗'));
   assert.equal(voice.person.name,'小美');

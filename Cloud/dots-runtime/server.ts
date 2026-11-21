@@ -184,7 +184,7 @@ if (!goalColumns.some((c) => c.name === "failure_count")) {
 }
 
 const PRIVATE_OWNER=process.env.DOTS_OWNER_ID||'shiyan-private-owner';
-const mcpBridge = createMcpBridge({ db, weixin:()=>ownerRegistry.get().weixin, feedback:()=>ownerRegistry.get().store, settings:()=>({get:()=>ownerSettings(),update:input=>updateOwnerSettings(input||{})}), grants:()=>({list:()=>({ok:true,grants:grantStore.list(ownerRegistry.currentOwner())}),create:input=>createApprovalGrant(input||{}),revoke:input=>{const owner=ownerRegistry.currentOwner();const result=grantStore.revoke(owner,input?.id);audit(owner,'grant_revoked','撤销了授权 #'+Number(input?.id));return result;}}), audit:()=>({list:input=>auditLog.list(managerIdOf(ownerRegistry.currentOwner()),input||{})}), lifeGoals:()=>ownerRegistry.get().lifeGoals, runtimeToken: TOKEN, runtimeBase:`http://${HOST}:${PORT}`,defaultOwner:PRIVATE_OWNER,getOwner:()=>ownerRegistry.currentOwner(),subscriptions:()=>ownerRegistry.get().subscriptions,registrationNotice:event=>ownerRegistry.get(PRIVATE_OWNER).store.registrationNotice(event) });
+const mcpBridge = createMcpBridge({ db, weixin:()=>ownerRegistry.get().weixin, feedback:()=>ownerRegistry.get().store, settings:()=>({get:()=>ownerSettings(),update:(input: any)=>updateOwnerSettings(input||{})}), grants:()=>({list:()=>({ok:true,grants:grantStore.list(ownerRegistry.currentOwner())}),create:(input: any)=>createApprovalGrant(input||{}),revoke:(input: any)=>{const owner=ownerRegistry.currentOwner();const result=grantStore.revoke(owner,input?.id);audit(owner,'grant_revoked','撤销了授权 #'+Number(input?.id));return result;}}), audit:()=>({list:(input: any)=>auditLog.list(managerIdOf(ownerRegistry.currentOwner()),input||{})}), lifeGoals:()=>ownerRegistry.get().lifeGoals, runtimeToken: TOKEN, runtimeBase:`http://${HOST}:${PORT}`,defaultOwner:PRIVATE_OWNER,getOwner:()=>ownerRegistry.currentOwner(),subscriptions:()=>ownerRegistry.get().subscriptions,registrationNotice:event=>ownerRegistry.get(PRIVATE_OWNER).store.registrationNotice(event) });
 const runtimeRequests = createRuntimeRequestStore(db,{defaultOwner:PRIVATE_OWNER,getOwner:()=>ownerRegistry.currentOwner()});
 
 const codex = new Codex({ codexPathOverride: CODEX_PATH });
@@ -198,9 +198,9 @@ const WORKER_AGENT_TIMEOUT_MS = Number(process.env.DOTS_WORKER_AGENT_TIMEOUT_MS)
 // by these host paths; members' uploads are copied into their own workspace (/workspace/inputs/...).
 const DOTS_ATTACHMENTS_ROOT = path.join(process.env.SHIYAN_ROOT || '/home/ubuntu/boss-codex-service/shiyan-v2', 'data', 'dots-attachments');
 // A path named in a Dots message -> a host file this owner may show the model, or ''.
-function ownerImagePath(owner, file) {
+function ownerImagePath(owner: any, file: any) {
   const value = path.normalize(String(file || ''));
-  const inside = (root, p) => p === root || p.startsWith(root + path.sep);
+  const inside = (root: any, p: any) => p === root || p.startsWith(root + path.sep);
   if (owner === PRIVATE_OWNER) return [DOTS_ATTACHMENTS_ROOT, path.resolve(WORKSPACE_ROOT)].some(root => inside(root, value)) ? value : '';
   if (!inside('/workspace', value)) return '';
   const root = path.resolve(memberWorkspaceHostPath(owner)), host = path.join(root, path.relative('/workspace', value));
@@ -215,18 +215,18 @@ const agentSandbox = createSandboxManager({
 });
 const agentRunner = createAgentRunner({ sandbox: agentSandbox });
 // The hub picks provider/model/effort for agent consumers; without the hub, Codex with the env model.
-async function agentRoute(consumer) {
+async function agentRoute(consumer: any) {
   const route = await dotsHub.route(consumer).catch(() => null);
   if (!route || !route.provider) return { provider: 'openai', model: MODEL, reasoning: REASONING };
   if (route.available === false) throw new Error(route.problem || '模型中枢所选的模型当前不可用');
   return { provider: route.provider, model: route.model, reasoning: route.reasoning };
 }
 // Host tool groups available to a worker agent, all bound to this owner.
-async function workerToolGroups(owner) {
+async function workerToolGroups(owner: any) {
   const groups: Record<string, any> = {}, closers: Array<{ close(): void }> = [];
   const { BROWSER_TOOLS } = await loadBrowserToolDefs().catch(() => ({ BROWSER_TOOLS: [] }));
-  groups.browser = BROWSER_TOOLS.map(def => ({ ...def, handler: async args => ((await browserRequest('/dots/call', { owner, origin: 'scheduled', tool: def.name, args }, { timeoutMs: 180_000 })) as any).result }));
-  const attach = async (name, spec) => { try { const set = await hostMcpTools(spec); if (set.tools.length) { groups[name] = set.tools; closers.push(set); } else set.close(); } catch (error) { console.warn('[worker-agent] tools unavailable', name, (error as any)?.message || error); } };
+  groups.browser = BROWSER_TOOLS.map((def: any) => ({ ...def, handler: async (args: any) => ((await browserRequest('/dots/call', { owner, origin: 'scheduled', tool: def.name, args }, { timeoutMs: 180_000 })) as any).result }));
+  const attach = async (name: any, spec: any) => { try { const set = await hostMcpTools(spec); if (set.tools.length) { groups[name] = set.tools; closers.push(set); } else set.close(); } catch (error) { console.warn('[worker-agent] tools unavailable', name, (error as any)?.message || error); } };
   await attach('sponge', spongeMcpServer(owner));
   const bridge = '/home/ubuntu/boss-codex-service/shiyan-v2/mcp-connector-proxy.mjs';
   for (const server of await mcpConnectors().runtimeServers(owner).catch(() => [])) {
@@ -235,9 +235,9 @@ async function workerToolGroups(owner) {
   if (owner === PRIVATE_OWNER) groups.dots = [agentTool('inspect_host', '只读检查服务器本机：disk_usage、disk_inodes、network_interfaces、system_uptime。', { command: { type: 'string', enum: ['disk_usage', 'disk_inodes', 'network_interfaces', 'system_uptime'] } }, ['command'], args => executeHostInspection({ type: 'inspect_host', command: args.command }))];
   return { groups, close() { for (const item of closers) item.close(); } };
 }
-const workerAgent = createWorkerAgent({ runAgent: args => agentRunner.runAgent(args), route: agentRoute, toolGroups: workerToolGroups });
+const workerAgent = createWorkerAgent({ runAgent: (args: any) => agentRunner.runAgent(args), route: agentRoute, toolGroups: workerToolGroups });
 const memoryStore = new MemoryStore(process.env.SHIYAN_MEMORY_DATA||'/home/ubuntu/boss-codex-service/shiyan-v2/data');
-function createTenantThread(owner,{threadId,options}){
+function createTenantThread(owner: any,{threadId,options}: any){
  if(owner===PRIVATE_OWNER)return createManagerThread({threadId,options,codexPath:CODEX_PATH});
  const id=threadId||'isolated:'+randomUUID();
  const execute=async(prompt: string,{outputSchema,signal,onText}: {outputSchema?: any; signal?: AbortSignal; onText?: (text: string) => void} = {})=>{
@@ -257,9 +257,9 @@ function createTenantThread(owner,{threadId,options}){
   let text=String(result.text||'').trim();if(text.startsWith('```'))text=text.replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,'');
   return {finalResponse:text,usage:result.usage||null};
  };
- return {id,run:execute,async runStreamed(prompt,turnOptions={}){
-   const queue=[{type:'thread.started',thread_id:id}];let done=false,wake;
-   const push=value=>{queue.push(value);wake?.();wake=null;};
+ return {id,run:execute,async runStreamed(prompt: any,turnOptions={}){
+   const queue=[{type:'thread.started',thread_id:id}];let done=false,wake: any;
+   const push=(value: any)=>{queue.push(value);wake?.();wake=null;};
    const work=execute(prompt,{...turnOptions,onText:text=>push({type:'item.updated',item:{id:id+':reply',type:'agent_message',text}})}).then(result=>{push({type:'item.completed',item:{id:id+':reply',type:'agent_message',text:result.finalResponse}});push({type:'turn.completed',usage:result.usage});},error=>push({type:'turn.failed',error:{message:error.message||'隔离工作区执行失败'}})).finally(()=>{done=true;wake?.();wake=null;});
    return {events:(async function*(){try{while(!done||queue.length){if(queue.length)yield queue.shift();else await new Promise(resolve=>{wake=resolve;});}}finally{await work;}})()};
  }};
@@ -267,7 +267,7 @@ function createTenantThread(owner,{threadId,options}){
 const ownerRegistry=createOwnerRegistry({defaultOwner:PRIVATE_OWNER,create:createOwnerRuntime});
 const managerStore=ownerRegistry.proxy('store'),managerRuntime=ownerRegistry.proxy('runtime');
 const proactiveTrigger=ownerRegistry.proxy('trigger'),appSubscriptions=ownerRegistry.proxy('apps'),mailReplies=ownerRegistry.proxy('mailReplies'),qqMailSubscription=ownerRegistry.proxy('mail');
-function createOwnerRuntime(owner){
+function createOwnerRuntime(owner: any){
  const legacy=owner===PRIVATE_OWNER;
  const dataDir=legacy?DATA_DIR:path.join(DATA_DIR,'owners',ownerKey(owner));
  const workspaceRoot=legacy?WORKSPACE_ROOT:path.join(dataDir,'workspaces');
@@ -291,7 +291,7 @@ function createOwnerRuntime(owner){
   catch(error){dotsHub.report(dotsConsumer(source),{...used,ok:false,cancelled:signal?.aborted===true,ms:Date.now()-started,error:String((error as any)?.message||error)});throw error;}
  };
  const people=new DigitalPersonService({db,owner,assess});
- let trigger: ReturnType<typeof createProactiveTrigger>;const assessed=(...args)=>trigger.assess(assess,...args);
+ let trigger: ReturnType<typeof createProactiveTrigger>;const assessed=(...args: any[])=>trigger.assess(assess,...args);
  const cognition=createDotsCognition({store,memory:memoryStore,assess:assessed,callsPerHour:Infinity,propagateErrors:true});
  const discovery=createPublicDiscovery({store,memory:memoryStore,assess:assessed,propagateErrors:true,onObservation:observation=>{const accepted=cognition.observe(observation);if(accepted)trigger.signal('L2-observation');return accepted;}});
  const epoch=()=>JSON.stringify([memoryStore.settings(owner),db.prepare('SELECT status,control_revision FROM managers WHERE id=?').get(store.managerId),db.prepare("SELECT id,revision FROM manager_messages WHERE manager_id=? AND role='user' ORDER BY id DESC LIMIT 32").all(store.managerId)]);
@@ -299,22 +299,22 @@ function createOwnerRuntime(owner){
  const githubSummary=createGithubChangeSummarizer({assess:(data,schema,control)=>assess(data,schema,{...control,source:'dots-github-summary'})});
  const apps=createAppSubscriptions({store,dataDir,summarizeGithub:githubSummary,...(!legacy?{githubToken:async()=>(await readSubscriptionConfig(path.join(dataDir,'github-events.json')))?.token||''}:{})});
  const mailConfig=legacy?(process.env.DOTS_QQ_MAIL_CONFIG||path.join(dataDir,'qq-mail.json')):path.join(dataDir,'qq-mail.json');
- const mailReplies=createMailReplyService({store,transportFactory:config=>{audit(owner,'message_mail','回复了一封邮件');return smtpReplyTransport(config);},loadConfig:()=>readMailConfig(mailConfig),clientFactory:options=>new ImapFlow(options),readBody:readMailBody,assess:(data,schema,control)=>assess(data,schema,{...control,source:'dots-mail-summary'})});
+ const mailReplies=createMailReplyService({store,transportFactory:(config: any)=>{audit(owner,'message_mail','回复了一封邮件');return smtpReplyTransport(config);},loadConfig:()=>readMailConfig(mailConfig),clientFactory:(options: any)=>new ImapFlow(options),readBody:readMailBody,assess:(data: any,schema: any,control: any)=>assess(data,schema,{...control,source:'dots-mail-summary'})});
  store.setMailReplies(mailReplies);
  const runtime=createManagerRuntime({store,codex,voice:text=>people.voiceContext(text),threadFactory:async params=>{const baseOptions=params.options||{};const connectorServers=await mcpConnectors().runtimeServers(owner);const mcpServers: Record<string, any> = {}, mcpToolAllowlist: string[] = [];const bridge='/home/ubuntu/boss-codex-service/shiyan-v2/mcp-connector-proxy.mjs';for(const server of connectorServers){const key='shiyan_'+String(server.id).replace(/[^A-Za-z0-9_]/g,'_');mcpServers[key]={command:process.execPath,args:[bridge],env:{SHIYAN_ROOT:process.env.SHIYAN_ROOT||'/home/ubuntu/boss-codex-service/shiyan-v2',...(process.env.SHIYAN_MCP_DB?{SHIYAN_MCP_DB:process.env.SHIYAN_MCP_DB}:{}),SHIYAN_MCP_OWNER:String(owner),SHIYAN_MCP_ID:String(server.id)}};mcpToolAllowlist.push('mcp__'+key+'__mcp_list_tools','mcp__'+key+'__mcp_call_tool');}
 {mcpServers.shiyan_sponge={command:process.execPath,args:['/home/ubuntu/ShiYan/Cloud/agent-runtime/sponge-mcp-proxy.mjs'],env:{SHIYAN_ROOT:process.env.SHIYAN_ROOT||'/home/ubuntu/boss-codex-service/shiyan-v2',SHIYAN_MCP_OWNER:String(owner)}};for(const tool of ['list_devices','run_device_tool','get_tool_result'])mcpToolAllowlist.push('mcp__shiyan_sponge__'+tool);mcpServers.browser=browserMcpServer(owner,baseOptions.threadSource==='dots-proactive'?'push':'chat');mcpToolAllowlist.push(...browserToolAllowlist());}const options={...baseOptions,mcpServers,mcpToolAllowlist};const inner={...params,options};return hubAwareThread({hub:dotsHub,owner,consumer:'dots.chat',threadId:params.threadId,options,createInner:()=>createTenantThread(owner,inner)});},workspaceRoot,resolveImagePath:file=>ownerImagePath(owner,file),afterCommit:result=>{const out=reminders.apply(result);if(out.failed.length)console.warn('[reminders] 未能设置：'+out.failed.join('、'));if(result?.proactive_preferences?.changed)preferences.set(result.proactive_preferences.content);},memory:memoryStore,contentReviewEnabled:false,threadOptions:{model:MODEL,skipGitRepoCheck:true,modelReasoningEffort:REASONING},onModelCall:entry=>{if(!recentlyViaHub(owner,'dots.chat',entry.ms+5000))dotsHub.report('dots.chat',{...entry,provider:'openai',account:owner});}});
- const presenter=createMailPresenter({store,assess:(data,schema,control)=>assess(data,schema,{...control,source:'dots-mail-summary'})});
+ const presenter=createMailPresenter({store,assess:(data: any,schema: any,control: any)=>assess(data,schema,{...control,source:'dots-mail-summary'})});
  const mail=createQQMailSubscription({store,configPath:mailConfig,clientFactory:options=>new ImapFlow(options),prepareMail:async(client,message,control)=>{let body;try{body=await readMailBody(client,message);}catch(error){if(control.signal.aborted)throw error;return {kind:'body',text:'（本次未能读取邮件正文）',links:[]};}return presenter({...body,subject:message.envelope?.subject||'',from:message.envelope?.from?.[0]?.address||''},control);}});
  const ownerSubscriptions=createOwnerSubscriptions({store,dataDir,appSubscriptions:apps,mailSubscription:mail});
  // 订阅成功/取消后，对话里对应的填写卡片标记为已完成。
  const subscriptions={...ownerSubscriptions,
-  update:async(provider,input)=>{const value=await ownerSubscriptions.update(provider,input);try{store.resolveSubscriptionCards(provider,'subscribe');}catch{}return value;},
-  remove:async provider=>{const value=await ownerSubscriptions.remove(provider);try{store.resolveSubscriptionCards(provider,'unsubscribe');}catch{}return value;}};
+  update:async(provider: any,input: any)=>{const value=await ownerSubscriptions.update(provider,input);try{store.resolveSubscriptionCards(provider,'subscribe');}catch{}return value;},
+  remove:async (provider: any)=>{const value=await ownerSubscriptions.remove(provider);try{store.resolveSubscriptionCards(provider,'unsubscribe');}catch{}return value;}};
  const subscriptionIntent=createSubscriptionIntent({store,subscriptions,assess});
- const guardedMemory=new Proxy(memoryStore,{get(target,key){const value=target[key];if(typeof value!=='function')return value;if(typeof key==='string'&&['create','remove','update','delete'].includes(key))return (...args)=>{const result=value.apply(target,args);audit(owner,'memory',key==='create'?'记住了一条信息':'删除了一条记忆');return result;};return value.bind(target);}});
+ const guardedMemory=new Proxy(memoryStore,{get(target,key){const value=(target as any)[key];if(typeof value!=='function')return value;if(typeof key==='string'&&['create','remove','update','delete'].includes(key))return (...args: any[])=>{const result=value.apply(target,args);audit(owner,'memory',key==='create'?'记住了一条信息':'删除了一条记忆');return result;};return value.bind(target);}});
  const memoryIntent=createMemoryIntent({store,memory:guardedMemory,owner,assess});
  // 先看是不是“记住 / 忘掉”，不是再看是不是订阅；都不是交还总管。
- const intent={candidate:text=>memoryIntent.candidate(text)||subscriptionIntent.candidate(text),process:async message=>{if(await memoryIntent.process(message))return true;return subscriptionIntent.candidate(message?.content)?subscriptionIntent.process(message):false;}};
+ const intent={candidate:(text: any)=>memoryIntent.candidate(text)||subscriptionIntent.candidate(text),process:async (message: any)=>{if(await memoryIntent.process(message))return true;return subscriptionIntent.candidate(message?.content)?subscriptionIntent.process(message):false;}};
  const brief=createDailyBrief({store,assess,settings:()=>ownerSettings(owner)});
  // 梦境回顾：每晚整理“怎么对待这个用户”，写到账号工作区 dreams/，并在每轮回复开场带给 Dots。
  const dream=createDreamReview({store,assess,writeFile:async(rel,text)=>{
@@ -325,7 +325,7 @@ function createOwnerRuntime(owner){
  (store as any).alignment=()=>dream.synthesis();
  const lifeGoals=createLifeGoals({store,assess,onAudit:(kind,summary)=>audit(owner,kind,summary)});
  // 微信发来的图片和文件：存进当前账号自己的工作区，只把路径交给 Dots。
- const saveWeixinInbound=async({data,filename})=>{
+ const saveWeixinInbound=async({data,filename}: any)=>{
   const dir='inputs/weixin/'+new Date().toISOString().slice(0,10);
   if(legacy){const target=path.join(workspaceRoot,'.manager',dir);mkdirSync(target,{recursive:true,mode:0o700});const file=path.join(target,filename);await fs.writeFile(file,data,{mode:0o600});return file;}
   const target='/workspace/'+dir;await workspaceOperation(owner,{operation:'mkdir',path:target,recursive:true});
@@ -387,21 +387,21 @@ function now() {
   return Math.floor(Date.now() / 1000);
 }
 
-function clampInt(value, min, max, fallback) {
+function clampInt(value: any, min: any, max: any, fallback: any) {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
   return Math.max(min, Math.min(max, Math.trunc(n)));
 }
 
-function json(value) {
+function json(value: any) {
   try { return JSON.stringify(value); } catch { return "{}"; }
 }
 
-function parseJson(text, fallback: any = {}) {
+function parseJson(text: any, fallback: any = {}) {
   try { return JSON.parse(text); } catch { return fallback; }
 }
 
-function send(res, status, body) {
+function send(res: any, status: any, body: any) {
   const text = JSON.stringify(body);
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
@@ -411,7 +411,7 @@ function send(res, status, body) {
   res.end(text);
 }
 
-async function readJson(req, maxBytes = 1024 * 1024) {
+async function readJson(req: any, maxBytes = 1024 * 1024) {
   const chunks: Buffer[] = [];
   let total = 0;
   for await (const chunk of req) {
@@ -427,31 +427,31 @@ async function readJson(req, maxBytes = 1024 * 1024) {
   return raw ? JSON.parse(raw) : {};
 }
 
-function getGoal(id) {
+function getGoal(id: any) {
   return db.prepare("SELECT * FROM goals WHERE id=? AND manager_id=?").get(Number(id),managerStore.managerId) || null;
 }
 
 // 把一轮执行里的工具步骤写进时间线（隔离账号的步骤已在执行时逐条写入）。
-function clipStepValue(value, max = 4000) {
+function clipStepValue(value: any, max = 4000): any {
   if (typeof value === "string") return value.length > max ? value.slice(0, max) + "…" : value;
   if (Array.isArray(value)) return value.slice(0, 40).map(v => clipStepValue(v, max));
   if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).slice(0, 40).map(([k, v]) => [k, clipStepValue(v, max)]));
   return value;
 }
-function recordTurnSteps(goalId, items) {
+function recordTurnSteps(goalId: any, items: any) {
   for (const item of (Array.isArray(items) ? items : []).slice(0, 60)) {
     if (!item || typeof item !== "object" || ["agent_message", "reasoning"].includes(item.type)) continue;
     try { addTimeline(goalId, item.status === "failed" ? "tool_error" : "tool_action", "执行步骤", clipStepValue(item)); } catch {}
   }
 }
 
-function addTimeline(goalId, kind, message, data: any = "") {
+function addTimeline(goalId: any, kind: any, message: any, data: any = "") {
   db.prepare(
     "INSERT INTO timeline(goal_id,kind,message,data,created_at) VALUES(?,?,?,?,?)"
   ).run(goalId ?? null, kind, String(message), typeof data === "string" ? data : json(data), now());
 }
 
-async function addNotification(goalId, level, title, body, outputId = null) {
+async function addNotification(goalId: any, level: any, title: any, body: any, outputId = null) {
   const ts = now();
   const result = db.prepare(
     "INSERT INTO notifications(goal_id,level,title,body,created_at,output_id) VALUES(?,?,?,?,?,?)"
@@ -476,39 +476,39 @@ async function addNotification(goalId, level, title, body, outputId = null) {
   return id;
 }
 
-function listGoalMemories(goalId, limit = 30) {
+function listGoalMemories(goalId: any, limit = 30) {
   return db.prepare(
     "SELECT id,kind,content,created_at FROM memories WHERE goal_id=? ORDER BY id DESC LIMIT ?"
   ).all(goalId, limit).reverse();
 }
 
-function listGoalTimeline(goalId, limit = 20) {
+function listGoalTimeline(goalId: any, limit = 20) {
   return db.prepare(
     "SELECT id,kind,message,data,created_at FROM timeline WHERE goal_id=? ORDER BY id DESC LIMIT ?"
   ).all(goalId, limit).reverse();
 }
 
-function listPendingEvents(goalId, limit = 30) {
+function listPendingEvents(goalId: any, limit = 30) {
   return db.prepare(
     "SELECT id,type,payload,created_at FROM events WHERE goal_id=? AND consumed_at IS NULL ORDER BY id ASC LIMIT ?"
   ).all(goalId, limit);
 }
 
-function ensureWorkspace(goalId) {
+function ensureWorkspace(goalId: any) {
   const workspace = path.join(ownerRegistry.get().workspaceRoot, String(goalId));
   mkdirSync(workspace, { recursive: true });
   return workspace;
 }
 
-function buildAgentPrompt(goal, memories, timeline, events, trigger) {
+function buildAgentPrompt(goal: any, memories: any, timeline: any, events: any, trigger: any) {
   const memoryText = memories.length
-    ? memories.map((m) => `- [${m.kind}] ${m.content}`).join("\n")
+    ? memories.map((m: any) => `- [${m.kind}] ${m.content}`).join("\n")
     : "(none yet)";
   const timelineText = timeline.length
-    ? timeline.map((t) => `- ${t.kind}: ${t.message}`).join("\n")
+    ? timeline.map((t: any) => `- ${t.kind}: ${t.message}`).join("\n")
     : "(none yet)";
   const eventText = events.length
-    ? events.map((e) => `- ${e.type}: ${e.payload}`).join("\n")
+    ? events.map((e: any) => `- ${e.type}: ${e.payload}`).join("\n")
     : "(no new event)";
 
   return `
@@ -579,7 +579,7 @@ export interface DotsThreadOptions extends ThreadOptions {
   mcpServers?: Record<string, any>;
   mcpToolAllowlist?: string[];
 }
-function threadOptions(goal): DotsThreadOptions {
+function threadOptions(goal: any): DotsThreadOptions {
   return {
     model: MODEL,
     sandboxMode: "read-only",
@@ -595,15 +595,15 @@ function threadOptions(goal): DotsThreadOptions {
 
 // Dots 与普通会话共用 mcpConnectors 的 owner-scoped 调用入口。
 // Codex 私有运行路径通过本地 stdio bridge 转发，不再绕过连接器服务直连第三方。
-function spongeMcpServer(owner) {
+function spongeMcpServer(owner: any) {
   return { command: process.execPath, args: ['/home/ubuntu/ShiYan/Cloud/agent-runtime/sponge-mcp-proxy.mjs'], env: { SHIYAN_ROOT: process.env.SHIYAN_ROOT || '/home/ubuntu/boss-codex-service/shiyan-v2', SHIYAN_MCP_OWNER: String(owner) } };
 }
-function codexWithConnectors(servers, owner) {
+function codexWithConnectors(servers: any, owner: any) {
   const mcp = { shiyan_sponge: spongeMcpServer(owner), browser: browserMcpServer(owner, 'scheduled') };
   const bridge = path.join('/home/ubuntu/boss-codex-service/shiyan-v2', 'mcp-connector-proxy.mjs');
   for (const server of servers) {
     const key = "shiyan_" + String(server.id).replace(/[^A-Za-z0-9_]/g, "_");
-    mcp[key] = {
+    (mcp as any)[key] = {
       command: process.execPath,
       args: [bridge],
       env: { SHIYAN_ROOT: process.env.SHIYAN_ROOT || '/home/ubuntu/boss-codex-service/shiyan-v2', ...(process.env.SHIYAN_MCP_DB ? { SHIYAN_MCP_DB: process.env.SHIYAN_MCP_DB } : {}), SHIYAN_MCP_OWNER: String(owner), SHIYAN_MCP_ID: String(server.id) }
@@ -625,7 +625,7 @@ function getThread(goal: any, connectorServers: any[] = []) {
   return hubAwareThread({hub:dotsHub,owner,consumer:'dots.manager',threadId:goal.thread_id,options:{...tenantOptions,workingDirectory:'goal-'+goal.id},createInner});
 }
 
-function storeMemories(goalId, items) {
+function storeMemories(goalId: any, items: any) {
   const check = db.prepare("SELECT 1 FROM memories WHERE goal_id=? AND content=? LIMIT 1");
   const insert = db.prepare(
     "INSERT INTO memories(goal_id,kind,content,created_at) VALUES(?,?,?,?)"
@@ -643,8 +643,8 @@ const APPROVAL_MODES=['ask','smart','auto'];
 const grantStore=createGrantStore(db);
 const SETTING_DEFAULTS={approvalMode:'smart',dailyBrief:true,dailyBriefTime:'09:00'};
 const auditLog=createAuditLog(db);
-const managerIdOf=owner=>db.prepare('SELECT id FROM managers WHERE owner_id=?').get(owner)?.id||null;
-const audit=(owner,kind,summary,options: any={})=>{try{auditLog.record(managerIdOf(owner),kind,summary,options);}catch{}};
+const managerIdOf=(owner: any)=>db.prepare('SELECT id FROM managers WHERE owner_id=?').get(owner)?.id||null;
+const audit=(owner: any,kind: any,summary: any,options: any={})=>{try{auditLog.record(managerIdOf(owner),kind,summary,options);}catch{}};
 
 function ownerSettings(owner=ownerRegistry.currentOwner()){
   const out={...SETTING_DEFAULTS};
@@ -655,7 +655,7 @@ function ownerSettings(owner=ownerRegistry.currentOwner()){
   return out;
 }
 function updateOwnerSettings(input: any={},owner=ownerRegistry.currentOwner()){
-  const bad=message=>Object.assign(new Error(message),{statusCode:400});
+  const bad=(message: any)=>Object.assign(new Error(message),{statusCode:400});
   const changes: {approvalMode?: any; dailyBrief?: boolean; dailyBriefTime?: string}={};
   if('approvalMode' in input){if(!APPROVAL_MODES.includes(input.approvalMode))throw bad('审批方式无效');changes.approvalMode=input.approvalMode;}
   if('dailyBrief' in input)changes.dailyBrief=input.dailyBrief===true;
@@ -664,12 +664,12 @@ function updateOwnerSettings(input: any={},owner=ownerRegistry.currentOwner()){
   const upsert=db.prepare('INSERT INTO dots_owner_settings(owner_id,key,value,updated_at) VALUES(?,?,?,?) ON CONFLICT(owner_id,key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at');
   for(const [key,value] of Object.entries(changes))upsert.run(owner,key,JSON.stringify(value),now());
   const modes={ask:'每次都问',smart:'智能',auto:'尽量自动'};
-  if(changes.approvalMode&&changes.approvalMode!==before.approvalMode)audit(owner,'settings','审批方式改为「'+modes[changes.approvalMode]+'」');
+  if(changes.approvalMode&&changes.approvalMode!==before.approvalMode)audit(owner,'settings','审批方式改为「'+(modes as any)[changes.approvalMode]+'」');
   return {ok:true,settings:ownerSettings(owner)};
 }
 const PRIVILEGE_WORD=new RegExp('\\b'+'su'+'do\\b');
 const RISKY_COMMAND=/(^|[\s;&|(`])(su|rm|rmdir|dd|mkfs\S*|fdisk|parted|chmod|chown|chgrp|kill|pkill|killall|shutdown|reboot|halt|poweroff|userdel|useradd|usermod|passwd|crontab|iptables|nft|ufw|mount|umount|truncate|shred|docker\s+(rm|rmi|system\s+prune))\b|systemctl\s+(stop|restart|disable|mask|kill)|git\s+(push|reset\s+--hard|clean|branch\s+-D)|\b(DROP|TRUNCATE|DELETE\s+FROM|ALTER\s+TABLE)\b|(curl|wget)[^|]*\|\s*(ba|z)?sh|>\s*\/(etc|usr|boot|bin|sbin|lib|var)\b/i;
-function autoApprovable(mode,command){
+function autoApprovable(mode: any,command: any){
   const text=String(command||'').trim();
   if(mode==='ask')return false;
   if(!text)return true;
@@ -677,7 +677,7 @@ function autoApprovable(mode,command){
   return mode==='auto'||!RISKY_COMMAND.test(text);
 }
 // 用户之前给过的分级授权（这个任务 / 一段时间 / 一直允许）能否覆盖这条命令；提权与灾难性命令永远不覆盖。
-function grantCoverage(goalId,mode,command){
+function grantCoverage(goalId: any,mode: any,command: any){
   const text=String(command||'').trim();
   if(!text||PRIVILEGE_WORD.test(text)||catastrophicCommand(text))return null;
   return grantStore.covers({owner:ownerRegistry.currentOwner(),goalId,command:text,autoOk:segment=>autoApprovable(mode,segment)});
@@ -694,7 +694,7 @@ function createApprovalGrant({approvalId,scope}: {approvalId?: any; scope?: any}
   return {ok:true,grant};
 }
 // 自动放行在本轮写回提交之后执行；任务锁未释放时稍后重试。
-function scheduleAutoApproval(approvalId,goalId,mode,attempt=0,grants=null){
+function scheduleAutoApproval(approvalId: any,goalId: any,mode: any,attempt=0,grants=null){
   const owner=ownerRegistry.currentOwner();
   const timer=setTimeout(()=>ownerRegistry.run(owner,async()=>{
     try{
@@ -709,7 +709,7 @@ function scheduleAutoApproval(approvalId,goalId,mode,attempt=0,grants=null){
 }
 
 // 外部渠道（微信等）的消息走和 App 相同的入口：先看是不是记忆 / 订阅请求，否则交给总管。
-function ingestExternalMessage(owner,text,requestId,host){
+function ingestExternalMessage(owner: any,text: any,requestId: any,host: any){
   return ownerRegistry.run(owner,()=>{
     const owned=ownerRegistry.get(owner),managerId=owned.store.managerId;
     const defer=Boolean(owned.intent?.candidate(String(text||'')));
@@ -719,13 +719,13 @@ function ingestExternalMessage(owner,text,requestId,host){
     if(after!==before)owned.runtime.interrupt?.();
     if(defer&&result?.message?.id){
       const release=()=>{try{if(owned.store.releaseToManager(result.message.id))owned.runtime.wake();}catch(error){console.error('[external-intent] release',(error as any)?.message||error);}};
-      setImmediate(()=>void owned.intent.process(result.message).then(handled=>{if(!handled)release();},error=>{console.error('[external-intent]',(error as any)?.message||error);release();}));
+      setImmediate(()=>void owned.intent.process(result.message).then((handled: any)=>{if(!handled)release();},(error: any)=>{console.error('[external-intent]',(error as any)?.message||error);release();}));
     }else setImmediate(()=>void owned.runtime.wake());
     return result.message;
   });
 }
 
-function createApproval(goalId, reason, command) {
+function createApproval(goalId: any, reason: any, command: any) {
   if(typeof managerStore!=="undefined")return managerStore.bindApproval(goalId,reason,command);
   const existing = db.prepare(
     "SELECT id FROM approvals WHERE goal_id=? AND status='pending' ORDER BY id DESC LIMIT 1"
@@ -738,7 +738,7 @@ function createApproval(goalId, reason, command) {
 }
 
 
-function resolveWorkspacePath(workspace, relativePath) {
+function resolveWorkspacePath(workspace: any, relativePath: any) {
   const rel = String(relativePath || "").trim();
   if (!rel) throw new Error("action path is required");
   if (path.isAbsolute(rel)) throw new Error("absolute action paths are not allowed");
@@ -750,7 +750,7 @@ function resolveWorkspacePath(workspace, relativePath) {
   return target;
 }
 
-async function runSandboxCommand(workspace, command) {
+async function runSandboxCommand(workspace: any, command: any) {
   const text = String(command || "").trim();
   if (!text) throw new Error("run_command requires command");
   if (text.length > 12000) throw new Error("run_command too long");
@@ -782,7 +782,7 @@ async function runSandboxCommand(workspace, command) {
   return (`STDOUT:\n${stdout}\nSTDERR:\n${stderr}`).slice(-20000);
 }
 
-async function executeSafeActions(goal, actions, run = null) {
+async function executeSafeActions(goal: any, actions: any, run = null) {
   const results: any[] = [];
   const list = Array.isArray(actions) ? actions.slice(0, 8) : [];
   let macThreadId = String(goal.mac_thread_id || "");
@@ -813,7 +813,7 @@ async function executeSafeActions(goal, actions, run = null) {
       let detail = "", inspection: any = null;
       if(ownerRegistry.currentOwner()!==PRIVATE_OWNER){
         const owner=ownerRegistry.currentOwner(),cwd='/workspace/dots/'+goal.id;
-        const localPath=value=>{const resolved=path.posix.resolve(cwd,String(value||''));if(resolved===cwd||!resolved.startsWith(cwd+'/'))throw Error('文件路径必须位于自己的事项目录');return resolved;};
+        const localPath=(value: any)=>{const resolved=path.posix.resolve(cwd,String(value||''));if(resolved===cwd||!resolved.startsWith(cwd+'/'))throw Error('文件路径必须位于自己的事项目录');return resolved;};
         await workspaceOperation(owner,{operation:'mkdir',path:cwd,recursive:true});
         if(['write_file','append_file','mkdir','delete_file'].includes(type)){
           const target=localPath(action.path),operation={write_file:'write',append_file:'write',mkdir:'mkdir',delete_file:'remove'}[type];
@@ -823,7 +823,7 @@ async function executeSafeActions(goal, actions, run = null) {
           else {const result=await workspaceOperation(owner,{operation,path:target,content,recursive:type==='mkdir'});detail=JSON.stringify(result);}
         }else if(type==='run_command'||type==='inspect_host'){
           const commands={disk_usage:'df -h /workspace',disk_inodes:'df -i /workspace',network_interfaces:'ip addr 2>/dev/null || true',system_uptime:'printf "Isolated workspace process\n"'};
-          const command=type==='inspect_host'?commands[action.command]:String(action.command||'');if(!command)throw Error('不支持的隔离环境检查');
+          const command=type==='inspect_host'?(commands as any)[action.command]:String(action.command||'');if(!command)throw Error('不支持的隔离环境检查');
           const result=await execSandbox(owner,{command,cwd,timeoutMs:60000});detail=JSON.stringify(result);
         }else if(type==='device_read'){detail=await deviceRead(owner,action);}
         else if(type==='mac_codex')throw Error('Mac 本机 Codex 执行已停用，只在云端执行。');
@@ -890,7 +890,7 @@ async function executeSafeActions(goal, actions, run = null) {
   return results;
 }
 
-async function runGoal(goalId, trigger = "scheduler") {
+async function runGoal(goalId: any, trigger = "scheduler") {
   const durableStore = typeof managerStore !== "undefined" ? managerStore : null;
   if (!durableStore && runningGoalId !== null) return;
   const goal = getGoal(goalId);
@@ -1033,7 +1033,7 @@ async function runGoal(goalId, trigger = "scheduler") {
   }
 }
 
-function scheduleGoalNow(goalId, type, payload, { resumeAfterApproval = false } = {}) {
+function scheduleGoalNow(goalId: any, type: any, payload: any, { resumeAfterApproval = false } = {}) {
   const goal = getGoal(goalId);
   if (!goal) return false;
   const ts = now();
@@ -1050,7 +1050,7 @@ function scheduleGoalNow(goalId, type, payload, { resumeAfterApproval = false } 
   return true;
 }
 
-function catastrophicCommand(command) {
+function catastrophicCommand(command: any) {
   const s = String(command || "").trim();
   if (!s) return false;
   const patterns = [
@@ -1070,7 +1070,7 @@ function catastrophicCommand(command) {
   return patterns.some((re) => re.test(s));
 }
 
-async function decideApproval(id, decision) {
+async function decideApproval(id: any, decision: any) {
   const approval=db.prepare("SELECT * FROM approvals WHERE id=?").get(Number(id));
   if(!approval)return {ok:false,httpStatus:404,error:"approval not found"};
   if(approval.status!=="pending")return {ok:false,httpStatus:409,error:`approval already ${approval.status}`};
@@ -1097,7 +1097,7 @@ async function decideApproval(id, decision) {
     return {ok:true,httpStatus:200,approvalId:approval.id,state:'approved'};
   }
   if(catastrophicCommand(command))return {ok:false,httpStatus:400,error:'command blocked by catastrophic-command guardrail'};
-  let run,receipt;
+  let run: any,receipt: any;
   try{
     managerStore.transaction(()=>{
       run=managerStore.claimApproval(approval);
@@ -1129,7 +1129,7 @@ async function decideApproval(id, decision) {
   return failure?{ok:false,httpStatus:uncertain?409:500,error:uncertain?'approved command outcome uncertain; reconcile action '+receipt.id:'approved command failed',actionId:receipt.id,output}:{ok:true,httpStatus:200,approvalId:approval.id,state:'executed',actionId:receipt.id,output};
 }
 
-function detailedGoal(goal) {
+function detailedGoal(goal: any) {
   if (!goal) return null;
   return {
     ...goal,
@@ -1145,7 +1145,7 @@ function detailedGoal(goal) {
   };
 }
 
-async function handle(req, res) {
+async function handle(req: any, res: any) {
   const url = new URL(req.url || "/", `http://${HOST}:${PORT}`);
 
   if (mcpBridge.matches(url.pathname)) {
@@ -1223,7 +1223,7 @@ async function handle(req, res) {
       if(afterRevision!==beforeRevision)managerRuntime.interrupt();
       if(defer&&result?.message?.id){
         const release=()=>{try{if(owned.store.releaseToManager(result.message.id))owned.runtime.wake();}catch(error){console.error('[subscription-intent] release',(error as any)?.message||error);}};
-        setImmediate(()=>void owned.intent.process(result.message).then(handled=>{if(!handled)release();},error=>{console.error('[subscription-intent]',(error as any)?.message||error);release();}));
+        setImmediate(()=>void owned.intent.process(result.message).then((handled: any)=>{if(!handled)release();},(error: any)=>{console.error('[subscription-intent]',(error as any)?.message||error);release();}));
       }else setImmediate(()=>void managerRuntime.wake());
       return send(res,202,result);
     }
@@ -1307,7 +1307,7 @@ async function handle(req, res) {
       const hasPendingApproval = Boolean(db.prepare("SELECT id FROM approvals WHERE goal_id=? AND status='pending' LIMIT 1").get(goalId));
       assertGoalActionAllowed(current, action, { hasPendingApproval });
       if(typeof managerStore!=='undefined'&&['resume','wake','instruct'].includes(action)){
-        const uncertain=managerStore.unknownActions().find(item=>item.goal_id===goalId);
+        const uncertain=managerStore.unknownActions().find((item: any)=>item.goal_id===goalId);
         if(uncertain){const error=new Error('Execution outcome is uncertain for action '+uncertain.id+'; reconcile its confirmed result before continuing.');(error as any).statusCode=409;throw error;}
       }
       return current;
@@ -1469,7 +1469,7 @@ async function schedulerTick(){
 server.listen(PORT, HOST, () => {
  console.log(`[dots] ${VERSION} listening on http://${HOST}:${PORT}`);
  ownerRegistry.start();
- const privateBridge={handle:(req,res)=>Promise.resolve().then(()=>{req.dotsPrivateTransport=true;return ownerRegistry.run(req.headers['x-dots-owner']||PRIVATE_OWNER,()=>mcpBridge.handle(req,res));})};
+ const privateBridge={handle:(req: any,res: any)=>Promise.resolve().then(()=>{req.dotsPrivateTransport=true;return ownerRegistry.run(req.headers['x-dots-owner']||PRIVATE_OWNER,()=>mcpBridge.handle(req,res));})};
  startLocalMcpSocket({root:ROOT,bridge:privateBridge}).then(close=>{closeLocalMcpSocket=close;}).catch(error=>console.error('[local-mcp]',error.message));
 });
 // Dots browser tasks: one sandboxed agent per task (model hub consumer "dots.browser").

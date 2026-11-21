@@ -48,25 +48,25 @@ CREATE TABLE IF NOT EXISTS runs(
 
 const busy = new Set();
 const now = () => new Date().toISOString();
-const goal = id => db.prepare("SELECT * FROM goals WHERE id=?").get(id);
+const goal = (id: any) => db.prepare("SELECT * FROM goals WHERE id=?").get(id);
 
-function json(res, code, body) {
+function json(res: any, code: any, body: any) {
   const text = JSON.stringify(body);
   res.writeHead(code, {"content-type":"application/json; charset=utf-8","cache-control":"no-store"});
   res.end(text);
 }
-async function body(req) {
+async function body(req: any) {
   const chunks: any[]=[];
   for await (const c of req) chunks.push(c);
   return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
 }
-function memories(id) {
+function memories(id: any) {
   return db.prepare("SELECT content FROM memories WHERE goal_id=? ORDER BY id DESC LIMIT 30").all(id).reverse().map(x=>x.content);
 }
-function nextRun(g) {
+function nextRun(g: any) {
   return g.cadence_minutes > 0 ? new Date(Date.now()+g.cadence_minutes*60000).toISOString() : null;
 }
-async function wake(id, trigger="manual") {
+async function wake(id: any, trigger="manual") {
   if (busy.has(id)) return {ok:false,error:"already running"};
   const g=goal(id);
   if (!g || g.status !== "active") return {ok:false,error:"goal unavailable"};

@@ -20,14 +20,14 @@ import { fileURLToPath } from 'node:url';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 
-const fail = (message, status = 500) => Object.assign(new Error(message), { status });
-export const ownerHash = owner => createHash('sha256').update(String(owner)).digest('hex');
+const fail = (message: any, status = 500) => Object.assign(new Error(message), { status });
+export const ownerHash = (owner: any) => createHash('sha256').update(String(owner)).digest('hex');
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 export function dockerRunner(command = (process.env.SHIYAN_AGENT_DOCKER || 'sudo -n docker').split(/\s+/)) {
   const [bin, ...prefix] = command;
   return {
-    command, run(args, { timeoutMs = 120_000, input = null } = {}) {
+    command, run(args: any, { timeoutMs = 120_000, input = null } = {}) {
       return new Promise((resolve, reject) => {
         const child = execFile(bin, [...prefix, ...args], { timeout: timeoutMs, maxBuffer: 8 * 1024 * 1024 }, (error, stdout, stderr) => {
           if (error) reject(Object.assign(new Error(String(stderr || error.message).replace(/\s+/g, ' ').trim().slice(0, 600)), { code: error.code, stdout, stderr }));
@@ -36,11 +36,11 @@ export function dockerRunner(command = (process.env.SHIYAN_AGENT_DOCKER || 'sudo
         if (input !== null) child.stdin!.end(input);
       });
     },
-    spawn(args, options = {}) { return spawn(bin, [...prefix, ...args], { stdio: ['pipe', 'pipe', 'pipe'], ...options }); },
+    spawn(args: any, options = {}) { return spawn(bin, [...prefix, ...args], { stdio: ['pipe', 'pipe', 'pipe'], ...options }); },
   };
 }
 
-function resolveCodexBinary(value) {
+function resolveCodexBinary(value: any) {
   try { const real = realpathSync(value); return { dir: path.dirname(real), name: path.basename(real) }; } catch { return null; }
 }
 
@@ -85,17 +85,17 @@ export function createSandboxManager({
   if (typeof layoutFor !== 'function') throw new Error('layoutFor is required');
   const state = new Map();        // owner -> { ready: Promise, active, lastUsed }
   const codex = resolveCodexBinary(codexBinary);
-  const name = owner => 'shiyan-agent-' + ownerHash(owner).slice(0, 16);
+  const name = (owner: any) => 'shiyan-agent-' + ownerHash(owner).slice(0, 16);
   const paths = { claude: '/opt/shiyan/bin/claude', codex: codex ? '/opt/shiyan/codex/' + codex.name : '/opt/shiyan/bin/codex', relay: '/opt/shiyan/mcp-relay.mjs' };
 
-  function layout(owner) {
+  function layout(owner: any) {
     const value = layoutFor(owner);
     for (const dir of [value.workspace, value.home, value.rpc]) { mkdirSync(dir, { recursive: true, mode: 0o700 }); }
     // 技能目录的挂载点先由服务用户建好，避免 Docker 以 root 身份在账号 home 里创建。
     for (const dir of [path.join(value.home, '.claude', 'skills'), path.join(value.home, '.codex', 'skills')]) mkdirSync(dir, { recursive: true, mode: 0o700 });
     return value;
   }
-  function runArgs(owner, l, spec) {
+  function runArgs(owner: any, l: any, spec: any) {
     const mounts = [
       ['-v', `${l.workspace}:${l.workspaceTarget || '/workspace'}`], ['-v', `${l.home}:/home/agent`], ['-v', `${l.rpc}:/run/shiyan`],
       ['-v', `${relayScript}:${paths.relay}:ro`],
@@ -104,14 +104,14 @@ export function createSandboxManager({
       ...(existsSync(skillsDir) ? [['-v', `${skillsDir}:/home/agent/.claude/skills:ro`], ['-v', `${skillsDir}:/home/agent/.codex/skills:ro`]] : []),
       // Extra read-only inputs of this account (e.g. its uploaded chat attachments), at the paths the
       // Dots conversation refers to them by.
-      ...(l.readonly || []).filter(([host]) => existsSync(host)).map(([host, target]) => ['-v', `${host}:${target || host}:ro`]),
+      ...(l.readonly || []).filter(([host]: any) => existsSync(host)).map(([host, target]: any) => ['-v', `${host}:${target || host}:ro`]),
     ].flat();
     return ['run', '-d', '--name', name(owner), '--label', 'shiyan.agent=1', '--label', 'shiyan.spec=' + spec, '--hostname', 'dots-agent',
       '--user', `${uid}:${gid}`, '--memory', limits.memory, '--cpus', String(limits.cpus), '--pids-limit', String(limits.pids),
       '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--add-host', 'host.docker.internal:host-gateway',
       '--restart', 'unless-stopped', '-e', 'HOME=/home/agent', '-w', '/workspace', ...mounts, image, 'sleep', 'infinity'];
   }
-  async function create(owner) {
+  async function create(owner: any) {
     const l = layout(owner);
     const spec = createHash('sha256').update(JSON.stringify([image, l, limits, uid, gid, codex, existsSync(claudeBinary) ? statSync(claudeBinary).mtimeMs : 0, relayScript, existsSync(skillsDir) ? skillsDir : ''])).digest('hex').slice(0, 16);
     let current = null;
@@ -123,8 +123,8 @@ export function createSandboxManager({
   }
   // Fresh model credentials are copied into the agent home at each session start (the container
   // never reads host files directly). Claude also reads the env file values passed on exec.
-  function syncCredentials(l) {
-    const put = (from, to) => { if (!from || !existsSync(from)) return; mkdirSync(path.dirname(to), { recursive: true, mode: 0o700 }); copyFileSync(from, to); chmodSync(to, 0o600); };
+  function syncCredentials(l: any) {
+    const put = (from: any, to: any) => { if (!from || !existsSync(from)) return; mkdirSync(path.dirname(to), { recursive: true, mode: 0o700 }); copyFileSync(from, to); chmodSync(to, 0o600); };
     put(credentials.claude, path.join(l.home, '.claude', '.credentials.json'));
     put(credentials.codex, path.join(l.home, '.codex', 'auth.json'));
   }
@@ -133,12 +133,12 @@ export function createSandboxManager({
     try {
       for (const line of readFileSync(credentials.claudeEnv, 'utf8').split(/\r?\n/)) {
         const m = line.trim().match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/); if (!m) continue;
-        out[m[1]] = m[2].trim().replace(/^(['"])(.*)\1$/, '$2');
+        (out as any)[m[1]] = m[2].trim().replace(/^(['"])(.*)\1$/, '$2');
       }
     } catch {}
     return out;
   }
-  async function ensure(owner) {
+  async function ensure(owner: any) {
     let entry = state.get(owner);
     if (!entry) { entry = { ready: null, active: 0, lastUsed: Date.now() }; state.set(owner, entry); }
     if (!entry.ready) entry.ready = create(owner).catch(error => { entry.ready = null; throw fail('智能体沙箱启动失败：' + error.message, 503); });
@@ -151,7 +151,7 @@ export function createSandboxManager({
   // Agent SDK / Codex transport. Secrets go through an --env-file (never on a command line), and the
   // in-container pid is recorded so kill() really stops the agent process, not only `docker exec`.
   interface SpawnInOptions { command: string; args?: string[]; cwd?: string; env?: Record<string, string>; }
-  function spawnIn(owner, { command, args = [], cwd = '/workspace', env = {} }: SpawnInOptions) {
+  function spawnIn(owner: any, { command, args = [], cwd = '/workspace', env = {} }: SpawnInOptions) {
     const entry = state.get(owner);
     if (!entry?.ready) throw fail('沙箱尚未准备好', 503);
     const proc = randomBytes(8).toString('hex');
@@ -173,10 +173,10 @@ export function createSandboxManager({
       if (!exited) void docker.run(['exec', name(owner), '/bin/sh', '-c', `kill -${String(signal).replace(/^SIG/, '')} "$(cat /run/shiyan/${proc}.pid)" 2>/dev/null; true`]).catch(() => {});
       return kill(signal);
     };
-    child.stderr?.on('data', chunk => { if (process.env.SHIYAN_AGENT_DEBUG === '1') logger.warn?.('[agent-sandbox:' + proc + '] ' + String(chunk).trim().slice(0, 500)); });
+    child.stderr?.on('data', (chunk: any) => { if (process.env.SHIYAN_AGENT_DEBUG === '1') logger.warn?.('[agent-sandbox:' + proc + '] ' + String(chunk).trim().slice(0, 500)); });
     return child;
   }
-  async function exec(owner, argv, { timeoutMs = 60_000 } = {}) { await ensure(owner); return docker.run(['exec', name(owner), ...argv], { timeoutMs }); }
+  async function exec(owner: any, argv: any, { timeoutMs = 60_000 } = {}) { await ensure(owner); return docker.run(['exec', name(owner), ...argv], { timeoutMs }); }
   // Idle containers are stopped (not removed); the next run starts them again.
   const reaper = setInterval(() => {
     for (const [owner, entry] of state) if (entry.ready && entry.active === 0 && Date.now() - entry.lastUsed > idleMs) {

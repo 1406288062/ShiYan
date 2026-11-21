@@ -13,17 +13,17 @@ const OTHER_CLIENT = { host: 'shiyan_mobile', conversation_id: 'conversation-B' 
 const SIGNING_SECRET = 'whsec_' + Buffer.alloc(32, 7).toString('base64');
 const now = () => Math.floor(Date.now() / 1000);
 
-async function listen(server) {
+async function listen(server: any) {
   await new Promise((resolve, reject) => {
     server.once('error', reject);
     server.listen(0, '127.0.0.1', resolve);
   });
   return 'http://127.0.0.1:' + server.address().port;
 }
-async function closeServer(server) {
-  await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+async function closeServer(server: any) {
+  await new Promise<void>((resolve, reject) => server.close((error: any) => error ? reject(error) : resolve()));
 }
-async function fixture(t, injections = {}) {
+async function fixture(t: any, injections = {}) {
   const db = new DatabaseSync(':memory:');
   db.exec(`CREATE TABLE notifications (
     id INTEGER PRIMARY KEY, goal_id INTEGER, level TEXT NOT NULL,
@@ -51,7 +51,7 @@ async function fixture(t, injections = {}) {
     const body = input ? JSON.parse(input) : null;
     requests.push({ method: req.method, path: req.url, body, authorized: req.headers.authorization === 'Bearer ' + TOKEN });
     const url = new URL(req.url || '/', 'http://fixture');
-    const reply = (status, value) => {
+    const reply = (status: any, value: any) => {
       res.writeHead(status, { 'content-type': 'application/json' });
       res.end(JSON.stringify(value));
     };
@@ -111,10 +111,10 @@ async function fixture(t, injections = {}) {
   const f: any = { db, requests, goals, approvals, options, bridge: createMcpBridge(options), requestID: 0 };
   const transport = http.createServer((req, res) => {
     if (!f.bridge.matches(new URL(req.url || '/', 'http://fixture').pathname)) { res.writeHead(404); res.end(); return; }
-    f.bridge.handle(req, res).catch(error => { res.writeHead(500); res.end(String(error)); });
+    f.bridge.handle(req, res).catch((error: any) => { res.writeHead(500); res.end(String(error)); });
   });
   const base = await listen(transport);
-  f.request = async (message, method = 'POST') => {
+  f.request = async (message: any, method = 'POST') => {
     const response = await fetch(base + f.bridge.endpointPath, { method, ...(method === 'POST' ? {
       headers: { 'content-type': 'application/json', accept: 'application/json' },
       body: typeof message === 'string' ? message : JSON.stringify(message)
@@ -122,9 +122,9 @@ async function fixture(t, injections = {}) {
     const raw = await response.text();
     return { status: response.status, headers: response.headers, raw, body: raw ? JSON.parse(raw) : null };
   };
-  f.rpc = (method, params = {}) => f.request({ jsonrpc: '2.0', id: ++f.requestID, method, params });
-  f.call = (name, args = {}) => f.rpc('tools/call', { name, arguments: args });
-  f.result = async (name, args = {}) => {
+  f.rpc = (method: any, params = {}) => f.request({ jsonrpc: '2.0', id: ++f.requestID, method, params });
+  f.call = (name: any, args = {}) => f.rpc('tools/call', { name, arguments: args });
+  f.result = async (name: any, args = {}) => {
     const response = await f.call(name, args);
     assert.equal(response.status, 200);
     assert.equal(response.body.error, undefined, JSON.stringify(response.body));
@@ -132,22 +132,22 @@ async function fixture(t, injections = {}) {
     assert.deepEqual(JSON.parse(response.body.result.content[0].text), response.body.result.structuredContent);
     return response.body.result.structuredContent;
   };
-  f.rebuild = overrides => { f.bridge.close(); f.bridge = createMcpBridge({ ...options, ...overrides }); };
+  f.rebuild = (overrides: any) => { f.bridge.close(); f.bridge = createMcpBridge({ ...options, ...overrides }); };
   t.after(async () => { f.bridge.close(); await closeServer(transport); await closeServer(runtime); db.close(); });
   return f;
 }
-function addContext(f, goalID, context = CLIENT) {
+function addContext(f: any, goalID: any, context = CLIENT) {
   f.db.prepare('INSERT INTO mcp_goal_context(goal_id,host,conversation_id) VALUES(?,?,?)').run(goalID, context.host, context.conversation_id);
 }
-function addNotification(f, id, goalID = 1) {
+function addNotification(f: any, id: any, goalID = 1) {
   f.db.prepare('INSERT INTO notifications(id,goal_id,level,title,body,created_at,output_id) VALUES(?,?,?,?,?,?,?)').run(id, goalID, 'info', 'Fixture goal', 'Fixture update ' + id, now(), id + 100);
 }
-function addSubscription(f, id = 'sub_fixture_0000000001', goalID = 1) {
+function addSubscription(f: any, id = 'sub_fixture_0000000001', goalID = 1) {
   f.db.prepare(`INSERT INTO mcp_subscriptions(id,event_name,arguments_json,callback_url,secret,expires_at,active,created_at,updated_at)
     VALUES(?,?,?,?,?,NULL,1,?,?)`).run(id, 'goal.notification', JSON.stringify({ goal_id: goalID }), 'https://webhook.invalid/fixture', SIGNING_SECRET, now(), now());
   return id;
 }
-function toolFailure(response, pattern) {
+function toolFailure(response: any, pattern: any) {
   assert.equal(response.status, 200);
   assert.equal(response.body.error, undefined);
   assert.equal(response.body.result.isError, true);
@@ -156,18 +156,18 @@ function toolFailure(response, pattern) {
 
 test('relationship tools expose only shared-topic memory and reject removed controls without runtime writes',async t=>{
   const f=await fixture(t);
-  const listing=await f.rpc('tools/list',{}),names=listing.body.result.tools.map(tool=>tool.name);
+  const listing=await f.rpc('tools/list',{}),names=listing.body.result.tools.map((tool: any)=>tool.name);
   assert.ok(names.includes('dots_get_relationship'));assert.ok(!names.includes('dots_configure_relationship'));assert.ok(!names.includes('dots_relationship_feedback'));
   await f.result('dots_get_relationship');
   await f.result('dots_update_relationship_topic',{topicId:'shared-topic',summary:'User correction',revision:2});
   await f.result('dots_delete_relationship_topic',{topicId:'shared-topic'});
-  assert.deepEqual(f.requests.map(r=>[r.method,r.path]),[
+  assert.deepEqual(f.requests.map((r: any)=>[r.method,r.path]),[
     ['GET','/v1/managers/shiyan-private-owner/relationship'],
     ['PATCH','/v1/managers/shiyan-private-owner/relationship/topics/shared-topic'],
     ['DELETE','/v1/managers/shiyan-private-owner/relationship/topics/shared-topic']
   ]);
   assert.deepEqual(f.requests[1].body,{summary:'User correction',revision:2});
-  assert.ok(f.requests.every(r=>r.authorized));assert.equal(f.goals.size,4);
+  assert.ok(f.requests.every((r: any)=>r.authorized));assert.equal(f.goals.size,4);
   for(const tool of ['dots_configure_relationship','dots_relationship_feedback']){
     const rejected=await f.call(tool,{});assert.equal(rejected.body.error.code,-32601);
   }
@@ -201,7 +201,7 @@ test('advertises all 23 tools with mirrored noauth and accurate lifecycle hints'
   const response = await f.rpc('tools/list');
   const tools = response.body.result.tools;
   assert.equal(tools.length, 23);
-  assert.equal(new Set(tools.map(tool => tool.name)).size, 23);
+  assert.equal(new Set(tools.map((tool: any) => tool.name)).size, 23);
   for (const tool of tools) {
     assert.deepEqual(tool.securitySchemes, [{ type: 'noauth' }]);
     assert.deepEqual(tool._meta.securitySchemes, tool.securitySchemes);
@@ -209,11 +209,11 @@ test('advertises all 23 tools with mirrored noauth and accurate lifecycle hints'
     assert.equal(tool.inputSchema.additionalProperties, false);
     assert.ok(Array.isArray(tool.inputSchema.required));
   }
-  assert.equal(tools.find(tool => tool.name === 'dots_get_goal').annotations.readOnlyHint, true);
-  assert.equal(tools.find(tool => tool.name === 'dots_control_goal').annotations.destructiveHint, true);
-  assert.equal(tools.find(tool => tool.name === 'dots_decide_approval').annotations.openWorldHint, true);
+  assert.equal(tools.find((tool: any) => tool.name === 'dots_get_goal').annotations.readOnlyHint, true);
+  assert.equal(tools.find((tool: any) => tool.name === 'dots_control_goal').annotations.destructiveHint, true);
+  assert.equal(tools.find((tool: any) => tool.name === 'dots_decide_approval').annotations.openWorldHint, true);
   const capabilities = await f.result('dots_get_capabilities');
-  assert.deepEqual(capabilities.tool_names.sort(), tools.map(tool => tool.name).sort());
+  assert.deepEqual(capabilities.tool_names.sort(), tools.map((tool: any) => tool.name).sort());
   assert.equal(capabilities.shiyan_client_adapter_installed, false);
   assert.equal(capabilities.per_consumer_ack, true);
   assert.equal(capabilities.durable_webhook_outbox, true);
@@ -315,7 +315,7 @@ test('does not implicitly resume paused/terminal goals or approve waiting goals'
   toolFailure(await f.call('dots_control_goal', { goal_id: 2, action: 'wake' }), /Resume.*paused/i);
   toolFailure(await f.call('dots_control_goal', { goal_id: 3, action: 'resume' }), /terminal/i);
   toolFailure(await f.call('dots_control_goal', { goal_id: 4, action: 'resume' }), /pending approvals/i);
-  assert.equal(f.requests.filter(request => request.method === 'POST').length, 0);
+  assert.equal(f.requests.filter((request: any) => request.method === 'POST').length, 0);
   const paused = await f.result('dots_control_goal', { goal_id: 1, action: 'pause' });
   assert.equal(paused.goal.status, 'paused');
   assert.match(paused.stop_semantics, /already running/);
@@ -334,23 +334,23 @@ test('notification pagination is ascending, scoped and non-destructive', async t
   addContext(f, 2, OTHER_CLIENT);
   for (let id = 1; id <= 6; id++) addNotification(f, id, id % 2 ? 1 : 2);
   const first = await f.result('dots_list_notifications', { after_id: 0, limit: 2 });
-  assert.deepEqual(first.notifications.map(n => n.id), [1, 2]);
+  assert.deepEqual(first.notifications.map((n: any) => n.id), [1, 2]);
   assert.equal(first.next_cursor, 2);
   assert.equal(first.has_more, true);
   const second = await f.result('dots_list_notifications', { after_id: first.next_cursor, limit: 2 });
-  assert.deepEqual(second.notifications.map(n => n.id), [3, 4]);
+  assert.deepEqual(second.notifications.map((n: any) => n.id), [3, 4]);
   const last = await f.result('dots_list_notifications', { after_id: 4, limit: 2 });
-  assert.deepEqual(last.notifications.map(n => n.id), [5, 6]);
+  assert.deepEqual(last.notifications.map((n: any) => n.id), [5, 6]);
   assert.equal(last.has_more, false);
   const empty = await f.result('dots_list_notifications', { after_id: 6 });
   assert.equal(empty.next_cursor, 6);
   assert.deepEqual(empty.notifications, []);
   const scoped = await f.result('dots_list_notifications', { client_context: CLIENT, limit: 2 });
-  assert.deepEqual(scoped.notifications.map(n => n.id), [1, 3]);
-  assert.deepEqual(scoped.notifications.map(n => n.client_context), [CLIENT, CLIENT]);
+  assert.deepEqual(scoped.notifications.map((n: any) => n.id), [1, 3]);
+  assert.deepEqual(scoped.notifications.map((n: any) => n.client_context), [CLIENT, CLIENT]);
   assert.equal(scoped.has_more, true);
   const oneGoal = await f.result('dots_list_notifications', { goal_id: 2, after_id: 2 });
-  assert.deepEqual(oneGoal.notifications.map(n => n.id), [4, 6]);
+  assert.deepEqual(oneGoal.notifications.map((n: any) => n.id), [4, 6]);
   const mismatch = await f.result('dots_list_notifications', { goal_id: 2, client_context: CLIENT });
   assert.deepEqual(mismatch.notifications, []);
   assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM notifications WHERE read_at IS NOT NULL OR delivered_at IS NOT NULL').get().n, 0);
@@ -362,20 +362,20 @@ test('timeline cursor replays progress records in order and isolates goals', asy
   const insert = f.db.prepare('INSERT INTO timeline(id,goal_id,kind,message,data,created_at) VALUES(?,?,?,?,?,?)');
   for (let id = 1; id <= 5; id++) insert.run(id, id % 2 ? 1 : 2, 'progress', 'Fixture step ' + id, '{}', now());
   const first = await f.result('dots_get_timeline', { goal_id: 1, limit: 2 });
-  assert.deepEqual(first.timeline.map(item => item.id), [1, 3]);
+  assert.deepEqual(first.timeline.map((item: any) => item.id), [1, 3]);
   assert.equal(first.next_cursor, 3);
   assert.equal(first.has_more, true);
   const rest = await f.result('dots_get_timeline', { goal_id: 1, after_id: first.next_cursor, limit: 2 });
-  assert.deepEqual(rest.timeline.map(item => item.id), [5]);
+  assert.deepEqual(rest.timeline.map((item: any) => item.id), [5]);
   assert.equal(rest.next_cursor, 5);
   assert.equal(rest.has_more, false);
   const otherGoal = await f.result('dots_get_timeline', { goal_id: 2 });
-  assert.deepEqual(otherGoal.timeline.map(item => item.id), [2, 4]);
+  assert.deepEqual(otherGoal.timeline.map((item: any) => item.id), [2, 4]);
   const empty = await f.result('dots_get_timeline', { goal_id: 1, after_id: 5 });
   assert.deepEqual(empty.timeline, []);
   assert.equal(empty.next_cursor, 5);
   assert.equal(f.requests.length, 4);
-  assert.ok(f.requests.every(request => request.method === 'GET' && /^\/v1\/goals\/[12]$/.test(request.path)));
+  assert.ok(f.requests.every((request: any) => request.method === 'GET' && /^\/v1\/goals\/[12]$/.test(request.path)));
   toolFailure(await f.call('dots_get_timeline', { goal_id: 999 }), /goal not found/);
 });
 
@@ -387,15 +387,15 @@ test('consumer acknowledgements are independent, monotonic, durable handoff only
   assert.equal(a.handoff_only, true);
   assert.equal((await f.result('dots_ack_notifications', { consumer_id: 'desktop-A', notification_id: 1 })).acknowledged_cursor, 3);
   assert.equal((await f.result('dots_ack_notifications', { consumer_id: 'desktop-A', notification_id: 3 })).acknowledged_cursor, 3);
-  assert.deepEqual((await f.result('dots_list_notifications', { consumer_id: 'desktop-A' })).notifications.map(n => n.id), [4, 5]);
+  assert.deepEqual((await f.result('dots_list_notifications', { consumer_id: 'desktop-A' })).notifications.map((n: any) => n.id), [4, 5]);
   const b = await f.result('dots_list_notifications', { consumer_id: 'mobile-B' });
   assert.equal(b.acknowledged_cursor, 0);
-  assert.deepEqual(b.notifications.map(n => n.id), [1, 2, 3, 4, 5]);
+  assert.deepEqual(b.notifications.map((n: any) => n.id), [1, 2, 3, 4, 5]);
   await f.result('dots_ack_notifications', { consumer_id: 'mobile-B', notification_id: 2 });
-  assert.deepEqual((await f.result('dots_list_notifications', { consumer_id: 'mobile-B' })).notifications.map(n => n.id), [3, 4, 5]);
+  assert.deepEqual((await f.result('dots_list_notifications', { consumer_id: 'mobile-B' })).notifications.map((n: any) => n.id), [3, 4, 5]);
   // Explicit after_id allows replay; it never changes the stored ACK cursor.
   const replay = await f.result('dots_list_notifications', { consumer_id: 'desktop-A', after_id: 0, limit: 1 });
-  assert.deepEqual(replay.notifications.map(n => n.id), [1]);
+  assert.deepEqual(replay.notifications.map((n: any) => n.id), [1]);
   assert.equal(replay.acknowledged_cursor, 3);
   toolFailure(await f.call('dots_ack_notifications', { consumer_id: 'unknown-C', notification_id: 999 }), /does not exist/);
   assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM mcp_notification_cursors WHERE consumer_id=?').get('unknown-C').n, 0);
@@ -410,11 +410,11 @@ test('goal/output listing filters source sessions and preserves full result look
   addContext(f, 2);
   addContext(f, 3, OTHER_CLIENT);
   const listed = await f.result('dots_list_goals', { client_context: CLIENT, limit: 1 });
-  assert.deepEqual(listed.goals.map(g => g.id), [1]);
+  assert.deepEqual(listed.goals.map((g: any) => g.id), [1]);
   assert.equal(listed.has_more, true);
   assert.equal(listed.source_limit, 200);
   const paused = await f.result('dots_list_goals', { client_context: CLIENT, status: 'paused' });
-  assert.deepEqual(paused.goals.map(g => g.id), [2]);
+  assert.deepEqual(paused.goals.map((g: any) => g.id), [2]);
   const refs = await f.result('dots_list_outputs', { goal_id: 1, limit: 2 });
   assert.equal(f.requests.at(-1).path, '/v1/outputs?goalId=1&limit=2');
   const output = await f.result('dots_read_output', { output_id: refs.outputs[0].id });
@@ -428,14 +428,14 @@ test('approval mismatch or stale ID never sends an execution decision', async t 
   toolFailure(await f.call('dots_decide_approval', { approval_id: 7, decision: 'approve', confirmed_command: 'printf changed' }), /exactly match/);
   toolFailure(await f.call('dots_decide_approval', { approval_id: 7, decision: 'approve' }), /exactly match/);
   toolFailure(await f.call('dots_decide_approval', { approval_id: 999, decision: 'reject' }), /no longer pending/);
-  assert.equal(f.requests.filter(request => request.method === 'POST').length, 0);
+  assert.equal(f.requests.filter((request: any) => request.method === 'POST').length, 0);
   assert.equal(f.approvals[0].status, 'pending');
   const approved = await f.result('dots_decide_approval', { approval_id: 7, decision: 'approve', confirmed_command: 'printf reviewed' });
   assert.equal(approved.state, 'approved');
   assert.deepEqual(f.requests.at(-1).body, { decision: 'approve' });
-  assert.equal(f.requests.filter(request => request.method === 'POST').length, 1);
+  assert.equal(f.requests.filter((request: any) => request.method === 'POST').length, 1);
   toolFailure(await f.call('dots_decide_approval', { approval_id: 7, decision: 'approve', confirmed_command: 'printf reviewed' }), /no longer pending/);
-  assert.equal(f.requests.filter(request => request.method === 'POST').length, 1);
+  assert.equal(f.requests.filter((request: any) => request.method === 'POST').length, 1);
 });
 
 test('rejecting an approval does not require a command confirmation', async t => {
@@ -447,7 +447,7 @@ test('rejecting an approval does not require a command confirmation', async t =>
 
 test('failed webhook is stored, retries after bridge rebuild with stable identity, and never claims user receipt', async t => {
   const attempts: any[] = [];
-  const f = await fixture(t, { deliver: async (subscription, event, messageID) => {
+  const f = await fixture(t, { deliver: async (subscription: any, event: any, messageID: any) => {
     attempts.push({ subscriptionID: subscription.id, event, messageID });
     return { status: 503, ok: false };
   } });
@@ -477,7 +477,7 @@ test('failed webhook is stored, retries after bridge rebuild with stable identit
   assert.ok(!JSON.stringify(failedStatus).includes('webhook.invalid'));
   assert.ok(!JSON.stringify(failedStatus).includes(SIGNING_SECRET));
   // Reconstruct the bridge retaining only SQLite state: no in-memory queue remains.
-  f.rebuild({ deliver: async (subscription, event, messageID) => {
+  f.rebuild({ deliver: async (subscription: any, event: any, messageID: any) => {
     attempts.push({ subscriptionID: subscription.id, event, messageID });
     return { status: 204, ok: true };
   } });

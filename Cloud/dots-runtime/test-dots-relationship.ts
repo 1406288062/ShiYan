@@ -8,20 +8,20 @@ import {createManagerStore} from './manager-store.ts';
 import {buildManagerPrompt,MANAGER_SCHEMA} from './manager-runtime.ts';
 
 function fixture(){
-  const root=mkdtempSync(path.join(os.tmpdir(),'dots-relationship-')),file=path.join(root,'db.sqlite');let clock=1792000000,db=new DatabaseSync(file),store;
+  const root=mkdtempSync(path.join(os.tmpdir(),'dots-relationship-')),file=path.join(root,'db.sqlite');let clock=1792000000,db=new DatabaseSync(file),store: any;
   db.exec(`CREATE TABLE goals(id INTEGER PRIMARY KEY,title TEXT,instruction TEXT,status TEXT,thread_id TEXT,workspace TEXT,created_at INTEGER,updated_at INTEGER,next_wake_at INTEGER,last_run_at INTEGER,last_summary TEXT DEFAULT '',run_count INTEGER DEFAULT 0);
   CREATE TABLE approvals(id INTEGER PRIMARY KEY,goal_id INTEGER,reason TEXT,command TEXT,status TEXT,created_at INTEGER,decided_at INTEGER,output TEXT);
   CREATE TABLE events(id INTEGER PRIMARY KEY,goal_id INTEGER,type TEXT,payload TEXT,created_at INTEGER,consumed_at INTEGER);`);
   const open=()=>store=createManagerStore({db,now:()=>clock,workspaceRoot:path.join(root,'work')});open();
-  return {root,get db(){return db;},get store(){return store;},advance:n=>clock+=n,now:()=>clock,reopen(){db.close();db=new DatabaseSync(file);open();},close(){db.close();rmSync(root,{recursive:true,force:true});}};
+  return {root,get db(){return db;},get store(){return store;},advance:(n: any)=>clock+=n,now:()=>clock,reopen(){db.close();db=new DatabaseSync(file);open();},close(){db.close();rmSync(root,{recursive:true,force:true});}};
 }
 const ordinary=(extra: any={})=>({reply:'我记住这个话题了。',summary:'记录共同话题',tasks:[],continuations:[],reviews:[],controls:[],instructions:[],notes:[],inspect_tasks:[],...extra});
 let sequence=0;
-function seed(f,{key='garden.window',evidence='我喜欢在阳台种香草，还在想薄荷怎么搭配',summary='讨论阳台的香草搭配，希望以薄荷为基础',title='阳台的香草'}={}){
+function seed(f: any,{key='garden.window',evidence='我喜欢在阳台种香草，还在想薄荷怎么搭配',summary='讨论阳台的香草搭配，希望以薄荷为基础',title='阳台的香草'}={}){
   const user=f.store.message({message:evidence,requestId:'u'+(++sequence)}).message,run=f.store.claimManager();
   const result=f.store.completeManager(run,ordinary({relationship:{topics:[{key,title,summary,open_question:'怎样组合香草更有趣',source_message_ids:[user.id],evidence:[evidence]}]}}));
   assert.equal(result.committed,true);
-  return {user,topic:f.store.relationship.snapshot().topics.find(topic=>topic.title===title)};
+  return {user,topic:f.store.relationship.snapshot().topics.find((topic: any)=>topic.title===title)};
 }
 
 test('a normal conversation records authenticated shared evidence without tasks or relationship controls',()=>{
@@ -37,7 +37,7 @@ test('foreign, assistant, missing and historical source IDs do not create shared
  const f=fixture();try{
   const {user}=seed(f),assistant=f.store.snapshot().messages.at(-1);
   const foreign=Number(f.db.prepare("INSERT INTO manager_messages(manager_id,role,content,created_at) VALUES('manager:other','user','foreign',1)").run().lastInsertRowid);
-  const draft=(id,text)=>({topics:[{key:'false.topic',title:'伪话题',summary:'不可保存',open_question:'',source_message_ids:[id],evidence:[text]}]});
+  const draft=(id: any,text: any)=>({topics:[{key:'false.topic',title:'伪话题',summary:'不可保存',open_question:'',source_message_ids:[id],evidence:[text]}]});
   f.store.relationship.learn(draft(assistant.id,assistant.content),[assistant.id]);f.store.relationship.learn(draft(foreign,'foreign'),[foreign]);f.store.relationship.learn(draft(9999,'missing'),[9999]);f.store.relationship.learn(draft(user.id,user.content),[]);
   assert.equal(f.store.relationship.snapshot().topics.length,1);
   const prior=f.store.relationship.snapshot().topics[0];f.store.relationship.learn({topics:[{key:'garden.window',title:prior.title,summary:'旧来源不得重写',open_question:'',source_message_ids:[user.id],evidence:[user.content]}]},[user.id]);
@@ -63,7 +63,7 @@ test('topic deletion is idempotent and old sources cannot return under another k
   f.store.relationship.learn({topics:[{key:'garden.renamed',title:'另一种标题',summary:'旧话题',open_question:'',source_message_ids:[user.id],evidence:[user.content]}]},[user.id]);
   f.store.completeManager(run,ordinary({relationship_revision:revision,relationship:{topics:[{key:'garden.renamed-again',title:'旧模型改名',summary:'不应复活',open_question:'',source_message_ids:[next.id],evidence:[next.content]}]}}));
   assert.equal(f.store.relationship.snapshot().topics.length,0);
-  assert.equal(f.store.relationship.safeHistory(f.store.snapshot().messages).some(message=>message.content.includes('薄荷')),false);
+  assert.equal(f.store.relationship.safeHistory(f.store.snapshot().messages).some((message: any)=>message.content.includes('薄荷')),false);
   f.reopen();assert.equal(f.store.relationship.snapshot().topics.length,0);
  }finally{f.close();}
 });
@@ -118,7 +118,7 @@ test('legacy timed inbox migration preserves genuine inputs, old partial text an
   const run=f.db.prepare('SELECT * FROM manager_runs WHERE id=?').get(id),pending=f.db.prepare("SELECT * FROM manager_inbox WHERE consumed_at IS NULL AND type<>'proactive_opportunity'").all(),workerLock=f.db.prepare('SELECT * FROM manager_resources WHERE run_id=?').all(worker.id),topics=f.store.relationship.snapshot().topics;
   f.db.prepare('UPDATE dots_relationship_state SET timed_review_retired=0').run();f.reopen();
   assert.deepEqual(f.store.relationship.snapshot().topics,topics);assert.deepEqual(f.db.prepare('SELECT * FROM manager_inbox WHERE consumed_at IS NULL').all(),pending);assert.deepEqual(f.db.prepare('SELECT * FROM manager_resources WHERE run_id=?').all(worker.id),workerLock);
-  const partial=f.store.snapshot().messages.find(message=>message.content==='已显示的前半句');assert.equal(partial.deliveryState,'cancelled');assert.equal(partial.revision,2);
+  const partial=f.store.snapshot().messages.find((message: any)=>message.content==='已显示的前半句');assert.equal(partial.deliveryState,'cancelled');assert.equal(partial.revision,2);
   assert.equal(f.store.completeManager(run,ordinary()).committed,false);assert.equal(f.store.streamManagerReply(run,'不应出现的后半句'),null);
   const successor=f.store.claimManager();assert.ok(successor);const result=f.store.completeManager(successor,ordinary());assert.deepEqual(result.value.message.respondsToMessageIds,[user.id]);
   const revision=f.store.relationship.snapshot().revision;f.reopen();assert.equal(f.store.relationship.snapshot().revision,revision);assert.ok(f.store.isCurrent(worker));

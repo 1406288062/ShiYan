@@ -10,39 +10,39 @@ import {createManagerRuntime,buildProactivePrompt,PROACTIVE_SCHEMA} from './mana
 const oldText='我在阳台种薄荷和迷迭香，想观察香草气味随季节的变化';
 const newText='我拍到雨后阳台的薄荷叶上有水珠，准备试试逆光拍摄叶片的纹理';
 const connection='你之前在留意香草随季节的气味，这次又拍下雨后的叶片纹理，同一座阳台有了嗅觉和视觉两种记录。';
-const ordinary=extra=>({reply:'记住了。',summary:'交流已完成',awaiting_user_input:false,tasks:[],continuations:[],reviews:[],controls:[],instructions:[],notes:[],inspect_tasks:[],...extra});
+const ordinary=(extra: any)=>({reply:'记住了。',summary:'交流已完成',awaiting_user_input:false,tasks:[],continuations:[],reviews:[],controls:[],instructions:[],notes:[],inspect_tasks:[],...extra});
 let sequence=0;
 function fixture(){
- const root=mkdtempSync(path.join(os.tmpdir(),'dots-natural-events-')),file=path.join(root,'db.sqlite');let clock=1792000000,db=new DatabaseSync(file),store;const runtimes=new Set<any>();
+ const root=mkdtempSync(path.join(os.tmpdir(),'dots-natural-events-')),file=path.join(root,'db.sqlite');let clock=1792000000,db=new DatabaseSync(file),store: any;const runtimes=new Set<any>();
  db.exec(`CREATE TABLE goals(id INTEGER PRIMARY KEY,title TEXT,instruction TEXT,status TEXT,thread_id TEXT,workspace TEXT,created_at INTEGER,updated_at INTEGER,next_wake_at INTEGER,last_run_at INTEGER,last_summary TEXT DEFAULT '',run_count INTEGER DEFAULT 0);
  CREATE TABLE approvals(id INTEGER PRIMARY KEY,goal_id INTEGER,reason TEXT,command TEXT,status TEXT,created_at INTEGER,decided_at INTEGER,output TEXT);
  CREATE TABLE events(id INTEGER PRIMARY KEY,goal_id INTEGER,type TEXT,payload TEXT,created_at INTEGER,consumed_at INTEGER);`);
  // This suite isolates the original new-content lane. The default autonomous
  // initialization and its no-new-input behavior have a separate acceptance suite.
  const open=()=>{store=createManagerStore({db,now:()=>clock,workspaceRoot:path.join(root,'work')});store.initializeReflection=()=>null;};open();
- return {root,now:()=>clock,get db(){return db;},get store(){return store;},advance:n=>clock+=n,track:r=>{runtimes.add(r);return r;},reopen(){for(const r of runtimes)r.close();runtimes.clear();db.close();db=new DatabaseSync(file);open();},close(){for(const r of runtimes)r.close();db.close();rmSync(root,{recursive:true,force:true});}};
+ return {root,now:()=>clock,get db(){return db;},get store(){return store;},advance:(n: any)=>clock+=n,track:(r: any)=>{runtimes.add(r);return r;},reopen(){for(const r of runtimes)r.close();runtimes.clear();db.close();db=new DatabaseSync(file);open();},close(){for(const r of runtimes)r.close();db.close();rmSync(root,{recursive:true,force:true});}};
 }
 interface ExchangeOptions { text: string; key: string; title?: string; reply?: string; summary?: string; awaiting?: boolean; learn?: boolean; resultOverrides?: any; }
-function exchange(f,{text,key,title=key,reply='记住了。',summary=text,awaiting=false,learn=true,resultOverrides={}}: ExchangeOptions){
+function exchange(f: any,{text,key,title=key,reply='记住了。',summary=text,awaiting=false,learn=true,resultOverrides={}}: ExchangeOptions){
  const user=f.store.message({message:text,requestId:'ordinary-'+(++sequence)}).message,run=f.store.claimManager();assert.ok(run);
  const result=f.store.completeManager(run,ordinary({reply,awaiting_user_input:awaiting,relationship:{topics:learn?[{key,title,summary,open_question:'',source_message_ids:[user.id],evidence:[text]}]:[]},...resultOverrides}));assert.equal(result.committed,true);
- return {user,topic:f.store.relationship.snapshot().topics.find(topic=>topic.sourceMessageIds.includes(user.id)),reply:result.value.message};
+ return {user,topic:f.store.relationship.snapshot().topics.find((topic: any)=>topic.sourceMessageIds.includes(user.id)),reply:result.value.message};
 }
-function first(f){return exchange(f,{text:oldText,key:'garden.herbs',title:'阳台香草',reply:'记住了，你在观察阳台香草的气味。'});}
-function second(f,extra={}){return exchange(f,{text:newText,key:'photo.leaves',title:'雨后叶片摄影',reply:'逆光时把曝光稍微降低，水珠边缘会更清楚。',learn:false,...extra});}
-function seed(f){const a=first(f),b=second(f);return {a,b};}
-function decision(a,b,extra={}){return {action:'send',message:connection,reason:'旧话题的香草气味和这次雨后叶片摄影形成了未讨论过的感官记录关联',new_connection:'同一座阳台有了嗅觉和视觉两种记录',not_covered_by_reply:'此前只回答逆光曝光，尚未谈到气味与纹理的两种记录',conversation_appropriate:true,source_quotes:[{message_id:a.user.id,quote:oldText},{message_id:b.user.id,quote:newText}],...extra};}
-const proactive=f=>f.store.snapshot().messages.filter(message=>message.origin==='proactive');
-const candidateCount=f=>Number(f.db.prepare('SELECT COUNT(*) AS n FROM dots_relationship_event_candidates').get()!.n);
+function first(f: any){return exchange(f,{text:oldText,key:'garden.herbs',title:'阳台香草',reply:'记住了，你在观察阳台香草的气味。'});}
+function second(f: any,extra={}){return exchange(f,{text:newText,key:'photo.leaves',title:'雨后叶片摄影',reply:'逆光时把曝光稍微降低，水珠边缘会更清楚。',learn:false,...extra});}
+function seed(f: any){const a=first(f),b=second(f);return {a,b};}
+function decision(a: any,b: any,extra={}){return {action:'send',message:connection,reason:'旧话题的香草气味和这次雨后叶片摄影形成了未讨论过的感官记录关联',new_connection:'同一座阳台有了嗅觉和视觉两种记录',not_covered_by_reply:'此前只回答逆光曝光，尚未谈到气味与纹理的两种记录',conversation_appropriate:true,source_quotes:[{message_id:a.user.id,quote:oldText},{message_id:b.user.id,quote:newText}],...extra};}
+const proactive=(f: any)=>f.store.snapshot().messages.filter((message: any)=>message.origin==='proactive');
+const candidateCount=(f: any)=>Number(f.db.prepare('SELECT COUNT(*) AS n FROM dots_relationship_event_candidates').get()!.n);
 const settle=async()=>{for(let i=0;i<4;i++)await new Promise(resolve=>setImmediate(resolve));};
-function runtime(f,run,extra={}){
- const options: any[]=[],prompts: any[]=[];const r=createManagerRuntime({store:f.store,workspaceRoot:f.root,codex:{startThread:option=>{options.push(option);return {run:async(prompt,turn)=>{prompts.push(prompt);return run(prompt,turn);}}},resumeThread:(id,option)=>{options.push(option);return {run:async(prompt,turn)=>{prompts.push(prompt);return run(prompt,turn);}}}},logger:{error(){},warn(){}},...extra});
+function runtime(f: any,run: any,extra={}){
+ const options: any[]=[],prompts: any[]=[];const r=createManagerRuntime({store:f.store,workspaceRoot:f.root,codex:{startThread:(option: any)=>{options.push(option);return {run:async(prompt: any,turn: any)=>{prompts.push(prompt);return run(prompt,turn);}}},resumeThread:(id: any,option: any)=>{options.push(option);return {run:async(prompt: any,turn: any)=>{prompts.push(prompt);return run(prompt,turn);}}}},logger:{error(){},warn(){}},...extra});
  return {r:f.track(r),options,prompts};
 }
 
 test('ordinary interests without a task produce one sourced model review and a real proactive message',async()=>{
  const f=fixture();try{
-  const a=first(f);let b,calls=0;
+  const a=first(f);let b: any,calls=0;
   const {r,options,prompts}=runtime(f,async()=>{calls++;return {finalResponse:JSON.stringify(decision(a,b))};});await settle();assert.equal(calls,0);
   b=second(f);await settle();assert.equal(calls,1);assert.equal(candidateCount(f),1);assert.equal(proactive(f).length,1);assert.equal(f.store.relationship.snapshot().topics.length,1);
   const message=proactive(f)[0];assert.equal(message.content,connection);assert.deepEqual(message.respondsToMessageIds,[]);assert.equal(message.deliveryState,'completed');assert.ok(message.topicId);assert.ok(message.proactiveReason);
@@ -55,7 +55,7 @@ test('ordinary runtime replies lead to one separately reviewed connection about 
  const f=fixture();try{
   const earlier='我喜欢城市里的老建筑，常常注意砖墙和窗框留下的年代痕迹',fresh='今天拍到雨水在老建筑的玻璃窗上折出一排倒影，同一扇窗在傍晚颜色完全不同';
   const sent='你注意过老建筑砖墙和窗框的年代痕迹，这次雨水里的玻璃倒影又留下了傍晚的颜色，同一扇窗同时记录着缓慢的年代和短暂的光线。';
-  let calls=0,a,b;const {r}=runtime(f,async()=>{calls++;
+  let calls=0,a: any,b: any;const {r}=runtime(f,async()=>{calls++;
    if(calls===1)return {finalResponse:JSON.stringify(ordinary({reply:'砖墙和窗框确实保留了建筑被使用过的痕迹。',relationship:{topics:[{key:'architecture.traces',title:'老建筑的痕迹',summary:earlier,open_question:'',source_message_ids:[a.id],evidence:[earlier]}]}}))};
    if(calls===2)return {finalResponse:JSON.stringify(ordinary({reply:'拍玻璃倒影时，可以调整相机角度避开自己的影子。',relationship:{topics:[]}}))};
    assert.equal(calls,3);return {finalResponse:JSON.stringify({action:'send',message:sent,reason:'老建筑的年代痕迹与雨中倒影形成长短时间的真实关联',new_connection:'同一扇窗同时记录着缓慢的年代和短暂的光线',not_covered_by_reply:'之前仅提到摄影角度，尚未联系年代痕迹和短暂光线',conversation_appropriate:true,source_quotes:[{message_id:a.id,quote:earlier},{message_id:b.id,quote:fresh}]})};
@@ -151,24 +151,24 @@ test('a worker report arriving during review cannot divert its result into ordin
 
 test('new user input during a real streamed private review cancels the draft before any display or voice event',async()=>{
  const f=fixture();try{
-  const {a,b}=seed(f);let entered,release;const ready=new Promise(resolve=>entered=resolve),hold=new Promise(resolve=>release=resolve);
+  const {a,b}=seed(f);let entered: any,release;const ready=new Promise(resolve=>entered=resolve),hold=new Promise(resolve=>release=resolve);
   const thread={runStreamed:async()=>({events:(async function*(){yield{type:'item.updated',item:{type:'agent_message',text:JSON.stringify(decision(a,b))}};entered();await hold;yield{type:'item.completed',item:{type:'agent_message',text:JSON.stringify(decision(a,b))}};})()})};
   const r=f.track(createManagerRuntime({store:f.store,codex:{startThread:()=>thread},workspaceRoot:f.root,logger:{error(){},warn(){}}}));await ready;
-  assert.equal(proactive(f).length,0);const before=f.store.activity().activity.filter(event=>event.kind==='assistant_delta').length;
-  const user=f.store.message({message:'我现在要说另一件事',requestId:'interrupt-user'}).message;r.interrupt();release();await settle();
-  assert.equal(proactive(f).length,0);assert.equal(f.store.activity().activity.filter(event=>event.kind==='assistant_delta').length,before);assert.ok(f.db.prepare("SELECT 1 FROM manager_inbox WHERE type='user_message' AND consumed_at IS NULL").get());
+  assert.equal(proactive(f).length,0);const before=f.store.activity().activity.filter((event: any)=>event.kind==='assistant_delta').length;
+  const user=f.store.message({message:'我现在要说另一件事',requestId:'interrupt-user'}).message;r.interrupt();(release as any)?.();await settle();
+  assert.equal(proactive(f).length,0);assert.equal(f.store.activity().activity.filter((event: any)=>event.kind==='assistant_delta').length,before);assert.ok(f.db.prepare("SELECT 1 FROM manager_inbox WHERE type='user_message' AND consumed_at IS NULL").get());
   r.close();const normal=f.store.claimManager();assert.ok(normal);const reply=f.store.completeManager(normal,ordinary({reply:'你说。'}));assert.deepEqual(reply.value.message.respondsToMessageIds,[user.id]);
  }finally{f.close();}
 });
 
 test('topic deletion, manual correction and memory withdrawal invalidate an already claimed review',async t=>{
- const changes=[['delete',(f,a)=>f.store.relationship.deleteTopic(a.topic.id)],['correct',(f,a)=>f.store.relationship.updateTopic(a.topic.id,{summary:'用户明确纠正了原来的共同话题'})],['withdraw',f=>f.store.relationship.memoryChanged({generation:1,enabled:true})]];
+ const changes=[['delete',(f: any,a: any)=>f.store.relationship.deleteTopic(a.topic.id)],['correct',(f: any,a: any)=>f.store.relationship.updateTopic(a.topic.id,{summary:'用户明确纠正了原来的共同话题'})],['withdraw',(f: any)=>f.store.relationship.memoryChanged({generation:1,enabled:true})]];
  for(const [name,change]of changes as [string, any][])await t.test(name,()=>{const f=fixture();try{f.store.relationship.memoryChanged({generation:0,enabled:true});const {a,b}=seed(f),run=f.store.claimContentReview();assert.ok(run);change(f,a);f.store.completeManager(run,decision(a,b));assert.equal(proactive(f).length,0);assert.equal(f.store.claimContentReview(),null);assert.equal(f.db.prepare('SELECT match_json FROM dots_relationship_event_candidates').get()!.match_json,'{}');}finally{f.close();}});
 });
 
 test('an outer transaction rollback neither emits a content event nor calls the review model',async()=>{
  const f=fixture();try{
-  const a=first(f),before=f.store.snapshot().messages;let b,calls=0,notifications=0;
+  const a=first(f),before=f.store.snapshot().messages;let b: any,calls=0,notifications=0;
   const unsubscribe=f.store.subscribeContentEvents(()=>notifications++);runtime(f,async()=>{calls++;return {finalResponse:JSON.stringify(decision(a,b))};});await settle();
   assert.throws(()=>f.store.transaction(()=>{b=second(f);assert.equal(notifications,0);throw new Error('rollback ordinary reply');}),/rollback ordinary reply/);
   await settle();assert.equal(notifications,0);assert.equal(calls,0);assert.equal(candidateCount(f),0);assert.deepEqual(f.store.snapshot().messages,before);
@@ -197,12 +197,12 @@ test('two database connections cannot claim or publish the same real content twi
 
 test('constructing another runtime preserves a live review and never runs its model twice',async()=>{
  const f=fixture();let release;try{
-  const {a,b}=seed(f);let entered,calls=0;const ready=new Promise(resolve=>entered=resolve),hold=new Promise(resolve=>release=resolve);
+  const {a,b}=seed(f);let entered: any,calls=0;const ready=new Promise(resolve=>entered=resolve),hold=new Promise(resolve=>release=resolve);
   runtime(f,async()=>{calls++;entered();await hold;return {finalResponse:JSON.stringify(decision(a,b))};});await ready;
   runtime(f,async()=>{calls++;throw new Error('The existing review still owns its lease');});await settle();
   assert.equal(calls,1);assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM manager_runs WHERE purpose='content_review' AND state='running'").get()!.n,1);
-  release();await settle();assert.equal(calls,1);assert.equal(proactive(f).length,1);
- }finally{release?.();await settle();f.close();}
+  (release as any)?.();await settle();assert.equal(calls,1);assert.equal(proactive(f).length,1);
+ }finally{(release as any)?.();await settle();f.close();}
 });
 
 test('a topic overwritten by the current authenticated conversation cannot supply its superseded prior evidence',async()=>{
@@ -217,7 +217,7 @@ test('deleting a separately saved fresh topic retracts candidate evidence even w
   const a=first(f),b=second(f,{learn:true}),run=f.store.claimContentReview();assert.ok(run);assert.ok(b.topic);
   assert.equal(f.store.relationship.forRun(run).match.fresh.topicId,undefined);f.store.relationship.deleteTopic(b.topic.id);
   assert.equal(f.db.prepare('SELECT match_json FROM dots_relationship_event_candidates').get()!.match_json,'{}');
-  f.store.completeManager(run,decision(a,b));assert.equal(proactive(f).length,0);assert.equal(f.store.relationship.safeHistory(f.store.snapshot().messages).some(message=>message.content===newText),false);
+  f.store.completeManager(run,decision(a,b));assert.equal(proactive(f).length,0);assert.equal(f.store.relationship.safeHistory(f.store.snapshot().messages).some((message: any)=>message.content===newText),false);
  }finally{f.close();}
 });
 
@@ -225,7 +225,7 @@ test('manual correction keeps the corrected shared memory but retires its old au
  const f=fixture();try{
   const old=first(f),corrected='人工纠正：阳台实际养的是番茄和辣椒。';f.store.relationship.updateTopic(old.topic.id,{summary:corrected});
   let calls=0;const {r}=runtime(f,async()=>{calls++;throw new Error('A withdrawn old fact must not be matched again');});second(f);await settle();
-  assert.equal(calls,0);assert.equal(candidateCount(f),0);assert.equal(f.store.relationship.context().topics.find(topic=>topic.id===old.topic.id).summary,corrected);r.close();
+  assert.equal(calls,0);assert.equal(candidateCount(f),0);assert.equal(f.store.relationship.context().topics.find((topic: any)=>topic.id===old.topic.id).summary,corrected);r.close();
   const a=first(f),b=second(f),run=f.store.claimContentReview();assert.ok(run);assert.equal(f.store.completeManager(run,decision(a,b)).value.decision,'sent');assert.equal(proactive(f).length,1);
  }finally{f.close();}
 });

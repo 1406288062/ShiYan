@@ -1,5 +1,5 @@
 // Event-driven execution: completion advances unfinished work; no clock wakes it.
-export function createCognitionDriver({cognition,logger=console,maxPasses=12}){
+export function createCognitionDriver({cognition,logger=console,maxPasses=12}: any){
   let running=false,requested=false,closed=false;
   async function drain(){
     if(running||closed)return;

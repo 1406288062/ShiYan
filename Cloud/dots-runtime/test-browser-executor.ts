@@ -8,7 +8,7 @@ test('executor runs a sandboxed agent per claimed task with task-bound host tool
   const calls: any[] = [], delivered: any[] = [], reports: any[] = [];
   let claims = [{ task: { task_id: 'bt_1', owner: 'alice', origin: 'chat', identity: 'default', title: '买耳机', thread_id: null, resumed: false }, token: 'tok', new_inputs: [] }];
   let events = [{ id: 7, owner: 'alice', task_id: 'bt_1', type: 'browser_task_update', payload: { task_id: 'bt_1', status: 'done', summary: '完成' } }];
-  const call = async (route, body) => {
+  const call = async (route: any, body: any) => {
     calls.push([route, body]);
     if (route === '/events/claim') { const out = events; events = []; return { ok: true, events: out }; }
     if (route === '/executor/claim') return { ok: true, claim: claims.shift() || null };
@@ -19,7 +19,7 @@ test('executor runs a sandboxed agent per claimed task with task-bound host tool
   const executor = createBrowserExecutor({
     call, concurrency: 1, toolDefs, logger: { warn() {}, error() {} } as any,
     route: async consumer => { assert.equal(consumer, 'dots.browser'); return { provider: 'anthropic', model: 'claude-sonnet-5-5', reasoning: 'medium' }; },
-    runAgent: async args => { seen = args; const snap = await args.groups.browser.find(t => t.name === 'snapshot').handler({}); assert.deepEqual(snap, { called: 'snapshot' }); return { sessionRef: 'anthropic:sess-1', usage: { output_tokens: 3 } }; },
+    runAgent: async args => { seen = args; const snap = await args.groups.browser.find((t: any) => t.name === 'snapshot').handler({}); assert.deepEqual(snap, { called: 'snapshot' }); return { sessionRef: 'anthropic:sess-1', usage: { output_tokens: 3 } }; },
     report: (consumer, entry) => reports.push([consumer, entry]),
     deliver: async (owner, event) => delivered.push([owner, event]),
   });
@@ -38,7 +38,7 @@ test('executor runs a sandboxed agent per claimed task with task-bound host tool
 
 test('a failed agent run is reported to the host as an error', async () => {
   const calls: any[] = [];
-  const call = async (route, body) => { calls.push([route, body]); if (route === '/executor/claim') return { ok: true, claim: calls.filter(c => c[0] === '/executor/claim').length === 1 ? { task: { task_id: 'bt_2', owner: 'bob', origin: 'scheduled', identity: 'default', title: 't' }, token: 't2', new_inputs: [] } : null }; return { ok: true, events: [] }; };
+  const call = async (route: any, body: any) => { calls.push([route, body]); if (route === '/executor/claim') return { ok: true, claim: calls.filter(c => c[0] === '/executor/claim').length === 1 ? { task: { task_id: 'bt_2', owner: 'bob', origin: 'scheduled', identity: 'default', title: 't' }, token: 't2', new_inputs: [] } : null }; return { ok: true, events: [] }; };
   const executor = createBrowserExecutor({ call, toolDefs, logger: { warn() {}, error() {} } as any, route: async () => ({ provider: 'openai', model: 'gpt', reasoning: 'low' }), runAgent: async () => { throw new Error('model unavailable'); }, deliver: async () => {} });
   await executor.tick(); await new Promise(resolve => setTimeout(resolve, 20)); executor.close();
   assert.equal(calls.find(([route]) => route === '/executor/complete')[1].error, 'model unavailable');

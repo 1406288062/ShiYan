@@ -3,7 +3,7 @@ import net from "node:net";
 
 let proxyPromise: Promise<{server: any; port: number}> | null = null;
 
-function parseAuthority(authority) {
+function parseAuthority(authority: any) {
   const raw = String(authority || "").trim();
   if (!raw) return null;
 
@@ -23,7 +23,7 @@ function parseAuthority(authority) {
   };
 }
 
-function validTarget(target) {
+function validTarget(target: any) {
   if (!target?.host || !Number.isInteger(target.port)) return false;
   if (target.port !== 443) return false;
   const host = target.host.toLowerCase();

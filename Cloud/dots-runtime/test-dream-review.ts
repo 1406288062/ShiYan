@@ -3,27 +3,27 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { createDreamReview, dreamPrompt } from './dream-review.ts';
 
-const at = (d, h, m) => Date.UTC(2026, 10, d, h - 8, m);
+const at = (d: any, h: any, m: any) => Date.UTC(2026, 10, d, h - 8, m);
 function fakeStore() {
   const db = new DatabaseSync(':memory:');
   db.exec("CREATE TABLE manager_messages(id INTEGER PRIMARY KEY,manager_id TEXT,role TEXT,content TEXT,created_at INTEGER,origin TEXT,proactive_reason TEXT)");
   return { db, managerId: 'm1' };
 }
-const say = (store, role, content, ms) => store.db.prepare("INSERT INTO manager_messages(manager_id,role,content,created_at,origin,proactive_reason) VALUES('m1',?,?,?,'reply','')").run(role, content, Math.floor(ms / 1000));
+const say = (store: any, role: any, content: any, ms: any) => store.db.prepare("INSERT INTO manager_messages(manager_id,role,content,created_at,origin,proactive_reason) VALUES('m1',?,?,?,'reply','')").run(role, content, Math.floor(ms / 1000));
 
 test('dream runs once a night, writes files and keeps the synthesis for the next replies', async () => {
   const store = fakeStore(), files = {}; let calls = 0, prompt = '';
   say(store, 'user', '帮我把文档写完整，不要只给一半', at(10, 20, 0)); say(store, 'assistant', '好的', at(10, 20, 1));
-  const assess = async (data, schema, control) => { calls++; prompt = data; assert.equal(control.source, 'dots-dream'); return { dream: '今天用户要完整文件。', repairs: ['补齐文档'], synthesis: '# 怎么对待这个用户\n要完整交付。' }; };
+  const assess = async (data: any, schema: any, control: any) => { calls++; prompt = data; assert.equal(control.source, 'dots-dream'); return { dream: '今天用户要完整文件。', repairs: ['补齐文档'], synthesis: '# 怎么对待这个用户\n要完整交付。' }; };
   let clock = at(11, 2, 50);
-  const dream = createDreamReview({ store, assess, writeFile: async (p, text) => { files[p] = text; }, now: () => clock, logger: {} as any });
+  const dream = createDreamReview({ store, assess, writeFile: async (p, text) => { (files as any)[p] = text; }, now: () => clock, logger: {} as any });
   assert.equal(await dream.tick(), null, 'before 03:00');
   clock = at(11, 3, 10);
   await dream.tick(); await dream.tick();
   assert.equal(calls, 1);
   assert.match(prompt, /不要只给一半/);
-  assert.match(files['dreams/2026-11-11.md'], /补齐文档/);
-  assert.match(files['dreams/ALIGNMENT_SYNTHESIS.md'], /完整交付/);
+  assert.match((files as any)['dreams/2026-11-11.md'], /补齐文档/);
+  assert.match((files as any)['dreams/ALIGNMENT_SYNTHESIS.md'], /完整交付/);
   assert.match(dream.synthesis(), /完整交付/);
 });
 
@@ -57,11 +57,11 @@ test('skill review rides on the same dream call and writes learned skills with a
   store.db.exec("CREATE TABLE goals(id INTEGER PRIMARY KEY,manager_id TEXT,title TEXT,status TEXT,instruction TEXT,last_summary TEXT,updated_at INTEGER)");
   store.db.prepare("INSERT INTO goals(manager_id,title,status,instruction,last_summary,updated_at) VALUES('m1','整理论文','done','整理十篇论文成 Word','已交付',?)").run(Math.floor(at(11, 1, 0) / 1000));
   say(store, 'user', '论文要带链接', at(10, 20, 0));
-  const assess = async data => { calls++; prompt = data; return { dream: 'd', repairs: [], synthesis: 's', skills: [{ action: 'create', name: 'Paper Lists', description: '整理论文清单时用', body: '- 每篇带标题、年份、链接\n- 交付前逐个打开链接核对', evidence: '整理论文任务' }] }; };
-  const dream = createDreamReview({ store, assess, writeFile: async (p, t) => { files[p] = t; }, now: () => at(11, 3, 5), logger: {} as any });
+  const assess = async (data: any) => { calls++; prompt = data; return { dream: 'd', repairs: [], synthesis: 's', skills: [{ action: 'create', name: 'Paper Lists', description: '整理论文清单时用', body: '- 每篇带标题、年份、链接\n- 交付前逐个打开链接核对', evidence: '整理论文任务' }] }; };
+  const dream = createDreamReview({ store, assess, writeFile: async (p, t) => { (files as any)[p] = t; }, now: () => at(11, 3, 5), logger: {} as any });
   await dream.tick();
   assert.equal(calls, 1); assert.match(prompt, /整理论文/);
-  assert.match(files['learned-skills/paper-lists/SKILL.md'], /name: paper-lists[\s\S]*逐个打开链接/);
-  assert.match(files['learned-skills/INDEX.md'], /paper-lists/);
+  assert.match((files as any)['learned-skills/paper-lists/SKILL.md'], /name: paper-lists[\s\S]*逐个打开链接/);
+  assert.match((files as any)['learned-skills/INDEX.md'], /paper-lists/);
   assert.equal(dream.learnedSkills().length, 1);
 });

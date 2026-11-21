@@ -19,11 +19,11 @@ const DOMAINS = {
   '139.com': 139, 'sina.com': 'sina', 'sina.cn': 'sina', 'sohu.com': 'sohu', 'aliyun.com': 'aliyun',
 };
 
-export function mailServers(address) {
+export function mailServers(address: any) {
   const match = /^[A-Za-z0-9._%+-]+@([A-Za-z0-9.-]+)$/.exec(String(address || '').trim());
   if (!match) return null;
-  const key = DOMAINS[match[1].toLowerCase()];
-  return key === undefined ? null : { ...SERVERS[key], key: String(key) };
+  const key = (DOMAINS as any)[match[1].toLowerCase()];
+  return key === undefined ? null : { ...(SERVERS as any)[key], key: String(key) };
 }
 
 export const SUPPORTED_MAIL_LABELS = Object.values(SERVERS).map(s => s.label);

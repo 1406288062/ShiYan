@@ -12,7 +12,7 @@ test('transactional mail survives promotional footers',()=>{
 });
 test('filtered mail is not translated or published, is deduplicated and isolated',async()=>{
  const db=new DatabaseSync(':memory:');try{
- const store={db,managerId:'alice',transaction:f=>f(),publishMail:()=>{throw Error('must not publish')}};
+ const store={db,managerId:'alice',transaction:(f: any)=>f(),publishMail:()=>{throw Error('must not publish')}};
  const present=createMailPresenter({store,assess:()=>{throw Error('must not translate')}});
  const presentation=await present({subject:'Special offer',text:'Shop now. Unsubscribe.'});assert.equal(presentation.kind,'ignored_advertisement');
  const events=createMailEventStore({store,accountKey:'a',now:()=>100});events.baseline({uidValidity:'1',uidNext:1});
@@ -30,7 +30,7 @@ test('explicit advertising labels block image-only English product announcements
 });
 test('delivery boundary blocks labelled advertisements even when body preparation fails',()=>{
  const db=new DatabaseSync(':memory:');try{
- const store={db,managerId:'alice',transaction:f=>f(),publishMail:()=>{throw Error('must not publish')}};
+ const store={db,managerId:'alice',transaction:(f: any)=>f(),publishMail:()=>{throw Error('must not publish')}};
  const events=createMailEventStore({store,accountKey:'a',now:()=>100});events.baseline({uidValidity:'1',uidNext:1});
  const mail={uid:1,uidValidity:'1',internalDate:new Date(100000),envelope:{subject:'<广告> The new iPhone Duo is here.'},presentation:{kind:'body',text:'（本次未能读取邮件正文）'}};
  assert.equal(events.receive(mail),null);assert.equal(events.needsContent(mail),false);assert.equal(events.receive(mail),null);

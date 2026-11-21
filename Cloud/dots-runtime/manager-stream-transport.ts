@@ -13,18 +13,18 @@ export function createManagerThread({threadId=null,options={},codexPath=process.
   const mcpOnly=!privateReview&&options.mcpOnly===true;
   if(privateReview&&threadId)throw new Error('Private review must start an isolated thread');
   const thread: any={id:threadId};
-  thread.runStreamed=async(prompt,{outputSchema,signal,images=[]}: { outputSchema?: any; signal?: AbortSignal; images?: any[] }={})=>({events:stream(prompt,outputSchema,signal,images)});
-  async function* stream(prompt,outputSchema,signal,images: any[] = []) {
+  thread.runStreamed=async(prompt: any,{outputSchema,signal,images=[]}: { outputSchema?: any; signal?: AbortSignal; images?: any[] }={})=>({events:stream(prompt,outputSchema,signal,images)});
+  async function* stream(prompt: any,outputSchema: any,signal: any,images: any[] = []) {
     if(signal?.aborted)throw signal.reason||new Error('Manager turn aborted');
     const child=spawnProcess(codexPath,['app-server','--stdio',...(privateReview||mcpOnly?privateReviewFeatures.flatMap(name=>['-c','features.'+name+'=false']):[])],{cwd:options.workingDirectory,stdio:['pipe','pipe','pipe']});
     child.stderr?.resume();
     const pending=new Map(),items=new Map(),queue: any[]=[];
-    let nextId=0,turnId=null,started=false,done=false,failure: any=null,wake: ((value?: unknown) => void) | null=null,usage: any=null,closing=false,exited=false;
+    let nextId=0,turnId: any=null,started=false,done=false,failure: any=null,wake: ((value?: unknown) => void) | null=null,usage: any=null,closing=false,exited=false;
     const notify=()=>{wake?.();wake=null;};
-    const fail=cause=>{if(closing||done)return;failure=cause instanceof Error?cause:new Error(String(cause));done=true;for(const request of pending.values()){clearTimeout(request.timer);request.reject(failure);}pending.clear();notify();};
-    const push=event=>{queue.push(event);notify();};
-    const send=value=>{if(child.stdin.destroyed||!child.stdin.writable)throw new Error('Manager stream connection closed');child.stdin.write(JSON.stringify(value)+'\n');};
-    const rpc=(method,params): Promise<any>=>new Promise((resolve,reject)=>{
+    const fail=(cause: any)=>{if(closing||done)return;failure=cause instanceof Error?cause:new Error(String(cause));done=true;for(const request of pending.values()){clearTimeout(request.timer);request.reject(failure);}pending.clear();notify();};
+    const push=(event: any)=>{queue.push(event);notify();};
+    const send=(value: any)=>{if(child.stdin.destroyed||!child.stdin.writable)throw new Error('Manager stream connection closed');child.stdin.write(JSON.stringify(value)+'\n');};
+    const rpc=(method: any,params: any): Promise<any>=>new Promise((resolve,reject)=>{
       if(done)return reject(failure||new Error('Manager stream has ended'));
       const id=++nextId,timer=setTimeout(()=>{pending.delete(id);reject(new Error('Manager stream RPC timed out: '+method));},rpcTimeoutMs);timer.unref?.();pending.set(id,{resolve,reject,timer});
       try{send({id,method,params});}catch(cause){clearTimeout(timer);pending.delete(id);reject(cause);}

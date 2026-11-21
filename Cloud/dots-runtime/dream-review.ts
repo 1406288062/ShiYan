@@ -21,14 +21,14 @@ const DREAM_SCHEMA = {
     } } },
   },
 };
-const local = ms => new Date(ms + 8 * 3600_000);
-export const dreamDay = ms => local(ms).toISOString().slice(0, 10);
-const minutesOfDay = ms => { const d = local(ms); return d.getUTCHours() * 60 + d.getUTCMinutes(); };
-const clip = (value, max) => { const text = String(value ?? '').replace(/\s+/g, ' ').trim(); return text.length > max ? text.slice(0, max) + '…' : text; };
+const local = (ms: any) => new Date(ms + 8 * 3600_000);
+export const dreamDay = (ms: any) => local(ms).toISOString().slice(0, 10);
+const minutesOfDay = (ms: any) => { const d = local(ms); return d.getUTCHours() * 60 + d.getUTCMinutes(); };
+const clip = (value: any, max: any) => { const text = String(value ?? '').replace(/\s+/g, ' ').trim(); return text.length > max ? text.slice(0, max) + '…' : text; };
 export const SYNTHESIS_LIMIT = 4000;
 const MAX_LEARNED_SKILLS = 12;
 
-export function dreamPrompt({ day, previous, messages, feedback, tasks = [], skills = [] }) {
+export function dreamPrompt({ day, previous, messages, feedback, tasks = [], skills = [] }: any) {
   return `你是私人助手 Dots，现在是北京时间 ${day} 的夜间。请做一次“梦境回顾”：回顾下面这段时间你和用户的对话，诚实地复盘。
 要求（中文）：
 1. dream：一篇带日期的反思，300–900 字，第一人称。写：这个用户是谁、在意什么（比以前更确定或改变了的地方）；今天/这段时间发生了什么；哪些地方做得好；哪些地方没做好或被用户纠正（具体到事情）；下次见面最先要做好的事。
@@ -71,7 +71,7 @@ export function createDreamReview({ store, assess, writeFile = async () => {}, n
   db.exec("CREATE TABLE IF NOT EXISTS dots_dream(manager_id TEXT PRIMARY KEY,last_day TEXT NOT NULL DEFAULT '',last_message_id INTEGER NOT NULL DEFAULT 0,state TEXT NOT NULL DEFAULT '',synthesis TEXT NOT NULL DEFAULT '',dream TEXT NOT NULL DEFAULT '',updated_at INTEGER NOT NULL DEFAULT 0)");
   let timer: ReturnType<typeof setInterval> | null = null, running = false, stopped = false;
   const row = () => db.prepare('SELECT * FROM dots_dream WHERE manager_id=?').get(managerId) || null;
-  const save = fields => {
+  const save = (fields: any) => {
     const keys = Object.keys(fields);
     db.prepare(`INSERT INTO dots_dream(manager_id,${keys.join(',')},updated_at) VALUES(?,${keys.map(() => '?').join(',')},?) ON CONFLICT(manager_id) DO UPDATE SET ${keys.map(k => `${k}=excluded.${k}`).join(',')},updated_at=excluded.updated_at`)
       .run(managerId, ...keys.map(k => fields[k]), Math.floor(now() / 1000));
@@ -79,7 +79,7 @@ export function createDreamReview({ store, assess, writeFile = async () => {}, n
 
   db.exec("CREATE TABLE IF NOT EXISTS dots_learned_skills(manager_id TEXT NOT NULL,name TEXT NOT NULL,description TEXT NOT NULL,body TEXT NOT NULL,state TEXT NOT NULL DEFAULT 'active',evidence TEXT NOT NULL DEFAULT '',created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,PRIMARY KEY(manager_id,name))");
   const learnedSkills = () => db.prepare("SELECT name,description,body FROM dots_learned_skills WHERE manager_id=? AND state='active' ORDER BY name").all(managerId);
-  async function reviewSkills(changes, day) {
+  async function reviewSkills(changes: any, day: any) {
     const t = Math.floor(now() / 1000);
     for (const change of changes.slice(0, 2)) {
       const name = String(change?.name || '').toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48);
@@ -96,11 +96,11 @@ export function createDreamReview({ store, assess, writeFile = async () => {}, n
     for (const k of all) await writeFile(`learned-skills/${k.name}/SKILL.md`, k.state === 'active'
       ? `---\nname: ${k.name}\ndescription: ${k.description.replace(/\n/g, ' ')}\n---\n<!-- 从这个账号的实际工作中学到（梦境回顾 ${day}） -->\n${k.body}\n`
       : `---\nname: ${k.name}\ndescription: 已废弃，不要使用。\n---\n已在梦境回顾中废弃。\n`);
-    const active = all.filter(k => k.state === 'active');
-    await writeFile('learned-skills/INDEX.md', `# 这个账号学到的技能\n\n${active.length ? active.map(k => `- ${k.name}/SKILL.md：${k.description}`).join('\n') : '（暂无）'}\n`);
+    const active = all.filter((k: any) => k.state === 'active');
+    await writeFile('learned-skills/INDEX.md', `# 这个账号学到的技能\n\n${active.length ? active.map((k: any) => `- ${k.name}/SKILL.md：${k.description}`).join('\n') : '（暂无）'}\n`);
   }
 
-  function material(sinceId) {
+  function material(sinceId: any) {
     // 新消息之前再带几条，回顾才有上下文。
     const before = db.prepare("SELECT id,role,content,origin,created_at FROM manager_messages WHERE manager_id=? AND id<=? ORDER BY id DESC LIMIT 6").all(managerId, sinceId).reverse();
     const after = db.prepare("SELECT id,role,content,origin,created_at FROM manager_messages WHERE manager_id=? AND id>? ORDER BY id DESC LIMIT 160").all(managerId, sinceId).reverse();
@@ -112,9 +112,9 @@ export function createDreamReview({ store, assess, writeFile = async () => {}, n
       messages.unshift(item);
     }
     let feedback = [];
-    try { feedback = db.prepare('SELECT message_id,value,reason,excerpt FROM dots_message_feedback WHERE manager_id=? AND message_id>? ORDER BY created_at DESC LIMIT 20').all(managerId, sinceId).map(f => ({ message_id: f.message_id, value: f.value, reason: clip(f.reason, 200), excerpt: clip(f.excerpt, 160) })); } catch {}
+    try { feedback = db.prepare('SELECT message_id,value,reason,excerpt FROM dots_message_feedback WHERE manager_id=? AND message_id>? ORDER BY created_at DESC LIMIT 20').all(managerId, sinceId).map((f: any) => ({ message_id: f.message_id, value: f.value, reason: clip(f.reason, 200), excerpt: clip(f.excerpt, 160) })); } catch {}
     let tasks = [];
-    try { tasks = db.prepare("SELECT title,status,instruction,last_summary FROM goals WHERE manager_id=? AND status IN ('done','failed','blocked','cancelled') AND updated_at>=? ORDER BY updated_at DESC LIMIT 15").all(managerId, Math.floor(now() / 1000) - 3 * 86400).map(g => ({ title: clip(g.title, 120), status: g.status, instruction: clip(g.instruction, 300), result: clip(g.last_summary, 400) })); } catch {}
+    try { tasks = db.prepare("SELECT title,status,instruction,last_summary FROM goals WHERE manager_id=? AND status IN ('done','failed','blocked','cancelled') AND updated_at>=? ORDER BY updated_at DESC LIMIT 15").all(managerId, Math.floor(now() / 1000) - 3 * 86400).map((g: any) => ({ title: clip(g.title, 120), status: g.status, instruction: clip(g.instruction, 300), result: clip(g.last_summary, 400) })); } catch {}
     return { messages, feedback, tasks, lastId: after.at(-1)?.id || sinceId };
   }
 
@@ -130,11 +130,11 @@ export function createDreamReview({ store, assess, writeFile = async () => {}, n
     try {
       save({ last_day: today, state: 'claimed' });
       const { messages, feedback, tasks, lastId } = material(sinceId);
-      const result = await assess(dreamPrompt({ day: today, previous: current?.synthesis || '', messages, feedback, tasks, skills: learnedSkills().map(k => ({ name: k.name, description: k.description })) }), DREAM_SCHEMA, { source: 'dots-dream', signal: AbortSignal.timeout(240_000) });
+      const result = await assess(dreamPrompt({ day: today, previous: current?.synthesis || '', messages, feedback, tasks, skills: learnedSkills().map((k: any) => ({ name: k.name, description: k.description })) }), DREAM_SCHEMA, { source: 'dots-dream', signal: AbortSignal.timeout(240_000) });
       const synthesis = String(result?.synthesis || '').trim().slice(0, 6000), dream = String(result?.dream || '').trim();
       if (!synthesis || !dream) throw new Error('dream_empty');
-      const repairs = (Array.isArray(result.repairs) ? result.repairs : []).map(r => String(r || '').trim()).filter(Boolean);
-      const dreamText = `# 梦境回顾 ${today}\n\n${dream}\n` + (repairs.length ? `\n## 需要修补\n\n${repairs.map(r => '- ' + r).join('\n')}\n` : '');
+      const repairs = (Array.isArray(result.repairs) ? result.repairs : []).map((r: any) => String(r || '').trim()).filter(Boolean);
+      const dreamText = `# 梦境回顾 ${today}\n\n${dream}\n` + (repairs.length ? `\n## 需要修补\n\n${repairs.map((r: any) => '- ' + r).join('\n')}\n` : '');
       save({ last_message_id: lastId, state: 'done', synthesis, dream: dreamText });
       try { await writeFile(`dreams/${today}.md`, dreamText); await writeFile('dreams/ALIGNMENT_SYNTHESIS.md', synthesis + '\n'); }
       catch (error) { logger.warn?.('[dream] 写文件失败：' + String((error as any)?.message || error).slice(0, 200)); }

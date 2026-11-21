@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { createWeixinBridge, plainText } from './weixin-bridge.ts';
 
-const wait = ms => new Promise(r => setTimeout(r, ms));
+const wait = (ms: any) => new Promise(r => setTimeout(r, ms));
 function fakeWeixin() {
   const sent: any[] = [], calls: any[] = [];
   let delivered = false, qrPolls = 0;
-  const fetchImpl = async (url, init) => {
+  const fetchImpl = async (url: any, init: any) => {
     const path = new URL(url).pathname; calls.push(path);
     const body = init.body ? JSON.parse(init.body) : {};
-    const reply = value => ({ ok: true, status: 200, text: async () => JSON.stringify(value) });
+    const reply = (value: any) => ({ ok: true, status: 200, text: async () => JSON.stringify(value) });
     if (path.endsWith('get_bot_qrcode')) return reply({ qrcode: 'q1', qrcode_img_content: 'https://liteapp.weixin.qq.com/q/x?qrcode=q1', ret: 0 });
     if (path.endsWith('get_qrcode_status')) return reply(++qrPolls < 2 ? { status: 'scaned' } : { status: 'confirmed', bot_token: 'tok', ilink_bot_id: 'bot1', baseurl: 'https://ilinkai.weixin.qq.com', ilink_user_id: 'me' });
     if (path.endsWith('getupdates')) {
@@ -32,7 +32,7 @@ test('scan to bind, receive own message, reply goes back, strangers ignored', as
   db.exec("CREATE TABLE manager_messages(id INTEGER PRIMARY KEY,manager_id TEXT,role TEXT,content TEXT,origin TEXT,delivery_state TEXT,responds_to_message_ids TEXT)");
   const store = { db, managerId: 'm1' };
   const ingested: any[] = [];
-  const ingest = (text, requestId) => {
+  const ingest = (text: any, requestId: any) => {
     ingested.push({ text, requestId });
     const id = Number(db.prepare("INSERT INTO manager_messages(manager_id,role,content,origin,delivery_state,responds_to_message_ids) VALUES('m1','user',?,'reply','completed','[]')").run(text).lastInsertRowid);
     setTimeout(() => db.prepare("INSERT INTO manager_messages(manager_id,role,content,origin,delivery_state,responds_to_message_ids) VALUES('m1','assistant','**你好**，我在。','reply','completed',?)").run(`[${id}]`), 30);
@@ -64,15 +64,15 @@ test('image from WeChat is decrypted, saved and handed to Dots; typing is shown'
   const db = new DatabaseSync(':memory:');
   db.exec("CREATE TABLE manager_messages(id INTEGER PRIMARY KEY,manager_id TEXT,role TEXT,content TEXT,origin TEXT,delivery_state TEXT,responds_to_message_ids TEXT)");
   const ingested: any[] = [], saved: any[] = [], typing: any[] = [];
-  const ingest = text => {
+  const ingest = (text: any) => {
     ingested.push(text);
     const id = Number(db.prepare("INSERT INTO manager_messages(manager_id,role,content,origin,delivery_state,responds_to_message_ids) VALUES('m1','user',?,'reply','completed','[]')").run(text).lastInsertRowid);
     setTimeout(() => db.prepare("INSERT INTO manager_messages(manager_id,role,content,origin,delivery_state,responds_to_message_ids) VALUES('m1','assistant','看到了','reply','completed',?)").run(`[${id}]`), 30);
     return { id };
   };
   let delivered = false, qrPolls = 0; const sent: any[] = [];
-  const reply = value => ({ ok: true, status: 200, text: async () => JSON.stringify(value) });
-  const fetchImpl = async (url, init: any = {}) => {
+  const reply = (value: any) => ({ ok: true, status: 200, text: async () => JSON.stringify(value) });
+  const fetchImpl = async (url: any, init: any = {}) => {
     const u = new URL(url), path = u.pathname, body = init.body ? JSON.parse(init.body) : {};
     if (u.hostname === 'novac2c.cdn.weixin.qq.com') return { ok: true, status: 200, arrayBuffer: async () => encrypted };
     if (path.endsWith('get_bot_qrcode')) return reply({ qrcode: 'q1', qrcode_img_content: 'https://liteapp.weixin.qq.com/q/x?qrcode=q1' });

@@ -2,10 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createDotsHub, dotsConsumer } from './dots-hub.ts';
 
-const client = (route, reply: any = {}) => {
+const client = (route: any, reply: any = {}) => {
   const calls: any[] = [];
-  return { calls, route: async consumer => { calls.push(['route', consumer]); return route; },
-    infer: async (consumer, body, options) => { calls.push(['infer', consumer, body, options]); if (reply.error) throw new Error(reply.error); return { finalResponse: reply.text ?? '{"ok":true}' }; } };
+  return { calls, route: async (consumer: any) => { calls.push(['route', consumer]); return route; },
+    infer: async (consumer: any, body: any, options: any) => { calls.push(['infer', consumer, body, options]); if (reply.error) throw new Error(reply.error); return { finalResponse: reply.text ?? '{"ok":true}' }; } };
 };
 const GPT = { provider: 'openai', model: 'gpt-6-sol', reasoning: 'high' };
 const CLAUDE = { provider: 'anthropic', model: 'claude-sonnet-5-5', reasoning: 'low' };

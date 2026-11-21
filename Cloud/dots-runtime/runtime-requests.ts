@@ -1,12 +1,12 @@
 import { createHash } from "node:crypto";
 
-function stableJson(value) {
+function stableJson(value: any): any {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
   if (Array.isArray(value)) return "[" + value.map(stableJson).join(",") + "]";
   return "{" + Object.keys(value).sort().map((key) => JSON.stringify(key) + ":" + stableJson(value[key])).join(",") + "}";
 }
 
-function requestError(message, statusCode) {
+function requestError(message: any, statusCode: any) {
   const error = new Error(message);
   (error as any).statusCode = statusCode;
   return error;
@@ -14,7 +14,7 @@ function requestError(message, statusCode) {
 
 // The server namespaces member request IDs before calling this durable store.
 // A request ID spans operations within that account, never between accounts.
-export function createRuntimeRequestStore(db,{getOwner=()=> 'shiyan-private-owner',defaultOwner='shiyan-private-owner'}={}) {
+export function createRuntimeRequestStore(db: any,{getOwner=()=> 'shiyan-private-owner',defaultOwner='shiyan-private-owner'}={}) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS runtime_scoped_requests(owner TEXT NOT NULL,request_id TEXT NOT NULL,operation TEXT NOT NULL,payload_hash TEXT NOT NULL,goal_id INTEGER,response_json TEXT NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(owner,request_id));
     CREATE TABLE IF NOT EXISTS runtime_requests (
@@ -28,7 +28,7 @@ export function createRuntimeRequestStore(db,{getOwner=()=> 'shiyan-private-owne
   `);
 
   return {
-    run({ requestId, operation, payload }, mutate) {
+    run({ requestId, operation, payload }: any, mutate: any) {
       if (requestId === undefined) return { ...mutate(), replayed: false };
       if (typeof requestId !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(requestId)) {
         throw requestError("requestId must be 1-128 letters, digits, dots, underscores, colons or hyphens", 400);

@@ -10,14 +10,14 @@ function fakeStore() {
   db.exec("CREATE TABLE goals(id INTEGER PRIMARY KEY,manager_id TEXT,title TEXT,status TEXT,last_summary TEXT,updated_at INTEGER)");
   const published: any[] = [], replies: any[] = [], claimed = new Set();
   return { db, managerId: 'm1', published, replies,
-    publishProactive({ content, reason }) { const id = published.push({ content, reason }); return { id }; },
-    postSubscriptionReply(value) { replies.push(value); },
-    claimSubscriptionIntent(id) { if (claimed.has(id)) return false; claimed.add(id); return true; } };
+    publishProactive({ content, reason }: any) { const id = published.push({ content, reason }); return { id }; },
+    postSubscriptionReply(value: any) { replies.push(value); },
+    claimSubscriptionIntent(id: any) { if (claimed.has(id)) return false; claimed.add(id); return true; } };
 }
 // 2026-10-30 09:05 Beijing = 01:05 UTC
-const at = (h, m) => Date.UTC(2026, 9, 30, h - 8, m);
+const at = (h: any, m: any) => Date.UTC(2026, 9, 30, h - 8, m);
 
-const userSaid = (store, ms) => store.db.prepare("INSERT INTO manager_messages(manager_id,role,content,created_at,origin,proactive_reason) VALUES('m1','user','在吗',?,'reply','')").run(Math.floor(ms / 1000));
+const userSaid = (store: any, ms: any) => store.db.prepare("INSERT INTO manager_messages(manager_id,role,content,created_at,origin,proactive_reason) VALUES('m1','user','在吗',?,'reply','')").run(Math.floor(ms / 1000));
 
 test('brief fires once per day inside the window and skips the model when there is nothing', async () => {
   const store = fakeStore(); let calls = 0; userSaid(store, at(8, 0));
@@ -33,7 +33,7 @@ test('brief fires once per day inside the window and skips the model when there 
 test('brief uses the model with tasks and events, never after the 3h window, respects the switch', async () => {
   const store = fakeStore(); let input = ''; userSaid(store, at(8, 0));
   store.db.prepare("INSERT INTO goals(manager_id,title,status,last_summary,updated_at) VALUES('m1','整理发票','active','进行中',1)").run();
-  const assess = async data => { input = data; return { content: '早上好' }; };
+  const assess = async (data: any) => { input = data; return { content: '早上好' }; };
   const late = createDailyBrief({ store, assess, settings: () => ({ dailyBrief: true, dailyBriefTime: '09:00' }), now: () => at(13, 0), logger: {} as any });
   await late.tick(); assert.equal(store.published.length, 0);
   const off = createDailyBrief({ store, assess, settings: () => ({ dailyBrief: false, dailyBriefTime: '09:00' }), now: () => at(9, 1), logger: {} as any });
@@ -59,7 +59,7 @@ test('brief is not sent when the user has said nothing since the last brief', as
 
 test('memory intent remembers, forgets and leaves other messages alone', async () => {
   const store = fakeStore(); const rows = [{ id: 'a', content: '用户不吃香菜' }, { id: 'b', content: '用户周末不看工作消息' }]; const removed: any[] = [];
-  const memory = { settings: () => ({ enabled: true }), create: (_, v) => rows.push({ id: 'n', content: v.content }), list: () => ({ memories: rows }), remove: (_, id) => removed.push(id) };
+  const memory = { settings: () => ({ enabled: true }), create: (_: any, v: any) => rows.push({ id: 'n', content: v.content }), list: () => ({ memories: rows }), remove: (_: any, id: any) => removed.push(id) };
   const answers = [{ action: 'remember', content: '用户喜欢喝美式', query: '' }, { action: 'forget', content: '', query: '香菜' }, { ids: ['a'] }, { action: 'none', content: '', query: '' }];
   const intent = createMemoryIntent({ store, memory, owner: 'o', assess: async () => answers.shift(), logger: {} as any });
   assert.equal(intent.candidate('今天天气怎么样'), false);

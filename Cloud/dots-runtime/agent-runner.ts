@@ -10,18 +10,18 @@ import path from 'node:path';
 import { openToolServers } from './agent-tools.ts';
 import { createManagerThread } from './manager-stream-transport.ts';
 
-const clip = (value, max = 1200) => { const s = typeof value === 'string' ? value : JSON.stringify(value ?? ''); return s.length > max ? s.slice(0, max) + '…' : s; };
+const clip = (value: any, max = 1200) => { const s = typeof value === 'string' ? value : JSON.stringify(value ?? ''); return s.length > max ? s.slice(0, max) + '…' : s; };
 const SDK_PATH = process.env.SHIYAN_CLAUDE_SDK || '/home/ubuntu/boss-codex-service/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs';
 let sdkPromise: any = null;
 export const loadClaudeSdk = () => (sdkPromise ||= import(SDK_PATH));
 // Session ids carry their provider: a hub switch (Claude <-> Codex) starts a new session.
-export const sessionRef = (provider, id) => (id ? provider + ':' + id : null);
-export function parseSessionRef(value) { const m = /^(anthropic|openai):(.+)$/.exec(String(value || '')); return m ? { provider: m[1], id: m[2] } : null; }
+export const sessionRef = (provider: any, id: any) => (id ? provider + ':' + id : null);
+export function parseSessionRef(value: any) { const m = /^(anthropic|openai):(.+)$/.exec(String(value || '')); return m ? { provider: m[1], id: m[2] } : null; }
 
 // Only the agent's own variables enter the container: never the host service environment.
-function claudeChildEnv(env) {
+function claudeChildEnv(env: any) {
   const out = {};
-  for (const [key, value] of Object.entries(env || {})) if (/^(CLAUDE|ANTHROPIC|MCP_|DISABLE_|MAX_THINKING|BASH_|API_TIMEOUT)/.test(key)) out[key] = value;
+  for (const [key, value] of Object.entries(env || {})) if (/^(CLAUDE|ANTHROPIC|MCP_|DISABLE_|MAX_THINKING|BASH_|API_TIMEOUT)/.test(key)) (out as any)[key] = value;
   return { ...out, DISABLE_AUTOUPDATER: '1', MCP_TOOL_TIMEOUT: '7200000', BASH_DEFAULT_TIMEOUT_MS: '600000', BASH_MAX_TIMEOUT_MS: '3600000', PATH: '/home/agent/.local/bin:/opt/shiyan/bin:/usr/local/bin:/usr/bin:/bin' };
 }
 
@@ -32,12 +32,12 @@ export interface AgentRunnerOptions {
   logger?: any;
 }
 export function createAgentRunner({ sandbox, claudeSdk = loadClaudeSdk, managerThread = createManagerThread, logger = console }: AgentRunnerOptions) {
-  async function runClaude({ owner, model, reasoning, session, cwd, system, prompt, servers, signal, onEvent, maxTurns }) {
+  async function runClaude({ owner, model, reasoning, session, cwd, system, prompt, servers, signal, onEvent, maxTurns }: any) {
     const { query } = await claudeSdk();
     const controller = new AbortController();
     const abort = () => controller.abort(signal?.reason);
     signal?.addEventListener('abort', abort, { once: true });
-    let release; const done = new Promise(resolve => { release = resolve; });
+    let release: any; const done = new Promise(resolve => { release = resolve; });
     async function* input() { yield { type: 'user', message: { role: 'user', content: [{ type: 'text', text: prompt }] }, parent_tool_use_id: null }; await done; }
     const options = {
       model, ...(reasoning && reasoning !== 'default' ? { effort: reasoning } : {}), cwd, ...(session ? { resume: session } : {}),
@@ -47,7 +47,7 @@ export function createAgentRunner({ sandbox, claudeSdk = loadClaudeSdk, managerT
       // 沙箱里的 Claude 用的是服务器的 claude.ai 登录；那个账号在 claude.ai 上挂的连接器（例如能操作 Mac 的设备连接器）
       // 不属于任何拾燕账号，不能让沙箱智能体拿到。只用我们传入的 MCP（浏览器、海绵宝宝、该账号自己连接的服务）。
       strictMcpConfig: true,
-      spawnClaudeCodeProcess: opts => sandbox.spawn(owner, { command: sandbox.paths.claude, args: opts.args, cwd, env: { ...claudeChildEnv(opts.env), ENABLE_CLAUDEAI_MCP_SERVERS: 'false' } }),
+      spawnClaudeCodeProcess: (opts: any) => sandbox.spawn(owner, { command: sandbox.paths.claude, args: opts.args, cwd, env: { ...claudeChildEnv(opts.env), ENABLE_CLAUDEAI_MCP_SERVERS: 'false' } }),
     };
     const pendingTools = new Map(), items: any[] = [], texts: any[] = [];
     let sessionId = session || null, usage: any = null, result: any = null, turns = 0;
@@ -66,7 +66,7 @@ export function createAgentRunner({ sandbox, claudeSdk = loadClaudeSdk, managerT
             if (block.type !== 'tool_result') continue;
             const call = pendingTools.get(block.tool_use_id) || { name: 'tool', input: null };
             pendingTools.delete(block.tool_use_id);
-            const output = Array.isArray(block.content) ? block.content.map(part => part.type === 'text' ? part.text : '[' + part.type + ']').join('\n') : block.content;
+            const output = Array.isArray(block.content) ? block.content.map((part: any) => part.type === 'text' ? part.text : '[' + part.type + ']').join('\n') : block.content;
             const item = { type: 'tool', name: call.name, input: call.input, ok: !block.is_error, output: clip(output) };
             items.push(item); onEvent?.({ ...item, type: 'tool_result' });
           }
@@ -75,7 +75,7 @@ export function createAgentRunner({ sandbox, claudeSdk = loadClaudeSdk, managerT
           break;
         }
       }
-    } finally { release(); signal?.removeEventListener('abort', abort); try { await q.return?.(); } catch {} }
+    } finally { release?.(); signal?.removeEventListener('abort', abort); try { await q.return?.(); } catch {} }
     if (!result) throw new Error(signal?.aborted ? String(signal.reason?.message || '已停止') : 'Claude 会话意外结束');
     if (result.is_error || result.subtype !== 'success') {
       const reason = result.subtype === 'error_max_turns' ? '达到本轮最大步数' : (result.errors || []).join('; ') || result.result || result.subtype;
@@ -84,12 +84,12 @@ export function createAgentRunner({ sandbox, claudeSdk = loadClaudeSdk, managerT
     return { provider: 'anthropic', sessionId, text: String(result.result || texts.at(-1) || ''), usage, items, turns: result.num_turns || turns };
   }
 
-  async function runCodex({ owner, model, reasoning, session, cwd, system, prompt, servers, signal, onEvent }) {
+  async function runCodex({ owner, model, reasoning, session, cwd, system, prompt, servers, signal, onEvent }: any) {
     const items: any[] = [];
-    const onItem = raw => {
+    const onItem = (raw: any) => {
       const name = raw.type === 'commandExecution' ? 'shell' : raw.type === 'mcpToolCall' ? `mcp__${raw.server}__${raw.tool}` : raw.type === 'fileChange' ? 'file_change' : raw.type === 'webSearch' ? 'web_search' : raw.type;
       if (['reasoning', 'userMessage', 'contextCompaction'].includes(raw.type)) return;
-      const input = raw.type === 'commandExecution' ? raw.command : raw.type === 'mcpToolCall' ? raw.arguments : raw.type === 'fileChange' ? (raw.changes || []).map(c => c.path) : raw.query;
+      const input = raw.type === 'commandExecution' ? raw.command : raw.type === 'mcpToolCall' ? raw.arguments : raw.type === 'fileChange' ? (raw.changes || []).map((c: any) => c.path) : raw.query;
       const output = raw.type === 'commandExecution' ? raw.aggregatedOutput : raw.type === 'mcpToolCall' ? (raw.result || raw.error) : raw.status;
       const item = { type: 'tool', name, input, ok: !['failed', 'declined'].includes(raw.status) && !raw.error, output: clip(output) };
       items.push(item); onEvent?.({ ...item, type: 'tool_result' });
@@ -98,7 +98,7 @@ export function createAgentRunner({ sandbox, claudeSdk = loadClaudeSdk, managerT
       threadId: session || null, codexPath: sandbox.paths.codex,
       options: { model, modelReasoningEffort: reasoning && reasoning !== 'default' ? reasoning : undefined, workingDirectory: cwd, sandboxMode: 'danger-full-access', approvalPolicy: 'never',
         webSearchMode: 'live', threadSource: 'dots-agent', mcpServers: servers.codex, onItem },
-      spawnProcess: (bin, args, spawnOptions: any = {}) => sandbox.spawn(owner, { command: bin, args, cwd: spawnOptions.cwd || cwd, env: { CODEX_HOME: '/home/agent/.codex', PATH: '/home/agent/.local/bin:/opt/shiyan/bin:/opt/shiyan/codex:/usr/local/bin:/usr/bin:/bin' } }),
+      spawnProcess: (bin: any, args: any, spawnOptions: any = {}) => sandbox.spawn(owner, { command: bin, args, cwd: spawnOptions.cwd || cwd, env: { CODEX_HOME: '/home/agent/.codex', PATH: '/home/agent/.local/bin:/opt/shiyan/bin:/opt/shiyan/codex:/usr/local/bin:/usr/bin:/bin' } }),
       rpcTimeoutMs: 60_000,
     });
     const text = [system ? '<operating_instructions>\n' + system + '\n</operating_instructions>' : '', prompt].filter(Boolean).join('\n\n');
@@ -128,4 +128,4 @@ export function createAgentRunner({ sandbox, claudeSdk = loadClaudeSdk, managerT
   }
   return { runAgent };
 }
-export const containerPath = (...parts) => path.posix.join(...parts);
+export const containerPath = (...parts: any[]) => path.posix.join(...parts);

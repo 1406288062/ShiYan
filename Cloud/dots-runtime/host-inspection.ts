@@ -11,26 +11,26 @@ const specifications = Object.freeze({
 });
 const allowedKeys = new Set(['type', 'command', 'path', 'content', 'reason']);
 
-export const isHostInspectionAction = action => action?.type === 'inspect_host';
+export const isHostInspectionAction = (action: any) => action?.type === 'inspect_host';
 
-function validate(action) {
+function validate(action: any) {
   if (!action || typeof action !== 'object' || Array.isArray(action) || !isHostInspectionAction(action)) throw new Error('Expected inspect_host action');
   if (Object.keys(action).some(key => !allowedKeys.has(key))) throw new Error('inspect_host does not accept additional arguments or targets');
   if (action.path !== '' || action.content !== '') throw new Error('inspect_host requires empty path and content');
   if (typeof action.command !== 'string' || !Object.hasOwn(specifications, action.command)) throw new Error('Unknown host inspection command');
   if (action.reason !== undefined && typeof action.reason !== 'string') throw new Error('inspect_host reason must be a string');
   if (process.platform !== 'linux') throw new Error('inspect_host is limited to the current Linux runtime host');
-  return specifications[action.command];
+  return (specifications as any)[action.command];
 }
 
-function boundedOutput(value) {
+function boundedOutput(value: any) {
   const bytes = Buffer.isBuffer(value) ? value : Buffer.from(String(value ?? ''), 'utf8');
   return {text:bytes.subarray(0, HOST_INSPECTION_MAX_BUFFER).toString('utf8'), truncated:bytes.length > HOST_INSPECTION_MAX_BUFFER};
 }
 
-function inspect(specification, execFile) {
+function inspect(specification: any, execFile: any) {
   return new Promise(resolve => {
-    const finish = (error, stdout, stderr) => {
+    const finish = (error: any, stdout: any, stderr: any) => {
       const out = boundedOutput(stdout), err = boundedOutput(stderr);
       const outputLimited = error?.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' || out.truncated || err.truncated;
       resolve({
@@ -54,7 +54,7 @@ function inspect(specification, execFile) {
 
 // Runs in the existing server process's host namespace. This does not invoke
 // Codex shell tools, Docker, SSH, Mac execution, or arbitrary command strings.
-export async function executeHostInspection(action, {execFile = nodeExecFile} = {}) {
+export async function executeHostInspection(action: any, {execFile = nodeExecFile} = {}) {
   const specification = validate(action);
   const startedAt = new Date().toISOString();
   const attempts = [await inspect(specification, execFile)];

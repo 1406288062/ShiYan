@@ -10,23 +10,23 @@ const relationshipErrors=new Map([
   ['共同话题已更新，请刷新后重试',409]
 ]);
 
-function stableJson(value) {
+function stableJson(value: any): any {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
   if (Array.isArray(value)) return "[" + value.map(stableJson).join(",") + "]";
   return "{" + Object.keys(value).sort().map((k) => JSON.stringify(k) + ":" + stableJson(value[k])).join(",") + "}";
 }
 
-function rpc(id, result) {
+function rpc(id: any, result: any) {
   return { jsonrpc: "2.0", id, result };
 }
 
-function rpcError(id, code, message, data: any = undefined) {
+function rpcError(id: any, code: any, message: any, data: any = undefined) {
   const error: any = { code, message };
   if (data !== undefined) error.data = data;
   return { jsonrpc: "2.0", id: id ?? null, error };
 }
 
-function sendJson(res, status, value) {
+function sendJson(res: any, status: any, value: any) {
   const body = JSON.stringify(value);
   res.writeHead(status, {
     "content-type": "application/json; charset=utf-8",
@@ -36,7 +36,7 @@ function sendJson(res, status, value) {
   res.end(body);
 }
 
-async function readJson(req, maxBytes = 1024 * 1024) {
+async function readJson(req: any, maxBytes = 1024 * 1024) {
   const chunks: Buffer[] = [];
   let total = 0;
   for await (const chunk of req) {
@@ -48,7 +48,7 @@ async function readJson(req, maxBytes = 1024 * 1024) {
   return raw ? JSON.parse(raw) : {};
 }
 
-function decodeSecret(secret) {
+function decodeSecret(secret: any) {
   if (typeof secret !== "string" || !secret.startsWith("whsec_")) throw new Error("invalid signing secret");
   let raw;
   try { raw = Buffer.from(secret.slice(6), "base64"); } catch { throw new Error("invalid signing secret"); }
@@ -56,13 +56,13 @@ function decodeSecret(secret) {
   return raw;
 }
 
-function sign(secret, id, timestampSec, body) {
+function sign(secret: any, id: any, timestampSec: any, body: any) {
   const key = decodeSecret(secret);
   const data = `${id}.${timestampSec}.${body}`;
   return "v1," + createHmac("sha256", key).update(data).digest("base64");
 }
 
-function isPrivateIp(ip) {
+function isPrivateIp(ip: any) {
   ip=ip.toLowerCase();
   if(ip==='::'||ip==='0:0:0:0:0:0:0:0'||ip.startsWith('ff'))return true;
   const mapped=ip.match(/^(?:::ffff:|0:0:0:0:0:ffff:)(.+)$/);
@@ -84,7 +84,7 @@ function isPrivateIp(ip) {
     (p[0] >= 224);
 }
 
-async function validatePublicHttps(urlString) {
+async function validatePublicHttps(urlString: any) {
   let url;
   try { url = new URL(urlString); } catch { throw new Error("invalid callback URL"); }
   if (url.protocol !== "https:" || url.username || url.password) throw new Error("callback must be public HTTPS");
@@ -93,7 +93,7 @@ async function validatePublicHttps(urlString) {
   return url;
 }
 
-async function signedPost(subscription, bodyObject, messageId) {
+async function signedPost(subscription: any, bodyObject: any, messageId: any) {
   await validatePublicHttps(subscription.callback_url);
   const body = JSON.stringify(bodyObject);
   if (Buffer.byteLength(body) > 256 * 1024) throw new Error("event payload exceeds 256 KiB");
@@ -114,7 +114,7 @@ async function signedPost(subscription, bodyObject, messageId) {
   return response;
 }
 
-async function verifyCallback(subscription) {
+async function verifyCallback(subscription: any) {
   const challenge = randomBytes(24).toString("base64url");
   const id = "msg_verify_" + randomUUID();
   const response = await signedPost(subscription, { type: "verification", challenge }, id);
@@ -158,7 +158,7 @@ export function createMcpBridge({ db, pathSecret, runtimeToken, runtimeBase = "h
   const currentOwner=()=>getOwner?.()||defaultOwner;
   const scoped=getOwner!==null;
   db.exec(`CREATE TABLE IF NOT EXISTS dots_weixin_web_message_sync(owner TEXT NOT NULL,request_id TEXT NOT NULL,state TEXT NOT NULL,updated_at INTEGER NOT NULL,PRIMARY KEY(owner,request_id))`);
-  async function mirrorWebMessage(owner,requestId,content){
+  async function mirrorWebMessage(owner: any,requestId: any,content: any){
     const text=String(content||'').trim();if(!text)return;
     const now=Date.now(),prior=db.prepare('SELECT state,updated_at FROM dots_weixin_web_message_sync WHERE owner=? AND request_id=?').get(owner,requestId);
     if(prior?.state==='sent'||(prior?.state==='sending'&&now-Number(prior.updated_at)<120000))return;
@@ -166,8 +166,8 @@ export function createMcpBridge({ db, pathSecret, runtimeToken, runtimeBase = "h
     try{const bridge=weixin?.();const sent=await bridge?.send?.(text);if(sent)db.prepare(`UPDATE dots_weixin_web_message_sync SET state='sent',updated_at=? WHERE owner=? AND request_id=?`).run(Date.now(),owner,requestId);else db.prepare('DELETE FROM dots_weixin_web_message_sync WHERE owner=? AND request_id=?').run(owner,requestId);}
     catch(error){db.prepare('DELETE FROM dots_weixin_web_message_sync WHERE owner=? AND request_id=?').run(owner,requestId);console.warn('[weixin] web message mirror failed:',(error as any)?.message||error);}
   }
-  const ownGoal=id=>!scoped||Boolean(db.prepare('SELECT id FROM goals WHERE id=? AND manager_id=?').get(Number(id),'manager:'+currentOwner()));
-  const cursorRow=id=>currentOwner()===defaultOwner?db.prepare('SELECT last_notification_id FROM mcp_notification_cursors WHERE consumer_id=?').get(id):db.prepare('SELECT last_notification_id FROM mcp_scoped_notification_cursors WHERE owner=? AND consumer_id=?').get(currentOwner(),id);
+  const ownGoal=(id: any)=>!scoped||Boolean(db.prepare('SELECT id FROM goals WHERE id=? AND manager_id=?').get(Number(id),'manager:'+currentOwner()));
+  const cursorRow=(id: any)=>currentOwner()===defaultOwner?db.prepare('SELECT last_notification_id FROM mcp_notification_cursors WHERE consumer_id=?').get(id):db.prepare('SELECT last_notification_id FROM mcp_scoped_notification_cursors WHERE owner=? AND consumer_id=?').get(currentOwner(),id);
   const subscriptionIdentity=()=>currentOwner()===defaultOwner?effectivePathSecret:effectivePathSecret+':'+currentOwner();
   const effectivePathSecret = pathSecret || createHash("sha256")
     .update("dots-mcp-path:" + runtimeToken)
@@ -219,11 +219,11 @@ export function createMcpBridge({ db, pathSecret, runtimeToken, runtimeBase = "h
   `);
   const endpointPath = "/mcp/" + effectivePathSecret;
 
-  function matches(pathname) {
+  function matches(pathname: any) {
     return pathname === endpointPath;
   }
 
-  async function runtime(path, options: any = {}, allowRelationshipError = false, timeoutMs = 15000) {
+  async function runtime(path: any, options: any = {}, allowRelationshipError = false, timeoutMs = 15000) {
     const response = await fetch(runtimeBase + path, {
       ...options,
       headers: {
@@ -244,15 +244,15 @@ export function createMcpBridge({ db, pathSecret, runtimeToken, runtimeBase = "h
     return data;
   }
 
-  function goalContext(goalId) {
+  function goalContext(goalId: any) {
     const row=db.prepare("SELECT host,conversation_id FROM mcp_goal_context WHERE goal_id=?").get(goalId);
     return row ? {host:row.host,conversation_id:row.conversation_id} : null;
   }
-  function withContext(data) {
+  function withContext(data: any) {
     if(data.goal) return {...data,goal:{...data.goal,client_context:goalContext(data.goal.id)}};
     return data;
   }
-  function listNotifications(args) {
+  function listNotifications(args: any) {
     const acknowledged=args.consumer_id ? Number(cursorRow(args.consumer_id)?.last_notification_id||0) : 0;
     const after=args.after_id ?? acknowledged, count=args.limit||50;
     const where=['n.id>?'], values=[after];
@@ -263,7 +263,7 @@ export function createMcpBridge({ db, pathSecret, runtimeToken, runtimeBase = "h
     const notifications: any[]=rows.slice(0,count).map(n=>({...n,client_context:goalContext(n.goal_id)}));
     return{ok:true,notifications,next_cursor:notifications.at(-1)?.id??after,has_more:rows.length>count,acknowledged_cursor:acknowledged,handoff_only:true};
   }
-  async function callTool(name, args) {
+  async function callTool(name: any, args: any) {
     validateToolArguments(name,args);
     if(args.owner_id!==undefined&&args.owner_id!==currentOwner())throw new Error('Manager not found');
     if(args.goal_id!==undefined&&!ownGoal(args.goal_id))throw new Error('Goal not found');
@@ -302,8 +302,8 @@ export function createMcpBridge({ db, pathSecret, runtimeToken, runtimeBase = "h
     }
     if(name==='dots_list_goals'){
       const data=await runtime('/v1/goals');
-      const filtered=(data.goals||[]).filter(g=>(!args.status||g.status===args.status)&&(!args.client_context||(goalContext(g.id)?.host===args.client_context.host&&goalContext(g.id)?.conversation_id===args.client_context.conversation_id)));
-      return{ok:true,goals:filtered.slice(0,args.limit||50).map(g=>({...g,client_context:goalContext(g.id)})),source_limit:200,source_truncated:(data.goals||[]).length===200,has_more:filtered.length>(args.limit||50)};
+      const filtered=(data.goals||[]).filter((g: any)=>(!args.status||g.status===args.status)&&(!args.client_context||(goalContext(g.id)?.host===args.client_context.host&&goalContext(g.id)?.conversation_id===args.client_context.conversation_id)));
+      return{ok:true,goals:filtered.slice(0,args.limit||50).map((g: any)=>({...g,client_context:goalContext(g.id)})),source_limit:200,source_truncated:(data.goals||[]).length===200,has_more:filtered.length>(args.limit||50)};
     }
     if(name==='dots_get_timeline'){
       await runtime('/v1/goals/'+args.goal_id);
@@ -323,10 +323,10 @@ export function createMcpBridge({ db, pathSecret, runtimeToken, runtimeBase = "h
     }
     if(name==='dots_list_approvals'){
       const data=await runtime('/v1/approvals?status=pending');
-      return{...data,approvals:(data.approvals||[]).filter(a=>!args.goal_id||a.goal_id===args.goal_id)};
+      return{...data,approvals:(data.approvals||[]).filter((a: any)=>!args.goal_id||a.goal_id===args.goal_id)};
     }
     if(name==='dots_decide_approval'){
-      const data=await runtime('/v1/approvals?status=pending');const approval=data.approvals?.find(a=>a.id===args.approval_id);
+      const data=await runtime('/v1/approvals?status=pending');const approval=data.approvals?.find((a: any)=>a.id===args.approval_id);
       if(!approval)throw new Error('Approval is no longer pending or does not exist.');
       if(args.decision==='approve'&&args.confirmed_command!==approval.command)throw new Error('confirmed_command must exactly match the command reviewed by the user.');
       return runtime('/v1/approvals/'+args.approval_id+'/decision',{method:'POST',body:JSON.stringify({decision:args.decision})});
@@ -341,7 +341,7 @@ export function createMcpBridge({ db, pathSecret, runtimeToken, runtimeBase = "h
     throw new Error('Unknown tool');
   }
 
-  async function subscribe(params) {
+  async function subscribe(params: any) {
     if (params?.name !== "goal.notification") throw new Error("unsupported event");
     const args = params.arguments && typeof params.arguments === "object" ? params.arguments : {};
     if (Object.keys(args).some((k) => k !== "goal_id")) throw new Error("unsupported event arguments");
@@ -375,7 +375,7 @@ export function createMcpBridge({ db, pathSecret, runtimeToken, runtimeBase = "h
     };
   }
 
-  function unsubscribe(params) {
+  function unsubscribe(params: any) {
     const args = params?.arguments && typeof params.arguments === "object" ? params.arguments : {};
     const callback = String(params?.delivery?.url || "");
     const identity = stableJson({ event: params?.name, args, callback, owner: subscriptionIdentity() });
@@ -385,7 +385,7 @@ export function createMcpBridge({ db, pathSecret, runtimeToken, runtimeBase = "h
     return {};
   }
 
-  async function handle(req, res) {
+  async function handle(req: any, res: any) {
     if (req.method !== "POST") {res.setHeader('Allow','POST');return sendJson(res,405,{error:'POST required'});}
     let msg;
     try { msg = await readJson(req); } catch (e) { return sendJson(res, 400, rpcError(null, -32700, "Parse error")); }
@@ -394,7 +394,7 @@ export function createMcpBridge({ db, pathSecret, runtimeToken, runtimeBase = "h
     const method = msg.method;
     if(msg.id===undefined){res.writeHead(202);return res.end();}
     const audited = ["server/discover", "events/list", "events/subscribe", "events/unsubscribe"].includes(method);
-    const audit = (outcome, reason = "") => {
+    const audit = (outcome: any, reason = "") => {
       if (audited) db.prepare("INSERT INTO mcp_event_request_audit(created_at,method,outcome,reason) VALUES(?,?,?,?)")
         .run(Math.floor(Date.now() / 1000), method, outcome, reason);
     };
@@ -528,7 +528,7 @@ export function createMcpBridge({ db, pathSecret, runtimeToken, runtimeBase = "h
       }
     }finally{pumping=false;}
   }
-  async function emitNotification(notification) {
+  async function emitNotification(notification: any) {
     const nowSec=Math.floor(Date.now()/1000);
     const notificationOwner=scoped?String(db.prepare("SELECT manager_id FROM goals WHERE id=?").get(Number(notification.goalId))?.manager_id ?? '').slice(8):defaultOwner;
     if(!notificationOwner)return;

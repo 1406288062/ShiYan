@@ -4,23 +4,23 @@
 // - 没有任何内容时不调用模型。
 // - 用户自上一份简报以来没有发过新消息，就不发。
 const BRIEF_SCHEMA = { type: 'object', additionalProperties: false, required: ['content'], properties: { content: { type: 'string' } } };
-const local = ms => new Date(ms + 8 * 3600_000);
-export const briefDay = ms => local(ms).toISOString().slice(0, 10);
-const minutesOfDay = ms => { const d = local(ms); return d.getUTCHours() * 60 + d.getUTCMinutes(); };
+const local = (ms: any) => new Date(ms + 8 * 3600_000);
+export const briefDay = (ms: any) => local(ms).toISOString().slice(0, 10);
+const minutesOfDay = (ms: any) => { const d = local(ms); return d.getUTCHours() * 60 + d.getUTCMinutes(); };
 
-export function createDailyBrief({ store, assess, settings, now = () => Date.now(), intervalMs = 60_000, logger = console }) {
+export function createDailyBrief({ store, assess, settings, now = () => Date.now(), intervalMs = 60_000, logger = console }: any) {
   const { db, managerId } = store;
   db.exec('CREATE TABLE IF NOT EXISTS dots_daily_brief(manager_id TEXT PRIMARY KEY,last_day TEXT NOT NULL,message_id INTEGER,state TEXT NOT NULL DEFAULT \'claimed\',updated_at INTEGER NOT NULL)');
   let timer: ReturnType<typeof setInterval> | null = null, running = false, stopped = false;
 
-  function context(nowMs) {
+  function context(nowMs: any) {
     const since = Math.floor(nowMs / 1000) - 24 * 3600;
     const events = db.prepare("SELECT content,proactive_reason FROM manager_messages WHERE manager_id=? AND role='assistant' AND origin='proactive' AND created_at>=? AND proactive_reason<>'每日简报' ORDER BY id DESC LIMIT 40").all(managerId, since)
-      .map(row => ({ type: row.proactive_reason || '动态', content: String(row.content || '').replace(/\s+/g, ' ').slice(0, 280) }));
+      .map((row: any) => ({ type: row.proactive_reason || '动态', content: String(row.content || '').replace(/\s+/g, ' ').slice(0, 280) }));
     let tasks = [];
     try {
       tasks = db.prepare("SELECT title,status,last_summary FROM goals WHERE manager_id=? AND status NOT IN ('done','cancelled','archived','failed') ORDER BY updated_at DESC LIMIT 15").all(managerId)
-        .map(row => ({ title: String(row.title || '').slice(0, 120), status: row.status, progress: String(row.last_summary || '').slice(0, 160) }));
+        .map((row: any) => ({ title: String(row.title || '').slice(0, 120), status: row.status, progress: String(row.last_summary || '').slice(0, 160) }));
     } catch {}
     return { events, tasks };
   }

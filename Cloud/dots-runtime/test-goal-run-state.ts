@@ -34,7 +34,7 @@ function fixture({ onPlan = () => {}, onActions, plannerError, status = "done", 
     db, canApplyGoalActions, resolveGoalRunState, resolveGoalRunFailure,
     now: () => 100, runningGoalId: null, getGoal,
     listGoalMemories: () => [], listGoalTimeline: () => [], storeMemories: () => {},
-    listPendingEvents: (id, limit) => db.prepare("SELECT * FROM events WHERE goal_id=? AND consumed_at IS NULL ORDER BY id LIMIT ?").all(id, limit),
+    listPendingEvents: (id: any, limit: any) => db.prepare("SELECT * FROM events WHERE goal_id=? AND consumed_at IS NULL ORDER BY id LIMIT ?").all(id, limit),
     getThread: () => ({ id: "stub-thread", run: async () => {
       await onPlan({ db, addEvent });
       if (plannerError) throw new Error(plannerError);
@@ -42,11 +42,11 @@ function fixture({ onPlan = () => {}, onActions, plannerError, status = "done", 
         notification: "planned notification", memories: [], actions, wake_after_seconds: 900 }) };
     } }),
     AGENT_SCHEMA: {}, buildAgentPrompt: () => "stub prompt", parseJson: JSON.parse, json: JSON.stringify,
-    clampInt: (v, min, max, fallback) => Number.isFinite(v) ? Math.max(min, Math.min(max, v)) : fallback,
+    clampInt: (v: any, min: any, max: any, fallback: any) => Number.isFinite(v) ? Math.max(min, Math.min(max, v)) : fallback,
     executeSafeActions: async () => { actionCalls++; return onActions ? await onActions({ db, addEvent }) : []; },
-    addTimeline: (...args) => timeline.push(args),
+    addTimeline: (...args: any[]) => timeline.push(args),
     createApproval: () => { approvals++; return 1; },
-    addNotification: async (...args) => notifications.push(args)
+    addNotification: async (...args: any[]) => notifications.push(args)
   });
   vm.runInContext(runSource, ctx);
   return { db, ctx, notifications, timeline, getGoal, addEvent,
@@ -182,8 +182,8 @@ test("safe action loop stops after pause instead of starting the next action", a
   let writes = 0;
   const ctx = vm.createContext({
     canApplyGoalActions, getGoal: () => ({ status: goalStatus }),
-    addTimeline: () => {}, resolveWorkspacePath: (_workspace, relative) => "/isolated-test/" + relative,
-    path: { dirname: () => "/isolated-test", relative: (_workspace, value) => value },
+    addTimeline: () => {}, resolveWorkspacePath: (_workspace: any, relative: any) => "/isolated-test/" + relative,
+    path: { dirname: () => "/isolated-test", relative: (_workspace: any, value: any) => value },
     fs: { mkdir: async () => {}, writeFile: async () => { writes++; goalStatus = "paused"; } }, Buffer,
     json: JSON.stringify
   });
@@ -203,12 +203,12 @@ function httpFixture(status = "active", onReadJson: (f: any) => any = () => {}) 
   Object.assign(f.ctx, {
     HOST: "127.0.0.1", PORT: 4330, TOKEN: "isolated-test-token", URL,
     mcpBridge: { matches: () => false }, assertGoalActionAllowed, mayActivateGoalForEvent,
-    runtimeRequests: createRuntimeRequestStore(f.db), detailedGoal: (goal) => goal,
-    readJson: async (req) => { await onReadJson(f); return req.payload || {}; },
-    send: (res, status, response) => { res.status = status; res.response = response; }
+    runtimeRequests: createRuntimeRequestStore(f.db), detailedGoal: (goal: any) => goal,
+    readJson: async (req: any) => { await onReadJson(f); return req.payload || {}; },
+    send: (res: any, status: any, response: any) => { res.status = status; res.response = response; }
   });
   vm.runInContext(scheduleSource + handleSource, f.ctx);
-  f.request = async (action, payload = {}, event = false) => {
+  f.request = async (action: any, payload = {}, event = false) => {
     const res: any = {};
     const req = { method: "POST", url: event ? "/v1/events" : "/v1/goals/1/" + action,
       headers: { authorization: "Bearer isolated-test-token" }, payload };

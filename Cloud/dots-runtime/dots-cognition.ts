@@ -2,21 +2,21 @@ import {createHash,randomUUID} from 'node:crypto';
 import {normalizedText,connectionAlreadyCovered} from './natural-opportunities.ts';
 import {buildCognitivePrompt} from './cognition-prompt.ts';
 
-const hash=value=>createHash('sha256').update(String(value)).digest('hex');
-const parse=(value,fallback: any=null)=>{try{return JSON.parse(value);}catch{return fallback;}};
-const text=value=>typeof value==='string'?value.trim():'';
-const object=properties=>({type:'object',additionalProperties:false,properties,required:Object.keys(properties)});
-const str=maxLength=>({type:'string',maxLength});
+const hash=(value: any)=>createHash('sha256').update(String(value)).digest('hex');
+const parse=(value: any,fallback: any=null)=>{try{return JSON.parse(value);}catch{return fallback;}};
+const text=(value: any)=>typeof value==='string'?value.trim():'';
+const object=(properties: any)=>({type:'object',additionalProperties:false,properties,required:Object.keys(properties)});
+const str=(maxLength: any)=>({type:'string',maxLength});
 const reference=object({kind:{type:'string',enum:['user','observation']},id:str(100),quote:str(1000)});
 const references={type:'array',minItems:1,maxItems:12,items:reference};
 const shareKinds=new Set(['insight','suggestion','question']);
 const expressionKind={type:'string',enum:[...shareKinds,'internal_acknowledgment','restatement','no_update']};
 const unsafe=/(?:-----BEGIN .*PRIVATE KEY|\b(?:sk|ghp|github_pat)[-_A-Za-z0-9]{16,}|(?:密码|验证码|私钥|密钥|身份证号|银行卡号)\s*[:：是为]\s*\S+)/i;
-export function encodeCognitiveInput(value,maxBytes=96*1024){
+export function encodeCognitiveInput(value: any,maxBytes=96*1024){
   const copy=structuredClone(value),size=()=>Buffer.byteLength(JSON.stringify(copy),'utf8');
   for(const key of ['exchange','trace','evidence'])while(Array.isArray(copy[key])&&copy[key].length>2&&size()>maxBytes)copy[key].shift();
   if(size()>maxBytes){
-    const clip=value=>{
+    const clip=(value: any): any=>{
       if(typeof value==='string'){let n=0,result='';for(const char of value){const bytes=Buffer.byteLength(char,'utf8');if(n+bytes>2048)break;n+=bytes;result+=char;}return result;}
       if(Array.isArray(value))return value.slice(-12).map(clip);
       if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([key,item])=>[key,clip(item)]));
@@ -54,46 +54,46 @@ export function createDotsCognition({store,assess,memory,now=()=>Math.floor(Date
   db.prepare('INSERT OR IGNORE INTO dots_cognition_state(manager_id) VALUES(?)').run(managerId);
   // Retire both reply-followup and one-shot material-review publication paths.
   store.transaction(()=>{
-    if(!db.prepare('PRAGMA table_info(dots_relationship_state)').all().some(row=>row.name==='cognition_enabled'))db.exec('ALTER TABLE dots_relationship_state ADD COLUMN cognition_enabled INTEGER NOT NULL DEFAULT 0');
+    if(!db.prepare('PRAGMA table_info(dots_relationship_state)').all().some((row: any)=>row.name==='cognition_enabled'))db.exec('ALTER TABLE dots_relationship_state ADD COLUMN cognition_enabled INTEGER NOT NULL DEFAULT 0');
     db.prepare('UPDATE dots_relationship_state SET cognition_enabled=1 WHERE manager_id=?').run(managerId);
     db.prepare("UPDATE dots_relationship_event_candidates SET state='invalidated',reason='已转为独立认知过程' WHERE manager_id=? AND state IN ('pending','claimed')").run(managerId);
     db.prepare("UPDATE dots_relationship_reflections SET state='invalidated',reason='已转为独立认知过程' WHERE manager_id=? AND state IN ('pending','claimed')").run(managerId);
   });
   db.exec("CREATE INDEX IF NOT EXISTS idx_cognition_focus_state ON dots_cognition_focuses(manager_id,state); CREATE INDEX IF NOT EXISTS idx_cognition_intent_state ON dots_cognition_intents(manager_id,state); CREATE INDEX IF NOT EXISTS idx_cognition_step_action ON dots_cognition_steps(manager_id,action); CREATE INDEX IF NOT EXISTS idx_cognition_observation_recent ON dots_cognition_observations(manager_id,created_at DESC,id)");
-  if(!db.prepare('PRAGMA table_info(dots_cognition_state)').all().some(row=>row.name==='contribution_revision'))db.exec('ALTER TABLE dots_cognition_state ADD COLUMN contribution_revision INTEGER NOT NULL DEFAULT 0');
+  if(!db.prepare('PRAGMA table_info(dots_cognition_state)').all().some((row: any)=>row.name==='contribution_revision'))db.exec('ALTER TABLE dots_cognition_state ADD COLUMN contribution_revision INTEGER NOT NULL DEFAULT 0');
   let busy=false,closed=false,abort: AbortController | null=null;
   const state=()=>db.prepare('SELECT * FROM dots_cognition_state WHERE manager_id=?').get(managerId);
   const settings=()=>memory?.settings?memory.settings(store.ownerId):{enabled:true,generation:0};
-  const epoch=s=>JSON.stringify([s.enabled,s.generation??0]);
-  const forgotten=id=>Boolean(db.prepare('SELECT 1 FROM dots_relationship_forgotten_sources WHERE manager_id=? AND message_id=?').get(managerId,id));
-  const refValid=ref=>{
+  const epoch=(s: any)=>JSON.stringify([s.enabled,s.generation??0]);
+  const forgotten=(id: any)=>Boolean(db.prepare('SELECT 1 FROM dots_relationship_forgotten_sources WHERE manager_id=? AND message_id=?').get(managerId,id));
+  const refValid=(ref: any)=>{
     if(!ref||!['user','observation'].includes(ref.kind)||!text(ref.quote)||ref.quote.length<6||unsafe.test(ref.quote))return false;
     if(ref.kind==='user'){
       const row=db.prepare("SELECT id,content FROM manager_messages WHERE manager_id=? AND id=? AND role='user'").get(managerId,Number(ref.id));
       return row&&row.id>state().source_floor&&!forgotten(row.id)&&row.content.includes(ref.quote);
     }
     const row=db.prepare('SELECT * FROM dots_cognition_observations WHERE manager_id=? AND id=?').get(managerId,ref.id);
-    return row&&[parse(row.payload)?.title,parse(row.payload)?.summary].some(value=>typeof value==='string'&&value.includes(ref.quote))&&parse(row.user_refs,[]).length>0&&parse(row.user_refs,[]).every(user=>user.kind==='user'&&refValid(user));
+    return row&&[parse(row.payload)?.title,parse(row.payload)?.summary].some(value=>typeof value==='string'&&value.includes(ref.quote))&&parse(row.user_refs,[]).length>0&&parse(row.user_refs,[]).every((user: any)=>user.kind==='user'&&refValid(user));
   };
-  const refsValid=refs=>Array.isArray(refs)&&refs.length>0&&refs.length<=64&&refs.some(ref=>ref.kind==='user')&&refs.every(refValid);
+  const refsValid=(refs: any)=>Array.isArray(refs)&&refs.length>0&&refs.length<=64&&refs.some(ref=>ref.kind==='user')&&refs.every(refValid);
   const unique=(refs: any[])=>[...new Map(refs.map(ref=>[JSON.stringify(ref),ref])).values()];
-  const sourceContext=refs=>refs.filter(refValid).map(ref=>{
+  const sourceContext=(refs: any)=>refs.filter(refValid).map((ref: any)=>{
     const table=ref.kind==='user'?'manager_messages':'dots_cognition_observations';
     const source=db.prepare('SELECT created_at FROM '+table+' WHERE manager_id=? AND id=?').get(managerId,ref.id);
     return {...ref,date:new Date(source.created_at*1000).toISOString().slice(0,10)};
   });
   const snapshot=()=>{
     const floor=state().source_floor;
-    const rows=store.snapshot().messages.filter(row=>row.role==='user'?row.id>floor&&!forgotten(row.id):!(row.respondsToMessageIds||[]).some(forgotten));
-    return rows.filter(row=>{
+    const rows=store.snapshot().messages.filter((row: any)=>row.role==='user'?row.id>floor&&!forgotten(row.id):!(row.respondsToMessageIds||[]).some(forgotten));
+    return rows.filter((row: any)=>{
       if(row.origin!=='proactive')return true;
       const intent=db.prepare('SELECT refs,state FROM dots_cognition_intents WHERE manager_id=? AND message_id=?').get(managerId,row.id);
-      return intent?intent.state==='sent'&&refsValid(parse(intent.refs,[])):(Boolean(db.prepare("SELECT 1 FROM dots_relationship_deliveries WHERE manager_id=? AND message_id=? AND new_value<>''").get(managerId,row.id))||Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='dots_discovery_updates'").get()&&db.prepare("SELECT i.source_id,i.quote,i.evidence_json,i.active FROM dots_discovery_updates u JOIN dots_discovery_interests i ON i.id=u.interest_id WHERE u.manager_id=? AND u.message_id=? AND u.state='sent'").all(managerId,row.id).some(interest=>interest.active&&[{kind:'user',id:String(interest.source_id),quote:interest.quote},...parse(interest.evidence_json,[]).map(ref=>({kind:'user',id:String(ref.source_id),quote:ref.quote}))].every(refValid))));
-    }).filter(row=>row.deliveryState==='completed'&&!unsafe.test(row.content)).slice(-12).map(row=>({id:row.id,role:row.role,content:row.content.slice(0,1500),origin:row.origin,date:new Date(row.createdAt*1000).toISOString().slice(0,10)}));
+      return intent?intent.state==='sent'&&refsValid(parse(intent.refs,[])):(Boolean(db.prepare("SELECT 1 FROM dots_relationship_deliveries WHERE manager_id=? AND message_id=? AND new_value<>''").get(managerId,row.id))||Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='dots_discovery_updates'").get()&&db.prepare("SELECT i.source_id,i.quote,i.evidence_json,i.active FROM dots_discovery_updates u JOIN dots_discovery_interests i ON i.id=u.interest_id WHERE u.manager_id=? AND u.message_id=? AND u.state='sent'").all(managerId,row.id).some((interest: any)=>interest.active&&[{kind:'user',id:String(interest.source_id),quote:interest.quote},...parse(interest.evidence_json,[]).map((ref: any)=>({kind:'user',id:String(ref.source_id),quote:ref.quote}))].every(refValid))));
+    }).filter((row: any)=>row.deliveryState==='completed'&&!unsafe.test(row.content)).slice(-12).map((row: any)=>({id:row.id,role:row.role,content:row.content.slice(0,1500),origin:row.origin,date:new Date(row.createdAt*1000).toISOString().slice(0,10)}));
   };
   const knowledge=()=>{
-    const users=db.prepare("SELECT id,content,created_at FROM manager_messages WHERE manager_id=? AND role='user' AND id>? ORDER BY id DESC LIMIT 32").all(managerId,state().source_floor).filter(row=>!forgotten(row.id)&&!unsafe.test(row.content)).map(row=>({kind:'user',id:String(row.id),text:row.content.slice(0,1000),date:new Date(row.created_at*1000).toISOString().slice(0,10)}));
-    const observations=db.prepare('SELECT * FROM dots_cognition_observations WHERE manager_id=? ORDER BY created_at DESC,id LIMIT 8').all(managerId).filter(row=>parse(row.user_refs,[]).every(refValid)).map(row=>({kind:'observation',id:row.id,text:row.payload}));
+    const users=db.prepare("SELECT id,content,created_at FROM manager_messages WHERE manager_id=? AND role='user' AND id>? ORDER BY id DESC LIMIT 32").all(managerId,state().source_floor).filter((row: any)=>!forgotten(row.id)&&!unsafe.test(row.content)).map((row: any)=>({kind:'user',id:String(row.id),text:row.content.slice(0,1000),date:new Date(row.created_at*1000).toISOString().slice(0,10)}));
+    const observations=db.prepare('SELECT * FROM dots_cognition_observations WHERE manager_id=? ORDER BY created_at DESC,id LIMIT 8').all(managerId).filter((row: any)=>parse(row.user_refs,[]).every(refValid)).map((row: any)=>({kind:'observation',id:row.id,text:row.payload}));
     return [...users.reverse(),...observations];
   };
   const withdraw=()=>store.transaction(()=>{
@@ -115,16 +115,16 @@ export function createDotsCognition({store,assess,memory,now=()=>Math.floor(Date
     if(!reset&&s.compute_calls>=callsPerHour)return false;
     db.prepare('UPDATE dots_cognition_state SET compute_start=?,compute_calls=?,lease_until=? WHERE manager_id=?').run(reset?now():s.compute_start,reset?1:s.compute_calls+1,now()+180,managerId);return true;
   });
-  const ask=async(prompt,schema)=>{
+  const ask=async(prompt: any,schema: any)=>{
     if(!reserve())return null;
     let input=prompt;
     // 用户对近期主动消息的“有用 / 没用”反馈，只在决定是否发送时提供。
     try{const data=JSON.parse(prompt);if(data.operation==='evaluate_expression'&&store.recentFeedback){const feedback=store.recentFeedback(15);if(feedback.length){data.user_feedback=feedback;input=JSON.stringify(data);}}}catch{}
     return assess(buildCognitivePrompt(input),schema,{signal:abort!.signal});
   };
-  const stillCurrent=key=>!closed&&!abort!.signal.aborted&&epoch(settings())===key&&state().lease_owner===owner&&state().lease_until>now();
+  const stillCurrent=(key: any)=>!closed&&!abort!.signal.aborted&&epoch(settings())===key&&state().lease_owner===owner&&state().lease_until>now();
   const technicalDeliveryAvailable=()=>db.prepare('SELECT status FROM managers WHERE id=?').get(managerId)?.status==='active'&&!db.prepare('SELECT 1 FROM manager_inbox WHERE manager_id=? AND consumed_at IS NULL').get(managerId)&&!db.prepare("SELECT 1 FROM manager_runs WHERE manager_id=? AND kind='manager' AND state='running'").get(managerId)&&!db.prepare("SELECT 1 FROM manager_messages WHERE manager_id=? AND delivery_state='streaming'").get(managerId);
-  async function understand(key,{reconsider=false}={}){
+  async function understand(key: any,{reconsider=false}={}){
     const facts=knowledge(),digest=hash(JSON.stringify(facts));if(!facts.length||!reconsider&&state().knowledge_key===digest)return;
     const existing=db.prepare("SELECT focus_key,question,view,frontier,state FROM dots_cognition_focuses WHERE manager_id=? AND state<>'withdrawn' ORDER BY updated_at DESC LIMIT 24").all(managerId);
     const result=await ask(encodeCognitiveInput({operation:'update_understanding',evaluatedAt:new Date(now()*1000).toISOString(),understanding:state().understanding,focuses:existing,evidence:facts,exchange:snapshot()}),UNDERSTANDING_SCHEMA);
@@ -137,10 +137,10 @@ export function createDotsCognition({store,assess,memory,now=()=>Math.floor(Date
         if(!focusKey||focusKey.length>100||q.length<8||q.length>700||meaning.length<8||!refsValid(refs)||unsafe.test(q+meaning))continue;
         accepted.push(...refs);
         const old=db.prepare('SELECT * FROM dots_cognition_focuses WHERE manager_id=? AND focus_key=?').get(managerId,focusKey);
-        if(!old&&existing.some(previous=>normalizedText(previous.question)===normalizedText(q)||connectionAlreadyCovered(q,previous.question)))continue;
+        if(!old&&existing.some((previous: any)=>normalizedText(previous.question)===normalizedText(q)||connectionAlreadyCovered(q,previous.question)))continue;
         if(!old)db.prepare("INSERT INTO dots_cognition_focuses(id,manager_id,focus_key,question,personal_meaning,refs,frontier,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)").run(randomUUID(),managerId,focusKey,q,meaning,JSON.stringify(refs),q,now(),now());
         else{
-          const before=parse(old.refs,[]),added=refs.some(ref=>!before.some(previous=>JSON.stringify(previous)===JSON.stringify(ref)));
+          const before=parse(old.refs,[]),added=refs.some((ref: any)=>!before.some((previous: any)=>JSON.stringify(previous)===JSON.stringify(ref)));
           if(added){const retained=unique([...before.filter(refValid),...refs]);db.prepare("UPDATE dots_cognition_focuses SET question=?,personal_meaning=?,refs=?,frontier=?,state='active',updated_at=? WHERE id=?").run(q,meaning,JSON.stringify(retained),q,now(),old.id);}
         }
       }
@@ -159,7 +159,7 @@ export function createDotsCognition({store,assess,memory,now=()=>Math.floor(Date
       db.prepare('UPDATE dots_cognition_state SET knowledge_key=? WHERE manager_id=?').run(digest,managerId);
     });
   }
-  async function think(focus,key){
+  async function think(focus: any,key: any){
     const refs=parse(focus.refs,[]);if(!refsValid(refs))return;
     const history=db.prepare('SELECT revision,next_view,new_contribution,next_question,action FROM dots_cognition_steps WHERE focus_id=? ORDER BY revision DESC LIMIT 8').all(focus.id).reverse();
     const discussed=snapshot();
@@ -167,27 +167,27 @@ export function createDotsCognition({store,assess,memory,now=()=>Math.floor(Date
     if(!result||!stillCurrent(key)||!refsValid(refs))return false;
     const view=text(result.view),contribution=text(result.new_contribution),frontier=text(result.next_question),action=result.action;
     const cited=result.references,effective=unique([...refs,...(Array.isArray(cited)?cited:[])]);
-    const novel=shareKinds.has(result.contribution_kind)&&view.length>=12&&contribution.length>=10&&!unsafe.test(view+contribution+frontier)&&refsValid(cited)&&refsValid(effective)&&normalizedText(view)!==normalizedText(focus.view)&&!history.some(row=>row.next_view&&connectionAlreadyCovered(view,row.next_view))&&!discussed.some(row=>row.role==='assistant'&&connectionAlreadyCovered(view,row.content));
+    const novel=shareKinds.has(result.contribution_kind)&&view.length>=12&&contribution.length>=10&&!unsafe.test(view+contribution+frontier)&&refsValid(cited)&&refsValid(effective)&&normalizedText(view)!==normalizedText(focus.view)&&!history.some((row: any)=>row.next_view&&connectionAlreadyCovered(view,row.next_view))&&!discussed.some((row: any)=>row.role==='assistant'&&connectionAlreadyCovered(view,row.content));
     const nextAction=['continue','ready','rest'].includes(action)&&novel?action:'rest';
     store.transaction(()=>{
       if(db.prepare('SELECT revision FROM dots_cognition_focuses WHERE id=?').get(focus.id)?.revision!==focus.revision)return;
       const revision=focus.revision+1;
       db.prepare('INSERT INTO dots_cognition_steps(id,manager_id,focus_id,revision,previous_view,next_view,new_contribution,next_question,refs,action,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(randomUUID(),managerId,focus.id,revision,focus.view,novel?view:'',novel?contribution:'',novel?frontier:'',JSON.stringify(novel?effective:refs),nextAction,now());
       if(novel&&nextAction!=='rest')db.prepare('UPDATE dots_cognition_state SET contribution_revision=contribution_revision+1 WHERE manager_id=?').run(managerId);
-      const canContinue=nextAction==='continue'&&frontier.length>=8&&normalizedText(frontier)!==normalizedText(focus.frontier)&&!history.some(row=>normalizedText(row.next_question)===normalizedText(frontier));
+      const canContinue=nextAction==='continue'&&frontier.length>=8&&normalizedText(frontier)!==normalizedText(focus.frontier)&&!history.some((row: any)=>normalizedText(row.next_question)===normalizedText(frontier));
       db.prepare('UPDATE dots_cognition_focuses SET view=?,frontier=?,state=?,revision=?,refs=?,updated_at=? WHERE id=?').run(novel?view:focus.view,canContinue?frontier:'',canContinue?'active':'resting',revision,JSON.stringify(novel?effective:refs),now(),focus.id);
       if(novel&&text(result.understanding)&&!unsafe.test(result.understanding))db.prepare('UPDATE dots_cognition_state SET understanding=?,understanding_refs=? WHERE manager_id=?').run(text(result.understanding).slice(0,3000),JSON.stringify(effective),managerId);
       if(nextAction==='ready'&&text(result.why_share).length>=10){
         const previous=db.prepare("SELECT view FROM dots_cognition_intents WHERE manager_id=? AND state<>'withdrawn'").all(managerId);
-        if(!previous.some(row=>connectionAlreadyCovered(view,row.view)))db.prepare('INSERT OR IGNORE INTO dots_cognition_intents(id,manager_id,focus_id,focus_revision,view,why_share,refs,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)').run(randomUUID(),managerId,focus.id,revision,view,text(result.why_share).slice(0,1000),JSON.stringify(effective),now(),now());
+        if(!previous.some((row: any)=>connectionAlreadyCovered(view,row.view)))db.prepare('INSERT OR IGNORE INTO dots_cognition_intents(id,manager_id,focus_id,focus_revision,view,why_share,refs,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)').run(randomUUID(),managerId,focus.id,revision,view,text(result.why_share).slice(0,1000),JSON.stringify(effective),now(),now());
         // A genuinely new frontier is a child line of thought, not another
         // attempt to resend this intent. Its evidence and ancestry are durable.
-        if(frontier.length>=8&&normalizedText(frontier)!==normalizedText(focus.question)&&!history.some(row=>normalizedText(row.next_question)===normalizedText(frontier)))db.prepare('INSERT OR IGNORE INTO dots_cognition_focuses(id,manager_id,focus_key,question,personal_meaning,refs,frontier,parent_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)').run(randomUUID(),managerId,'frontier:'+hash(normalizedText(frontier)),frontier,focus.personal_meaning,JSON.stringify(effective),frontier,focus.id,now(),now());
+        if(frontier.length>=8&&normalizedText(frontier)!==normalizedText(focus.question)&&!history.some((row: any)=>normalizedText(row.next_question)===normalizedText(frontier)))db.prepare('INSERT OR IGNORE INTO dots_cognition_focuses(id,manager_id,focus_key,question,personal_meaning,refs,frontier,parent_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)').run(randomUUID(),managerId,'frontier:'+hash(normalizedText(frontier)),frontier,focus.personal_meaning,JSON.stringify(effective),frontier,focus.id,now(),now());
       }
     });
     return true;
   }
-  async function express(key){
+  async function express(key: any){
     if(!technicalDeliveryAvailable())return;
     const recent=snapshot(),contextKey=hash(JSON.stringify([recent,state().understanding,knowledge()]));
     const intent=db.prepare("SELECT * FROM dots_cognition_intents WHERE manager_id=? AND (state='pending' OR state='held' AND context_key<>?) ORDER BY created_at,id LIMIT 1").get(managerId,contextKey);
@@ -198,7 +198,7 @@ export function createDotsCognition({store,assess,memory,now=()=>Math.floor(Date
     if(!result||!stillCurrent(key)||!refsValid(parse(intent.refs,[])))return;
     const content=text(result.message),reason=text(result.reason),refs=unique([...parse(intent.refs,[]),...(Array.isArray(result.references)?result.references:[])]);
     const grounded=refsValid(result.references)&&refsValid(refs);
-    const duplicate=recent.some(row=>row.role==='assistant'&&connectionAlreadyCovered(content,row.content));
+    const duplicate=recent.some((row: any)=>row.role==='assistant'&&connectionAlreadyCovered(content,row.content));
     const expressionReady=shareKinds.has(result.expression_kind)&&result.context_clear===true&&result.claims_supported===true&&text(result.new_value).length>=10;
     const validSend=expressionReady&&result.action==='send'&&result.worth_sharing===true&&result.not_already_expressed===true&&result.appropriate_now===true&&content.length>=8&&content.length<=1600&&reason.length>=6&&grounded&&!unsafe.test(content)&&!duplicate&&!/(?:怎么|为什么|为何).{0,10}(?:不回|没回|不理)|我一直在等|不理我|再问你一次/.test(content);
     store.transaction(()=>{
@@ -250,7 +250,7 @@ export function createDotsCognition({store,assess,memory,now=()=>Math.floor(Date
     }catch(error){logger.warn?.('[dots-cognition]',(error as any)?.message||error);if(propagateErrors)throw error;return false;}
     finally{clearTimeout(deadline);abort=null;busy=false;db.prepare('UPDATE dots_cognition_state SET lease_until=0,lease_owner=NULL WHERE manager_id=? AND lease_owner=?').run(managerId,owner);}
   }
-  function observe({id,event,userReferences}){
+  function observe({id,event,userReferences}: any){
     const s=settings();if(closed||!s.enabled||!Array.isArray(userReferences)||!userReferences.length||!userReferences.every(ref=>ref.kind==='user'&&refValid(ref)))return false;
     let url;try{url=new URL(event?.url);}catch{return false;}
     if(url.protocol!=='https:'||url.hostname!=='news.google.com'||!url.pathname.startsWith('/rss/articles/'))return false;
@@ -264,7 +264,7 @@ export function createDotsCognition({store,assess,memory,now=()=>Math.floor(Date
     const progress=s.contribution_revision;
     const contributions=s.contribution_revision;
     const observations=db.prepare("SELECT id FROM dots_cognition_observations WHERE manager_id=? AND user_refs<>'[]' ORDER BY created_at DESC,id LIMIT 8").all(managerId);
-    const users=db.prepare("SELECT id,revision FROM manager_messages WHERE manager_id=? AND role='user' AND id>? ORDER BY id DESC LIMIT 32").all(managerId,s.source_floor).filter(row=>!forgotten(row.id));
+    const users=db.prepare("SELECT id,revision FROM manager_messages WHERE manager_id=? AND role='user' AND id>? ORDER BY id DESC LIMIT 32").all(managerId,s.source_floor).filter((row: any)=>!forgotten(row.id));
     const context=db.prepare("SELECT id,revision,delivery_state FROM manager_messages WHERE manager_id=? AND (request_id IS NULL OR request_id NOT LIKE 'registration:%') ORDER BY id DESC LIMIT 12").all(managerId);
     const held=db.prepare("SELECT COUNT(*) n FROM dots_cognition_intents WHERE manager_id=? AND state='held'").get(managerId).n;
     return {active,pending,held,evidence:settings().enabled&&users.length>0?1:0,inputKey:hash(JSON.stringify([users,observations])),contextKey:hash(JSON.stringify(context)),progressStamp:hash(JSON.stringify([contributions,observations,pending])),stamp:hash(JSON.stringify([s.knowledge_key,s.compute_calls,progress,s.understanding,pending]))};

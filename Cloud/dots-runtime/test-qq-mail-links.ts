@@ -29,7 +29,7 @@ test('image-only links use alt text and named empty links use accessible labels'
 test('multipart plain and HTML retain all URLs and enrich plain links with HTML labels',async()=>{
  const plain=Array.from({length:7},(_,i)=>`https://example.com/${i}`).join('\n');
  const html=Array.from({length:7},(_,i)=>`<a href="https://example.com/${i}">操作 ${i}</a>`).join('');
- const client={download:async(uid,part)=>({content:Readable.from([part==='1'?plain:html])})};
+ const client={download:async(uid: any,part: any)=>({content:Readable.from([part==='1'?plain:html])})};
  const body=await readMailBody(client,{uid:1,bodyStructure:{type:'multipart/alternative',childNodes:[{type:'text/plain',part:'1'},{type:'text/html',part:'2'}]}});
  assert.equal(body.text,plain);
  assert.equal(body.links.length,7);
@@ -71,13 +71,13 @@ test('long mail summary keeps every link and substitutes URLs without repeated f
  const db=new DatabaseSync(':memory:');t.after(()=>db.close());
  const links=Array.from({length:9},(_,i)=>({url:`https://example.com/action/${i}`,text:`操作 ${i}`}));
  let input;
- const present=createMailPresenter({store:{db,managerId:'test',transaction:fn=>fn()},assess:async value=>{
+ const present=createMailPresenter({store:{db,managerId:'test',transaction:(fn: any)=>fn()},assess:async (value: any)=>{
   input=JSON.parse(value);return {summary:'邮件摘要',evidence_quotes:['邮件正文']};
  }});
  const result=await present({text:'邮件正文'.repeat(260)+'\n'+links.map(l=>l.url).join('\n'),links});
  assert.equal(result.kind,'summary');assert.equal(result.links.length,9);
- for(let i=0;i<9;i++)assert.ok(input.body.includes(`〔原文链接${i+1}〕`));
- assert.ok(!input.body.includes('https://example.com/'));
+ for(let i=0;i<9;i++)assert.ok(input!.body.includes(`〔原文链接${i+1}〕`));
+ assert.ok(!input!.body.includes('https://example.com/'));
 });
 
 

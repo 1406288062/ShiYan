@@ -2,8 +2,8 @@
 // a relationship level, elapsed time, or a desired conversation frequency.
 const stop = new Set(('我 我们 你 你们 他 她 它 自己 大家 这个 那个 这些 那些 一个 一些 什么 怎么 为什么 可以 可能 还是 就是 但是 因为 所以 而且 然后 觉得 喜欢 最近 今天 昨天 现在 之前 以后 有点 很多 特别 其实 已经 还有 有趣 知道 想到 发现 观察 变化 准备 尝试 试试 我在 上有 聊聊 聊过 事情 东西 时候 一起 一直 the a an this that these those i we you it is are was were to of and or but in on at for with have has had just really like love about').split(' '));
 const segmenter = new Intl.Segmenter('zh', { granularity: 'word' });
-export const normalizedText = value => String(value ?? '').normalize('NFKC').toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, '');
-export function primaryTerms(value) {
+export const normalizedText = (value: any) => String(value ?? '').normalize('NFKC').toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, '');
+export function primaryTerms(value: any) {
   const text = String(value ?? '').normalize('NFKC').toLowerCase();
   const terms = new Set();
   for (const part of segmenter.segment(text)) {
@@ -13,13 +13,13 @@ export function primaryTerms(value) {
   }
   return terms;
 }
-export function contentTerms(value) {
+export function contentTerms(value: any) {
   const text = String(value ?? '').normalize('NFKC').toLowerCase(), terms = primaryTerms(text);
   // Add within-word grams and runs of meaningful single-character segments,
   // not arbitrary pairs spanning whole sentences (which would inflate novelty
   // with grammatical fragments such as “仍想” or “种着”).
   let singles='';
-  const grams=run=>{for(let i=0;i<run.length-1;i++){const term=run.slice(i,i+2);if(!stop.has(term))terms.add(term);}};
+  const grams=(run: any)=>{for(let i=0;i<run.length-1;i++){const term=run.slice(i,i+2);if(!stop.has(term))terms.add(term);}};
   const flush=()=>{grams(singles);singles='';};
   for(const part of segmenter.segment(text)){
     const word=part.segment;
@@ -29,9 +29,9 @@ export function contentTerms(value) {
   flush();
   return terms;
 }
-const intersection = (a, b) => [...a].filter(term => b.has(term));
-const difference = (a, b) => [...a].filter(term => !b.has(term));
-const covered = (terms, reply, main) => {
+const intersection = (a: any, b: any) => [...a].filter(term => b.has(term));
+const difference = (a: any, b: any) => [...a].filter(term => !b.has(term));
+const covered = (terms: any, reply: any, main: any) => {
   // A reply can cover a connection without repeating every adjective or camera
   // detail in its source. Require two independent distinctive spans on each
   // side, including a segmented word; overlapping grams count only once.
@@ -55,7 +55,7 @@ export interface MatchContentOpportunityOptions {
   latestUserText?: string;
 }
 export function matchContentOpportunity({ fresh = [], prior = [], reply = '', latestUserText = '' }: MatchContentOpportunityOptions = {}) {
-  const eligible = row => row && Number.isSafeInteger(row.messageId) && normalizedText(row.quote).length >= 8 && contentTerms(row.quote).size >= 3;
+  const eligible = (row: any) => row && Number.isSafeInteger(row.messageId) && normalizedText(row.quote).length >= 8 && contentTerms(row.quote).size >= 3;
   fresh = fresh.filter(eligible); prior = prior.filter(eligible);
   if (!fresh.length || !prior.length) return null;
   const cached=new Map([...fresh,...prior].map(row=>[row,contentTerms(row.quote)]));
@@ -63,8 +63,8 @@ export function matchContentOpportunity({ fresh = [], prior = [], reply = '', la
   const documents = [...cached.values()];
   const df = new Map(); for (const terms of documents) for (const term of terms) df.set(term, (df.get(term) || 0) + 1);
   const lexical = new Set([...fresh, ...prior].flatMap(row => [...primaryTerms(row.quote)]));
-  const weight = term => (lexical.has(term) ? 2 : .35) * (1 + Math.log(1 + documents.length / (1 + (df.get(term) || 0))));
-  const total = terms => [...terms].reduce((sum, term) => sum + weight(term), 0);
+  const weight = (term: any) => (lexical.has(term) ? 2 : .35) * (1 + Math.log(1 + documents.length / (1 + (df.get(term) || 0))));
+  const total = (terms: any) => [...terms].reduce((sum, term) => sum + weight(term), 0);
   const replyText = normalizedText(reply);
   let best: any = null;
   for (const incoming of fresh) {
@@ -90,7 +90,7 @@ export function matchContentOpportunity({ fresh = [], prior = [], reply = '', la
   return best;
 }
 
-export function connectionAlreadyCovered(connection, reply) {
+export function connectionAlreadyCovered(connection: any, reply: any) {
   const value = normalizedText(connection), previous = normalizedText(reply);
   if (!value || previous.includes(value)) return true;
   const terms = contentTerms(connection), before = contentTerms(reply);

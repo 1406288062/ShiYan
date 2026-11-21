@@ -4,10 +4,10 @@ import { createSpongeClient } from '/home/ubuntu/boss-codex-service/shiyan-v2/sp
 
 export const DEVICE_READ_OPS = ['list_devices', 'list_directory', 'read_file', 'get_file_info'];
 let client: any = null;
-const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-const textOf = result => (result?.content || []).filter(c => c?.type === 'text').map(c => c.text).join('\n') || JSON.stringify(result ?? null);
+const sleep = (ms: any) => new Promise(resolve => setTimeout(resolve, ms));
+const textOf = (result: any) => (result?.content || []).filter((c: any) => c?.type === 'text').map((c: any) => c.text).join('\n') || JSON.stringify(result ?? null);
 
-export function parseDeviceRead(action) {
+export function parseDeviceRead(action: any) {
   const op = String(action?.command || '').trim();
   if (!DEVICE_READ_OPS.includes(op)) throw new Error('device_read 只支持 ' + DEVICE_READ_OPS.join('、'));
   if (op === 'list_devices') return { op, args: {} };
@@ -18,10 +18,10 @@ export function parseDeviceRead(action) {
   return { op, args: { deviceId, path: target, ...(op === 'read_file' ? { length: 400 } : {}) } };
 }
 
-export async function deviceRead(owner, action, { sponge = null, timeoutMs = 30_000 } = {}) {
+export async function deviceRead(owner: any, action: any, { sponge = null, timeoutMs = 30_000 } = {}) {
   const { op, args } = parseDeviceRead(action);
   client ||= sponge || createSpongeClient({ timeoutMs });
-  const call = (name, input) => client.rpc(owner, 'tools/call', { name, arguments: input }, { signal: AbortSignal.timeout(timeoutMs) });
+  const call = (name: any, input: any) => client.rpc(owner, 'tools/call', { name, arguments: input }, { signal: AbortSignal.timeout(timeoutMs) });
   let text = textOf(await call(op, args));
   // 长任务会先返回 call_id，稍后取结果。只读操作重复查询结果是安全的。
   for (let i = 0; i < 4; i++) {

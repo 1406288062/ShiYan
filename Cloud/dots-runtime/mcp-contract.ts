@@ -1,7 +1,7 @@
 // Single-owner MCP contract. Conversation context is routing data, never authentication.
 export const PROTOCOL_VERSIONS = ['2026-07-28', '2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
-export function protocolVersion(requested) { return PROTOCOL_VERSIONS.includes(requested) ? requested : '2025-06-18'; }
-export function capabilities(version) { return version === '2026-07-28' ? {tools: {}, events: {}} : {tools: {}}; }
+export function protocolVersion(requested: any) { return PROTOCOL_VERSIONS.includes(requested) ? requested : '2025-06-18'; }
+export function capabilities(version: any) { return version === '2026-07-28' ? {tools: {}, events: {}} : {tools: {}}; }
 const id = {type:'integer', minimum:1};
 const text = {type:'string', minLength:1, maxLength:20000};
 const context = {type:'object', properties:{host:{type:'string',enum:['chatgpt','shiyan_web','shiyan_desktop','shiyan_mobile','weixin','other']}, conversation_id:{type:'string',minLength:1,maxLength:200}}, required:['host','conversation_id'], additionalProperties:false};
@@ -11,7 +11,7 @@ const owner={type:'string',minLength:1,maxLength:200,pattern:'^[A-Za-z0-9][A-Za-
 const limit = {type:'integer',minimum:1,maximum:200,default:50};
 const read = {readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false};
 const write = {readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:false};
-function tool(name, description, properties, required, annotations=read) {
+function tool(name: any, description: any, properties: any, required: any, annotations=read) {
  const securitySchemes=[{type:'noauth'}];
  return {name,description,inputSchema:{type:'object',properties,required,additionalProperties:false},annotations,securitySchemes,_meta:{securitySchemes}};
 }
@@ -40,10 +40,10 @@ export function toolList() { return [
  tool('dots_notification_status','Inspect subscription verification, expiry, last webhook outcome and queued delivery counts. No callback URLs or signing secrets are returned. A webhook acceptance is not proof of display in a conversation.',{goal_id:id},[]),
  tool('dots_get_capabilities','Describe protocol versions, lifecycle tools, conversation routing and notification support. Shiyan UI integration requires a host adapter and is not installed by this plugin.',{},[])
 ]; }
-export function validateToolArguments(name,args) {
+export function validateToolArguments(name: any,args: any) {
  const definition=toolList().find(t=>t.name===name);
  if(!definition)throw Object.assign(new Error('Unknown tool'),{rpcCode:-32601});
- function check(schema,value,at){
+ function check(schema: any,value: any,at: any){
   if(schema.type==='object'){
    if(!value||typeof value!=='object'||Array.isArray(value))throw new Error(at+' must be an object');
    for(const k of schema.required||[])if(value[k]===undefined)throw new Error(at+'.'+k+' is required');

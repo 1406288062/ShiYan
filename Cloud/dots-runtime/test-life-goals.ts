@@ -12,9 +12,9 @@ let clock = T0;
 const db = new DatabaseSync(':memory:');
 db.exec("CREATE TABLE manager_messages(id INTEGER PRIMARY KEY, manager_id TEXT, role TEXT, content TEXT, created_at INTEGER)");
 const published: any[] = [], audits: any[] = [];
-const store = { db, managerId: 'm1', publishProactive: m => { published.push(m); return { id: published.length }; } };
+const store = { db, managerId: 'm1', publishProactive: (m: any) => { published.push(m); return { id: published.length }; } };
 let planCalls = 0, failPlan = false;
-const assess = async (data, schema, control) => {
+const assess = async (data: any, schema: any, control: any) => {
   assert.equal(control.source, 'dots-goals');
   if (schema.required.includes('milestones')) {
     planCalls++; if (failPlan) throw new Error('model down');
@@ -61,9 +61,9 @@ assert.throws(() => goals.update(999, { status: 'done' }), /不存在/);
 failPlan = true;
 const second = goals.create({ title: '日语口语练习', cadence: 'daily' }).goal;
 await new Promise(r => setTimeout(r, 20));
-assert.equal(goals.list().goals.find(x => x.id === second.id).planState, 'failed');
+assert.equal(goals.list().goals.find((x: any) => x.id === second.id).planState, 'failed');
 failPlan = false; goals.replan(second.id); await new Promise(r => setTimeout(r, 20));
-assert.equal(goals.list().goals.find(x => x.id === second.id).planState, 'ready');
+assert.equal(goals.list().goals.find((x: any) => x.id === second.id).planState, 'ready');
 goals.remove(second.id); assert.equal(goals.list().goals.length, 1);
 assert.ok(audits.some(a => a.includes('完成里程碑')));
 console.log('PASS life goals: plan, check-in schedule, no duplicates, milestones, pause/resume, replan');

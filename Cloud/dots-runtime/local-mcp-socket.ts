@@ -4,7 +4,7 @@ import path from 'node:path';
 import { mkdirSync, chmodSync, lstatSync, unlinkSync } from 'node:fs';
 
 // SSH-authenticated local clients use a private Unix socket. No tokens leave the runtime.
-export async function startLocalMcpSocket({ root, bridge }) {
+export async function startLocalMcpSocket({ root, bridge }: any) {
   const dir = path.join(root, 'local-ipc');
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   chmodSync(dir, 0o700);
