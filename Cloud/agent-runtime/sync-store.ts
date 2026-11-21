@@ -26,7 +26,7 @@ const iso = value => typeof value==='number'?new Date(value).toISOString():value
 
 export function cleanSyncData(kind,id,input) {
   if(!KINDS.has(kind)||!validId(id)||!input||typeof input!=='object'||Array.isArray(input))throw failure('同步记录无效');
-  const data={id};
+  const data: any={id};
   for(const key of KEYS[kind])if(key!=='id'&&!LOCAL.has(key)&&Object.hasOwn(input,key))data[key]=input[key];
   if(kind==='messages'){
     if(!validId(data.conversationId)||!['user','assistant','system'].includes(data.role))throw failure('消息同步记录无效');
@@ -79,7 +79,7 @@ export class SyncStore {
       // key without replacing its row, so this cursor visits each record once.
       const rows=this.db.prepare("SELECT * FROM sync_entities WHERE kind='messages' AND deleted=0 AND json_extract(data,'$.role')='assistant'").iterate();
       for(const row of rows){
-        const data=JSON.parse(row.data);
+        const data=JSON.parse(String(row.data));
         if(!Array.isArray(data.assets))continue;
         const assets=generatedOutputs(data.assets);
         if(assets.length!==data.assets.length)this.write(row.owner,row.kind,row.id,{...data,assets});
@@ -126,7 +126,7 @@ export class SyncStore {
   putAuthoritative(owner,kind,id,input){
     this.db.exec('BEGIN IMMEDIATE');try{const current=this.get(owner,kind,id);if(current?.deleted){this.db.exec('COMMIT');return current;}const data=cleanSyncData(kind,id,{...(current?.data||{}),...input});const result=this.write(owner,kind,id,data);this.db.exec('COMMIT');return result;}catch(error){this.db.exec('ROLLBACK');throw error;}
   }
-  list(owner,after=0,limit=200,{mobile=false,projectChange=null,includeOrder=false}={}){
+  list(owner,after=0,limit=200,{mobile=false,projectChange=null,includeOrder=false}: { mobile?: boolean; projectChange?: ((change: any) => any) | null; includeOrder?: boolean }={}){
     after=Number(after);limit=Number(limit);
     if(!Number.isSafeInteger(after)||after<0||!Number.isSafeInteger(limit)||limit<1||limit>500)throw failure('同步游标无效');
     // A sync cursor tracks entity snapshots, not every intermediate tool update.
@@ -136,17 +136,17 @@ export class SyncStore {
       SELECT MAX(seq) AS seq FROM sync_changes WHERE owner=? AND seq>?
       GROUP BY kind,id
     ) latest ON c.seq=latest.seq ORDER BY c.seq LIMIT ?`).all(owner,after,limit+1);
-    const visible=new Map(),order=[];let bytes=0,consumed=0,cursor=after;
+    const visible=new Map(),order: any[]=[];let bytes=0,consumed=0,cursor=after;
     const currentEntity=this.db.prepare('SELECT * FROM sync_entities WHERE owner=? AND kind=? AND id=?');
     for(const row of rows.slice(0,limit)){
       // iOS cannot import a message before its conversation exists. Include the
       // parent snapshot even if its last update lies on a later page.
-      const parentId=row.kind==='messages'?JSON.parse(row.data).conversationId:null;
+      const parentId=row.kind==='messages'?JSON.parse(String(row.data)).conversationId:null;
       const parent=parentId&&!visible.has('conversations:'+parentId)?currentEntity.get(owner,'conversations',parentId):null;
       const key=row.kind+':'+row.id,previous=visible.get(key);
       const projected=projectChange?projectChange(this.change(row)):mobile?mobileSyncChange(this.change(row)):null;
-      const size=projected?Buffer.byteLength(JSON.stringify(projected))+256:Buffer.byteLength(row.data)+256;
-      const parentSize=parent?Buffer.byteLength(parent.data)+256:0;
+      const size=projected?Buffer.byteLength(JSON.stringify(projected))+256:Buffer.byteLength(String(row.data))+256;
+      const parentSize=parent?Buffer.byteLength(String(parent.data))+256:0;
       const nextBytes=bytes-(previous?.size||0)+size+parentSize;
       // Always deliver one entity, even if it alone exceeds the page target.
       if(consumed&&nextBytes>96*1024)break;
@@ -166,12 +166,12 @@ export class SyncStore {
     if(prior.fingerprint!==fingerprint)throw failure('同步更新标识已使用',409);
     return true;
   }
-  apply(owner,mutations,after=0,limit=200,auth={},options={}){
+  apply(owner,mutations,after=0,limit=200,auth={},options: { includeDelta?: boolean }={}){
     if(!Array.isArray(mutations)||mutations.length>200)throw failure('同步更新数量无效');
     // Validate before committing even when the HTTP layer will read the delta.
     after=Number(after);limit=Number(limit);
     if(!Number.isSafeInteger(after)||after<0||!Number.isSafeInteger(limit)||limit<1||limit>500)throw failure('同步游标无效');
-    const accepted=[],conflicts=[];
+    const accepted: any[]=[],conflicts: any[]=[];
     this.db.exec('BEGIN IMMEDIATE');
     try{
       for(const mutation of mutations){
@@ -179,7 +179,7 @@ export class SyncStore {
         if(!validId(mutationId)||!KINDS.has(kind)||!validId(id)||!Number.isSafeInteger(mutation.baseRevision)||mutation.baseRevision<0||typeof mutation.deleted!=='boolean')throw failure('同步更新无效');
         const fingerprint=mutation[SOURCE_FINGERPRINT]||hash(canonical(mutation));
         const prior=this.db.prepare('SELECT fingerprint,result FROM sync_mutations WHERE owner=? AND id=?').get(owner,mutationId);
-        if(prior){if(prior.fingerprint!==fingerprint)throw failure('同步更新标识已使用',409);const result=JSON.parse(prior.result);(result.accepted?accepted:conflicts).push(result.accepted||result.conflict);continue;}
+        if(prior){if(prior.fingerprint!==fingerprint)throw failure('同步更新标识已使用',409);const result=JSON.parse(String(prior.result));(result.accepted?accepted:conflicts).push(result.accepted||result.conflict);continue;}
         const current=this.get(owner,kind,id);
         let result;
         if((current?.revision||0)!==mutation.baseRevision||(current?.deleted&&!mutation.deleted)){
@@ -188,7 +188,7 @@ export class SyncStore {
           const prepared=kind==='scheduledTasks'?prepareScheduleMutation(this,owner,mutation,auth):mutation;
           const data=mutation.deleted?(current?.data||{id}):cleanSyncData(kind,id,prepared.data);
           const next=this.write(owner,kind,id,data,mutation.deleted);
-          result={accepted:{mutationId,kind,id,revision:next.revision}};accepted.push(result.accepted);
+          result={accepted:{mutationId,kind,id,revision:next!.revision}};accepted.push(result.accepted);
         }
         this.db.prepare('INSERT INTO sync_mutations(owner,id,fingerprint,result) VALUES(?,?,?,?)').run(owner,mutationId,fingerprint,JSON.stringify(result));
       }
@@ -208,10 +208,10 @@ export class SyncStore {
   }
   asset(owner,id){
     const row=this.db.prepare('SELECT * FROM sync_assets WHERE owner=? AND id=?').get(owner,id);
-    if(!row){const generated=this.db.prepare('SELECT data FROM sync_generated_assets WHERE owner=? AND id=?').get(owner,id);return generated?JSON.parse(generated.data):null;}
+    if(!row){const generated=this.db.prepare('SELECT data FROM sync_generated_assets WHERE owner=? AND id=?').get(owner,id);return generated?JSON.parse(String(generated.data)):null;}
     return {id:row.id,syncAssetId:row.id,filename:row.filename,mimeType:row.mime_type,bytes:Number(row.bytes),sha256:row.sha256};
   }
-  assetFile(owner,id){const row=this.db.prepare('SELECT file_name FROM sync_assets WHERE owner=? AND id=?').get(owner,id);if(row)return path.join(this.assetRoot,row.file_name);return this.db.prepare('SELECT file FROM sync_generated_assets WHERE owner=? AND id=?').get(owner,id)?.file||null;}
+  assetFile(owner,id){const row=this.db.prepare('SELECT file_name FROM sync_assets WHERE owner=? AND id=?').get(owner,id);if(row)return path.join(this.assetRoot,String(row.file_name));return this.db.prepare('SELECT file FROM sync_generated_assets WHERE owner=? AND id=?').get(owner,id)?.file||null;}
   registerGeneratedAsset(asset){
     if(!asset?.owner||!validId(asset.id)||typeof asset.file!=='string'||!path.resolve(asset.file).startsWith(path.resolve(this.root,'artifacts')+path.sep))return null;
     const metadata={id:asset.id,syncAssetId:asset.id,filename:asset.filename,mimeType:asset.mimeType,bytes:asset.bytes,sha256:asset.sha256};
@@ -250,7 +250,7 @@ export function withAcceptedSnapshots(response,store,owner){
     changes.set(current.kind+':'+current.id,current);
   }
   const rank={projects:0,conversations:1,messages:2,scheduledTasks:3};
-  return {...response,changes:[...changes.values()].sort((a,b)=>rank[a.kind]-rank[b.kind])};
+  return {...response,changes:[...changes.values()].sort((a: any,b: any)=>rank[a.kind]-rank[b.kind])};
 }
 
 export function jobMessageData(job,base){
