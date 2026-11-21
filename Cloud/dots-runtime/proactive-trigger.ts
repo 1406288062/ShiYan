@@ -9,7 +9,7 @@ export function scoreOpportunity(f){
   return 1/(1+Math.exp(-z));
 }
 export const PREDICTOR_INFO=Object.freeze({kind:'cold-start-logistic',trained:false,threshold:0.60,features:['evidence','managerActive','inputChanged','active','pending','explorationDue','contextChanged','held']});
-const fault=(code,message,retryAt)=>Object.assign(new Error(message),{code,retryAt});
+const fault=(code,message,retryAt?: any)=>Object.assign(new Error(message),{code,retryAt});
 
 // 硬性节流（2026-10-29）：
 // 1. 北京时间 22:00–次日 09:00 不调用大模型。
@@ -49,7 +49,7 @@ export function createProactiveTrigger({store,cognition,discovery=null,epoch=()=
   db.exec('CREATE TABLE IF NOT EXISTS dots_proactive_decisions(id INTEGER PRIMARY KEY,manager_id TEXT NOT NULL,created_at INTEGER NOT NULL,features TEXT NOT NULL,score REAL NOT NULL,reason TEXT NOT NULL); CREATE INDEX IF NOT EXISTS idx_proactive_decision_recent ON dots_proactive_decisions(manager_id,id DESC)');
   const state=()=>db.prepare('SELECT * FROM dots_proactive_trigger WHERE manager_id=?').get(managerId);
   const gate=()=>db.prepare('SELECT * FROM dots_proactive_global WHERE id=1').get();
-  let busy=false,closed=false,requested=false,queued=false,interval=null,admitted=false,turnEpoch='',lastFault=null,cycleCalls=0;
+  let busy=false,closed=false,requested=false,queued=false,interval: any=null,admitted=false,turnEpoch='',lastFault: any=null,cycleCalls=0;
   const counters={signals:0,coalesced:0,runs:0,belowThreshold:0,gated:0,cycles:0,modelCalls:0};
   const active=()=>db.prepare('SELECT status FROM managers WHERE id=?').get(managerId)?.status==='active';
   const claim=()=>store.transaction(()=>Boolean(db.prepare('UPDATE dots_proactive_trigger SET lease_owner=?,lease_until=? WHERE manager_id=? AND (lease_owner=? OR lease_until<=?)').run(owner,now()+300_000,managerId,owner,now()).changes));
@@ -141,8 +141,8 @@ export function createProactiveTrigger({store,cognition,discovery=null,epoch=()=
       // The global slot stays consumed: failures, cancellations and stale
       // context never reopen the gate early.
       const s=state();
-      db.prepare('UPDATE dots_proactive_trigger SET failures=?,next_allowed_at=?,last_reason=? WHERE manager_id=? AND lease_owner=?').run(s.failures+1,gate().next_at,String(error.code||'failure').slice(0,60),managerId,owner);
-      logger.warn?.('[proactive-trigger]',error.code||'failure',error.message);
+      db.prepare('UPDATE dots_proactive_trigger SET failures=?,next_allowed_at=?,last_reason=? WHERE manager_id=? AND lease_owner=?').run(s.failures+1,gate().next_at,String((error as any).code||'failure').slice(0,60),managerId,owner);
+      logger.warn?.('[proactive-trigger]',(error as any).code||'failure',(error as any).message);
       return false;
     }finally{
       admitted=false;busy=false;cycleCalls=0;release();
