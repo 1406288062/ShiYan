@@ -1,20 +1,20 @@
  
 (() => {
   'use strict';
-  const $ = id => document.getElementById(id);
-  const $$ = query => [...document.querySelectorAll(query)];
+  const $ = (id: string): any => document.getElementById(id);
+  const $$ = (query: string): any[] => [...document.querySelectorAll(query)];
   const busyStates = new Set(['submitting', 'queued', 'running', 'reconnecting', 'cancelling']);
   const reasoningNames = {minimal:'最低',low:'低',medium:'中',high:'高',xhigh:'极高',max:'最高',ultra:'极致',none:'关闭',default:'默认'};
-  let state = null, eventSource = null, initialized = false, toastTimer = 0, draftTimer = 0;
+  let state: any = null, eventSource: any = null, initialized = false, toastTimer: any = 0, draftTimer: any = 0;
   const drafts = new Map(), assets = new Map(), stoppingConversations = new Set();
   const ui = {
-    view:'agent', feature:'enhance', model:'general', input:null, result:null, showOriginal:false,
-    photoBatchEntries:[], photoBatchIndex:0, photoSelectionVersion:0, photoBatch:null, photoExporting:false, photoJobId:null, photoUploading:false, photoUploadFile:null, photoLocalURL:null, photoSubmitting:false, photoError:'', strokes:[], currentStroke:null, brush:.055, drawer:false, reasoning:false, reasoningDragging:false, reasoningPosition:0,
-    editing:null, submitting:false, speech:false, speechFinishing:false, speechSessionId:null, speechPrefix:'', recordingConversation:null,
-    selection:new Set(), selecting:false, sessionMenuId:null, deletingSessionId:null,
-    preview:null, zoom:1, panX:0, panY:0, previewPointer:null, searchTerm:'', restoring:false, historyReturnView:'agent'
+    view:'agent', feature:'enhance', model:'general', input: null as any, result: null as any, showOriginal:false,
+    photoBatchEntries: [] as any[], photoBatchIndex:0, photoSelectionVersion:0, photoBatch: null as any, photoExporting:false, photoJobId: null as any, photoUploading:false, photoUploadFile: null as any, photoUploadLabel:'', photoExportLabel:'', photoLocalURL: null as any, photoSubmitting:false, photoError:'', strokes: [] as any[], currentStroke: null as any, brush:.055, drawer:false, reasoning:false, reasoningDragging:false, reasoningPosition:0,
+    editing: null as any, submitting:false, speech:false, speechFinishing:false, speechSessionId: null as any, speechPrefix:'', recordingConversation: null as any,
+    selection:new Set(), selecting:false, sessionMenuId: null as any, deletingSessionId: null as any,
+    preview: null as any, previewGalleryAssets: null as any, renamingSessionId: null as any, zoom:1, panX:0, panY:0, previewPointer: null as any, searchTerm:'', restoring:false, historyReturnView:'agent'
   };
-  const esc = value => String(value == null ? '' : value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const esc = value => String(value == null ? '' : value).replace(/[&<>"']/g, c => (({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'} as Record<string, string>)[c] || ''));
   const icon = name => '<span class="symbol" data-symbol="' + esc(name) + '" style="--symbol:url(\'/assets/symbols/' + esc(name) + '.png\')" aria-hidden="true"></span>';
   const sessionMenuPaths = {
     rename:'M4.5 19.5l1-4L16.8 4.2a1.8 1.8 0 0 1 2.5 0l.5.5a1.8 1.8 0 0 1 0 2.5L8.5 18.5l-4 1zM14.8 6.2l3 3',
@@ -27,7 +27,7 @@
   const sessionMenuIcon = name => '<svg class="session-menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="'+sessionMenuPaths[name==='unpin'?'pin':name]+'"'+(name==='pin'||name==='unpin'?' transform="rotate(45 12 12)"':'')+'></path>'+(name==='unpin'?'<path d="M3 3l18 18"></path>':'')+'</svg>';
    
   const messageEditIcon = () => sessionMenuIcon('rename').replace('viewBox="0 0 24 24"', 'viewBox="3.7 2.895 17.405 17.405"');
-  let sessionProjectCloseTimer=0;
+  let sessionProjectCloseTimer: any = 0;
   const show = (id, visible = true) => {
     const el=$(id);
     if (!el) return;
@@ -56,26 +56,26 @@
   }
   function humanError(error) {
     if (!error) return '操作失败，请重试';
-    if(typeof error === 'object') return error.message || error.error || JSON.stringify(error);
+    if(typeof error === 'object') return (error as any).message || error.error || JSON.stringify(error);
     return String(error);
   }
   function isApplicationStateSnapshot(value) {
     return !!value && typeof value === 'object' && !Array.isArray(value)
       && Array.isArray(value.conversations);
   }
-  async function api(path, method='GET', body) {
+  async function api(path: string, method: string = 'GET', body?: any) {
     if(window.ShiYanPlatform?.mode==='web' && (path==='/api/state' || path==='/api/dots/local-state' || path==='/api/dots/manager'))await window.ShiYanUploadPriority?.wait();
-    const options={method,credentials:'same-origin',headers:{}};
-    if(method !== 'GET') options.headers['X-Shiyan-Local']='1';
+    const headers: Record<string, string> = {}; const options: RequestInit = {method, credentials:'same-origin', headers};
+    if(method !== 'GET') headers['X-Shiyan-Local']='1';
     if(body instanceof FormData) options.body=body;
-    else if(body !== undefined) {options.headers['Content-Type']='application/json';options.body=JSON.stringify(body);}
+    else if(body !== undefined) {headers['Content-Type']='application/json';options.body=JSON.stringify(body);}
     let response;
     try { response=await fetch(path,options); } catch (_) { throw new Error('本地服务连接已断开，正在等待恢复'); }
     let data;
     try {data=await response.json();} catch (_) {throw new Error('服务返回了无法读取的响应（' + response.status + '）');}
     if(!response.ok || data.ok === false) {
       const error = new Error(humanError(data.error || data.detail || response.statusText));
-      error.status = response.status; error.code = data.code;
+      (error as any).status = response.status; (error as any).code = data.code;
       throw error;
     }
     // Some domain APIs (for example /weixin) also use `state` for a status
@@ -97,11 +97,11 @@
         ui.photoUploadLabel=value.sent?'图片已发送，正在确认':value.percent===null?'正在上传图片':'正在上传图片 '+value.percent+'%';
         renderPhoto();
       };
-      let data=null;
+      let data: any = null;
       if(kind==='input' && window.ShiYanPlatform?.mode==='web' && window.ShiYanCosTransfer)
         data=await window.ShiYanCosTransfer.upload(files,kind,api,progress,ui.feature==='enhance'?'enhance':null);
       if(data===null)data=priority?await priority.upload(path,form,progress):await api(path,'POST',form);
-      finishTiming?.('completed',data.assets?.[0]?.id,Array.from(files).reduce((n,f)=>n+(f.size||0),0));
+      finishTiming?.('completed',data.assets?.[0]?.id,Array.from(files).reduce((n: number, f: any)=>n+(f.size||0),0));
       return (data.assets || []).map(remember);
     }catch(error){finishTiming?.('failed');throw error;}
     finally{release?.();}
@@ -120,7 +120,7 @@
   function changeDraft(fn, textOnly=false) {
     const c=current();if(!c)return;
     const d=draftFor(c);fn(d);d.dirty=true;d.revision++;
-    clearTimeout(draftTimer);draftTimer=setTimeout(()=>flushDraft(c.id).catch(e=>notice(e.message)),350);
+    clearTimeout(draftTimer);draftTimer=setTimeout(()=>flushDraft(c.id).catch(e=>notice((e as any).message)),350);
     renderComposer(false,textOnly);
   }
   async function flushDraft(id) {
@@ -200,11 +200,11 @@
   async function connectAgent() {
     const button=$('reconnectServiceButton');if(button)button.disabled=true;
     try {await api('/api/agent/connect','POST',{});}
-    catch(e){toast(e.message);}
+    catch(e){toast((e as any).message);}
     finally {if(button)button.disabled=false;}
   }
   function sortedConversations() {
-    return [...(state ? state.conversations : [])].filter(c=>(c.messages || []).some(m=>m.role==='user')).sort((a,b)=>Number(b.isPinned)-Number(a.isPinned)||new Date(b.updatedAt)-new Date(a.updatedAt));
+    return [...(state ? state.conversations : [])].filter(c=>(c.messages || []).some(m=>m.role==='user')).sort((a,b)=>Number(b.isPinned)-Number(a.isPinned)||new Date(b.updatedAt).getTime()-new Date(a.updatedAt).getTime());
   }
   function conversationIcon() {const t=$('sessionRowTemplate');const svg=t && t.content.querySelector('svg');return svg?svg.outerHTML:icon('bubble.left.and.bubble.right');}
   function sessionHTML(c) {
@@ -223,7 +223,7 @@
   }
   function fileDescription(a) {
     const ext=(a.filename||'').split('.').pop().toLowerCase();
-    const kind=({md:'Markdown',docx:'Word',doc:'Word',pdf:'PDF',xlsx:'Excel',xls:'Excel',pptx:'PowerPoint',ppt:'PowerPoint',json:'JSON',txt:'文本',pdf:'PDF',csv:'CSV',html:'HTML',zip:'ZIP'})[ext]||ext.toUpperCase()||'文件';
+    const kind=({md:'Markdown',docx:'Word',doc:'Word',pdf:'PDF',xlsx:'Excel',xls:'Excel',pptx:'PowerPoint',ppt:'PowerPoint',json:'JSON',txt:'文本',csv:'CSV',html:'HTML',zip:'ZIP'})[ext]||ext.toUpperCase()||'文件';
     const bytes=Number(a.bytes),size=bytes>0?(bytes<1024?bytes+' B':bytes<1048576?(bytes/1024).toFixed(1)+' KB':(bytes/1048576).toFixed(1)+' MB'):'';
     return kind+(size?' · '+size:'');
   }
@@ -264,7 +264,7 @@
     return (user&&at?'<div class="v23-message-time"><time datetime="'+esc(at)+'">'+esc(dateText(at))+'</time></div>':'')+'<article class="message '+(user?'is-user':'is-assistant')+(imageOnly?' is-image-only':'')+'" data-message-id="'+esc(m.id)+'">'+elapsed+'<div class="message-content">'+inner+'</div>'+changeSummary+(user||!busy||retry?tools:'')+'</article>';
   }
   let lastMessagesSignature='',lastRenderedConversation='',messageFollowFrame=0,messageAutoFollow=true,messageLastScrollTop=0;
-  const readingPositions=new Map(),pendingReadingPositions=new Map();let readingSaveTimer=0,restoringReadingPosition=false,readingRestoreGeneration=0,messageUserScrollUntil=0;
+  const readingPositions=new Map(),pendingReadingPositions=new Map();let readingSaveTimer: any = 0,restoringReadingPosition=false,readingRestoreGeneration=0,messageUserScrollUntil=0;
   function saveReadingPosition(id=lastRenderedConversation){
     const scroller=$('messagesScroller');if(!id || ui.view!=='agent' || !scroller.clientHeight || restoringReadingPosition)return;
     const bounds=scroller.getBoundingClientRect(),anchor=[...$('messages').querySelectorAll(':scope>article')].find(e=>e.getBoundingClientRect().bottom>bounds.top+1);
@@ -279,7 +279,7 @@
     for(const [id,readingPosition] of pending){try{await api('/api/conversations/'+encodeURIComponent(id),'PATCH',{readingPosition});}catch(_){if(!pendingReadingPositions.has(id))pendingReadingPositions.set(id,readingPosition);}}
   }
   // 打开会话时先隐藏消息列表，等位置（含图片解码后的校正）全部定好再一次性显示，避免用户看到中途的跳动。
-  let messagesRevealTimer=0,messagesPlacing=false,messageAnchor=null;
+  let messagesRevealTimer: any = 0, messagesPlacing=false, messageAnchor: any = null;
   function hideMessagesUntilPlaced(){messagesPlacing=true;clearTimeout(messagesRevealTimer);$('messagesScroller').classList.add('is-placing-messages');messagesRevealTimer=setTimeout(revealMessages,1200);}
   function revealMessages(){if(!messagesPlacing)return;messagesPlacing=false;clearTimeout(messagesRevealTimer);$('messagesScroller').classList.remove('is-placing-messages');rememberMessageAnchor();}
   function rememberMessageAnchor(){
@@ -338,19 +338,19 @@
     const anchor=changedConversation?null:[...list.querySelectorAll(':scope>article')].find(e=>e.getBoundingClientRect().bottom>bounds.top+1);
     const anchorOffset=anchor?.getBoundingClientRect().top-bounds.top;
     const existing=new Map([...list.querySelectorAll(':scope>article')].map(e=>[e.dataset.messageId,e]));
-    const desired=[];
+    const desired: any[] = [];
     for(const message of messages){
-      const fingerprint=JSON.stringify(message);let article=existing.get(message.id);
+      const fingerprint=JSON.stringify(message);let article: any = existing.get(message.id);
       if(!changedConversation && article?.__messageFingerprint===fingerprint){
         if(article.__messageTime)desired.push(article.__messageTime);
         desired.push(article);continue;
       }
       const template=document.createElement('template');template.innerHTML=messageHTML(message);
-      const nodes=[...template.content.children],fresh=nodes.find(e=>e.matches('article'));
+      const nodes=[...template.content.children], fresh: any = nodes.find(e=>e.matches('article'));
        
        
       if(!changedConversation && article){
-        const oldAssets=article.querySelector(".message-content>.message-assets"),newAssets=fresh.querySelector(".message-content>.message-assets");
+        const oldAssets: any = article.querySelector(".message-content>.message-assets"), newAssets: any = fresh.querySelector(".message-content>.message-assets");
         // 附件缩略图：同一组文件时保留原来的节点，不重新加载；模型输出期间同步偶尔让用户消息短暂丢失附件，也沿用原节点。
         const assetIds=node=>[...node.querySelectorAll('[data-asset-id]')].map(e=>e.dataset.assetId).join('|');
         if(oldAssets && newAssets && (oldAssets.outerHTML===newAssets.outerHTML||assetIds(oldAssets)===assetIds(newAssets)))newAssets.replaceWith(oldAssets);
@@ -360,13 +360,13 @@
         }
         // 模型输出期间（以及用户消息）附件不应凭空消失：同步数据短暂缺失时沿用原来的缩略图。
         else if(oldAssets && !newAssets && (message.role==='user'||busyStates.has(message.state))){const body=fresh.querySelector('.message-content');if(body)body.prepend(oldAssets);}
-        const oldBody=article.querySelector('.message-body'),newBody=fresh.querySelector('.message-body');
+        const oldBody: any = article.querySelector('.message-body'), newBody: any = fresh.querySelector('.message-body');
         if(oldBody&&newBody&&article.__bodyText===(message.text||'')&&article.__bodyRole===message.role)newBody.replaceWith(oldBody);
         else if(oldBody&&newBody){
           const images=[...oldBody.querySelectorAll('img')];
           for(const image of newBody.querySelectorAll('img')){const old=images.find(i=>i.outerHTML===image.outerHTML);if(old){image.replaceWith(old);images.splice(images.indexOf(old),1);}}
         }
-        const oldDetails=article.querySelector('.output-details'),newDetails=fresh.querySelector('.output-details');
+        const oldDetails: any = article.querySelector('.output-details'), newDetails: any = fresh.querySelector('.output-details');
         if(oldDetails&&newDetails){
           if(oldDetails.dataset.userToggled){newDetails.open=oldDetails.open;newDetails.dataset.userToggled='1';}
           if(oldDetails.innerHTML===newDetails.innerHTML){if(!oldDetails.dataset.userToggled)oldDetails.open=newDetails.open;newDetails.replaceWith(oldDetails);}
@@ -402,8 +402,8 @@
   }
   function scrollToLatest(){++readingRestoreGeneration;restoringReadingPosition=false;revealMessages();const el=$('messagesScroller');messageAutoFollow=true;el.scrollTop=el.scrollHeight;messageLastScrollTop=el.scrollTop;show('latestButton',false);}
   function pauseMessageFollow(){++readingRestoreGeneration;restoringReadingPosition=false;revealMessages();messageAutoFollow=false;cancelAnimationFrame(messageFollowFrame);show('latestButton',!!current()?.messages?.length);}
-  let composerSizeFrame=0,composerMeasureInput=null;
-  let composerTypingConversation='',composerTypingEmpty=null;
+  let composerSizeFrame: any = 0, composerMeasureInput: any = null;
+  let composerTypingConversation='',composerTypingEmpty: any = null;
   let composerComposing=false,composerCompositionEnding=false,composerRefreshDeferred=false,composerCompositionFrame=0;
   function bindComposerComposition(input) {
     input.addEventListener('compositionstart',()=>{
@@ -487,7 +487,7 @@
   }
   // 服务端按模型提供方（GPT、Claude…）标注 provider；多于一个提供方时分组展示。
   function modelGroups(choices){
-    const groups=[];
+    const groups: any[] = [];
     for(const m of choices){const key=m.provider||'';let group=groups.find(g=>g.key===key);if(!group)groups.push(group={key,label:m.providerLabel||m.provider||'模型',models:[]});group.models.push(m);}
     return groups;
   }
@@ -517,8 +517,8 @@
       if(!animate||sourceText===targetText)continue;
       const old=sourceText?createCharacter(sourceText,node,sourcePosition,previousChars.length):null;
       if(old)old.setAttribute('aria-hidden','true');
-      const outgoing=old?.animate([{transform:'translateY(0)',opacity:1},{transform:'translateY('+(-direction*100)+'%)',opacity:0}],options);
-      const incoming=next?.animate([{transform:'translateY('+(direction*100)+'%)',opacity:0},{transform:'translateY(0)',opacity:1}],options);
+      const outgoing=old?.animate([{transform:'translateY(0)',opacity:1},{transform:'translateY('+(-direction*100)+'%)',opacity:0}], options as KeyframeAnimationOptions);
+      const incoming=next?.animate([{transform:'translateY('+(direction*100)+'%)',opacity:0},{transform:'translateY(0)',opacity:1}], options as KeyframeAnimationOptions);
       const cleanup=()=>{old?.remove();incoming?.cancel();};const timer=setTimeout(cleanup,220);
       outgoing?.finished.then(()=>{clearTimeout(timer);cleanup();}).catch(()=>{clearTimeout(timer);old?.remove();});
     }
@@ -568,7 +568,7 @@
       await api('/api/conversations/'+encodeURIComponent(id)+'/select','POST',{});
     } finally {if(pendingSelection===id)pendingSelection=null;}
   }
-  async function newConversation(projectId) {
+  async function newConversation(projectId?: any) {
     cancelSpeech();const c=current();if(c)await flushDraft(c.id);
     ui.editing=null;notice('');
     await api('/api/conversations','POST',{projectId:typeof projectId==='string'?projectId:null});
@@ -584,7 +584,7 @@
     $('agentSidebar').setAttribute('aria-hidden',String(compact && !open));show('closeSidebarButton',compact && open);$('closeSidebarButton').tabIndex=compact && open?0:-1;
     closePopovers();ui.reasoning=false;renderComposer();
   }
-  function validateAttachmentFiles(files, existing=[]) {
+  function validateAttachmentFiles(files: any, existing: any = []) {
     if(files.length>maxImages()-existing.length)throw new Error('每次最多添加 '+maxImages()+' 个附件');
     const image=f=>(f.type||'').startsWith('image/') || /\.(heic|heif)$/i.test(f.name||'');
     if(files.some(f=>!image(f) && f.size>10*1024*1024))throw new Error('单个文档不能超过 10 MB');
@@ -593,16 +593,16 @@
   async function addAttachments(files) {
     const c=current();if(!c)await newConversation();
     if(!files.length)return;
-    try {validateAttachmentFiles(files,draftFor().assets);} catch(error){notice(error.message);return;}
+    try {validateAttachmentFiles(files,draftFor().assets);} catch(error){notice((error as any).message);return;}
     $('addImageButton').disabled=true;
     try {
       const result=await upload(files,'attachment');
       changeDraft(d=>{d.assets.push(...result);});
       await flushDraft(current().id);
-    } catch(e){notice(e.message);}
+    } catch(e){notice((e as any).message);}
     finally {$('attachmentInput').value='';renderComposer();}
   }
-  async function submitMessage(event) {
+  async function submitMessage(event?: any) {
     if(event)event.preventDefault();
     const c=current();if(!c || ui.submitting)return;
     const d=draftFor(c);if(!d.text.trim() && !d.assets.length)return;
@@ -611,25 +611,25 @@
       await stopSpeech();
       if(!current() || current().id!==c.id)return;
       await flushDraft(c.id);
-      const payload={text:d.text,assetIds:d.assets.map(a=>a.id),priority:"normal"};
+      const payload: any = {text:d.text,assetIds:d.assets.map(a=>a.id),priority:"normal"};
       if(ui.editing && ui.editing.conversationId===c.id)payload.editingMessageId=ui.editing.messageId;
       await api('/api/conversations/'+encodeURIComponent(c.id)+'/send','POST',payload);
       const updated=draftFor(c);updated.text='';updated.assets=[];updated.dirty=false;updated.revision++;
       ui.editing=null;$('messageInput').value='';if(!isBusy(c))scrollToLatest();
-    } catch(e){notice(e.message);}
+    } catch(e){notice((e as any).message);}
     finally {ui.submitting=false;renderComposer(true);}
   }
   async function stopGeneration() {
     const c=current();if(!isBusy(c) || stoppingConversations.has(c.id))return;
     stoppingConversations.add(c.id);renderComposer();
     try {await api('/api/conversations/'+encodeURIComponent(c.id)+'/stop','POST',{});}
-    catch(e){if(current()?.id===c.id)notice('停止尚未确认：'+e.message);}
+    catch(e){if(current()?.id===c.id)notice('停止尚未确认：'+(e as any).message);}
     finally {stoppingConversations.delete(c.id);renderComposer();}
   }
   async function retryReceive() {
     const c=current();if(!c)return;
     try {await api('/api/conversations/'+encodeURIComponent(c.id)+'/retry','POST',{});notice('');}
-    catch(e){notice(e.message);}
+    catch(e){notice((e as any).message);}
   }
   function editMessage(id) {
     const c=current();if(!c || isBusy(c)){toast('请先等待当前回复完成');return;}
@@ -643,13 +643,13 @@
     if(!ui.editing)return;
     const d=draftFor();Object.assign(d,ui.editing.original);d.dirty=true;d.revision++;
     ui.editing=null;renderComposer(true);
-    const c=current();if(c)flushDraft(c.id).catch(e=>notice(e.message));
+    const c=current();if(c)flushDraft(c.id).catch(e=>notice((e as any).message));
   }
   function renderSearch() {
     if(!state)return;
     const term=ui.searchTerm.trim().toLocaleLowerCase();
     let results=sortedConversations().filter(c=>!term || (c.title || '').toLocaleLowerCase().includes(term) || (c.messages || []).some(m=>(m.text || '').toLocaleLowerCase().includes(term)));
-    if(!term)results=results.sort((a,b)=>new Date(b.lastOpenedAt || b.updatedAt)-new Date(a.lastOpenedAt || a.updatedAt));
+    if(!term)results=results.sort((a,b)=>new Date(b.lastOpenedAt || b.updatedAt).getTime()-new Date(a.lastOpenedAt || a.updatedAt).getTime());
     setText('searchHeading',term?'搜索结果':'最近打开');
     $('searchResults').innerHTML=results.length?results.map(c=>{const message=[...(c.messages || [])].reverse().find(m=>m.text && m.text.trim());const excerpt=message?message.text.replace(/\s+/g,' ').slice(0,100):'新对话';return '<button type="button" class="search-result" data-search-session="'+esc(c.id)+'"><span class="search-result-icon">'+conversationIcon()+'</span><span class="search-result-copy"><strong class="search-result-title">'+esc(c.title || '新对话')+'</strong><span class="search-result-excerpt">'+esc(excerpt)+'</span></span></button>';}).join(''):'<div class="empty-state">没有找到对话</div>';
     show('clearSearchButton',!!ui.searchTerm);
@@ -667,7 +667,7 @@
     }
     ui.input=await resolveAsset(state.settings.homeInputAssetId);
     if(ui.input){
-      const jobs=state.photoJobs.filter(j=>j.inputAssetId===ui.input.id && j.feature===ui.feature).sort((a,b)=>new Date(b.createdAt || 0)-new Date(a.createdAt || 0));
+      const jobs=state.photoJobs.filter(j=>j.inputAssetId===ui.input.id && j.feature===ui.feature).sort((a,b)=>new Date(b.createdAt || 0).getTime()-new Date(a.createdAt || 0).getTime());
       if(jobs[0]){ui.photoJobId=jobs[0].id;ui.result=await resolveAsset(jobs[0].outputAssetId);}
     }
     ui.restoring=false;renderPhoto();
@@ -705,7 +705,7 @@
     if(!Number.isInteger(index)||!photoBatchEntries()[index])return;
     ui.photoBatchIndex=index;ui.showOriginal=false;ui.photoError=photoBatchEntries()[index].error||'';
     syncPhotoBatchSelection();renderPhoto();
-    if(!ui.photoUploading)saveWorkspace().catch(error=>toast(error.message));
+    if(!ui.photoUploading)saveWorkspace().catch(error=>toast((error as any).message));
   }
   function photoBatchSummary(){
     const entries=photoBatchEntries();let completed=0,failed=0,waiting=0;
@@ -739,14 +739,14 @@
       ui.photoLocalURL=null;ui.photoUploadFile=null;ui.input=null;ui.result=null;ui.photoJobId=null;ui.photoBatch=null;ui.photoBatchIndex=0;
     }
     ui.photoError=entries[ui.photoBatchIndex]?.error||'';ui.showOriginal=false;ui.strokes=[];
-    renderPhoto();saveWorkspace().catch(error=>toast(error.message));
+    renderPhoto();saveWorkspace().catch(error=>toast((error as any).message));
   }
   async function chooseHomeImages(files){
-    const items=Array.from(files||[]);if(!items.length)return;
+    const items: any[] = Array.from(files||[]);if(!items.length)return;
     if(items.length>10){toast('一次最多选择 10 张图片');$('homeFileInput').value='';return;}
     if(photoBusy()||ui.photoExporting||ui.restoring){toast('请先等待当前处理完成');return;}
     if(items.some(file=>!(file.type||'').startsWith('image/')&&!/\.(?:jpe?g|png|webp|heic|heif)$/i.test(file.name||''))){toast('请选择 JPG、PNG、WebP 或 HEIC 图片');return;}
-    const previous=photoBatchEntries(),jobs=new Map((state?.photoJobs||[]).map(job=>[job.id,job]));
+    const previous=photoBatchEntries(), jobs: any = new Map((state?.photoJobs||[]).map(job=>[job.id,job]));
     const hasResults=!!ui.result||!!jobs.get(ui.photoJobId)?.outputAssetId||previous.some(entry=>entry.result||jobs.get(entry.jobId)?.outputAssetId);
     const append=ui.feature==='enhance'&&!!ui.input&&!hasResults;
     const retained=append?(previous.length?previous.slice():[{input:ui.input,file:ui.photoUploadFile||null,localURL:ui.photoLocalURL||null,result:null,jobId:ui.photoJobId||null,error:ui.photoError||''}]):[];
@@ -760,7 +760,7 @@
     if(ui.photoLocalURL){URL.revokeObjectURL(ui.photoLocalURL);ui.photoLocalURL=null;}
     ui.photoUploadFile=null;ui.photoJobId=null;ui.result=null;ui.photoError='';ui.showOriginal=false;ui.strokes=[];
     const added=items.map(file=>{
-      const localURL=URL.createObjectURL(file),input={id:'local:'+localURL,url:localURL,filename:file.name,mimeType:file.type};
+      const localURL=URL.createObjectURL(file), input: any = {id:'local:'+localURL,url:localURL,filename:file.name,mimeType:file.type};
       const entry={file,localURL,input,result:null,jobId:null,error:''};
       const image=new Image();image.onload=()=>{entry.input={...entry.input,width:image.naturalWidth,height:image.naturalHeight};renderPhoto();};image.src=localURL;
       return entry;
@@ -777,22 +777,22 @@
           const [asset]=await upload([entry.file]);if(!asset)throw Error('没有读取到图片');
           entry.input={...asset,url:entry.localURL,...(entry.input.width?{width:entry.input.width,height:entry.input.height}:{})};
           entry.file=null;
-        }catch(error){entry.error=error.message||'上传失败';}
+        }catch(error){entry.error=(error as any).message||'上传失败';}
         finally{entry.uploading=false;syncPhotoBatchSelection();renderPhoto();}
       }
       ui.photoError=photoBatchEntries().some(entry=>entry.file)?'部分图片上传失败，原图已保留，请点击“重试上传”。':'';
-      if(!ui.photoError)saveWorkspace().catch(error=>toast(error.message));
+      if(!ui.photoError)saveWorkspace().catch(error=>toast((error as any).message));
     }finally{ui.photoUploading=false;$('homeFileInput').disabled=false;$('homeFileInput').value='';renderPhoto();}
   }
   async function restorePhotoBatch(ids,batchId){
     const version=ui.photoSelectionVersion||0;
     const inputs=await Promise.all(ids.map(resolveAsset));if(version!==(ui.photoSelectionVersion||0))return;
     ui.photoBatchEntries=inputs.filter(Boolean).map(input=>{
-      const job=(state.photoJobs||[]).filter(job=>job.inputAssetId===input.id).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))[0];
+      const job=(state.photoJobs||[]).filter(job=>job.inputAssetId===input.id).sort((a,b)=>new Date(b.createdAt||0).getTime()-new Date(a.createdAt||0).getTime())[0];
       return {input,jobId:job?.id||null,result:job?.outputAssetId?assets.get(job.outputAssetId):null,error:'',file:null,localURL:null};
     });
     ui.photoBatchIndex=Math.max(0,ui.photoBatchEntries.findIndex(entry=>entry.input.id===state.settings.homeInputAssetId));
-    if(batchId)try{applyPhotoBatchStatus({...await api('/api/photo/batches/'+encodeURIComponent(batchId)),photoSelectionVersion:version});}catch(error){ui.photoError='恢复批量状态失败：'+error.message;}
+    if(batchId)try{applyPhotoBatchStatus({...await api('/api/photo/batches/'+encodeURIComponent(batchId)),photoSelectionVersion:version});}catch(error){ui.photoError='恢复批量状态失败：'+(error as any).message;}
     syncPhotoBatchSelection();
   }
   function applyPhotoBatchStatus(data){
@@ -828,8 +828,8 @@
       if(version!==(ui.photoSelectionVersion||0))return;
       ui.photoBatch=null;
       for(const entry of targets){entry.result=null;entry.error='';}
-      applyPhotoBatchStatus(data);saveWorkspace().catch(error=>toast(error.message));
-    }catch(error){ui.photoError=error.message;}
+      applyPhotoBatchStatus(data);saveWorkspace().catch(error=>toast((error as any).message));
+    }catch(error){ui.photoError=(error as any).message;}
     finally{ui.photoSubmitting=false;renderPhoto();}
   }
   function photoArchiveAssets(items){
@@ -853,7 +853,7 @@
       }else await window.ShiYanPhotoArchive.download(photoArchiveAssets(results),{
         onProgress:({completed,total})=>{ui.photoExportLabel='正在打包 '+completed+'/'+total;renderPhotoBatch();}
       });
-    }catch(error){if(error.name!=='AbortError')toast(error.message);}
+    }catch(error){if((error as any).name!=='AbortError')toast((error as any).message);}
     finally{ui.photoExporting=false;renderPhoto();}
   }
 
@@ -879,11 +879,11 @@
       // Keep the decoded local original visible while using the server asset ID
       // for processing and persistence. Blob URLs are never saved to settings.
       ui.input={...asset,url,...(image.naturalWidth?{width:image.naturalWidth,height:image.naturalHeight}:{})};ui.photoUploadFile=null;
-      saveWorkspace().catch(error=>{if(ui.input?.id===asset.id)toast('图片已上传，但保存图片选择失败：'+error.message);});
+      saveWorkspace().catch(error=>{if(ui.input?.id===asset.id)toast('图片已上传，但保存图片选择失败：'+(error as any).message);});
     } catch(error) {
-      const timeout=error.status===408 || /\b408\b/.test(error.message || '');
+      const timeout=(error as any).status===408 || /\b408\b/.test((error as any).message || '');
       ui.photoError=timeout?'图片上传超时，原图已保留，请点击“重试上传”。'
-        :'图片上传失败：'+(error.message || '连接中断')+'。原图已保留，请点击“重试上传”。';
+        :'图片上传失败：'+((error as any).message || '连接中断')+'。原图已保留，请点击“重试上传”。';
     } finally {
       ui.photoUploading=false;
       if(restored)URL.revokeObjectURL(url);
@@ -936,7 +936,7 @@
     if(feature!=='enhance'){toast('此图片工具已下线');return;}
     if(photoBusy()){toast('请先停止当前处理');return;}
     if(ui.feature!==feature){ui.feature=feature;ui.result=null;ui.showOriginal=false;ui.strokes=[];ui.photoJobId=null;ui.photoError='';}
-    renderPhoto();renderConnection();saveWorkspace().catch(e=>toast(e.message));
+    renderPhoto();renderConnection();saveWorkspace().catch(e=>toast((e as any).message));
   }
   function renderPhoto() {
     if(!state)return;
@@ -1025,8 +1025,8 @@
   }
   async function makeMask() {
     const canvas=document.createElement('canvas');canvas.width=ui.input.width;canvas.height=ui.input.height;
-    const ctx=canvas.getContext('2d');ctx.fillStyle='#000';ctx.fillRect(0,0,canvas.width,canvas.height);paintStrokes(ctx,canvas.width,canvas.height,true);
-    const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));if(!blob)throw new Error('无法生成消除蒙版');
+    const ctx: any = canvas.getContext('2d');ctx.fillStyle='#000';ctx.fillRect(0,0,canvas.width,canvas.height);paintStrokes(ctx,canvas.width,canvas.height,true);
+    const blob=await new Promise<Blob | null>(resolve=>canvas.toBlob(resolve,'image/png'));if(!blob)throw new Error('无法生成消除蒙版');
     return new File([blob],'mask.png',{type:'image/png'});
   }
   async function processPhoto() {
@@ -1036,21 +1036,21 @@
     if(ui.feature==='remove' && ui.result){ui.result=null;ui.photoJobId=null;ui.strokes=[];ui.showOriginal=false;ui.photoError='';renderPhoto();return;}
     ui.photoError='';ui.photoSubmitting=true;renderPhoto();show('photoError',false);
     try {
-      const body={feature:ui.feature,assetId:ui.input.id,model:ui.model};
+      const body: any = {feature:ui.feature,assetId:ui.input.id,model:ui.model};
       if(ui.feature==='remove'){
         if(!ui.strokes.length)throw new Error('请先涂抹需要消除的区域');
         const [mask]=await upload([await makeMask()],'mask');body.maskAssetId=mask.id;
       }
       const data=await api('/api/photo/jobs','POST',body);
       ui.photoJobId=data.jobId;ui.result=null;ui.showOriginal=false;applyPhotoStatus(data);renderPhoto();
-    }catch(e){ui.photoError=e.message;setText('photoError',e.message);show('photoError');}
+    }catch(e){ui.photoError=(e as any).message;setText('photoError',(e as any).message);show('photoError');}
     finally {ui.photoSubmitting=false;renderPhoto();}
   }
   async function cancelPhoto() {
-    if(ui.photoBatch?.id){const version=ui.photoSelectionVersion||0;try{applyPhotoBatchStatus({...await api('/api/photo/batches/'+encodeURIComponent(ui.photoBatch.id)+'/cancel','POST',{}),photoSelectionVersion:version});}catch(error){ui.photoError='停止尚未确认：'+error.message;renderPhoto();}return;}
+    if(ui.photoBatch?.id){const version=ui.photoSelectionVersion||0;try{applyPhotoBatchStatus({...await api('/api/photo/batches/'+encodeURIComponent(ui.photoBatch.id)+'/cancel','POST',{}),photoSelectionVersion:version});}catch(error){ui.photoError='停止尚未确认：'+(error as any).message;renderPhoto();}return;}
     if(!ui.photoJobId)return;
     try{applyPhotoStatus(await api('/api/photo/jobs/'+encodeURIComponent(ui.photoJobId)+'/cancel','POST',{}));}
-    catch(e){ui.photoError='停止尚未确认：'+e.message;setText('photoError',ui.photoError);show('photoError');}
+    catch(e){ui.photoError='停止尚未确认：'+(e as any).message;setText('photoError',ui.photoError);show('photoError');}
   }
   function historyHTML(item) {
     const a=item.asset,selected=ui.selection.has(item.id);
@@ -1061,7 +1061,7 @@
   }
   function renderHistory() {
     if(!state)return;
-    const all=[...state.history].sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)),valid=new Set(all.map(h=>h.id));
+    const all=[...state.history].sort((a,b)=>new Date(b.createdAt).getTime()-new Date(a.createdAt).getTime()),valid=new Set(all.map(h=>h.id));
     ui.selection=new Set([...ui.selection].filter(id=>valid.has(id)));
     const items=$('historyItems');items.dataset.mode=state.settings.historyViewMode==='grid'?'grid':'list';
     items.classList.toggle('is-selecting',ui.selecting);const html=all.map(historyHTML).join('');if(items._historyHTML!==html){items._historyHTML=html;items.innerHTML=html;}
@@ -1077,7 +1077,7 @@
     if(!ui.selection.size)return;
     if(!await confirmAction('删除所选图片？','将从历史记录中删除 '+ui.selection.size+' 张图片。','删除'))return;
     try {await api('/api/history/delete','POST',{ids:[...ui.selection]});ui.selection.clear();renderHistory();toast('已删除');}
-    catch(e){toast(e.message);}
+    catch(e){toast((e as any).message);}
   }
   function native(action,extra={}) {
     if(window.ShiYanPlatform)return window.ShiYanPlatform.postNative(action,extra);
@@ -1109,7 +1109,7 @@
       if(window.ShiYanPlatform?.mode==='web'){await window.ShiYanPhotoArchive.download(photoArchiveAssets(items));return;}
       const ids=state.history.filter(h=>items.some(a=>h.asset && h.asset.id===a.id)).map(h=>h.id);
       const data=await api('/api/history/export','POST',{ids});remember(data.asset);await saveAsset(data.asset);
-    }catch(e){toast(e.message);}
+    }catch(e){toast((e as any).message);}
   }
   async function openGeneratedDocument(a) {
     if(window.workbench?.openAsset)return window.workbench.openAsset(a);
@@ -1226,13 +1226,13 @@
     const id=ui.sessionMenuId,c=state?.conversations.find(c=>c.id===id);if(!c)return;
     closePopovers();if((c.projectId||null)===projectId)return;
     try{await api('/api/conversations/'+encodeURIComponent(id),'PATCH',{projectId});window.workbench?.revealConversationProject?.(id,projectId);}
-    catch(e){toast(e.message);}
+    catch(e){toast((e as any).message);}
   }
   async function handleSessionAction(action) {
     const id=ui.sessionMenuId,c=state.conversations.find(c=>c.id===id);if(!c)return;
     if(action==='project'){showSessionProjectMenu();return;}
     const menuRect=$('sessionMenu').getBoundingClientRect();closePopovers();
-    if(action==='pin'){try{await api('/api/conversations/'+encodeURIComponent(id),'PATCH',{isPinned:!c.isPinned});}catch(e){toast(e.message);}}
+    if(action==='pin'){try{await api('/api/conversations/'+encodeURIComponent(id),'PATCH',{isPinned:!c.isPinned});}catch(e){toast((e as any).message);}}
     if(action==='rename'){ui.renamingSessionId=id;$('renameInput').value=c.title || '';openDialog('renameDialog');setTimeout(()=>{$('renameInput').focus();$('renameInput').select();},30);}
     if(action==='delete'){ui.deletingSessionId=id;positionMenu($('sessionDeletePopover'),menuRect.left,menuRect.top,$('agentSidebar').getBoundingClientRect());}
   }
@@ -1240,14 +1240,14 @@
     const id=ui.deletingSessionId;if(!id)return;
     $('confirmSessionDeleteButton').disabled=true;
     try {await api('/api/conversations/'+encodeURIComponent(id),'DELETE');drafts.delete(id);show('sessionDeletePopover',false);if(!state.conversations.length)await newConversation();}
-    catch(e){toast(e.message);}
+    catch(e){toast((e as any).message);}
     finally {$('confirmSessionDeleteButton').disabled=false;ui.deletingSessionId=null;}
   }
   async function renameConversation(event) {
     event.preventDefault();const title=$('renameInput').value.trim();if(!title || !ui.renamingSessionId)return;
     $('saveRenameButton').disabled=true;
     try {await api('/api/conversations/'+encodeURIComponent(ui.renamingSessionId),'PATCH',{title});closeDialog('renameDialog');}
-    catch(e){toast(e.message);}
+    catch(e){toast((e as any).message);}
     finally {$('saveRenameButton').disabled=false;}
   }
   async function copyText(text) {
@@ -1279,7 +1279,7 @@
     if(d.assets.length>=maxImages()){toast('每次最多添加 '+maxImages()+' 个附件');return;}
     changeDraft(d=>d.assets.push(a));closePopovers();closePreview();$('messageInput').focus();
   }
-  let webSpeech=null, speechStopPromise=null, speechStopResolve=null, speechStopTimer=0, webSpeechToken=0;
+  let webSpeech: any = null, speechStopPromise: any = null, speechStopResolve: any = null, speechStopTimer: any = 0, webSpeechToken=0;
   function finishSpeech() {
     ui.speech=false;ui.speechFinishing=false;ui.recordingConversation=null;ui.speechSessionId=null;
     clearTimeout(speechStopTimer);speechStopTimer=0;
@@ -1294,18 +1294,18 @@
     ui.recordingConversation=c.id;ui.speechSessionId=crypto.randomUUID();ui.speechPrefix=draftFor(c).text;ui.speech=true;
     $('composerForm').classList.add('is-recording');renderComposer();
     if(native('startSpeech',{sessionId:ui.speechSessionId}))return;
-    const Recognition=window.SpeechRecognition || window.webkitSpeechRecognition;
+    const Recognition=(window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if(!Recognition){finishSpeech();notice('此浏览器不支持语音输入，请在拾燕桌面应用中使用');return;}
     const token=++webSpeechToken;
     webSpeech=new Recognition();webSpeech.lang='zh-CN';webSpeech.continuous=true;webSpeech.interimResults=true;
     webSpeech.onresult=event=>{
       if(token!==webSpeechToken)return;
-      const text=Array.from(event.results).map(r=>r[0].transcript).join('');
+      const text=Array.from(event.results).map((r: any)=>r[0].transcript).join('');
       receiveSpeech(text,false);
     };
     webSpeech.onerror=event=>{if(token!==webSpeechToken)return;notice(event.error==='not-allowed'?'请允许麦克风和语音识别权限':'语音输入失败：'+event.error);cancelSpeech();};
     webSpeech.onend=()=>{if(token===webSpeechToken){webSpeech=null;finishSpeech();}};
-    try{webSpeech.start();}catch(e){notice(e.message);cancelSpeech();}
+    try{webSpeech.start();}catch(e){notice((e as any).message);cancelSpeech();}
   }
   function receiveSpeech(text,isFinal) {
     if(!ui.speech || !current() || ui.recordingConversation!==current().id)return;
@@ -1332,7 +1332,7 @@
     finishSpeech();
   }
   window.addEventListener('shiyan-native',event=>{
-    const d=event.detail || {};
+    const d=(event as CustomEvent).detail || {};
     if(['speech','speechState','speechError'].includes(d.type) && d.sessionId && d.sessionId!==ui.speechSessionId)return;
     if(d.type==='speech')receiveSpeech(d.text || '',!!d.isFinal);
     else if(d.type==='speechError'){notice(d.message || '语音识别不可用');cancelSpeech();}
@@ -1341,7 +1341,7 @@
     else if(d.type==='saved')toast('已保存');
     else if(d.type==='openFiles' && Array.isArray(d.files))toast('请通过选择图片导入文件');
   });
-  function bindClick(id,fn) {const el=$(id);if(el)el.addEventListener('click',event=>{const result=fn(event);if(result && result.catch)result.catch(e=>toast(e.message));});}
+  function bindClick(id,fn) {const el=$(id);if(el)el.addEventListener('click',event=>{const result=fn(event);if(result && result.catch)result.catch(e=>toast((e as any).message));});}
   function initEvents() {
     $('reasoningDots').setAttribute('aria-hidden','true');
     if(window.ResizeObserver)new ResizeObserver(()=>{$('chatPanel').style.setProperty('--composer-height',Math.ceil($('composerForm').getBoundingClientRect().height+24)+'px');}).observe($('composerForm'));
@@ -1367,18 +1367,18 @@
         if(!priority || priority.disabled)return;
         const id=priority.dataset.priorityQueued;
         await api('/api/conversations/'+encodeURIComponent(c.id)+'/queue/'+encodeURIComponent(id)+'/priority','POST',{confirmed:true});
-      }catch(error){notice(error.message);}
+      }catch(error){notice((error as any).message);}
     });
-    $('composerForm').addEventListener('submit',event=>submitMessage(event).catch(e=>notice(e.message)));
+    $('composerForm').addEventListener('submit',event=>submitMessage(event).catch(e=>notice((e as any).message)));
     $('sendButton').addEventListener('click',event=>{
       if($('sendButton').dataset.action!=='stop')return;
-      event.preventDefault();stopGeneration().catch(e=>notice(e.message));
+      event.preventDefault();stopGeneration().catch(e=>notice((e as any).message));
     });
     $('messageInput').addEventListener('input',event=>changeDraft(d=>{d.text=event.target.value;},true));
     bindComposerComposition($('messageInput'));
     $('messageInput').addEventListener('focus',()=>renderComposer());
     $('messageInput').addEventListener('blur',()=>setTimeout(()=>renderComposer(),100));
-    $('messageInput').addEventListener('keydown',event=>{if(!event.isComposing && event.keyCode!==229 && !composerComposing && !composerCompositionEnding)window.ShiYanComposerKeys.handleEnter(event,()=>submitMessage().catch(e=>notice(e.message)));});
+    $('messageInput').addEventListener('keydown',event=>{if(!event.isComposing && event.keyCode!==229 && !composerComposing && !composerCompositionEnding)window.ShiYanComposerKeys.handleEnter(event,()=>submitMessage().catch(e=>notice((e as any).message)));});
     bindClick('cancelEditButton',cancelEdit);
     bindClick('addImageButton',()=>$('attachmentInput').click());
     $('attachmentInput').addEventListener('change',event=>addAttachments([...event.target.files]));
@@ -1387,7 +1387,7 @@
     const reasoningRange=$('reasoningRange');
     reasoningRange.addEventListener('pointerdown',()=>{ui.reasoningDragging=true;ui.reasoningPosition=Number(reasoningRange.value);});
     reasoningRange.addEventListener('input',event=>{ui.reasoningPosition=Number(event.target.value);const value=efforts()[Math.round(ui.reasoningPosition)];if(value)changeDraft(d=>{d.reasoning=value;});});
-    const finishReasoning=()=>{if(!ui.reasoningDragging)return;ui.reasoningDragging=false;renderReasoning();if(current())flushDraft(current().id).catch(e=>notice(e.message));};
+    const finishReasoning=()=>{if(!ui.reasoningDragging)return;ui.reasoningDragging=false;renderReasoning();if(current())flushDraft(current().id).catch(e=>notice((e as any).message));};
     window.addEventListener('pointerup',finishReasoning);window.addEventListener('pointercancel',finishReasoning);window.addEventListener('blur',finishReasoning);
     reasoningRange.addEventListener('keydown',event=>{const keys=['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'];if(!keys.includes(event.key))return;event.preventDefault();const values=efforts(),index=Math.max(0,values.indexOf(draftFor().reasoning));const target=event.key==='Home'?0:event.key==='End'?values.length-1:Math.max(0,Math.min(values.length-1,index+(['ArrowLeft','ArrowDown'].includes(event.key)?-1:1)));if(values[target])changeDraft(d=>{d.reasoning=values[target];});});
     const reasoningModel=$('reasoningModel');
@@ -1413,7 +1413,7 @@
       if(!ui.reasoning||!reasoningModel||reasoningModel.disabled)return;
       modelMenu.replaceChildren();
       const selectedValue=reasoningModel.value;
-      const sections=[];
+      const sections: any[] = [];
       for(const option of reasoningModel.options){
         const group=option.parentElement?.tagName==='OPTGROUP'?option.parentElement:null;
         let section=group?sections.find(s=>s.group===group):null;
@@ -1449,7 +1449,7 @@
       }
       $('reasoningPanel').style.opacity='0';modelMenu.hidden=false;
       reasoningModel.setAttribute('aria-expanded','true');positionModelMenu();
-      modelMenu.querySelector('[aria-selected="true"]:not(:disabled)')?.focus({preventScroll:true});
+      (modelMenu.querySelector('[aria-selected="true"]:not(:disabled)') as any)?.focus({preventScroll:true});
     };
     reasoningModel?.addEventListener('pointerdown',event=>{if(event.button!==0)return;event.preventDefault();openModelMenu();});
     reasoningModel?.addEventListener('keydown',event=>{
@@ -1459,13 +1459,13 @@
       if(event.key==='Escape'){event.preventDefault();event.stopPropagation();closeModelMenu();$('reasoningButton').focus({preventScroll:true});return;}
       if(event.key==='Tab'){closeModelMenu();$('reasoningButton').focus({preventScroll:true});return;}
       if(!['ArrowDown','ArrowUp','Home','End'].includes(event.key))return;
-      event.preventDefault();const options=[...modelMenu.querySelectorAll('[role="option"]:not(:disabled)')].filter(b=>!b.closest('[hidden]'));
+      event.preventDefault();const options: any[] = [...modelMenu.querySelectorAll('[role="option"]:not(:disabled)')].filter(b=>!b.closest('[hidden]'));
       const index=options.indexOf(document.activeElement);
       const next=event.key==='Home'?0:event.key==='End'?options.length-1:(index+(event.key==='ArrowDown'?1:-1)+options.length)%options.length;
       options[next]?.focus();
     });
     document.addEventListener('pointerdown',event=>{
-      if(!modelMenu.hidden&&!modelMenu.contains(event.target)&&!reasoningModel?.contains(event.target))closeModelMenu();
+      if(!modelMenu.hidden&&!modelMenu.contains(event.target as Node)&&!reasoningModel?.contains(event.target as Node))closeModelMenu();
     },true);
     window.addEventListener('resize',positionModelMenu);
     window.addEventListener('shiyan-reasoning',()=>{
@@ -1534,13 +1534,13 @@
     $('renameForm').addEventListener('submit',renameConversation);bindClick('cancelRenameButton',()=>closeDialog('renameDialog'));
     $('renameInput').addEventListener('input',()=>$('saveRenameButton').disabled=!$('renameInput').value.trim());
     document.addEventListener('click',event=>{
-      const target=event.target instanceof Element?event.target:null;if(!target)return;
-      const outputSummary=target.closest('.output-details>summary');if(outputSummary)outputSummary.parentElement.dataset.userToggled='1';
+      const target: any = event.target instanceof Element?event.target:null;if(!target)return;
+      const outputSummary=target.closest('.output-details>summary');if(outputSummary && outputSummary.parentElement)outputSummary.parentElement.dataset.userToggled='1';
       const feature=target.closest('[data-feature]');if(feature){setFeature(feature.dataset.feature);return;}
-      const model=target.closest('[data-model]');if(model){ui.model=model.dataset.model==='x4anime'?'anime':'general';renderPhoto();saveWorkspace().catch(e=>toast(e.message));return;}
+      const model=target.closest('[data-model]');if(model){ui.model=model.dataset.model==='x4anime'?'anime':'general';renderPhoto();saveWorkspace().catch(e=>toast((e as any).message));return;}
       const more=target.closest('[data-session-more]');if(more){event.stopPropagation();showSessionMenu(more.dataset.sessionMore,event);return;}
-      const session=target.closest('[data-session-id]');if(session){selectConversation(session.dataset.sessionId).catch(e=>toast(e.message));return;}
-      const search=target.closest('[data-search-session]');if(search){selectConversation(search.dataset.searchSession).catch(e=>toast(e.message));return;}
+      const session=target.closest('[data-session-id]');if(session){selectConversation(session.dataset.sessionId).catch(e=>toast((e as any).message));return;}
+      const search=target.closest('[data-search-session]');if(search){selectConversation(search.dataset.searchSession).catch(e=>toast((e as any).message));return;}
       const projectTarget=target.closest('[data-session-project]');if(projectTarget){moveSessionProject(projectTarget.dataset.sessionProject||null);return;}
       const sessionAction=target.closest('[data-session-action]');if(sessionAction){handleSessionAction(sessionAction.dataset.sessionAction);return;}
       const remove=target.closest('[data-remove-attachment]');if(remove){changeDraft(d=>d.assets=d.assets.filter(a=>a.id!==remove.dataset.removeAttachment));return;}
@@ -1559,26 +1559,26 @@
       const documentLink=target.closest('a[data-generated-file],a[href*="/api/assets/"],a[href*="/v1/artifacts/"]');
       if(documentLink&&documentLink.closest('[data-message-id]')){
         event.preventDefault();const file=generatedLinkAsset(documentLink);
-        if(file){if((file.mimeType||'').startsWith('image/'))openPreview(file);else openGeneratedDocument(file).catch(error=>toast(error.message));}
+        if(file){if((file.mimeType||'').startsWith('image/'))openPreview(file);else openGeneratedDocument(file).catch(error=>toast((error as any).message));}
         else toast('该文件尚未加入当前消息，请让助手重新提供文件附件');
         return;
       }
-      const asset=target.closest('[data-asset-id]');if(asset){const file=assets.get(asset.dataset.assetId);if(file&&(file.mimeType||'').startsWith('image/'))openPreview(file);else if(file)openGeneratedDocument(file).catch(error=>toast(error.message));return;}
+      const asset=target.closest('[data-asset-id]');if(asset){const file=assets.get(asset.dataset.assetId);if(file&&(file.mimeType||'').startsWith('image/'))openPreview(file);else if(file)openGeneratedDocument(file).catch(error=>toast((error as any).message));return;}
       const reasoning=target.closest('[data-reasoning]');if(reasoning){changeDraft(d=>d.reasoning=reasoning.dataset.reasoning);return;}
       if(target.closest('[data-action="retry-receive"]')){retryReceive();return;}
       if(!target.closest('.context-menu,.glass-popover,#sessionMenu,#sessionDeletePopover,#historyMenu'))closePopovers();
     });
     document.addEventListener('contextmenu',event=>{
-      const target=event.target instanceof Element?event.target:null;if(!target)return;
+      const target: any = event.target instanceof Element?event.target:null;if(!target)return;
       const session=target.closest('[data-session-id]'),asset=target.closest('[data-asset-id]'),message=target.closest('[data-message-id]');
       if(session){event.preventDefault();showSessionMenu(session.dataset.sessionId,event);}
       else if(asset){event.preventDefault();showAssetMenu(asset.dataset.assetId,event);}
       else if(message){event.preventDefault();showMessageMenu(message.dataset.messageId,event);}
       else if(target.closest('#previewImage') && ui.preview){event.preventDefault();showAssetMenu(ui.preview.id,event);}
     });
-    let hold=null,holdOrigin=null;
+    let hold: any = null, holdOrigin: any = null;
     document.addEventListener('pointerdown',event=>{
-      if(event.pointerType!=='touch')return;const el=event.target.closest('[data-session-id],[data-asset-id],[data-message-id]');if(!el)return;
+      if(event.pointerType!=='touch')return;const el=(event.target as any)?.closest('[data-session-id],[data-asset-id],[data-message-id]');if(!el)return;
       holdOrigin={x:event.clientX,y:event.clientY};hold=setTimeout(()=>{hold=null;if(el.dataset.sessionId)showSessionMenu(el.dataset.sessionId,event);else if(el.dataset.assetId)showAssetMenu(el.dataset.assetId,event);else showMessageMenu(el.dataset.messageId,event);},480);
     });
     document.addEventListener('pointerup',()=>{clearTimeout(hold);hold=null;});document.addEventListener('pointercancel',()=>{clearTimeout(hold);hold=null;});
@@ -1591,7 +1591,7 @@
     viewport.addEventListener('pointerup',()=>ui.previewPointer=null);viewport.addEventListener('pointercancel',()=>ui.previewPointer=null);
 
     document.addEventListener('keydown',event=>{
-      if(!$('imagePreview').hidden && ['ArrowLeft','ArrowRight'].includes(event.key) && event.target.tagName!=='SELECT'){event.preventDefault();stepPreview(event.key==='ArrowLeft'?-1:1);return;}
+      if(!$('imagePreview').hidden && ['ArrowLeft','ArrowRight'].includes(event.key) && (event.target as any)?.tagName!=='SELECT'){event.preventDefault();stepPreview(event.key==='ArrowLeft'?-1:1);return;}
       if(event.key==='Escape'){
         if(!$('confirmDialog').hidden){event.preventDefault();$('confirmCancelButton').click();return;}
         if(!$('renameDialog').hidden){event.preventDefault();closeDialog('renameDialog');return;}
@@ -1599,11 +1599,11 @@
         if(!$('imagePreview').hidden)closePreview();else if(ui.editing)cancelEdit();else if(ui.reasoning){ui.reasoning=false;renderComposer();}else if(ui.drawer)setDrawer(false);else if(ui.view==='search')setView('agent');else if(ui.view==='history')setView(ui.historyReturnView || 'agent');else if(ui.view==='home')setView('agent');
       }
       if((event.metaKey || event.ctrlKey) && !event.altKey){
-        if(event.key.toLowerCase()==='n'){event.preventDefault();newConversation().catch(e=>toast(e.message));}
+        if(event.key.toLowerCase()==='n'){event.preventDefault();newConversation().catch(e=>toast((e as any).message));}
         if(event.key.toLowerCase()==='o'){event.preventDefault();(ui.view==='agent'?$('attachmentInput'):$('homeFileInput')).click();}
       }
     });
-    let drag=null;
+    let drag: any = null;
     $('chatPanel').addEventListener('pointerdown',event=>{if(window.workbench)return;if(window.innerWidth>=760 || event.button!==0 || event.target.closest('button,input,textarea,a,canvas'))return;drag={x:event.clientX,y:event.clientY,start:performance.now(),progress:ui.drawer?1:0,moved:false};});
     window.addEventListener('pointermove',event=>{
       if(!drag)return;const dx=event.clientX-drag.x,dy=event.clientY-drag.y;
@@ -1614,11 +1614,11 @@
     },{passive:true});
     window.addEventListener('pointerup',event=>{if(!drag)return;const d=drag;drag=null;$('agentStage').classList.remove('is-dragging');if(d.moved){const velocity=(event.clientX-d.x)/Math.max(1,performance.now()-d.start)*1000;setDrawer(Math.abs(velocity)>350?velocity>0:d.current>.5);}});
     window.addEventListener('pointercancel',()=>{if(drag){drag=null;setDrawer(ui.drawer);}$('agentStage').classList.remove('is-dragging');});
-    document.addEventListener('dragover',event=>{if(ui.view==='dots')return;if(Array.from(event.dataTransfer.types).includes('Files')){event.preventDefault();$(ui.view==='agent'?'composerForm':'imageDropZone').classList.add('is-drop-target');}});
+    document.addEventListener('dragover',event=>{if(ui.view==='dots')return;if(Array.from(event.dataTransfer?.types || []).includes('Files')){event.preventDefault();$(ui.view==='agent'?'composerForm':'imageDropZone').classList.add('is-drop-target');}});
     document.addEventListener('dragleave',event=>{if(!event.relatedTarget){$('composerForm').classList.remove('is-drop-target');$('imageDropZone').classList.remove('is-drop-target');}});
     document.addEventListener('drop',event=>{
-      if(ui.view==='dots'||!event.dataTransfer.files.length)return;event.preventDefault();$('composerForm').classList.remove('is-drop-target');$('imageDropZone').classList.remove('is-drop-target');
-      const files=Array.from(event.dataTransfer.files);if(ui.view==='agent')addAttachments(files);else {if(ui.view!=='home')setView('home');chooseHomeImages(files);}
+      if(ui.view==='dots'||!event.dataTransfer?.files.length)return;event.preventDefault();$('composerForm').classList.remove('is-drop-target');$('imageDropZone').classList.remove('is-drop-target');
+      const files=Array.from(event.dataTransfer?.files || []);if(ui.view==='agent')addAttachments(files);else {if(ui.view!=='home')setView('home');chooseHomeImages(files);}
     });
     window.addEventListener('resize',resizeMask);
     window.addEventListener('online',()=>{if(state && state.connection.status!=='ready')connectAgent();});
@@ -1652,7 +1652,7 @@
       // Dots is installed by the later workbench module. Wait for its actual
       // mount before selecting it; selecting it before mount leaves a blank UI.
       if(webDotsEntry && !window.__SHIYAN_DOTS_INSTALLED__){
-        await new Promise(resolve=>{
+        await new Promise<void>(resolve=>{
           const ready=()=>resolve();
           window.addEventListener('shiyan-dots-installed',ready,{once:true});
           if(window.__SHIYAN_DOTS_INSTALLED__)resolve();
@@ -1664,7 +1664,7 @@
         await Promise.resolve(window.__SHIYAN_DOTS_READY__).catch(()=>{});
       }
       if(state.connection && !['ready','connecting','unauthorized'].includes(state.connection.status))connectAgent();
-    }catch(e){show('connectionBanner');setText('connectionText',e.message);toast(e.message);}
+    }catch(e){show('connectionBanner');setText('connectionText',(e as any).message);toast((e as any).message);}
   }
   window.shiyan={
     newConversation,selectConversation,openImagePicker:()=>(ui.view==='agent'?$('attachmentInput'):$('homeFileInput')).click(),
