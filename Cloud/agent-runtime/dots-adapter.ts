@@ -132,7 +132,7 @@ export class DotsStore {
   transaction(fn){this.db.exec('BEGIN IMMEDIATE');try{const value=fn();this.db.exec('COMMIT');return value;}catch(error){this.db.exec('ROLLBACK');throw error;}}
   mapping(owner,id){return this.db.prepare('SELECT * FROM dots_goals WHERE owner=? AND goal_id=?').get(owner,id);}
   mappedGoal(id){return this.db.prepare('SELECT * FROM dots_goals WHERE goal_id=?').get(id);}
-  mappings(owner=undefined){return owner===undefined?this.db.prepare('SELECT * FROM dots_goals ORDER BY goal_id DESC').all():this.db.prepare('SELECT * FROM dots_goals WHERE owner=? ORDER BY goal_id DESC').all(owner);}
+  mappings(owner: any=undefined){return owner===undefined?this.db.prepare('SELECT * FROM dots_goals ORDER BY goal_id DESC').all():this.db.prepare('SELECT * FROM dots_goals WHERE owner=? ORDER BY goal_id DESC').all(owner);}
   manager(owner){return this.db.prepare('SELECT * FROM dots_managers WHERE owner=?').get(owner);}
   managerSnapshot(owner,manager){this.db.prepare('INSERT INTO dots_managers(owner,manager_id,snapshot,updated_at) VALUES(?,?,?,?) ON CONFLICT(owner) DO UPDATE SET snapshot=excluded.snapshot,updated_at=excluded.updated_at').run(owner,manager.id,encoded(manager),Date.now());}
   latestCursor(owner){return Number(this.db.prepare('SELECT MAX(seq) AS cursor FROM dots_events WHERE owner=?').get(owner)?.cursor||0);}

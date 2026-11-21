@@ -13,18 +13,18 @@ import { createDotsSidecar } from './dots-sidecar.ts';
 const OWNER='shiyan-private-owner';
 const baseSchedule={enabled:true,repeat:'daily',time:'21:00',timezone:'Asia/Shanghai',startDate:'2026-10-13',endDate:null};
 test('schedule calendar preserves local timezone, weekdays, month end and inclusive end date',()=>{
-  assert.equal(new Date(nextScheduleRun(baseSchedule,Date.parse('2026-10-13T12:59:00Z'))).toISOString(),'2026-10-13T13:00:00.000Z');
-  assert.equal(new Date(nextScheduleRun(baseSchedule,Date.parse('2026-10-13T13:00:00Z'))).toISOString(),'2026-10-14T13:00:00.000Z');
-  assert.equal(new Date(nextScheduleRun({...baseSchedule,repeat:'weekdays'},Date.parse('2026-10-16T14:00:00Z'))).toISOString(),'2026-10-19T13:00:00.000Z');
-  assert.equal(new Date(nextScheduleRun({...baseSchedule,repeat:'monthly',startDate:'2026-01-31'},Date.parse('2026-01-31T14:00:00Z'))).toISOString(),'2026-02-28T13:00:00.000Z');
+  assert.equal(new Date(nextScheduleRun(baseSchedule,Date.parse('2026-10-13T12:59:00Z'))!).toISOString(),'2026-10-13T13:00:00.000Z');
+  assert.equal(new Date(nextScheduleRun(baseSchedule,Date.parse('2026-10-13T13:00:00Z'))!).toISOString(),'2026-10-14T13:00:00.000Z');
+  assert.equal(new Date(nextScheduleRun({...baseSchedule,repeat:'weekdays'},Date.parse('2026-10-16T14:00:00Z'))!).toISOString(),'2026-10-19T13:00:00.000Z');
+  assert.equal(new Date(nextScheduleRun({...baseSchedule,repeat:'monthly',startDate:'2026-01-31'},Date.parse('2026-01-31T14:00:00Z'))!).toISOString(),'2026-02-28T13:00:00.000Z');
   assert.equal(nextScheduleRun({...baseSchedule,endDate:'2026-10-13'},Date.parse('2026-10-13T13:00:00Z')),null);
-  assert.equal(new Date(nextScheduleRun({...baseSchedule,time:'09:00',timezone:'America/New_York',startDate:'2026-10-31'},Date.parse('2026-10-31T14:00:00Z'))).toISOString(),'2026-11-01T14:00:00.000Z');
+  assert.equal(new Date(nextScheduleRun({...baseSchedule,time:'09:00',timezone:'America/New_York',startDate:'2026-10-31'},Date.parse('2026-10-31T14:00:00Z'))!).toISOString(),'2026-11-01T14:00:00.000Z');
 });
 
 function scheduleFixture(t){
   const root=mkdtempSync(path.join(os.tmpdir(),'dots-schedule-test-'));
   let timestamp=Date.parse('2026-10-13T12:59:00Z'),status='active',lost=false;
-  const calls=[],receipts=new Map();
+  const calls: any[]=[],receipts=new Map();
   const client={async rpc(){return {};},async tool(name,args){
     calls.push({name,args});
     if(name==='dots_get_manager')return {manager:{id:'manager:'+OWNER,ownerId:OWNER,name:'大内总管',status,tasks:[],messages:[],activityCursor:0}};
@@ -35,7 +35,7 @@ function scheduleFixture(t){
     }
     throw new Error('Unexpected fixture tool: '+name);
   }};
-  const adapter=new DotsAdapter({root,client,eventReader:null,activityReader:null,recoverIntervalMs:0,subscriptionRefreshMs:0,managerPollMs:0,schedulePollMs:0});
+  const adapter=new DotsAdapter({root,client: client as any,eventReader:null as any,activityReader:null as any,recoverIntervalMs:0,subscriptionRefreshMs:0,managerPollMs:0,schedulePollMs:0});
   adapter.schedules.close();adapter.schedules=new DotsSchedules(adapter,{pollMs:0,now:()=>timestamp});
   t.after(()=>{adapter.close();rmSync(root,{recursive:true,force:true});});
   return {adapter,calls,receipts,setNow(value){timestamp=Date.parse(value);},status(value){status=value;},lose(){lost=true;}};
@@ -46,9 +46,9 @@ test('schedule settings persist, updates deduplicate, response loss never dispat
   const created=await s.create(OWNER,input),id=created.schedule.id;
   assert.equal((await s.create(OWNER,input)).schedule.id,id);
   assert.equal(s.list(OWNER).schedules.length,1);
-  const reopened=new DatabaseSync(f.adapter.store.db.location());assert.equal(reopened.prepare('SELECT title FROM dots_schedules').get().title,input.title);reopened.close();
-  await assert.rejects(s.create(OWNER,{...input,requestId:'bad',timezone:'Not/AZone'}),error=>error.status===400);
-  assert.throws(()=>s.get('foreign-owner',id),error=>error.status===404);
+  const reopened=new DatabaseSync(f.adapter.store.db.location()!);assert.equal(reopened.prepare('SELECT title FROM dots_schedules').get()!.title,input.title);reopened.close();
+  await assert.rejects(s.create(OWNER,{...input,requestId:'bad',timezone:'Not/AZone'}),error=>(error as any).status===400);
+  assert.throws(()=>s.get('foreign-owner',id),error=>(error as any).status===404);
   f.setNow('2026-10-13T13:00:01Z');f.status('paused');await s.tick();assert.equal(f.receipts.size,0);
   f.status('active');f.lose();await s.tick();assert.equal(f.receipts.size,1);assert.equal(s.get(OWNER,id).schedule.lastTaskId,null);
   await s.tick();assert.equal(f.receipts.size,1);assert.equal(s.get(OWNER,id).schedule.lastTaskId,100);
@@ -68,14 +68,14 @@ test('recent activity excludes imported history and acceptance runs without drop
     return {manager:{id:'manager:'+OWNER,ownerId:OWNER,name:'大内总管',status:'active',tasks,messages:[],activityCursor:0}};
   };
   let outputIDs;
-  f.adapter.activityReader={outputs(ids,owner){assert.equal(owner,OWNER);outputIDs=ids;return ids.map(id=>({id:'output:'+id,taskId:id}));},close(){}};
+  f.adapter.activityReader={outputs(ids,owner){assert.equal(owner,OWNER);outputIDs=ids;return ids.map(id=>({id:'output:'+id,taskId:id}));},close(){}} as any;
   const panel=await f.adapter.activity(OWNER,{limit:500});
   assert.deepEqual(panel.activities.map(a=>a.taskId),[30,29,28,27,26]);
   assert.deepEqual(outputIDs,[26,27,28,29,30]);
   assert.deepEqual(panel.outputs.map(o=>o.taskId),outputIDs);
   assert.equal(panel.hasMore,false);
   assert.ok(panel.activities.some(a=>a.taskId===28)); // Current follow-ups may have originHost=other.
-  assert.equal(JSON.parse(f.adapter.store.manager(OWNER).snapshot).tasks.length,30);
+  assert.equal(JSON.parse(String(f.adapter.store.manager(OWNER)!.snapshot)).tasks.length,30);
   assert.equal(f.adapter.store.mappings(OWNER).length,30); // Hiding leaves the archive intact.
 });
 
@@ -92,23 +92,23 @@ test('worker projection reads real visible turns and downloads only files in the
     {timestamp:'2026-10-13T13:00:02Z',type:'response_item',payload:{type:'message',id:'reasoning',role:'assistant',channel:'analysis',content:[{type:'output_text',text:'NEVER EXPOSE REASONING'}]}},
     {timestamp:'2026-10-13T13:00:02Z',type:'response_item',payload:{type:'message',id:'visible',role:'assistant',phase:'commentary',content:[{type:'output_text',text:'正在处理真实任务'}]}},
     {timestamp:'2026-10-13T13:00:03Z',type:'response_item',payload:{type:'message',id:'final',role:'assistant',phase:'final_answer',content:[{type:'output_text',text:'{"summary":"实际完成的回复","notification":"实际完成的回复"}'}]}}
-  ].map(JSON.stringify).join('\n'));
+  ].map(item => JSON.stringify(item)).join('\n'));
   const reader=createDotsActivityReader({databasePath,workspaceRoot,sessionRoot});t.after(()=>{reader.close();db.close();rmSync(root,{recursive:true,force:true});});
   const conversation=reader.conversation(7,OWNER);assert.equal(conversation.transcriptAvailable,true);assert.ok(conversation.messages.some(m=>m.content==='正在处理真实任务'));assert.ok(!JSON.stringify(conversation).includes('NEVER EXPOSE'));
-  assert.ok(conversation.messages.some(m=>m.content==='实际完成的回复'));assert.equal(conversation.messages.at(-1).content,'完成后追加问题');assert.equal(conversation.messages.at(-1).source,'manager_message');assert.throws(()=>reader.conversation(7,'foreign-owner'),error=>error.status===404);
-  const outputs=reader.outputs([7],OWNER);assert.ok(!outputs.some(o=>o.kind==='text'));assert.ok(!outputs.some(o=>o.filename==='answer.txt'));assert.ok(!outputs.some(o=>o.filename==='escape.txt'));
-  assert.equal(reader.artifact(7,file.downloadPath.split('/').at(-1),OWNER).data.toString(),'actual output');
+  assert.ok(conversation.messages.some(m=>m.content==='实际完成的回复'));assert.equal(conversation.messages.at(-1)!.content,'完成后追加问题');assert.equal(conversation.messages.at(-1)!.source,'manager_message');assert.throws(()=>reader.conversation(7,'foreign-owner'),error=>(error as any).status===404);
+  const outputs=await reader.outputs([7],OWNER);assert.ok(!outputs.some(o=>o.kind==='text'));assert.ok(!outputs.some(o=>o.filename==='answer.txt'));assert.ok(!outputs.some(o=>o.filename==='escape.txt'));
+  assert.equal((await reader.artifact(7,Buffer.from('answer.txt').toString('base64url'),OWNER)).data.toString(),'actual output');
   assert.throws(()=>reader.artifact(7,Buffer.from('../outside.txt').toString('base64url'),OWNER));assert.throws(()=>reader.artifact(7,Buffer.from('escape.txt').toString('base64url'),OWNER));
 });
 
 test('schedule HTTP API authenticates owners and rejects unsigned writes',async t=>{
   const f=scheduleFixture(t),server=createDotsSidecar({adapter:f.adapter,recover:false,authenticate:req=>req.headers['x-fixture-owner']?{owner:req.headers['x-fixture-owner']}:null});
-  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>{server.removeAllListeners('close');server.closeAllConnections();server.close();});
-  const base='http://127.0.0.1:'+server.address().port,headers={'x-fixture-owner':OWNER};
+  await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',()=>resolve()));t.after(()=>{server.removeAllListeners('close');server.closeAllConnections();server.close();});
+  const base='http://127.0.0.1:'+(server.address() as any).port,headers={'x-fixture-owner':OWNER};
   assert.equal((await fetch(base+'/v1/dots/schedules')).status,401);
   const body=JSON.stringify({requestId:'http-schedule',title:'实际定时任务',instruction:'实际指令',...baseSchedule});
   assert.equal((await fetch(base+'/v1/dots/schedules',{method:'POST',headers,body})).status,401);
   const response=await fetch(base+'/v1/dots/schedules',{method:'POST',headers:{...headers,'x-shiyan-body-sha':createHash('sha256').update(body).digest('hex')},body});assert.equal(response.status,200);
-  const created=await response.json();assert.equal(created.schedule.title,'实际定时任务');
-  assert.equal((await (await fetch(base+'/v1/dots/schedules/'+created.schedule.id,{headers})).json()).schedule.repeat,'daily');
+  const created: any=await response.json();assert.equal(created.schedule.title,'实际定时任务');
+  assert.equal(((await (await fetch(base+'/v1/dots/schedules/'+created.schedule.id,{headers})).json()) as any).schedule.repeat,'daily');
 });
