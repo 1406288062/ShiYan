@@ -5,25 +5,26 @@ import { createInterface } from 'node:readline';
 
 const privateReviewFeatures=['shell_tool','unified_exec','apps','plugins','remote_plugin','hooks','multi_agent','multi_agent_v2','browser_use','browser_use_external','browser_use_full_cdp_access','in_app_browser','computer_use','goals','sleep_tool','memories','request_permissions_tool','skill_mcp_dependency_install','skill_search','tool_suggest','recommended_plugins','image_generation','view_image','code_mode','code_mode_host','in_app_local_automation','in_app_voice','realtime_conversation'];
 
-export function createManagerThread({threadId=null,options={},codexPath=process.env.CODEX_PATH||'/home/ubuntu/.local/bin/codex',spawnProcess=spawn,rpcTimeoutMs=15000}={}) {
+export interface ManagerThreadOptions { allowTools?: boolean; mcpOnly?: boolean; workingDirectory?: string; onItem?: (item: any) => void; webSearchMode?: string; mcpServers?: Record<string, any>; modelReasoningEffort?: string; model?: string; approvalPolicy?: string; sandboxMode?: string; threadSource?: string; }
+export function createManagerThread({threadId=null,options={},codexPath=process.env.CODEX_PATH||'/home/ubuntu/.local/bin/codex',spawnProcess=spawn,rpcTimeoutMs=15000}: { threadId?: string | null; options?: ManagerThreadOptions; codexPath?: string; spawnProcess?: any; rpcTimeoutMs?: number }={}) {
   const privateReview=options.allowTools===false;
   // mcpOnly: a thread whose only tools are the MCP servers passed in options (Dots browser executor).
   // Built-in shell/exec/browser features and every inherited MCP server are disabled.
   const mcpOnly=!privateReview&&options.mcpOnly===true;
   if(privateReview&&threadId)throw new Error('Private review must start an isolated thread');
-  const thread={id:threadId};
-  thread.runStreamed=async(prompt,{outputSchema,signal,images=[]}={})=>({events:stream(prompt,outputSchema,signal,images)});
-  async function* stream(prompt,outputSchema,signal,images=[]) {
+  const thread: any={id:threadId};
+  thread.runStreamed=async(prompt,{outputSchema,signal,images=[]}: { outputSchema?: any; signal?: AbortSignal; images?: any[] }={})=>({events:stream(prompt,outputSchema,signal,images)});
+  async function* stream(prompt,outputSchema,signal,images: any[] = []) {
     if(signal?.aborted)throw signal.reason||new Error('Manager turn aborted');
     const child=spawnProcess(codexPath,['app-server','--stdio',...(privateReview||mcpOnly?privateReviewFeatures.flatMap(name=>['-c','features.'+name+'=false']):[])],{cwd:options.workingDirectory,stdio:['pipe','pipe','pipe']});
     child.stderr?.resume();
-    const pending=new Map(),items=new Map(),queue=[];
-    let nextId=0,turnId=null,started=false,done=false,failure=null,wake=null,usage=null,closing=false,exited=false;
+    const pending=new Map(),items=new Map(),queue: any[]=[];
+    let nextId=0,turnId=null,started=false,done=false,failure: any=null,wake: ((value?: unknown) => void) | null=null,usage: any=null,closing=false,exited=false;
     const notify=()=>{wake?.();wake=null;};
     const fail=cause=>{if(closing||done)return;failure=cause instanceof Error?cause:new Error(String(cause));done=true;for(const request of pending.values()){clearTimeout(request.timer);request.reject(failure);}pending.clear();notify();};
     const push=event=>{queue.push(event);notify();};
     const send=value=>{if(child.stdin.destroyed||!child.stdin.writable)throw new Error('Manager stream connection closed');child.stdin.write(JSON.stringify(value)+'\n');};
-    const rpc=(method,params)=>new Promise((resolve,reject)=>{
+    const rpc=(method,params): Promise<any>=>new Promise((resolve,reject)=>{
       if(done)return reject(failure||new Error('Manager stream has ended'));
       const id=++nextId,timer=setTimeout(()=>{pending.delete(id);reject(new Error('Manager stream RPC timed out: '+method));},rpcTimeoutMs);timer.unref?.();pending.set(id,{resolve,reject,timer});
       try{send({id,method,params});}catch(cause){clearTimeout(timer);pending.delete(id);reject(cause);}
@@ -77,7 +78,7 @@ export function createManagerThread({threadId=null,options={},codexPath=process.
     });
     try{
       await rpc('initialize',{clientInfo:{name:'shiyan-dots-manager',version:'1.0'},capabilities:{experimentalApi:true}});send({method:'initialized'});
-      const config={web_search:options.webSearchMode||'disabled','sandbox_workspace_write.network_access':false};
+      const config: any={web_search:options.webSearchMode||'disabled','sandbox_workspace_write.network_access':false};
       // Account-scoped connectors are supplied by the Dots runtime. Never read
       // a global user's connector config: each MCP bridge carries its owner/id.
       if(options.mcpServers&&typeof options.mcpServers==='object')config.mcp_servers=options.mcpServers;
@@ -88,14 +89,14 @@ export function createManagerThread({threadId=null,options={},codexPath=process.
         // a cleared table plus enabled-only overrides is invalid configuration.
         const effective=await rpc('config/read',{includeLayers:false,cwd:options.workingDirectory});
         if(!effective?.config||typeof effective.config!=='object')throw new Error('Cannot verify private review configuration');
-        config.mcp_servers=Object.fromEntries(Object.entries(effective.config.mcp_servers||{}).map(([name,server])=>[name,{...Object.fromEntries(Object.entries(server).filter(([,value])=>value!=null)),enabled:false}]));
+        config.mcp_servers=Object.fromEntries(Object.entries(effective.config.mcp_servers||{}).map(([name,server])=>[name,{...Object.fromEntries(Object.entries(server as any).filter(([,value])=>value!=null)),enabled:false}]) as [string, any][]);
         for(const name of privateReviewFeatures)config['features.'+name]=false;
         config.web_search='disabled';config['sandbox_workspace_write.network_access']=false;
       }
       if(mcpOnly){
         const effective=await rpc('config/read',{includeLayers:false,cwd:options.workingDirectory});
         if(!effective?.config||typeof effective.config!=='object')throw new Error('Cannot verify executor configuration');
-        const inherited=Object.fromEntries(Object.entries(effective.config.mcp_servers||{}).filter(([name])=>!Object.hasOwn(options.mcpServers||{},name)).map(([name,server])=>[name,{...Object.fromEntries(Object.entries(server).filter(([,value])=>value!=null)),enabled:false}]));
+        const inherited=Object.fromEntries(Object.entries(effective.config.mcp_servers||{}).filter(([name])=>!Object.hasOwn(options.mcpServers||{},name)).map(([name,server])=>[name,{...Object.fromEntries(Object.entries(server as any).filter(([,value])=>value!=null)),enabled:false}]) as [string, any][]);
         config.mcp_servers={...inherited,...(options.mcpServers||{})};
         for(const name of privateReviewFeatures)config['features.'+name]=false;
         config.web_search='disabled';config['sandbox_workspace_write.network_access']=false;
