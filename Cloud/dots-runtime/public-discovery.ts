@@ -1,7 +1,7 @@
 import {createHash,randomUUID} from 'node:crypto';
 
 const hash=value=>createHash('sha256').update(String(value)).digest('hex');
-const parse=(value,fallback=null)=>{try{return JSON.parse(value);}catch{return fallback;}};
+const parse=(value,fallback: any=null)=>{try{return JSON.parse(value);}catch{return fallback;}};
 const clean=value=>typeof value==='string'?value.trim():'';
 const object=properties=>({type:'object',additionalProperties:false,properties,required:Object.keys(properties)});
 const str=maxLength=>({type:'string',maxLength});
@@ -17,7 +17,7 @@ export const newsUrl=query=>'https://news.google.com/rss/search?'+new URLSearchP
 export function parseNewsFeed(xml){
   if(typeof xml!=='string'||xml.length>512*1024||/<!DOCTYPE|<!ENTITY/i.test(xml)||!/<rss[\s>]/i.test(xml)||!/<\/rss>/i.test(xml))throw new Error('Invalid news feed');
   const get=(block,name)=>block.match(new RegExp('<'+name+'(?:\\s[^>]*)?>([\\s\\S]*?)<\\/'+name+'>','i'))?.[1]||'';
-  const result=[];
+  const result: any[]=[];
   for(const match of xml.matchAll(/<item(?:\s[^>]*)?>([\s\S]*?)<\/item>/gi)){
     const block=match[1],title=plain(get(block,'title')).slice(0,500),summary=plain(get(block,'description')).slice(0,1800),url=decode(get(block,'link')).trim();
     const published=Date.parse(plain(get(block,'pubDate')))/1000;
@@ -31,11 +31,11 @@ export function parseNewsFeed(xml){
   }
   return result;
 }
-export async function readPublicNews(query,{fetchImpl=fetch,signal}={}){
+export async function readPublicNews(query,{fetchImpl=fetch,signal}: {fetchImpl?: (input: string | Request | URL, init?: RequestInit) => Promise<Response>; signal?: AbortSignal}={}){
   const response=await fetchImpl(newsUrl(query),{signal,redirect:'error',headers:{accept:'application/rss+xml, application/xml, text/xml','user-agent':'ShiYan-Dots/1.0'}});
   if(!response.ok)throw new Error('News source HTTP '+response.status);
   if(Number(response.headers.get('content-length')||0)>512*1024)throw new Error('News source too large');
-  const reader=response.body.getReader(),decoder=new TextDecoder();let size=0,xml='';
+  const reader=response.body!.getReader(),decoder=new TextDecoder();let size=0,xml='';
   try{for(;;){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>512*1024)throw new Error('News source too large');xml+=decoder.decode(value,{stream:true});}xml+=decoder.decode();}
   finally{await reader.cancel().catch(()=>{});}
   return parseNewsFeed(xml);
@@ -67,7 +67,7 @@ export function createPublicDiscovery({store,assess,memory,readNews=readPublicNe
   db.prepare('INSERT OR IGNORE INTO dots_discovery_state(manager_id) VALUES(?)').run(managerId);
   // A crash must not cause a private draft to be delivered or regenerated.
   db.prepare("UPDATE dots_discovery_updates SET state='abandoned',reason='评估进程已中断',updated_at=? WHERE manager_id=? AND state='assessing'").run(now(),managerId);
-  let busy=false,closed=false,abort=null;
+  let busy=false,closed=false,abort: AbortController | null=null;
   const state=()=>db.prepare('SELECT * FROM dots_discovery_state WHERE manager_id=?').get(managerId);
   const memoryState=()=>memory?.settings?memory.settings(store.ownerId):{enabled:true,generation:0};
   const memoryKey=value=>JSON.stringify([value.enabled,value.generation??0]);
@@ -95,10 +95,10 @@ export function createPublicDiscovery({store,assess,memory,readNews=readPublicNe
   async function refreshInterests(settings){
     const sources=history(),sourceKey=hash('public-interest-v2:'+JSON.stringify(sources)),s=state();
     if(s.source_key===sourceKey||s.next_extract_at>now())return;
-    const result=await assess(JSON.stringify({operation:'identify_public_interests',user_evidence:sources}),INTEREST_SCHEMA,{signal:abort.signal});
-    if(closed||abort.signal.aborted||memoryKey(memoryState())!==memoryKey(settings)||hash('public-interest-v2:'+JSON.stringify(history()))!==sourceKey)return;
+    const result=await assess(JSON.stringify({operation:'identify_public_interests',user_evidence:sources}),INTEREST_SCHEMA,{signal:abort!.signal});
+    if(closed||abort!.signal.aborted||memoryKey(memoryState())!==memoryKey(settings)||hash('public-interest-v2:'+JSON.stringify(history()))!==sourceKey)return;
     if(!Array.isArray(result?.interests)||result.interests.length>6)throw new Error('Invalid interest assessment');
-    const selected=[];
+    const selected: any[]=[];
     for(const item of result.interests){
       const query=clean(item.public_query).replace(/\s+/g,' '),quote=clean(item.quote),source=sources.find(row=>row.id===item.source_message_id);
       if(item.ongoing_interest!==true||item.public_subject!==true||!source||quote.length<6||quote.length>500||!source.content.includes(quote)||query.length<2||query.length>80||secret.test(query)||!/^[\p{L}\p{N} .+#&·’'-]+$/u.test(query))continue;
@@ -115,8 +115,8 @@ export function createPublicDiscovery({store,assess,memory,readNews=readPublicNe
     });
   }
   async function poll(interest){
-    const items=await readNews(interest.query,{signal:abort.signal});
-    if(closed||abort.signal.aborted||!authentic(interest))return;
+    const items=await readNews(interest.query,{signal:abort!.signal});
+    if(closed||abort!.signal.aborted||!authentic(interest))return;
     // All items in the first successful read form a baseline, not a backlog of
     // old news to message. A failed first fetch never establishes a baseline.
     store.transaction(()=>{
@@ -148,16 +148,16 @@ export function createPublicDiscovery({store,assess,memory,readNews=readPublicNe
   }
   async function tick(){
     if(busy||closed)return false;busy=true;abort=new AbortController();
-    const deadline=setTimeout(()=>abort.abort(new Error('Discovery deadline')),60000);deadline.unref?.();
+    const deadline=setTimeout(()=>abort?.abort(new Error('Discovery deadline')),60000);deadline.unref?.();
     try{
       const settings=memoryState(),s=state(),epoch=memoryKey(settings);
       if(!settings.enabled||s.memory_key&&s.memory_key!==epoch){invalidate();db.prepare("UPDATE dots_discovery_state SET source_key='',memory_key=?,source_floor=? WHERE manager_id=?").run(epoch,watermark(),managerId);if(!settings.enabled)return false;}
       await refreshInterests(settings);
-      if(closed||abort.signal.aborted||memoryKey(memoryState())!==epoch)return false;
+      if(closed||abort!.signal.aborted||memoryKey(memoryState())!==epoch)return false;
       const interests=db.prepare('SELECT * FROM dots_discovery_interests WHERE manager_id=? AND active=1 AND next_poll_at<=? ORDER BY next_poll_at,id LIMIT 2').all(managerId,now());
       for(const interest of interests){
         if(!authentic(interest)){db.prepare("UPDATE dots_discovery_interests SET active=0,quote='',evidence_json='[]' WHERE id=?").run(interest.id);continue;}
-        try{await poll(interest);}catch(error){const failures=interest.failures+1;db.prepare('UPDATE dots_discovery_interests SET failures=?,next_poll_at=? WHERE id=?').run(failures,now()+Math.min(21600,pollSeconds*2**Math.min(failures,4)),interest.id);logger.warn?.('[public-discovery-source]',error?.message||error);}
+        try{await poll(interest);}catch(error){const failures=interest.failures+1;db.prepare('UPDATE dots_discovery_interests SET failures=?,next_poll_at=? WHERE id=?').run(failures,now()+Math.min(21600,pollSeconds*2**Math.min(failures,4)),interest.id);logger.warn?.('[public-discovery-source]',(error as any)?.message||error);}
       }
       if(memoryKey(memoryState())===epoch&&onObservation){
         for(const update of db.prepare("SELECT u.*,i.quote,i.source_id,i.evidence_json,i.active FROM dots_discovery_updates u JOIN dots_discovery_interests i ON i.id=u.interest_id WHERE u.manager_id=? AND u.state='pending' ORDER BY u.created_at,u.id LIMIT 40").all(managerId)){
@@ -167,7 +167,7 @@ export function createPublicDiscovery({store,assess,memory,readNews=readPublicNe
         }
       }
       return true;
-    }catch(error){db.prepare('UPDATE dots_discovery_state SET next_extract_at=? WHERE manager_id=? AND source_key=?').run(now()+600,managerId,state().source_key);logger.warn?.('[public-discovery]',error?.message||error);if(propagateErrors)throw error;return false;}
+    }catch(error){db.prepare('UPDATE dots_discovery_state SET next_extract_at=? WHERE manager_id=? AND source_key=?').run(now()+600,managerId,state().source_key);logger.warn?.('[public-discovery]',(error as any)?.message||error);if(propagateErrors)throw error;return false;}
     finally{clearTimeout(deadline);abort=null;busy=false;}
   }
   return {tick,reconcile,close(){closed=true;abort?.abort(new Error('Discovery closed'));},get busy(){return busy;}};
