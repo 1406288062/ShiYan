@@ -3,7 +3,7 @@
   // 影子人：在本机解析微信聊天记录并脱敏。界面在 workbench-dots-panels.js 的 openShadow 里。
   if (window.ShiYanShadowParser) return;
   // 与服务器端规则一致：证件号要在卡号之前匹配。
-  const REDACTIONS = [
+  const REDACTIONS: [RegExp, string][] = [
     [/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[邮箱已隐藏]'],
     [/(?:支付密码|登录密码|密码|口令|password|passwd|pwd)\s*(?:是|为|:|：|=)?\s*(?=[^\s,，。;；]*[A-Za-z0-9])[^\s,，。;；]{3,}/gi, '[凭据已隐藏]'],
     [/(?:验证码|校验码|动态码|取件码)\s*(?:是|为|:|：)?\s*[A-Za-z0-9]{4,8}/g, '[验证码已隐藏]'],
@@ -18,7 +18,7 @@
   ];
   const redact = value => REDACTIONS.reduce((text, [pattern, mark]) => text.replace(pattern, mark), String(value || ''));
   function parseCSV(text){
-    const rows=[];let row=[],field='',quoted=false;
+    const rows: any[] = [];let row: any[] = [],field='',quoted=false;
     for(let i=0;i<text.length;i++){const c=text[i];if(c==='"'&&quoted&&text[i+1]==='"'){field+='"';i++;}else if(c==='"')quoted=!quoted;else if(c===','&&!quoted){row.push(field);field='';}else if((c==='\n'||c==='\r')&&!quoted){if(c==='\r'&&text[i+1]==='\n')i++;row.push(field);if(row.some(v=>v.trim()))rows.push(row);row=[];field='';}else field+=c;}
     row.push(field);if(row.some(v=>v.trim()))rows.push(row);return rows;
   }
@@ -35,7 +35,7 @@
     return {speakerName:name,content,timestamp:stamp(raw.timestamp??raw.time??raw.createTime??raw.createtime??raw.datetime??raw.date??raw.strtime)};
   }
   function parseText(text){
-    const rows=[];let current=null;
+    const rows: any[] = [];let current: any = null;
     const pattern=/^\s*\[?(\d{4}(?:[./-]\d{1,2}[./-]\d{1,2}|年\d{1,2}月\d{1,2}日)[ T]\d{1,2}:\d{2}(?::\d{2})?)\]?\s+([^:：]{1,80})[:：]\s*(.*)$/;
     // 微信常见导出：“昵称 2024-01-02 12:34:56”一行，下一行是内容。
     const header=/^\s*([^\d\s:：][^:：]{0,60}?)\s+(\d{4}[./-]\d{1,2}[./-]\d{1,2}\s+\d{1,2}:\d{2}(?::\d{2})?)\s*$/;
@@ -51,7 +51,7 @@
       if(!line.trim())continue;
       if(chapter.test(line)){flush();continue;}
       const match=line.match(pattern),head=!match&&line.match(header);
-      let plain=!match&&!head&&!current?.fresh&&line.match(simple);
+      let plain: any = !match&&!head&&!current?.fresh&&line.match(simple);
       if(plain&&/^\d+$/.test(plain[1].trim()))plain=null;
       if(match||head||plain){flush();current=match?{time:match[1],sender:match[2].trim(),content:match[3]}:head?{time:head[2],sender:head[1].trim(),content:'',fresh:true}:{sender:plain[1].trim(),content:plain[2]};}
       else if(current&&line.trim()){current.content+=(current.content?'\n':'')+line;current.fresh=false;}
@@ -60,14 +60,14 @@
     return rows.map(normalizeRecord).filter(Boolean);
   }
   function parseFile(text,extension){
-    let rows=[];
+    let rows: any[] = [];
     if(extension==='json'){
       const value=JSON.parse(text),items=Array.isArray(value)?value:(value.messages||value.chatRecords||value.records||value.data||[]);
       if(!Array.isArray(items))throw Error('JSON 里没有识别到消息列表');
       rows=items.map(normalizeRecord).filter(Boolean);
     }else if(extension==='csv'){
       const data=parseCSV(text);if(data.length<2)throw Error('CSV 文件里没有可读取的消息');
-      const headers=data.shift().map(v=>v.trim().toLowerCase());
+      const headers=(data.shift() || []).map(v=>v.trim().toLowerCase());
       rows=data.map(cells=>normalizeRecord(Object.fromEntries(headers.map((h,i)=>[h,cells[i]||''])))).filter(Boolean);
     }else if(extension==='html'||extension==='htm'||extension==='xml'){
       const doc=new DOMParser().parseFromString(text,'text/html');
