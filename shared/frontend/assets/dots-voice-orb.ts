@@ -20,13 +20,42 @@
     level: number;
     floatOffset: number;
     drag: { id: number; startX: number; startY: number; distance: number; began: number; started: boolean } | null;
-    handle: HTMLDivElement;
+    handle!: HTMLDivElement;
     view: any;
     surface: any;
     animation: any;
-    riseOrigin: { x: number; y: number } | null;
-    geometry: { width: number; height: number; cx: number; cy: number; radius: number; sink: any; surfaceWidth: number; surfaceHeight: number; dpr: number };
-    releaseProgress: number;
+    riseOrigin!: { x: number; y: number } | null;
+    geometry!: { width: number; height: number; cx: number; cy: number; radius: number; sink: any; surfaceWidth: number; surfaceHeight: number; dpr: number };
+    releaseProgress!: number;
+    appliedOrbClip: any;
+    canvas: any;
+    caption: any;
+    context: any;
+    destroyed: any;
+    frame: any;
+    fullOrbClip: any;
+    fullOrbClipKey: any;
+    grains: any;
+    hit: any;
+    host: any;
+    hover: any;
+    hoverHalo: any;
+    hoverLight: any;
+    hoverStyle: any;
+    ink: any;
+    inkContext: any;
+    lastFrame: any;
+    layoutDirty: any;
+    materialClip: any;
+    materialLight: any;
+    observer: any;
+    onReducedMotion: any;
+    onResize: any;
+    onVisibility: any;
+    phaseLabel: any;
+    pointerId: any;
+    reducedMotion: any;
+    renderShown: any;
     constructor(options = {}) {
       this.options = options;
       this.state = {active:false, phase:'idle', level:0, visible:true};
@@ -769,7 +798,7 @@
       this.host.remove();this.ink.remove();this.handle.remove();
       // End of a call releases both GPU backing stores and the grain field.
       this.canvas.width=this.canvas.height=this.ink.width=this.ink.height=0;
-      this.grains.length=0;this.context=null;this.inkContext=null;this.geometry=null;
+      this.grains.length=0;this.context=null;this.inkContext=null;this.geometry=null as any;
       this.fullOrbClip='';this.fullOrbClipKey='';this.appliedOrbClip='';
       this.view=null;this.surface=null;
     }
