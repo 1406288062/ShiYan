@@ -15,7 +15,7 @@ import { createHash, createHmac } from 'node:crypto';
 const bundle = await mkdtemp(path.join(os.tmpdir(), 'sponge-audit-module-'));
 await copyFile(new URL('./sponge-connector.ts', import.meta.url), path.join(bundle, 'sponge-connector.ts'));
 await writeFile(path.join(bundle, 'accounts.mjs'), "export function getAccountStore(){throw Error('An account fixture is required');}\n");
-const { SpongeConnector, createSpongeServer, prepareSpongeSocket, removeOwnedSpongeSocket } = await import(pathToFileURL(path.join(bundle, 'sponge-connector.ts')));
+const { SpongeConnector, createSpongeServer, prepareSpongeSocket, removeOwnedSpongeSocket } = await import(pathToFileURL(path.join(bundle, 'sponge-connector.ts')).href);
 after(() => rm(bundle, { recursive: true, force: true }));
 const issuer = 'https://mcp.yandot.ai';
 const callback = issuer + '/shiyan/callback';
@@ -30,7 +30,7 @@ async function fixture(t) {
   const accounts = new Map(['A', 'B'].map(owner => [owner, { userId: 'subject-' + owner, owner, status: 'active' }]));
   const sessions = new Set(['session-A', 'session-B']);
   const accountStore = { access: owner => accounts.get(owner), db: { prepare: () => ({ get: (id, subject) => sessions.has(id) && id === 'session-' + subject.slice(-1) ? { id } : undefined }) } };
-  const f = { directory, time, accounts, sessions, calls: [], intercept: null, nextClient: 0, nextToken: 0, identityOverride: null };
+  const f: any = { directory, time, accounts, sessions, calls: [], intercept: null, nextClient: 0, nextToken: 0, identityOverride: null };
   const access = new Map(), refresh = new Map();
   const normal = (route, body, options) => {
     if (route === '/oauth/register') return response({ client_id: 'client-' + (++f.nextClient), redirect_uris: [callback] });
@@ -72,7 +72,7 @@ test('broker ticket binds subject, registered callback, random state and PKCE wi
   const f = await fixture(t), flow = await f.begin();
   const [payload, signature] = flow.url.searchParams.get('shiyan_ticket').split('.');
   assert.equal(signature, createHmac('sha256', secret).update(payload).digest('base64url'));
-  const decoded = JSON.parse(Buffer.from(payload, 'base64url'));
+  const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString());
   const stored = f.connector.db.prepare('SELECT * FROM flows WHERE state_hash=?').get(sha(flow.state));
   assert.equal(decoded.subject, 'subject-A'); assert.equal(decoded.redirectUri, callback);
   assert.equal(decoded.clientId, stored.client_id); assert.equal(decoded.stateHash, sha(flow.state));
@@ -218,7 +218,7 @@ const staleSocket = socketPath => promisify(execFile)('/usr/bin/python3', ['-c',
 test('startup refuses a live socket and preserves its usable listener', async t => {
   const f = await fixture(t), socketPath = path.join(f.directory, 'live.sock');
   const server = net.createServer(socket => { socket.on('error', () => {}); socket.end('live'); });
-  await new Promise(resolve => server.listen(socketPath, resolve));
+  await new Promise<void>(resolve => server.listen(socketPath, () => resolve()));
   t.after(() => new Promise(resolve => server.close(resolve)));
   const before = await lstat(socketPath);
   await assert.rejects(prepareSpongeSocket(socketPath), /already listening/);
