@@ -14,11 +14,11 @@ async function request(url,options={}){
   for(let attempt=0;;attempt++){
     try{
       const response=await fetch(url,{...options,headers,signal:AbortSignal.any([shutdown.signal,AbortSignal.timeout(10000)])});
-      const data=await response.json();
+      const data=(await response.json()) as any;
       if(!response.ok||data.ok!==true)throw Object.assign(new Error('Question request failed'),{status:response.status});
       return data;
     }catch(error){
-      if(shutdown.signal.aborted||attempt>=4||error.status&&error.status<500)throw error;
+      if(shutdown.signal.aborted||attempt>=4||(error as any).status&&(error as any).status<500)throw error;
       // The same requestId/body survives transport retries, so a sidecar
       // restart or a lost POST response cannot create duplicate questions.
       await delay(Math.min(250*2**attempt,2000),undefined,{signal:shutdown.signal});
