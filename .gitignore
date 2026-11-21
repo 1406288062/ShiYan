@@ -114,3 +114,6 @@ node_modules/
 # Frontend build output (generated from .ts, rebuild with: cd shared/frontend && npm run build)
 shared/frontend/*.js
 shared/frontend/assets/*.js
+
+# Web adapter build output (generated from .ts, rebuild with: cd apps/web/adapters && node build.mjs)
+apps/web/adapters/*.js
