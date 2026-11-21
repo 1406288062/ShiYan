@@ -10,13 +10,13 @@ import { BrowserSessionManager, identityProfilePath } from './browser-session.ts
 
 // ---- a scripted Chrome: pages are { url, elements: {ref: {name,type}}, text } ----------------------
 function fakeChrome(host) {
-  const cdp = new EventEmitter();
+  const cdp: any = new EventEmitter();
   const targets = new Map(); let seq = 0;
-  const calls = [];
+  const calls: any[] = [];
   const failed = new Set();
   const session = { owner: 'alice', cdp, closing: false, targetSessionId: 'viewer-sid', tabs: new Map() };
   const page = sid => [...targets.values()].find(t => t.sid === sid);
-  cdp.send = async (method, params = {}, sid = null) => {
+  cdp.send = async (method, params: any = {}, sid = null) => {
     calls.push({ method, params, sid });
     switch (method) {
       case 'Target.createTarget': { const id = 'T' + (++seq); targets.set(id, { id, sid: 'S' + seq, url: params.url, elements: {}, text: '' }); return { targetId: id }; }
@@ -34,7 +34,7 @@ function fakeChrome(host) {
       case 'Fetch.failRequest': failed.add(params.requestId); return {};
       case 'Runtime.evaluate': {
         const tab = page(sid), expr = params.expression;
-        if (expr.includes('MAX = 160')) return { result: { value: { url: tab.url, title: 'T', items: Object.entries(tab.elements).map(([ref, el]) => ({ ref, tag: 'input', name: el.name, ...(el.type ? { type: el.type } : {}) })), text: tab.text, challenge: null, hasPassword: Object.values(tab.elements).some(el => el.type === 'password'), scroll: {}, gen: '1' } } };
+        if (expr.includes('MAX = 160')) return { result: { value: { url: tab.url, title: 'T', items: (Object.entries(tab.elements) as [string, any][]).map(([ref, el]) => ({ ref, tag: 'input', name: el.name, ...(el.type ? { type: el.type } : {}) })), text: tab.text, challenge: null, hasPassword: (Object.values(tab.elements) as any[]).some(el => el.type === 'password'), scroll: {}, gen: '1' } } };
         if (expr.includes('getBoundingClientRect') && expr.includes('scrollIntoView')) {
           const ref = expr.match(/\+ "(\w+)" \+/)?.[1]; const el = tab.elements[ref];
           return { result: { value: el ? { x: 10, y: 20, w: 5, h: 5, tag: 'input', type: el.type || '', name: el.name, secure: el.type === 'password' || el.secure, file: el.type === 'file', editable: true } : null } };
@@ -55,10 +55,10 @@ const fixtures = {
 function setup() {
   const root = mkdtempSync(path.join(os.tmpdir(), 'shiyan-browser-'));
   const store = new BrowserStore(root, { secretBox: new SecretBox({ key: Buffer.alloc(32, 7).toString('base64') }) });
-  const attachments = { files: new Map(), upload(owner, input) { this.files.set(input.id, { owner, ...input }); return { id: input.id }; }, download(owner, id) { const f = this.files.get(id); if (!f || f.owner !== owner) throw Object.assign(new Error('nope'), { status: 404 }); return { filename: f.filename, mimeType: f.mimeType, data: Buffer.from(f.data, 'base64') }; } };
+  const attachments: any = { files: new Map(), upload(owner, input) { this.files.set(input.id, { owner, ...input }); return { id: input.id }; }, download(owner, id) { const f = this.files.get(id); if (!f || f.owner !== owner) throw Object.assign(new Error('nope'), { status: 404 }); return { filename: f.filename, mimeType: f.mimeType, data: Buffer.from(f.data, 'base64') }; } };
   let chrome;
-  const manager = { holds: 0, setAgentHook() {}, get activeSession() { return chrome.session; }, async acquireAgent() { this.holds++; return chrome.session; }, releaseAgent() { this.holds--; }, async showAgentTargets(s, t) { this.shown = t; }, async hideAgentTargets(s, ids) { this.hidden = ids; }, async createTicket() { return { ticket: 'tk' }; } };
-  const host = new BrowserAgentHost({ manager, store, attachments, lxc: async () => ({ stdout: '' }), logger: () => {} });
+  const manager: any = { holds: 0, setAgentHook() {}, get activeSession() { return chrome.session; }, async acquireAgent() { this.holds++; return chrome.session; }, releaseAgent() { this.holds--; }, async showAgentTargets(s, t) { this.shown = t; }, async hideAgentTargets(s, ids) { this.hidden = ids; }, async createTicket() { return { ticket: 'tk' }; } };
+  const host = new BrowserAgentHost({ manager, store, attachments, lxc: async () => ({ stdout: '', stderr: '', code: 0 }), logger: () => {} });
   chrome = fakeChrome(host);
   return { root, store, host, manager, chrome, attachments, cleanup() { host.close(); store.close(); rmSync(root, { recursive: true, force: true }); } };
 }
@@ -97,18 +97,18 @@ test('cart confirmation goes to Dots and is answered with answer_to; user-only k
     const asking = f.host.execCall(task.task_id, token, 'ask', { kind: 'cart_confirmation', question: '请确认购物车', cart: { items: ['白色耳机 x1'], total: '199' } });
     const event = await until(() => f.store.undeliveredEvents().find(e => e.type === 'browser_task_question'));
     assert.equal(event.payload.kind, 'cart_confirmation'); assert.deepEqual(event.payload.data.cart.items, ['白色耳机 x1']);
-    assert.equal(f.store.row(task.task_id).status, 'waiting_user');
+    assert.equal(f.store.row(task.task_id)!.status, 'waiting_user');
     await assert.rejects(f.host.execCall(task.task_id, token, 'ask', { kind: 'cart_confirmation', question: '再来一个' }), /一次只跑一个结账/);
     const answered = await f.host.dotsCall('alice', 'chat', 'browse', { task_id: task.task_id, answer_to: event.payload.question_id, task: '确认，和用户要求一致' });
     assert.equal(answered.status, 'answer_delivered');
     const result = await asking;
-    assert.equal(result.answer, '确认，和用户要求一致'); assert.equal(f.store.row(task.task_id).status, 'running');
+    assert.equal(result.answer, '确认，和用户要求一致'); assert.equal(f.store.row(task.task_id)!.status, 'running');
     // Secure input can never be answered by Dots.
     await f.host.execCall(task.task_id, token, 'navigate', { url: 'https://shop.example/' });
     await f.host.execCall(task.task_id, token, 'snapshot');
     const secure = f.host.execCall(task.task_id, token, 'request_secure_input', { ref: '2', label: '登录密码', kind: 'password' });
     const need = await until(() => f.store.undeliveredEvents().find(e => e.type === 'browser_task_needs_user'));
-    await assert.rejects(f.host.dotsCall('alice', 'chat', 'browse', { task_id: task.task_id, answer_to: need.payload.question_id, task: 'hunter2' }), error => error.code === 'user_only');
+    await assert.rejects(f.host.dotsCall('alice', 'chat', 'browse', { task_id: task.task_id, answer_to: need.payload.question_id, task: 'hunter2' }), error => (error as any).code === 'user_only');
     await f.host.submitSecureInput('alice', need.payload.question_id, 'S3cret-Pass!');
     assert.equal((await secure).ok, true);
     assert.ok(f.chrome.calls.some(c => c.method === 'Input.insertText' && c.params.text === 'S3cret-Pass!'));
@@ -145,18 +145,18 @@ test('payment needs user authorization, place_order runs once, unverified withou
     const { task, token } = claimTask(f);
     await f.host.execCall(task.task_id, token, 'navigate', { url: 'https://shop.example/' });
     await f.host.execCall(task.task_id, token, 'snapshot');
-    await assert.rejects(f.host.execCall(task.task_id, token, 'place_order', { ref: '3', authorization_id: 'q_x' }), error => error.code === 'no_authorization');
+    await assert.rejects(f.host.execCall(task.task_id, token, 'place_order', { ref: '3', authorization_id: 'q_x' }), error => (error as any).code === 'no_authorization');
     const pending = f.host.execCall(task.task_id, token, 'request_payment_authorization', { merchant: 'Shop', amount: '199', currency: 'CNY', items: ['耳机'] });
     const need = await until(() => f.store.undeliveredEvents().find(e => e.type === 'browser_task_needs_user' && e.payload.kind === 'payment_authorization'));
-    await assert.rejects(f.host.dotsCall('alice', 'chat', 'browse', { task_id: task.task_id, answer_to: need.payload.question_id, task: '批准' }), error => error.code === 'user_only');
+    await assert.rejects(f.host.dotsCall('alice', 'chat', 'browse', { task_id: task.task_id, answer_to: need.payload.question_id, task: '批准' }), error => (error as any).code === 'user_only');
     await f.host.userAnswer('alice', need.payload.question_id, { approved: true });
     const auth = await pending; assert.equal(auth.ok, true);
     assert.equal((await f.host.execCall(task.task_id, token, 'place_order', { ref: '3', authorization_id: auth.authorization_id })).ok, true);
-    await assert.rejects(f.host.execCall(task.task_id, token, 'place_order', { ref: '3', authorization_id: auth.authorization_id }), error => error.code === 'authorization_used');
+    await assert.rejects(f.host.execCall(task.task_id, token, 'place_order', { ref: '3', authorization_id: auth.authorization_id }), error => (error as any).code === 'authorization_used');
     const done = await f.host.execCall(task.task_id, token, 'finish', { status: 'done', summary: '已下单' });
     assert.equal(done.status, 'unverified');
     const update = f.store.undeliveredEvents().find(e => e.type === 'browser_task_update');
-    assert.match(update.payload.note, /结果不明/);
+    assert.match(update!.payload.note, /结果不明/);
   } finally { f.cleanup(); }
 });
 
@@ -177,12 +177,12 @@ test('takeover only for chat tasks; executor waits while the user drives; handba
     const waiting = f.host.execCall(task.task_id, token, 'request_takeover', { reason: '请完成人机验证' });
     await until(() => f.store.pendingQuestions('alice', task.task_id).find(q => q.kind === 'takeover'));
     const started = await f.host.startTakeover('alice', task.task_id);
-    assert.equal(started.ticket, 'tk'); assert.equal(f.store.row(task.task_id).status, 'taken_over');
-    await assert.rejects(f.host.execCall(task.task_id, token, 'click', { x: 1, y: 1 }), error => error.code === 'taken_over');
+    assert.equal(started.ticket, 'tk'); assert.equal(f.store.row(task.task_id)!.status, 'taken_over');
+    await assert.rejects(f.host.execCall(task.task_id, token, 'click', { x: 1, y: 1 }), error => (error as any).code === 'taken_over');
     await f.host.handback('alice', task.task_id, { note: '验证完成' });
     const back = await waiting;
     assert.equal(back.handed_back, true); assert.match(back.note, /交还不等于批准购买/);
-    assert.equal(f.store.row(task.task_id).status, 'running');
+    assert.equal(f.store.row(task.task_id)!.status, 'running');
     assert.ok(f.manager.hidden?.length);
   } finally { f.cleanup(); }
 });
@@ -191,7 +191,7 @@ test('Secure Vault fills without exposing the password; codes are single-use aft
   const f = setup();
   try {
     const entry = f.store.vaultSave('alice', { origin: 'https://shop.example', username: 'alice@x', password: 'Vault-Pass-9' });
-    assert.equal(entry.password, undefined); assert.ok(!JSON.stringify(f.store.vaultList('alice')).includes('Vault-Pass-9'));
+    assert.equal(entry!.password, undefined); assert.ok(!JSON.stringify(f.store.vaultList('alice')).includes('Vault-Pass-9'));
     assert.ok(!readFileSync(path.join(f.root, 'browser.sqlite3')).includes(Buffer.from('Vault-Pass-9')));
     f.store.setPermissions('alice', { savedPasswords: 'allow' });
     const code = f.store.createCode('alice', { code: '482913', label: '短信验证码' });
@@ -220,7 +220,7 @@ test('expired executor lease is surfaced as interrupted, not silently re-run', a
     const { task } = claimTask(f);
     f.store.db.prepare('UPDATE browser_tasks SET lease_until=1 WHERE id=?').run(task.task_id);
     assert.equal(f.host.claim('w2'), null);
-    assert.equal(f.store.row(task.task_id).status, 'interrupted');
+    assert.equal(f.store.row(task.task_id)!.status, 'interrupted');
     assert.ok(f.store.undeliveredEvents().some(e => e.payload.status === 'interrupted'));
   } finally { f.cleanup(); }
 });
@@ -245,7 +245,7 @@ test('session manager: agent lease keeps Chrome when the viewer closes; viewer a
   const turn = path.join(root, 'turn.conf'); writeFileSync(turn, 'static-auth-secret=abc\nlistening-port=3478\nexternal-ip=203.0.113.9\n');
   process.env.SHIYAN_TURN_CONFIG = turn;
   let launches = 0;
-  const launch = async () => { launches++; const cdp = new EventEmitter(); cdp.send = async (method) => method === 'Runtime.evaluate' ? { result: { value: true } } : {}; cdp.close = () => {}; return { cdp, mainTargetId: 'M', targetSessionId: 'MS', transportSessionId: 'TS' }; };
+  const launch: any = async () => { launches++; const cdp: any = new EventEmitter(); cdp.send = async (method) => method === 'Runtime.evaluate' ? { result: { value: true } } : {}; cdp.close = () => {}; return { cdp, mainTargetId: 'M', targetSessionId: 'MS', transportSessionId: 'TS' }; };
   const manager = new BrowserSessionManager({ launch, allowOrigins: new Set() });
   try {
     const session = await manager.acquireAgent('alice');
@@ -255,7 +255,7 @@ test('session manager: agent lease keeps Chrome when the viewer closes; viewer a
     assert.ok(viewer.sessionToken); assert.equal(launches, 1, 'viewer attached instead of restarting Chrome');
     await manager.closeOwner('alice');
     assert.equal(manager.activeSession, session, 'agent lease keeps the browser');
-    await assert.rejects(manager.acquireAgent('bob'), error => error.code === 'browser_busy');
+    await assert.rejects(manager.acquireAgent('bob'), error => (error as any).code === 'browser_busy');
     manager.releaseAgent(session);
     await manager.closeOwner('alice');
     assert.equal(manager.activeSession, null);

@@ -231,7 +231,7 @@ export class BrowserStore {
   event(owner, taskId, type, payload) {
     this.db.prepare('INSERT INTO browser_events(owner,task_id,type,payload,created_at) VALUES(?,?,?,?,?)').run(String(owner), taskId, type, json(payload), now());
   }
-  undeliveredEvents(limit = 50) { return this.db.prepare('SELECT * FROM browser_events WHERE delivered_at IS NULL ORDER BY id LIMIT ?').all(limit).map(row => ({ ...row, payload: parse(row.payload, {}) })); }
+  undeliveredEvents(limit = 50): any[] { return this.db.prepare('SELECT * FROM browser_events WHERE delivered_at IS NULL ORDER BY id LIMIT ?').all(limit).map(row => ({ ...row, payload: parse(row.payload, {}) })); }
   markDelivered(ids) { const stmt = this.db.prepare('UPDATE browser_events SET delivered_at=? WHERE id=? AND delivered_at IS NULL'); for (const value of ids) stmt.run(now(), Number(value)); }
 
   // ---- permissions (users change them in Settings; agents only read them) ---------------------------

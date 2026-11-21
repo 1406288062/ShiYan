@@ -1051,7 +1051,7 @@ export function startBrowserAgentSocket(host, socketPath) {
   });
   mkdirSync(path.dirname(socketPath), { recursive: true, mode: 0o700 });
   try { rmSync(socketPath, { force: true }); } catch {}
-  return new Promise((resolve, reject) => {
+  return new Promise<any>((resolve, reject) => {
     server.once('error', reject);
     server.listen(socketPath, () => { try { chmodSync(socketPath, 0o600); } catch {} resolve(server); });
   });
@@ -1060,7 +1060,7 @@ export function startBrowserAgentSocket(host, socketPath) {
 // Shared client used by the MCP bridges and the Dots runtime executor.
 export function browserAgentRequest(socketPath, route, body, { timeoutMs = 30 * 60_000 } = {}) {
   const payload = Buffer.from(JSON.stringify(body || {}));
-  return new Promise((resolve, reject) => {
+  return new Promise<any>((resolve, reject) => {
     const req = http.request({ socketPath, path: route, method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': payload.length } }, res => {
       const chunks: any[] = []; res.on('data', chunk => chunks.push(chunk));
       res.on('end', () => { let data: any = {}; try { data = JSON.parse(Buffer.concat(chunks).toString() || '{}'); } catch {} if (res.statusCode! >= 200 && res.statusCode! < 300 && data.ok !== false) resolve(data); else reject(Object.assign(new Error(data.error || '浏览器服务请求失败'), { status: res.statusCode, code: data.code })); });
