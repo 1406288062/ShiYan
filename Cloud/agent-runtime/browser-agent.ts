@@ -15,6 +15,9 @@ import { mkdirSync, readFileSync, writeFileSync, unlinkSync, chmodSync, rmSync }
 import { tmpdir } from 'node:os';
 import { normalizeBrowserURL, normalizeIdentity, runLxc as defaultLxc, BROWSER_CONTAINER_NAME } from './browser-session.ts';
 import { ACTIVE_STATUSES, DOTS_ANSWERABLE, USER_ONLY, originMatches } from './browser-store.ts';
+import type { BrowserSessionManager } from './browser-session.ts';
+import type { BrowserStore } from './browser-store.ts';
+import type { DotsAttachments } from './dots-attachments.ts';
 
 const fail = (message, status = 400, code = undefined) => Object.assign(new Error(message), { status }, code ? { code } : {});
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -80,6 +83,22 @@ const SEARCH_JS = `(() => { const out = [];
   return { url: location.href, title: document.title, results: out.slice(0, 15), text: (document.body ? document.body.innerText : '').slice(0, 600) }; })()`;
 
 export class BrowserAgentHost {
+  manager: BrowserSessionManager;
+  store: BrowserStore;
+  attachments: DotsAttachments | null;
+  lxc: typeof defaultLxc;
+  container: string;
+  log: (msg: string) => void;
+  windows: Map<string, any>;
+  byTarget: Map<string, any>;
+  bySession: Map<string, any>;
+  readers: Map<string, any>;
+  locks: Map<string, any>;
+  waiters: Map<string, Set<any>>;
+  downloads: Map<string, any>;
+  takeover: { owner: string; taskId: string; previousStatus: string } | null;
+  windowIdleMs: number;
+  sweeper: ReturnType<typeof setInterval>;
   constructor({ manager, store, attachments = null, lxc = defaultLxc, container = BROWSER_CONTAINER_NAME, logger = msg => process.stderr.write(msg + '\n'), windowIdleMs = WINDOW_IDLE_MS } = {}) {
     this.manager = manager; this.store = store; this.attachments = attachments; this.lxc = lxc; this.container = container; this.log = logger;
     this.windows = new Map();      // taskId -> window state

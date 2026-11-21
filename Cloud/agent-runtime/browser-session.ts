@@ -7,6 +7,7 @@ import { chmodSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EventEmitter } from 'node:events';
+import type { Socket } from 'node:net';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BROWSER_CONTAINER = process.env.SHIYAN_BROWSER_CONTAINER || 'shiyan-browser-test';
@@ -273,6 +274,11 @@ export function createRestrictedProxy() {
 }
 
 class CDPConnection extends EventEmitter {
+  webSocket: WebSocket;
+  child: any;
+  nextId: number;
+  pending: Map<number, any>;
+  closed: boolean;
   constructor(webSocket, child) {
     super();
     this.webSocket = webSocket;
@@ -354,6 +360,11 @@ function makeFrame(opcode, payload = Buffer.alloc(0)) {
 }
 
 class WebSocketPeer {
+  socket: Socket;
+  onMessage: (data: any) => void;
+  onClose: () => void;
+  buffer: Buffer;
+  closed: boolean;
   constructor(socket, head, onMessage, onClose) {
     this.socket = socket; this.onMessage = onMessage; this.onClose = onClose;
     this.buffer = Buffer.alloc(0); this.closed = false;
@@ -561,6 +572,17 @@ export async function sweepStaleBrowser() {
   return count > 0;
 }
 export class BrowserSessionManager {
+  launch: typeof startChromeRuntime;
+  allowOrigins: Set<string>;
+  validateAccountToken: ((token: string) => boolean | Promise<boolean>) | null;
+  idleMs: number;
+  maxSessionMs: number;
+  active: any;
+  ticket: { value: string; owner: string; accountToken: string | null; attach: any; expiresAt: number } | null;
+  ticketTimer: ReturnType<typeof setTimeout>;
+  lastExchange: { value: any; promise: Promise<any>; expiresAt: number } | null;
+  agentHook: { onViewerDetached?: (session: any) => void } | null;
+  startTail: Promise<void> | null;
   constructor({ launch = startChromeRuntime, allowOrigins = ALLOWED_ORIGINS, validateAccountToken = null, idleMs = IDLE_TTL_MS, maxSessionMs = MAX_SESSION_MS } = {}) {
     this.launch = launch; this.allowOrigins = allowOrigins; this.validateAccountToken = validateAccountToken;
     this.idleMs = idleMs; this.maxSessionMs = maxSessionMs; this.active = null; this.ticket = null;
