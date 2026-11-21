@@ -17,7 +17,7 @@ const STALE_TOKEN = -14;
 const LOGIN_TTL_MS = 5 * 60_000;
 const REPLY_WAIT_MS = 10 * 60_000;
 
-const sleep = (ms, signal) => new Promise(resolve => {
+const sleep = (ms, signal?) => new Promise<void>(resolve => {
   const timer = setTimeout(resolve, ms); timer.unref?.();
   signal?.addEventListener('abort', () => { clearTimeout(timer); resolve(); }, { once: true });
 });
@@ -58,7 +58,7 @@ export function weixinMailDigest(content) {
     .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
   const limit = 600, short = Array.from(body);
   if (short.length > limit) body = short.slice(0, limit).join('').replace(/\s+\S*$/, '') + '…';
-  return ['📮 新邮件', from && '发件人：' + from, subject && '主题：' + subject, time && '时间：' + time, '', body, '', '完整内容和链接在拾燕 Dots 里查看。'].filter(v => v !== false && v != null).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  return ['📮 新邮件', from && '发件人：' + from, subject && '主题：' + subject, time && '时间：' + time, '', body, '', '完整内容和链接在拾燕 Dots 里查看。'].filter(Boolean).join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 function decryptMedia(data, aesKeyBase64) {
   let key = Buffer.from(aesKeyBase64, 'base64');
@@ -75,7 +75,7 @@ function imageExtension(data) {
   return 'jpg';
 }
 function chunks(text, size = 3800) {
-  const out = []; let rest = text;
+  const out: string[] = []; let rest = text;
   while (rest.length > size) {
     let cut = rest.lastIndexOf('\n', size); if (cut < size * 0.5) cut = size;
     out.push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\n+/, '');
@@ -88,7 +88,7 @@ export interface WeixinBridgeOptions {
   store: any;
   ingest: (text: string, requestId: any) => any;
   owner: string;
-  saveInbound?: ((input: { data: any; filename: string }) => Promise<string>) | null;
+  saveInbound?: ((input: { data: any; filename: string; kind?: string }) => Promise<string>) | null;
   onAudit?: (kind: any, summary: any) => void;
   fetchImpl?: any;
   logger?: Console;
@@ -110,9 +110,9 @@ export function createWeixinBridge({ store, ingest, owner, saveInbound = null, o
     db.prepare(`INSERT INTO dots_weixin(manager_id,${keys.join(',')},updated_at) VALUES(?,${keys.map(() => '?').join(',')},?) ON CONFLICT(manager_id) DO UPDATE SET ${keys.map(k => `${k}=excluded.${k}`).join(',')},updated_at=excluded.updated_at`)
       .run(managerId, ...keys.map(k => fields[k]), Math.floor(now() / 1000));
   };
-  let login = null, controller = null, loop = null, queue = Promise.resolve(), typingTicket = null, typingTicketAt = 0, stopped = false;
+  let login: any = null, controller: AbortController | null = null, loop: Promise<void> | null = null, queue = Promise.resolve(), typingTicket: string | null = null, typingTicketAt = 0, stopped = false;
 
-  async function call(baseUrl, endpoint, { method = 'POST', body, token, timeoutMs = 15_000, signal } = {}) {
+  async function call(baseUrl, endpoint, { method = 'POST', body, token, timeoutMs = 15_000, signal }: { method?: string; body?: any; token?: string; timeoutMs?: number; signal?: AbortSignal } = {}) {
     const headers = { 'iLink-App-Id': 'bot', 'iLink-App-ClientVersion': CLIENT_VERSION };
     if (method === 'POST') Object.assign(headers, { 'Content-Type': 'application/json', AuthorizationType: 'ilink_bot_token', 'X-WECHAT-UIN': uin(), ...(token ? { Authorization: 'Bearer ' + token } : {}) });
     const timeout = AbortSignal.timeout(timeoutMs);
@@ -142,7 +142,7 @@ export function createWeixinBridge({ store, ingest, owner, saveInbound = null, o
         let endpoint = `ilink/bot/get_qrcode_status?qrcode=${encodeURIComponent(current.qrcode)}`;
         if (current.verifyCode) endpoint += `&verify_code=${encodeURIComponent(current.verifyCode)}`;
         status = await call(current.base, endpoint, { method: 'GET', timeoutMs: 35_000 });
-      } catch (error) { if (error.name !== 'TimeoutError' && error.name !== 'AbortError') await sleep(2000); continue; }
+      } catch (error) { if ((error as any).name !== 'TimeoutError' && (error as any).name !== 'AbortError') await sleep(2000); continue; }
       if (login !== current) return;
       current.status = status.status || 'wait';
       if (status.status === 'scaned') current.verifyCode = null;
@@ -169,7 +169,7 @@ export function createWeixinBridge({ store, ingest, owner, saveInbound = null, o
 
   // —— 收消息 ——
   function textOf(message) {
-    const parts = [];
+    const parts: string[] = [];
     for (const item of message.item_list || []) {
       if (item.type === 1 && item.text_item?.text) parts.push(item.text_item.text);
       else if (item.type === 3 && item.voice_item?.text) parts.push(item.voice_item.text);
@@ -180,7 +180,7 @@ export function createWeixinBridge({ store, ingest, owner, saveInbound = null, o
   }
   // 图片和文件：从微信 CDN 下载并解密，交给 saveInbound 存进当前账号的工作区，返回给 Dots 看的路径。
   async function mediaOf(message) {
-    const out = [];
+    const out: any[] = [];
     if (!saveInbound) return out;
     for (const [index, item] of (message.item_list || []).entries()) {
       const kind = item.type === 2 ? 'image' : item.type === 4 ? 'file' : null;
@@ -192,11 +192,11 @@ export function createWeixinBridge({ store, ingest, owner, saveInbound = null, o
       try {
         const url = media.full_url || `${CDN_BASE}/download?encrypted_query_param=${encodeURIComponent(media.encrypt_query_param)}`;
         const urlType = media.full_url ? 'full_url' : 'encrypted_query_param';
-        let raw = null, lastError = null;
+        let raw: Buffer | null = null, lastError: any = null;
         // CDN GET 可安全重试：60 秒超时，最多两次；不对解密和写盘做盲目重试。
         for (let attempt = 1; attempt <= 2; attempt++) {
           const attemptStartedAt = Date.now();
-          let response = null;
+          let response: any = null;
           try {
             phase = 'cdn_request';
             response = await fetchImpl(url, { signal: AbortSignal.timeout(60_000) });
@@ -218,13 +218,13 @@ export function createWeixinBridge({ store, ingest, owner, saveInbound = null, o
             break;
           } catch (error) {
             lastError = error;
-            const status = error?.status || response?.status || null;
-            const retryable = error?.name === 'TimeoutError' || error?.name === 'AbortError'
-              || error?.name === 'TypeError' || [408, 425, 429].includes(status) || status >= 500;
+            const status = (error as any)?.status || response?.status || null;
+            const retryable = (error as any)?.name === 'TimeoutError' || (error as any)?.name === 'AbortError'
+              || (error as any)?.name === 'TypeError' || [408, 425, 429].includes(status) || status >= 500;
             logger.warn?.('[weixin] media download failed ' + JSON.stringify({
               kind, urlType, phase, attempt, status,
-              error: error?.message || String(error), errorName: error?.name || null,
-              code: error?.code || null, elapsedMs: Date.now() - attemptStartedAt,
+              error: (error as any)?.message || String(error), errorName: (error as any)?.name || null,
+              code: (error as any)?.code || null, elapsedMs: Date.now() - attemptStartedAt,
               retrying: attempt < 2 && retryable,
             }));
             if (attempt >= 2 || !retryable) throw error;
@@ -254,9 +254,9 @@ export function createWeixinBridge({ store, ingest, owner, saveInbound = null, o
         else throw new Error('weixin_media_save_empty');
       } catch (error) {
         logger.warn?.('[weixin] media processing failed ' + JSON.stringify({
-          kind, phase, filename, error: error?.message || String(error),
-          errorName: error?.name || null, code: error?.code || null,
-          status: error?.status || null, totalElapsedMs: Date.now() - startedAt,
+          kind, phase, filename, error: (error as any)?.message || String(error),
+          errorName: (error as any)?.name || null, code: (error as any)?.code || null,
+          status: (error as any)?.status || null, totalElapsedMs: Date.now() - startedAt,
         }));
         out.push({ kind, filename, failed: true });
       }
@@ -294,7 +294,7 @@ export function createWeixinBridge({ store, ingest, owner, saveInbound = null, o
         if (!result.ret || result.ret === 0) return;
         if (renew) { logger.warn?.('[weixin] typing ret ' + result.ret); return; }
       }
-    } catch (error) { logger.warn?.('[weixin] typing ' + (error?.message || error)); }
+    } catch (error) { logger.warn?.('[weixin] typing ' + ((error as any)?.message || error)); }
   }
   async function waitForReply(messageId, signal) {
     const deadline = now() + REPLY_WAIT_MS; let keepalive = 0;
@@ -330,10 +330,10 @@ export function createWeixinBridge({ store, ingest, owner, saveInbound = null, o
       : text;
     let accepted;
     try { accepted = ingest(input, 'weixin:' + (message.message_id || message.client_id || message.seq || now())); }
-    catch (error) { await send('没能收到这条消息：' + String(error?.message || error).slice(0, 120)).catch(() => {}); return; }
+    catch (error) { await send('没能收到这条消息：' + String((error as any)?.message || error).slice(0, 120)).catch(() => {}); return; }
     const replies = await waitForReply(accepted.id, signal);
     void typing(false);
-    for (const reply of replies) await send(reply.content).catch(error => logger.warn?.('[weixin] send reply ' + error.message));
+    for (const reply of replies) await send(reply.content).catch(error => logger.warn?.('[weixin] send reply ' + (error as any).message));
     if (!replies.length && !signal.aborted) await send('这件事我还在处理，好了会在拾燕里告诉你。').catch(() => {});
   }
   // 推到微信的有两类：主动消息（每日简报、订阅提醒等，可在连接器里关闭），
@@ -354,8 +354,8 @@ export function createWeixinBridge({ store, ingest, owner, saveInbound = null, o
       const content = /^收到一封 QQ 邮件/.test(item.content) ? weixinMailDigest(whole) : item.content;
       try { if (content) await send(content); }
       catch (error) {
-        save({ push_failed_message_id: item.id, push_failed_inbound_seq: r.inbound_seq || 0, last_error: String(error?.message || error).slice(0, 200) });
-        logger.warn?.('[weixin] push 暂存消息 ' + item.id + '，等待下一条微信入站消息后重试：' + error.message);
+        save({ push_failed_message_id: item.id, push_failed_inbound_seq: r.inbound_seq || 0, last_error: String((error as any)?.message || error).slice(0, 200) });
+        logger.warn?.('[weixin] push 暂存消息 ' + item.id + '，等待下一条微信入站消息后重试：' + (error as any).message);
         return;
       }
       if (content) onAudit('weixin_push', '把一条 Dots 回复/主动消息推送到了微信');
@@ -376,11 +376,11 @@ export function createWeixinBridge({ store, ingest, owner, saveInbound = null, o
         }
         failures = 0;
         if (result.get_updates_buf) save({ sync_buf: result.get_updates_buf, last_error: '' });
-        for (const message of result.msgs || []) queue = queue.then(() => handle(message, signal)).catch(error => logger.warn?.('[weixin] handle ' + error.message));
+        for (const message of result.msgs || []) queue = queue.then(() => handle(message, signal)).catch(error => logger.warn?.('[weixin] handle ' + (error as any).message));
       } catch (error) {
         if (signal.aborted) return;
-        if (error.name !== 'TimeoutError' && error.name !== 'AbortError') {
-          failures++; save({ last_error: String(error.message || error).slice(0, 200) });
+        if ((error as any).name !== 'TimeoutError' && (error as any).name !== 'AbortError') {
+          failures++; save({ last_error: String((error as any).message || error).slice(0, 200) });
           await sleep(Math.min(30_000, 2000 * failures), signal);
         }
       }
@@ -391,7 +391,7 @@ export function createWeixinBridge({ store, ingest, owner, saveInbound = null, o
     if (loop || stopped) return;
     const r = row(); if (!r?.token || r.state !== 'connected') return;
     controller = new AbortController(); typingTicket = null;
-    loop = run(controller.signal).catch(error => logger.warn?.('[weixin] loop ' + error.message)).finally(() => { loop = null; });
+    loop = run(controller!.signal).catch(error => logger.warn?.('[weixin] loop ' + (error as any).message)).finally(() => { loop = null; });
   }
   async function unbind() {
     login = null; controller?.abort(); controller = null;
