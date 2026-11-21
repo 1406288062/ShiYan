@@ -3,6 +3,7 @@ const hash = value => createHash('sha256').update(value).digest('hex');
 const opaque = value => typeof value === 'string' && /^[A-Za-z0-9_-]{43}$/.test(value);
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
 export class DeviceLogin {
+  a: any;
   constructor(accounts) {
     this.a = accounts;
     accounts.db.exec(`CREATE TABLE IF NOT EXISTS account_desktop_devices (
