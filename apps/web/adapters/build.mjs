@@ -25,7 +25,7 @@ for (const f of files) {
     outfile: out,
     bundle: false,
     target: 'es2022',
-    format: 'esm',
+    format: 'esm', charset: 'utf8',
   });
   ok += 1;
 }
