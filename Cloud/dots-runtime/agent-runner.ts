@@ -25,7 +25,13 @@ function claudeChildEnv(env) {
   return { ...out, DISABLE_AUTOUPDATER: '1', MCP_TOOL_TIMEOUT: '7200000', BASH_DEFAULT_TIMEOUT_MS: '600000', BASH_MAX_TIMEOUT_MS: '3600000', PATH: '/home/agent/.local/bin:/opt/shiyan/bin:/usr/local/bin:/usr/bin:/bin' };
 }
 
-export function createAgentRunner({ sandbox, claudeSdk = loadClaudeSdk, managerThread = createManagerThread, logger = console } = {}) {
+export interface AgentRunnerOptions {
+  sandbox: any;
+  claudeSdk?: () => Promise<any>;
+  managerThread?: (params: any) => any;
+  logger?: any;
+}
+export function createAgentRunner({ sandbox, claudeSdk = loadClaudeSdk, managerThread = createManagerThread, logger = console }: AgentRunnerOptions) {
   async function runClaude({ owner, model, reasoning, session, cwd, system, prompt, servers, signal, onEvent, maxTurns }) {
     const { query } = await claudeSdk();
     const controller = new AbortController();

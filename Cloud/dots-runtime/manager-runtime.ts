@@ -259,7 +259,23 @@ ${JSON.stringify(recent)}
 Return only the structured decision.${buildVoiceRule(voiceContext,{field:'message'}).replace(/rule 8's default tone and length/,'the default tone and length').replace(/tasks, summaries, worker instructions, notes, routing and every other rule above/,'every decision rule above')}`;
 }
 
-export function createManagerRuntime({store,codex,workspaceRoot,memory,resolveImagePath,threadOptions={},timeoutMs=120000,onComplete=()=>{},threadFactory=null,contentReviewEnabled=true,logger=console,onModelCall=()=>{},voice=null,afterCommit=null}={}) {
+export interface ManagerRuntimeOptions {
+  store: any;
+  codex: any;
+  workspaceRoot: string;
+  memory?: any;
+  resolveImagePath?: (file: string) => string;
+  threadOptions?: any;
+  timeoutMs?: number;
+  onComplete?: () => void;
+  threadFactory?: ((params: { threadId: string | null; options: any }) => Promise<any>) | null;
+  contentReviewEnabled?: boolean;
+  logger?: any;
+  onModelCall?: (entry: { model: string; reasoning: string; ok: boolean; ms: number; error: any }) => void;
+  voice?: ((text: string) => string | Promise<string>) | null;
+  afterCommit?: ((result: any) => void) | null;
+}
+export function createManagerRuntime({store,codex,workspaceRoot,memory,resolveImagePath,threadOptions={},timeoutMs=120000,onComplete=()=>{},threadFactory=null,contentReviewEnabled=true,logger=console,onModelCall=()=>{},voice=null,afterCommit=null}: ManagerRuntimeOptions) {
   const workspace=path.join(workspaceRoot,'.manager');mkdirSync(workspace,{recursive:true});
   // 读取用户启用的“学习对象”说话方式；失败时按普通 Dots 回复，不影响对话。
   const voiceFor=async text=>{if(typeof voice!=='function')return '';try{return String(await voice(String(text||''))||'');}catch(cause){logger.warn?.('[voice]',cause?.message||cause);return '';}};

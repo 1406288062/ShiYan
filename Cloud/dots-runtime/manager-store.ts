@@ -14,7 +14,16 @@ const terminal = status => ['done', 'cancelled'].includes(status);
 
 // Logical managers share a database while all private state is bound to managerId.
 // Only the original owner may adopt legacy records without an owner.
-export function createManagerStore({ db, ownerId = 'shiyan-private-owner', workspaceRoot, now = () => Math.floor(Date.now() / 1000), workerLimit = 2, leaseSeconds = 60, importLegacyGoals = ownerId === (process.env.DOTS_OWNER_ID || 'shiyan-private-owner') } = {}) {
+export interface ManagerStoreOptions {
+  db: any;
+  ownerId?: string;
+  workspaceRoot?: string;
+  now?: () => number;
+  workerLimit?: number;
+  leaseSeconds?: number;
+  importLegacyGoals?: boolean;
+}
+export function createManagerStore({ db, ownerId = 'shiyan-private-owner', workspaceRoot, now = () => Math.floor(Date.now() / 1000), workerLimit = 2, leaseSeconds = 60, importLegacyGoals = ownerId === (process.env.DOTS_OWNER_ID || 'shiyan-private-owner') }: ManagerStoreOptions) {
   const managerId = 'manager:' + ownerId;
   let transactionId = 0,transactionDepth=0;
   const afterCommit=[];

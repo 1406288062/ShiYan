@@ -12,7 +12,7 @@
     "noEmit": true,
     "allowImportingTsExtensions": true,
     "outDir": "dist",
-    "rootDir": ".",
+    "rootDir": "..",
     "noImplicitAny": false,
     "types": [
       "node"

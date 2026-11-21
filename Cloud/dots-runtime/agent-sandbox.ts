@@ -44,6 +44,28 @@ function resolveCodexBinary(value) {
   try { const real = realpathSync(value); return { dir: path.dirname(real), name: path.basename(real) }; } catch { return null; }
 }
 
+export interface SandboxLayout {
+  workspace: string;
+  workspaceTarget: string;
+  home: string;
+  rpc: string;
+  readonly?: Array<[string, string]>;
+}
+export interface SandboxManagerOptions {
+  image?: string;
+  docker?: any;
+  layoutFor: (owner: string) => SandboxLayout;
+  claudeBinary?: string;
+  codexBinary?: string;
+  relayScript?: string;
+  skillsDir?: string;
+  credentials?: { claude: string; claudeEnv: string; codex: string };
+  limits?: { memory: string; cpus: string; pids: string };
+  uid?: number;
+  gid?: number;
+  idleMs?: number;
+  logger?: any;
+}
 export function createSandboxManager({
   image = process.env.SHIYAN_AGENT_IMAGE || 'shiyan-agent:1',
   docker = dockerRunner(),
@@ -59,7 +81,7 @@ export function createSandboxManager({
   gid = typeof process.getgid === 'function' ? process.getgid() : 1000,
   idleMs = Number(process.env.SHIYAN_AGENT_IDLE_MS) || 30 * 60_000,
   logger = console,
-} = {}) {
+}: SandboxManagerOptions) {
   if (typeof layoutFor !== 'function') throw new Error('layoutFor is required');
   const state = new Map();        // owner -> { ready: Promise, active, lastUsed }
   const codex = resolveCodexBinary(codexBinary);
