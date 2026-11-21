@@ -12,7 +12,7 @@ const prioritySource=between(' function handleUploadPriorityChange(){','\n funct
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 function deferred(){let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};}
 function persistence(api){
- const stored=[],errors=[];
+ const stored: any[]=[],errors: any[]=[];
  const context=vm.createContext({JSON,Promise,Error,key:'account-isolated',saveChain:Promise.resolve(),persistedSnapshot:null,savingSnapshot:null,savingTask:null,
   manager:{status:'active'},messages:[{id:1,content:'unchanged history'}],tasks:[],goals:[],details:{},drafts:{},pending:{},cursor:1,readState:{readThrough:1},
   api,localStorage:{setItem:(key,value)=>stored.push({key,value})},showError:error=>errors.push(error)});
@@ -20,7 +20,7 @@ function persistence(api){
 }
 
 test('unchanged Dots snapshots share their pending durability promise and are not resent after success',async()=>{
- const gate=deferred(),calls=[];
+ const gate=deferred(),calls: any[]=[];
  const {context,stored}=persistence(async(...args)=>{calls.push(args);await gate.promise;});
  const first=context.persist(),second=context.persist();assert.equal(first,second);
  let durable=false;first.then(()=>durable=true);await tick();assert.equal(calls.length,1);assert.equal(durable,false);
@@ -34,7 +34,7 @@ test('a failed Dots save is retried for the identical snapshot',async()=>{
 });
 
 test('changed Dots snapshots retain their captured values and ordering',async()=>{
- const gate=deferred(),calls=[];
+ const gate=deferred(),calls: any[]=[];
  const {context}=persistence(async(_path,_method,{state})=>{calls.push(state);if(calls.length===1)await gate.promise;});
  context.drafts.text='first';const first=context.persist();
  context.drafts.text='second';context.pending.send={requestId:'pending-message'};const second=context.persist();
@@ -50,7 +50,7 @@ test('localStorage failure is reported before any Dots network write',async()=>{
 });
 
 function refreshing(api){
- const approvals=[],saved=[],renders=[];
+ const approvals: any[]=[],saved: any[]=[],renders: any[]=[];
  const context=vm.createContext({Promise,refreshFlight:null,refreshQueuedForce:false,readState:{observedThrough:10},active:false,drawerOpen:false,selected:null,
   api,adopt:()=>{},reconcileUnreadGap:async()=>{},refreshApprovals:async force=>approvals.push(force),persist:async()=>saved.push(true),refreshContent:()=>renders.push(true)});
  vm.runInContext(refreshSource,context);return {context,approvals,saved,renders};
