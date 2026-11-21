@@ -3,7 +3,7 @@ import {normalizedText,connectionAlreadyCovered} from './natural-opportunities.t
 import {buildCognitivePrompt} from './cognition-prompt.ts';
 
 const hash=value=>createHash('sha256').update(String(value)).digest('hex');
-const parse=(value,fallback=null)=>{try{return JSON.parse(value);}catch{return fallback;}};
+const parse=(value,fallback: any=null)=>{try{return JSON.parse(value);}catch{return fallback;}};
 const text=value=>typeof value==='string'?value.trim():'';
 const object=properties=>({type:'object',additionalProperties:false,properties,required:Object.keys(properties)});
 const str=maxLength=>({type:'string',maxLength});
@@ -61,7 +61,7 @@ export function createDotsCognition({store,assess,memory,now=()=>Math.floor(Date
   });
   db.exec("CREATE INDEX IF NOT EXISTS idx_cognition_focus_state ON dots_cognition_focuses(manager_id,state); CREATE INDEX IF NOT EXISTS idx_cognition_intent_state ON dots_cognition_intents(manager_id,state); CREATE INDEX IF NOT EXISTS idx_cognition_step_action ON dots_cognition_steps(manager_id,action); CREATE INDEX IF NOT EXISTS idx_cognition_observation_recent ON dots_cognition_observations(manager_id,created_at DESC,id)");
   if(!db.prepare('PRAGMA table_info(dots_cognition_state)').all().some(row=>row.name==='contribution_revision'))db.exec('ALTER TABLE dots_cognition_state ADD COLUMN contribution_revision INTEGER NOT NULL DEFAULT 0');
-  let busy=false,closed=false,abort=null;
+  let busy=false,closed=false,abort: AbortController | null=null;
   const state=()=>db.prepare('SELECT * FROM dots_cognition_state WHERE manager_id=?').get(managerId);
   const settings=()=>memory?.settings?memory.settings(store.ownerId):{enabled:true,generation:0};
   const epoch=s=>JSON.stringify([s.enabled,s.generation??0]);
@@ -76,7 +76,7 @@ export function createDotsCognition({store,assess,memory,now=()=>Math.floor(Date
     return row&&[parse(row.payload)?.title,parse(row.payload)?.summary].some(value=>typeof value==='string'&&value.includes(ref.quote))&&parse(row.user_refs,[]).length>0&&parse(row.user_refs,[]).every(user=>user.kind==='user'&&refValid(user));
   };
   const refsValid=refs=>Array.isArray(refs)&&refs.length>0&&refs.length<=64&&refs.some(ref=>ref.kind==='user')&&refs.every(refValid);
-  const unique=refs=>[...new Map(refs.map(ref=>[JSON.stringify(ref),ref])).values()];
+  const unique=(refs: any[])=>[...new Map(refs.map(ref=>[JSON.stringify(ref),ref])).values()];
   const sourceContext=refs=>refs.filter(refValid).map(ref=>{
     const table=ref.kind==='user'?'manager_messages':'dots_cognition_observations';
     const source=db.prepare('SELECT created_at FROM '+table+' WHERE manager_id=? AND id=?').get(managerId,ref.id);
@@ -120,9 +120,9 @@ export function createDotsCognition({store,assess,memory,now=()=>Math.floor(Date
     let input=prompt;
     // 用户对近期主动消息的“有用 / 没用”反馈，只在决定是否发送时提供。
     try{const data=JSON.parse(prompt);if(data.operation==='evaluate_expression'&&store.recentFeedback){const feedback=store.recentFeedback(15);if(feedback.length){data.user_feedback=feedback;input=JSON.stringify(data);}}}catch{}
-    return assess(buildCognitivePrompt(input),schema,{signal:abort.signal});
+    return assess(buildCognitivePrompt(input),schema,{signal:abort!.signal});
   };
-  const stillCurrent=key=>!closed&&!abort.signal.aborted&&epoch(settings())===key&&state().lease_owner===owner&&state().lease_until>now();
+  const stillCurrent=key=>!closed&&!abort!.signal.aborted&&epoch(settings())===key&&state().lease_owner===owner&&state().lease_until>now();
   const technicalDeliveryAvailable=()=>db.prepare('SELECT status FROM managers WHERE id=?').get(managerId)?.status==='active'&&!db.prepare('SELECT 1 FROM manager_inbox WHERE manager_id=? AND consumed_at IS NULL').get(managerId)&&!db.prepare("SELECT 1 FROM manager_runs WHERE manager_id=? AND kind='manager' AND state='running'").get(managerId)&&!db.prepare("SELECT 1 FROM manager_messages WHERE manager_id=? AND delivery_state='streaming'").get(managerId);
   async function understand(key,{reconsider=false}={}){
     const facts=knowledge(),digest=hash(JSON.stringify(facts));if(!facts.length||!reconsider&&state().knowledge_key===digest)return;
@@ -130,7 +130,7 @@ export function createDotsCognition({store,assess,memory,now=()=>Math.floor(Date
     const result=await ask(encodeCognitiveInput({operation:'update_understanding',evaluatedAt:new Date(now()*1000).toISOString(),understanding:state().understanding,focuses:existing,evidence:facts,exchange:snapshot()}),UNDERSTANDING_SCHEMA);
     if(!result||!stillCurrent(key)||digest!==hash(JSON.stringify(knowledge())))return;
     if(!Array.isArray(result.focuses)||result.focuses.length>4)throw new Error('Invalid cognitive orientation');
-    const accepted=[];
+    const accepted: any[]=[];
     store.transaction(()=>{
       for(const item of result.focuses){
         const refs=item.references,q=text(item.question),meaning=text(item.personal_meaning),focusKey=text(item.key);
@@ -208,7 +208,7 @@ export function createDotsCognition({store,assess,memory,now=()=>Math.floor(Date
         db.prepare("UPDATE dots_cognition_intents SET state='held',context_key=?,wait_for='对话已变化，需要重新判断',updated_at=? WHERE id=?").run(contextKey,now(),intent.id);return;
       }
       if(validSend){
-        const links=[];
+        const links: any[]=[];
         for(const ref of refs.filter(ref=>ref.kind==='observation')){
           const payload=parse(db.prepare('SELECT payload FROM dots_cognition_observations WHERE manager_id=? AND id=?').get(managerId,ref.id)?.payload);
           if(payload?.url&&payload?.publisher&&!links.some(link=>link.url===payload.url))links.push(payload);
@@ -237,7 +237,7 @@ export function createDotsCognition({store,assess,memory,now=()=>Math.floor(Date
     if(busy||closed||db.prepare('SELECT status FROM managers WHERE id=?').get(managerId)?.status!=='active')return false;
     const claimed=store.transaction(()=>db.prepare('UPDATE dots_cognition_state SET lease_owner=?,lease_until=? WHERE manager_id=? AND (lease_until<=? OR lease_owner=?)').run(owner,now()+180,managerId,now(),owner).changes);
     if(!claimed)return false;busy=true;abort=new AbortController();
-    const deadline=setTimeout(()=>abort.abort(new Error('Cognition compute deadline')),120000);deadline.unref?.();
+    const deadline=setTimeout(()=>abort?.abort(new Error('Cognition compute deadline')),120000);deadline.unref?.();
     try{
       const key=epoch(settings());if(!reconcile())return false;await understand(key,{reconsider});
       // Continue the private frontier even when no input or observation changed.
@@ -247,7 +247,7 @@ export function createDotsCognition({store,assess,memory,now=()=>Math.floor(Date
       }
       if(stillCurrent(key))await express(key);
       return true;
-    }catch(error){logger.warn?.('[dots-cognition]',error?.message||error);if(propagateErrors)throw error;return false;}
+    }catch(error){logger.warn?.('[dots-cognition]',(error as any)?.message||error);if(propagateErrors)throw error;return false;}
     finally{clearTimeout(deadline);abort=null;busy=false;db.prepare('UPDATE dots_cognition_state SET lease_until=0,lease_owner=NULL WHERE manager_id=? AND lease_owner=?').run(managerId,owner);}
   }
   function observe({id,event,userReferences}){
