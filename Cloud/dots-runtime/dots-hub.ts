@@ -11,7 +11,7 @@ export function createDotsHub(client = createHubClient()) {
     //   { result }    中枢已经完成，result 是解析好的 JSON
     //   { settings }  仍由 Codex 执行，使用中枢指定的 {model, effort}
     //   {}            沿用原有默认
-    async plan(source, { data, schema, signal, account } = {}) {
+    async plan(source, { data, schema, signal, account }: {data?: any; schema?: any; signal?: any; account?: any} = {}) {
       const consumer = dotsConsumer(source);
       const route = await client.route(consumer);
       if (!route) return {};

@@ -28,11 +28,11 @@ export interface HubAwareThreadOptions {
   createInner: () => any;
 }
 export function hubAwareThread({ hub, owner, consumer, threadId = null, options = {}, createInner }: HubAwareThreadOptions) {
-  let inner = null;
+  let inner: any = null;
   const getInner = () => (inner ??= createInner());
   const key = createHash('sha256').update(consumer + '\0' + owner + '\0' + String(options.workingDirectory || '')).digest('hex').slice(0, 40);
   const viaHub = async () => { try { const route = await hub.route(consumer); return Boolean(route && route.provider !== 'openai'); } catch { return false; } };
-  async function hubRun(prompt, { outputSchema, signal, images } = {}) {
+  async function hubRun(prompt, { outputSchema, signal, images }: {outputSchema?: any; signal?: any; images?: any} = {}) {
     try {
       const attached = hubImages(images);
       const parts = splitPrompt(prompt);

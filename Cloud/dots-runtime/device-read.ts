@@ -3,7 +3,7 @@
 import { createSpongeClient } from '/home/ubuntu/boss-codex-service/shiyan-v2/sponge-client.mjs';
 
 export const DEVICE_READ_OPS = ['list_devices', 'list_directory', 'read_file', 'get_file_info'];
-let client = null;
+let client: any = null;
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const textOf = result => (result?.content || []).filter(c => c?.type === 'text').map(c => c.text).join('\n') || JSON.stringify(result ?? null);
 
@@ -30,5 +30,5 @@ export async function deviceRead(owner, action, { sponge = null, timeoutMs = 30_
     await sleep(1500 * (i + 1));
     text = textOf(await call('get_tool_result', { call_id: pending.call_id }));
   }
-  return `${op} ${args.deviceId ? args.deviceId + ' ' + (args.path || '') : ''}\n${text}`.slice(0, 20_000);
+  return `${op} ${(args as any).deviceId ? (args as any).deviceId + ' ' + ((args as any).path || '') : ''}\n${text}`.slice(0, 20_000);
 }

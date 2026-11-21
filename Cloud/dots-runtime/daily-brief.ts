@@ -11,7 +11,7 @@ const minutesOfDay = ms => { const d = local(ms); return d.getUTCHours() * 60 + 
 export function createDailyBrief({ store, assess, settings, now = () => Date.now(), intervalMs = 60_000, logger = console }) {
   const { db, managerId } = store;
   db.exec('CREATE TABLE IF NOT EXISTS dots_daily_brief(manager_id TEXT PRIMARY KEY,last_day TEXT NOT NULL,message_id INTEGER,state TEXT NOT NULL DEFAULT \'claimed\',updated_at INTEGER NOT NULL)');
-  let timer = null, running = false, stopped = false;
+  let timer: ReturnType<typeof setInterval> | null = null, running = false, stopped = false;
 
   function context(nowMs) {
     const since = Math.floor(nowMs / 1000) - 24 * 3600;
@@ -66,12 +66,12 @@ export function createDailyBrief({ store, assess, settings, now = () => Date.now
       db.prepare("UPDATE dots_daily_brief SET message_id=?,state='sent',updated_at=? WHERE manager_id=?").run(message.id, Math.floor(now() / 1000), managerId);
     } catch (error) {
       db.prepare("UPDATE dots_daily_brief SET state='failed',updated_at=? WHERE manager_id=?").run(Math.floor(now() / 1000), managerId);
-      logger.warn?.('[daily-brief] ' + String(error?.message || error).slice(0, 200));
+      logger.warn?.('[daily-brief] ' + String((error as any)?.message || error).slice(0, 200));
     } finally { running = false; }
   }
   return {
     tick,
     start() { if (timer || stopped) return; timer = setInterval(() => void tick(), intervalMs); timer.unref?.(); void tick(); },
-    close() { stopped = true; clearInterval(timer); timer = null; },
+    close() { stopped = true; clearInterval(timer!); timer = null; },
   };
 }

@@ -24,7 +24,7 @@ export function createMemoryIntent({ store, memory, owner, assess, logger = cons
     if (!message?.id || !candidate(message.content)) return false;
     let decision;
     try { decision = await assess(decidePrompt(message.content), DECIDE_SCHEMA, { source: 'dots-subscribe', signal: AbortSignal.timeout(45_000) }); }
-    catch (error) { logger.warn?.('[memory-intent] classify failed', error?.message || error); return false; }
+    catch (error) { logger.warn?.('[memory-intent] classify failed', (error as any)?.message || error); return false; }
     if (!decision || !['remember', 'forget'].includes(decision.action)) return false;
     if (!store.claimSubscriptionIntent(message.id)) return true; // 已处理过
     try {
@@ -43,12 +43,12 @@ export function createMemoryIntent({ store, memory, owner, assess, logger = cons
       const picked = await assess(pickPrompt(message.content, options), PICK_SCHEMA, { source: 'dots-subscribe', signal: AbortSignal.timeout(45_000) });
       const ids = new Set((picked?.ids || []).filter(id => options.some(o => o.id === id)));
       if (!ids.size) return reply(message, '没找到和这件事对应的记忆，可能本来就没记下。可以在 设置 → 记忆 里查看全部。');
-      const removed = [];
+      const removed: any[] = [];
       for (const option of options) if (ids.has(option.id)) { try { memory.remove(owner, option.id); removed.push(option.content); } catch {} }
       return reply(message, removed.length ? `已经忘掉了：\n${removed.map(c => '- ' + c).join('\n')}\n普通对话和我都不会再用到这些。` : '这几条记忆刚刚已经被删除了。');
     } catch (error) {
-      logger.warn?.('[memory-intent] handle failed', error?.message || error);
-      return reply(message, '没能完成：' + String(error?.message || error).slice(0, 160));
+      logger.warn?.('[memory-intent] handle failed', (error as any)?.message || error);
+      return reply(message, '没能完成：' + String((error as any)?.message || error).slice(0, 160));
     }
   }
   return { candidate, process };
