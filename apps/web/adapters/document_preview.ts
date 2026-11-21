@@ -1,9 +1,9 @@
 /* Runs only inside the opaque-origin DOCX preview frame, never the app frame. */
 (() => {
   'use strict';
-  const status = document.getElementById('documentStatus');
-  const content = document.getElementById('documentContent');
-  const source = document.getElementById('documentBytes');
+  const status: any = document.getElementById('documentStatus');
+  const content: any = document.getElementById('documentContent');
+  const source: any = document.getElementById('documentBytes');
   document.addEventListener('click', event => {
     // Document hyperlinks must not navigate the preview or the surrounding app.
     if (event.target instanceof Element && event.target.closest('a')) event.preventDefault();
@@ -24,8 +24,8 @@
       const binary = atob(encoded), bytes = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; ++i) bytes[i] = binary.charCodeAt(i);
       source.remove();
-      if (!window.docx?.renderAsync) throw Error('Word 预览组件未能加载');
-      await window.docx.renderAsync(bytes, content, document.getElementById('documentStyles'), {
+      if (!(window as any).docx?.renderAsync) throw Error('Word 预览组件未能加载');
+      await (window as any).docx.renderAsync(bytes, content, document.getElementById('documentStyles'), {
         inWrapper: true, ignoreWidth: false, ignoreHeight: false,
         breakPages: true, ignoreLastRenderedPageBreak: false,
         renderHeaders: true, renderFooters: true, renderFootnotes: true,
