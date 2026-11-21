@@ -5,9 +5,9 @@ import {PassThrough,Writable} from 'node:stream';
 import {createManagerThread} from './manager-stream-transport.ts';
 
 function server({tool=false,configFailure=false}={}){
-  const calls=[],processes=[];
+  const calls: any[]=[],processes: any[]=[];
   const spawnProcess=(binary,args)=>{
-    const child=new EventEmitter();child.stdout=new PassThrough();child.stderr=new PassThrough();child.kill=()=>{child.emit('exit',0);return true;};processes.push({binary,args,child});
+    const child: any=new EventEmitter();child.stdout=new PassThrough();child.stderr=new PassThrough();child.kill=()=>{child.emit('exit',0);return true;};processes.push({binary,args,child});
     const emit=message=>child.stdout.write(JSON.stringify(message)+'\n');
     child.stdin=new Writable({write(chunk,_encoding,done){for(const line of String(chunk).trim().split('\n')){
       const message=JSON.parse(line);calls.push(message);if(message.id===undefined)continue;
@@ -24,12 +24,12 @@ function server({tool=false,configFailure=false}={}){
   };
   return {calls,processes,spawnProcess};
 }
-const consume=async thread=>{const result=[];const {events}=await thread.runStreamed('synthetic review',{outputSchema:{type:'object'}});for await(const event of events)result.push(event);return result;};
+const consume=async thread=>{const result: any[]=[];const {events}=await thread.runStreamed('synthetic review',{outputSchema:{type:'object'}});for await(const event of events)result.push(event);return result;};
 
 test('private review uses ephemeral read-only configuration and disables each inherited MCP server',async()=>{
  const fake=server(),thread=createManagerThread({options:{allowTools:false,workingDirectory:'/tmp',sandboxMode:'danger-full-access',approvalPolicy:'on-request'},spawnProcess:fake.spawnProcess});
  const events=await consume(thread);assert.ok(events.some(event=>event.type==='turn.completed'));
- const params=fake.calls.find(call=>call.method==='thread/start').params;assert.equal(params.ephemeral,true);assert.equal(params.sandbox,'read-only');assert.equal(params.approvalPolicy,'never');
+ const params=fake.calls.find(call=>call.method==='thread/start')!.params;assert.equal(params.ephemeral,true);assert.equal(params.sandbox,'read-only');assert.equal(params.approvalPolicy,'never');
  assert.deepEqual(params.config.mcp_servers['private-server'],{command:'unused',enabled:false});assert.deepEqual(params.config.mcp_servers['server.with.dots'],{url:'unused',enabled:false});
  for(const feature of ['shell_tool','apps','plugins','hooks','multi_agent','browser_use','computer_use','goals'])assert.equal(params.config['features.'+feature],false);
  assert.equal(params.config.web_search,'disabled');assert.ok(fake.processes[0].args.includes('features.hooks=false'));
@@ -38,7 +38,7 @@ test('private review uses ephemeral read-only configuration and disables each in
 test('ordinary manager keeps existing transport and does not read or replace tool configuration',async()=>{
  const fake=server();await consume(createManagerThread({options:{workingDirectory:'/tmp'},spawnProcess:fake.spawnProcess}));
  assert.deepEqual(fake.processes[0].args,['app-server','--stdio']);assert.equal(fake.calls.some(call=>call.method==='config/read'),false);
- const params=fake.calls.find(call=>call.method==='thread/start').params;assert.equal(params.ephemeral,undefined);assert.equal(params.config['features.apps'],undefined);
+ const params=fake.calls.find(call=>call.method==='thread/start')!.params;assert.equal(params.ephemeral,undefined);assert.equal(params.config['features.apps'],undefined);
 });
 
 test('private review rejects unexpected tool events and fails closed when configuration cannot be checked',async()=>{
@@ -50,7 +50,7 @@ test('private review rejects unexpected tool events and fails closed when config
 test('browser executor (mcpOnly) keeps only its own MCP server and disables built-in tools',async()=>{
  const fake=server(),browser={command:'node',args:['exec.mjs'],env:{SHIYAN_BROWSER_TASK:'bt_1'},tool_timeout_sec:7200};
  await consume(createManagerThread({options:{mcpOnly:true,workingDirectory:'/tmp',mcpServers:{browser_exec:browser}},spawnProcess:fake.spawnProcess}));
- const params=fake.calls.find(call=>call.method==='thread/start').params;
+ const params=fake.calls.find(call=>call.method==='thread/start')!.params;
  assert.deepEqual(params.config.mcp_servers.browser_exec,browser);
  assert.deepEqual(params.config.mcp_servers['private-server'],{command:'unused',enabled:false});
  for(const feature of ['shell_tool','unified_exec','browser_use','computer_use'])assert.equal(params.config['features.'+feature],false);
