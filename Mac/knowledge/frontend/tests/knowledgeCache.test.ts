@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-function storage() {
+function storage(): any {
  const s = {}
  Object.defineProperties(s, {
   getItem: {value: key => Object.hasOwn(s,key) ? s[key] : null},
@@ -39,8 +39,8 @@ test('capacity and entry count remain bounded, and disabled storage never breaks
  const c = await fixture(); c.setKnowledgeCacheOwner('alice')
  for(let i=0;i<80;i++) c.writeKnowledgeCache('/api/documents/'+i, 'x'.repeat(40000), c.cacheContext())
  assert.ok(Object.keys(localStorage).length <= 60)
- assert.ok(Object.keys(localStorage).reduce((n,k)=>n+localStorage.getItem(k).length*2,0) <= 4*1024*1024)
- globalThis.localStorage = {getItem(){throw Error('disabled')},setItem(){throw Error('disabled')}}
+  assert.ok(Object.keys(localStorage).reduce((n,k)=>n+(localStorage.getItem(k) || '').length*2,0) <= 4*1024*1024)
+  globalThis.localStorage = {getItem(){throw Error('disabled')},setItem(){throw Error('disabled')}} as any
  assert.equal(c.readKnowledgeCache('/api/spaces'),null)
  assert.doesNotThrow(()=>c.writeKnowledgeCache('/api/spaces',[],c.cacheContext()))
 })

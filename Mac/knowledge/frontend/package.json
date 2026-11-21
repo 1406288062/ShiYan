@@ -1,4 +1,5 @@
 {
+  "type": "module",
   "name": "java-vue-agent",
   "version": "1.0.0",
   "description": "面向多领域资料的智能知识库 Agent 工作台",

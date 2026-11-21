@@ -1,4 +1,4 @@
-import {cacheContext, contextCurrent, cacheable, readKnowledgeCache, writeKnowledgeCache, clearKnowledgeCache} from './knowledgeCache'
+import {cacheContext, contextCurrent, cacheable, readKnowledgeCache, writeKnowledgeCache, clearKnowledgeCache} from './knowledgeCache.js'
 export const isShiYanEmbedded = () => import.meta.env.VITE_SHIYAN_EMBEDDED === '1'
 
 const API_BASE = String(import.meta.env.VITE_API_BASE || '').replace(/\/+$/, '')
@@ -11,7 +11,7 @@ function makeUrl(path) {
   return `${API_BASE}${path}`
 }
 
-export async function apiFetch(path, { token, onCached, ...options } = {}) {
+export async function apiFetch(path: any, { token, onCached, ...options }: any = {}) {
   const method = (options.method || 'GET').toUpperCase()
   const mutation = method !== 'GET' && /^\/api\/(spaces|knowledge-bases|documents)(\/|$)/.test(path)
   if (mutation) clearKnowledgeCache()
@@ -40,7 +40,7 @@ export async function apiFetch(path, { token, onCached, ...options } = {}) {
     const message = typeof body === 'object' && body?.detail
       ? body.detail
       : `请求失败（${response.status}）`
-    const error = new Error(message)
+    const error: any = new Error(message)
     error.status = response.status
     error.body = body
     throw error
@@ -50,9 +50,9 @@ export async function apiFetch(path, { token, onCached, ...options } = {}) {
   else if (mutation) clearKnowledgeCache()
   return body
   } catch (error) {
-    if ([401,403,404].includes(error.status)) { clearKnowledgeCache(); throw error }
+    if ([401,403,404].includes((error as any).status)) { clearKnowledgeCache(); throw error }
     // Keep the last readable copy on transient failure, never an auth failure.
-    if (cached !== null && contextCurrent(ctx) && (!error.status || error.status >= 500)) return cached
+    if (cached !== null && contextCurrent(ctx) && (!(error as any).status || (error as any).status >= 500)) return cached
     throw error
   }
 }

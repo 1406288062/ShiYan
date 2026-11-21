@@ -1,6 +1,6 @@
-import {setKnowledgeCacheOwner, clearKnowledgeCache} from './knowledgeCache'
+import {setKnowledgeCacheOwner, clearKnowledgeCache} from './knowledgeCache.js'
 import { ref } from 'vue'
-import { apiFetch, isShiYanEmbedded, primeKnowledgeCache } from './useApi'
+import { apiFetch, isShiYanEmbedded, primeKnowledgeCache } from './useApi.js'
 
 const TOKEN_KEY = 'knowledgeAgentToken'
 
@@ -28,7 +28,7 @@ export function useAuth() {
       loading.value = true
       error.value = ''
       try {
-        const account = window.parent !== window ? window.parent.ShiYanAccount : null
+        const account = window.parent !== window ? (window.parent as any).ShiYanAccount : null
         const current = account ? await account.ready : (await apiFetch('/api/auth/me')).user
         if (!current?.id) throw new Error('请在拾燕中登录')
         setKnowledgeCacheOwner(current.id)
@@ -37,7 +37,7 @@ export function useAuth() {
         return true
       } catch (err) {
         sessionRecoveryAvailable.value = true
-        error.value = err.message || '暂时无法连接拾燕，请稍后重试'
+        error.value = (err as any).message || '暂时无法连接拾燕，请稍后重试'
         return false
       } finally {
         ready.value = true
@@ -56,11 +56,11 @@ export function useAuth() {
       setKnowledgeCacheOwner(result.user.id)
       return true
     } catch (err) {
-      if (err?.status === 401 || err?.status === 403) {
+      if ((err as any)?.status === 401 || (err as any)?.status === 403) {
         logout()
       } else {
         sessionRecoveryAvailable.value = true
-        error.value = err.message || '暂时无法连接服务器，请稍后重试'
+        error.value = (err as any).message || '暂时无法连接服务器，请稍后重试'
       }
       return false
     } finally {
@@ -83,7 +83,7 @@ export function useAuth() {
       ready.value = true
       return result
     } catch (err) {
-      error.value = err.message || '认证失败，请稍后重试'
+      error.value = (err as any).message || '认证失败，请稍后重试'
       throw err
     } finally {
       loading.value = false
@@ -101,7 +101,7 @@ export function useAuth() {
   function logout() {
     clearKnowledgeCache(); setKnowledgeCacheOwner('')
     if (embedded) {
-      const account = window.parent !== window ? window.parent.ShiYanAccount : null
+      const account = window.parent !== window ? (window.parent as any).ShiYanAccount : null
       if (account) return account.logout(document.createElement('button'))
       return apiFetch('/api/auth/logout', { method: 'POST', body: '{}' }).then(() => window.location.reload())
     }

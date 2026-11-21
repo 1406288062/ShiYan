@@ -16,7 +16,7 @@ export function sanitizeHtml(value) {
   template.innerHTML = source
 
   function clean(parent) {
-    Array.from(parent.children).forEach(element => {
+    Array.from(parent.children).forEach((element: any) => {
       const tag = element.tagName
       if (REMOVE_ENTIRELY.has(tag)) {
         element.remove()
@@ -27,7 +27,7 @@ export function sanitizeHtml(value) {
         element.replaceWith(text)
         return
       }
-      Array.from(element.attributes).forEach(attribute => element.removeAttribute(attribute.name))
+      Array.from(element.attributes).forEach((attribute: any) => element.removeAttribute(attribute.name))
       clean(element)
     })
   }

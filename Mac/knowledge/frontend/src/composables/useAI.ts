@@ -1,5 +1,5 @@
 import { ref, watch } from 'vue'
-import { apiFetch } from './useApi'
+import { apiFetch } from './useApi.js'
 
 const welcomeMessage = {
   type: 'ai',
@@ -8,7 +8,7 @@ const welcomeMessage = {
 }
 
 export function useAI({ token, currentKnowledgeBaseId, currentKnowledgeBase }) {
-  const chatMessages = ref([welcomeMessage])
+  const chatMessages = ref<any[]>([welcomeMessage])
   const loading = ref(false)
   const historyLoading = ref(false)
   const error = ref('')
@@ -46,7 +46,7 @@ export function useAI({ token, currentKnowledgeBaseId, currentKnowledgeBase }) {
       }
     } catch (err) {
       if (currentRequestId === requestId && currentKnowledgeBaseId.value === kbId) {
-        error.value = err.message || '聊天记录加载失败'
+        error.value = (err as any).message || '聊天记录加载失败'
       }
     } finally {
       if (currentRequestId === requestId && currentKnowledgeBaseId.value === kbId) {
@@ -100,7 +100,7 @@ export function useAI({ token, currentKnowledgeBaseId, currentKnowledgeBase }) {
       return result
     } catch (err) {
       if (currentRequestId !== requestId || currentKnowledgeBaseId.value !== kbId) return null
-      error.value = err.message || '问答请求失败'
+      error.value = (err as any).message || '问答请求失败'
       chatMessages.value.push({
         type: 'ai',
         content: error.value,
@@ -130,7 +130,7 @@ export function useAI({ token, currentKnowledgeBaseId, currentKnowledgeBase }) {
         method: 'DELETE'
       })
     } catch (err) {
-      if (currentRequestId === requestId) error.value = err.message || '聊天记录清除失败'
+      if (currentRequestId === requestId) error.value = (err as any).message || '聊天记录清除失败'
     } finally {
       if (currentRequestId === requestId) historyLoading.value = false
     }

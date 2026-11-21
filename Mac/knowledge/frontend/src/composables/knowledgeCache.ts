@@ -38,7 +38,7 @@ export function writeKnowledgeCache(path, value, ctx) {
     }).sort((a,b) => a.at-b.at)
     let total = entries.reduce((n,e) => n+e.bytes, 0)
     while (entries.length && (total + raw.length * 2 > MAX_BYTES || entries.length >= 60)) {
-      const e = entries.shift(); localStorage.removeItem(e.key); total -= e.bytes
+      const e = entries.shift(); if (!e) break; localStorage.removeItem(e.key); total -= e.bytes
     }
     localStorage.setItem(keyFor(path, ctx), raw)
   } catch { /* A full/disabled cache must never break reading. */ }

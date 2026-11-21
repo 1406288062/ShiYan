@@ -1,5 +1,5 @@
 import { ref, watch } from 'vue'
-import { apiFetch } from './useApi'
+import { apiFetch } from './useApi.js'
 
 export function useUpload({ token, currentKnowledgeBaseId, refreshDocuments, loadKnowledgeBaseDocuments, loadKnowledgeData }) {
   const showTaskStatus = ref(false)
@@ -15,8 +15,8 @@ export function useUpload({ token, currentKnowledgeBaseId, refreshDocuments, loa
   const taskQueueAhead = ref(0)
   const taskError = ref('')
   const uploading = ref(false)
-  let pollingTimer = null
-  let dismissTimer = null
+  let pollingTimer: any = null
+  let dismissTimer: any = null
   let pollingInFlight = false
   let recoveryRevision = 0
   let pollingFailures = 0
@@ -102,7 +102,7 @@ export function useUpload({ token, currentKnowledgeBaseId, refreshDocuments, loa
           await refreshTaskKnowledgeBase(result.knowledge_base_id || taskKnowledgeBaseId.value)
         } catch (refreshError) {
           if (currentTaskId === taskId.value && !taskError.value) {
-            taskError.value = refreshError.message || '知识库状态刷新失败'
+            taskError.value = (refreshError as any).message || '知识库状态刷新失败'
           }
         }
         if (result.status === 'completed') {
@@ -115,14 +115,14 @@ export function useUpload({ token, currentKnowledgeBaseId, refreshDocuments, loa
       return result
     } catch (err) {
       if (currentTaskId !== taskId.value) return
-      if (err.status === 404) {
+      if ((err as any).status === 404) {
         taskStatusText.value = 'failed'
         taskStage.value = 'failed'
         taskError.value = '任务记录不存在'
         clearPolling()
         return
       }
-      if (err.status === 401 || err.status === 403) {
+      if ((err as any).status === 401 || (err as any).status === 403) {
         taskError.value = '登录状态已失效，请重新登录后查看任务'
         clearPolling()
         return
@@ -171,7 +171,7 @@ export function useUpload({ token, currentKnowledgeBaseId, refreshDocuments, loa
       startTaskPolling()
       return result
     } catch (err) {
-      taskError.value = err.message || '上传失败'
+      taskError.value = (err as any).message || '上传失败'
       throw err
     } finally {
       uploading.value = false

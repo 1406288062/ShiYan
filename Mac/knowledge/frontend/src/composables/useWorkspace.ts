@@ -1,14 +1,14 @@
-import {readKnowledgeCache} from './knowledgeCache'
+import {readKnowledgeCache} from './knowledgeCache.js'
 import { ref, computed, watch } from 'vue'
-import { apiFetch } from './useApi'
+import { apiFetch } from './useApi.js'
 
 export function useWorkspace({ token }) {
-  const spaces = ref([])
-  const knowledgeBases = ref([])
-  const documents = ref([])
-  const documentsByKnowledgeBase = ref({})
-  const documentsLoadingByKnowledgeBase = ref({})
-  const documentsErrorByKnowledgeBase = ref({})
+  const spaces = ref<any[]>([])
+  const knowledgeBases = ref<any[]>([])
+  const documents = ref<any[]>([])
+  const documentsByKnowledgeBase = ref<any>({})
+  const documentsLoadingByKnowledgeBase = ref<any>({})
+  const documentsErrorByKnowledgeBase = ref<any>({})
   const currentSpaceId = ref('')
   const currentKnowledgeBaseId = ref('')
   const loading = ref(false)
@@ -108,7 +108,7 @@ export function useWorkspace({ token }) {
       if (selected) await selectSpace(selected.id, selected.id === previousSpaceId ? previousKnowledgeBaseId : '')
     } catch (err) {
       if (requestId === spacesRequestId) {
-        error.value = err.message || '空间加载失败'
+        error.value = (err as any).message || '空间加载失败'
         if (spaceRequestId === initialSpaceRequestId) loading.value = false
       }
     } finally {
@@ -146,7 +146,7 @@ export function useWorkspace({ token }) {
       const selected = knowledgeBases.value.find(item => item.id === preferredKnowledgeBaseId) || knowledgeBases.value[0]
       if (selected) await selectKnowledgeBase(selected.id, false)
     } catch (err) {
-      if (requestId === spaceRequestId && currentSpaceId.value === spaceId) error.value = err.message || '知识库加载失败'
+      if (requestId === spaceRequestId && currentSpaceId.value === spaceId) error.value = (err as any).message || '知识库加载失败'
     } finally {
       if (requestId === spaceRequestId && currentSpaceId.value === spaceId) loading.value = false
     }
@@ -166,7 +166,7 @@ export function useWorkspace({ token }) {
       documents.value = result
     } catch (err) {
       if (requestId === knowledgeBaseRequestId && documentRequestId === documentsRequestId && currentKnowledgeBaseId.value === kbId) {
-        error.value = err.message || '文档加载失败'
+        error.value = (err as any).message || '文档加载失败'
       }
     } finally {
       if (requestId === knowledgeBaseRequestId && documentRequestId === documentsRequestId && currentKnowledgeBaseId.value === kbId) {
