@@ -21,8 +21,9 @@ function duration(value) {
   return `${Math.ceil(value / 1000)} 秒`;
 }
 
+interface JobDeadlineOptions { idleTimeoutMs?: number; maxRuntimeMs?: number; onExpire?: (error: any) => void; schedule?: typeof setTimeout; unschedule?: typeof clearTimeout; }
 export function createJobDeadline({ idleTimeoutMs = DEFAULT_IDLE_MS, maxRuntimeMs = DEFAULT_RUNTIME_MS,
-  onExpire, schedule = setTimeout, unschedule = clearTimeout } = {}) {
+  onExpire, schedule = setTimeout, unschedule = clearTimeout }: JobDeadlineOptions = {}) {
   idleTimeoutMs = timeoutValue(idleTimeoutMs, DEFAULT_IDLE_MS);
   maxRuntimeMs = timeoutValue(maxRuntimeMs, DEFAULT_RUNTIME_MS);
   let idleTimer, runtimeTimer, expiration = null, disposed = false;
@@ -52,7 +53,8 @@ export function createJobDeadline({ idleTimeoutMs = DEFAULT_IDLE_MS, maxRuntimeM
     dispose() { disposed = true; clear(); } };
 }
 
-export function jobFailure(error, { expiration, cancelRequested = false } = {}) {
+interface JobFailureOptions { expiration?: any; cancelRequested?: boolean; }
+export function jobFailure(error, { expiration, cancelRequested = false }: JobFailureOptions = {}) {
   if (cancelRequested) return { status: 'cancelled', error: '已停止处理' };
   if (expiration) return { status: 'failed', error: expiration.error.message };
   const message = String(error?.message || error);

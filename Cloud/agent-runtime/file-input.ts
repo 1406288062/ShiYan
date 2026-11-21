@@ -2,7 +2,7 @@ import path from 'node:path';
 import {writeFile} from 'node:fs/promises';
 const MAX_FILE=10*1024*1024, MAX_TOTAL=24*1024*1024;
 const invalid=message=>Object.assign(new Error(message),{status:400});
-export function normalizeFiles(value, images=[], maxCount=8) {
+export function normalizeFiles(value, images: any[]=[], maxCount=8) {
   if(value!==undefined&&!Array.isArray(value))throw invalid('文件列表无效');
   const files=value||[];
   if(files.length+images.length>maxCount)throw invalid('本次上传的附件过多');

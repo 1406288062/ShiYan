@@ -81,7 +81,7 @@ export async function refreshCatalog({ force = false } = {}) {
 }
 
 export function verifiedCatalog() {
-  const seen = new Set(), out = [];
+  const seen = new Set(), out: any[] = [];
   for (const provider of listProviders()) {
     for (const model of cache.get(provider.id)?.models || []) {
       if (seen.has(model.id)) continue; // 先注册的 provider 优先，保证 id 全局唯一

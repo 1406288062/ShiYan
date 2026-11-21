@@ -16,7 +16,7 @@ export function appendTranscript(transcript, prompt, text, { keep = 20, perItem 
 }
 
 // 编辑分支：只保留被保留的用户消息及其回复。
-export function retainTranscript(transcript, retainedPrompts = []) {
+export function retainTranscript(transcript, retainedPrompts: any[] = []) {
   const wanted = new Map();
   for (const prompt of retainedPrompts) wanted.set(String(prompt).slice(0, 8000), (wanted.get(String(prompt).slice(0, 8000)) || 0) + 1);
   const out = []; let keeping = false;

@@ -1,7 +1,7 @@
 import path from 'node:path';
 import {readFileSync,existsSync,writeFileSync,renameSync} from 'node:fs';
 
-export const emptyRuntimeState=()=>({jobs:{},conversations:{},assets:{},requests:{},cancelledRequests:{}});
+export const emptyRuntimeState=(): any=>({jobs:{},conversations:{},assets:{},requests:{},cancelledRequests:{}});
 export function partitionRuntimeState(source,includeOwner){
   const result=emptyRuntimeState();
   for(const kind of ['jobs','conversations','assets'])for(const [id,value] of Object.entries(source?.[kind]||{}))

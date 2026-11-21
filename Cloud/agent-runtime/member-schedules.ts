@@ -33,8 +33,9 @@ export function prepareMemberSchedule(current, data, auth, now = Date.now()) {
   return result;
 }
 
+interface MemberScheduleWorkerOptions { submit?: any; access?: any; jobStatus?: (owner: any, id: any) => any; now?: () => number; pollMs?: number; }
 export class MemberScheduleWorker {
-  constructor(store, { submit, access, jobStatus = () => null, now = Date.now, pollMs = 15000 } = {}) {
+  constructor(store, { submit, access, jobStatus = () => null, now = Date.now, pollMs = 15000 }: MemberScheduleWorkerOptions = {}) {
     this.store = store; this.submit = submit; this.access = access; this.jobStatus = jobStatus; this.now = now; this.running = false;
     store.db.exec(`CREATE TABLE IF NOT EXISTS member_schedule_runs(owner TEXT NOT NULL,task_id TEXT NOT NULL,due_at TEXT NOT NULL,request_id TEXT NOT NULL,job_id TEXT,state TEXT NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(owner,task_id,due_at));`);
     this.timer = pollMs > 0 ? setInterval(() => void this.tick().catch(() => {}), pollMs) : null; this.timer?.unref();

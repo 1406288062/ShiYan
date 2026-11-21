@@ -23,7 +23,8 @@ const writeJSON = (res, status, value) => {
 };
 const defaultOperations = async () => import('./member-sandbox.ts');
 
-export function createWorkspaceHandler({ operations = defaultOperations, revalidate = () => true, getAsset } = {}) {
+interface WorkspaceHandlerOptions { operations?: any; revalidate?: (auth: any) => boolean; getAsset?: (owner: any, id: any) => any; }
+export function createWorkspaceHandler({ operations = defaultOperations, revalidate = () => true, getAsset }: WorkspaceHandlerOptions = {}) {
   const terminals = new Map(), locks = new Map(), previews = new Map();
   const operate = async (owner, input) => (await operations()).workspaceOperation(owner, { ...(input.operation === 'mkdir' ? { recursive: true } : {}), ...input });
   const metadataPath = '/workspace/.shiyan/workspace.json';
