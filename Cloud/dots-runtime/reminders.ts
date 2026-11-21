@@ -31,7 +31,7 @@ export function createReminders({ store, now = () => Date.now(), intervalMs = 30
   const { db, managerId } = store;
   db.exec("CREATE TABLE IF NOT EXISTS dots_reminders(id INTEGER PRIMARY KEY AUTOINCREMENT,manager_id TEXT NOT NULL,text TEXT NOT NULL,next_at INTEGER NOT NULL,repeat TEXT NOT NULL DEFAULT 'none',state TEXT NOT NULL DEFAULT 'active',created_at INTEGER NOT NULL,fired_count INTEGER NOT NULL DEFAULT 0)");
   db.exec('CREATE INDEX IF NOT EXISTS idx_dots_reminders_due ON dots_reminders(state,next_at)');
-  let timer = null, stopped = false;
+  let timer: ReturnType<typeof setInterval> | null = null, stopped = false;
   const nowSec = () => Math.floor(now() / 1000);
 
   function add({ at, text, repeat = 'none' }) {
@@ -57,7 +57,7 @@ export function createReminders({ store, now = () => Date.now(), intervalMs = 30
   }
   // Dots 回复里的 reminders / cancel_reminders 在提交后执行。
   function apply(result) {
-    const out = { added: [], failed: [], cancelled: 0 };
+    const out: {added: any[]; failed: any[]; cancelled: number} = { added: [], failed: [], cancelled: 0 };
     for (const r of Array.isArray(result?.reminders) ? result.reminders.slice(0, 10) : []) { const v = add(r); (v.ok ? out.added : out.failed).push(v.ok ? v.id : v.error); }
     if (Array.isArray(result?.cancel_reminders)) out.cancelled = cancel(result.cancel_reminders.slice(0, 30));
     return out;
@@ -74,13 +74,13 @@ export function createReminders({ store, now = () => Date.now(), intervalMs = 30
       db.prepare('UPDATE dots_reminders SET next_at=?,state=?,fired_count=fired_count+? WHERE id=?').run(next ?? r.next_at, next === null ? 'done' : 'active', late ? 0 : 1, r.id);
       if (late) continue;
       try { store.publishProactive({ content: '⏰ 提醒：' + r.text, reason: '提醒' }); }
-      catch (error) { logger.warn?.('[reminders] ' + String(error?.message || error).slice(0, 200)); }
+      catch (error) { logger.warn?.('[reminders] ' + String((error as any)?.message || error).slice(0, 200)); }
     }
   }
   return {
     add, cancel, list, apply, tick,
     start() { if (timer || stopped) return; timer = setInterval(tick, intervalMs); timer.unref?.(); tick(); },
-    close() { stopped = true; clearInterval(timer); timer = null; },
+    close() { stopped = true; clearInterval(timer!); timer = null; },
   };
 }
 

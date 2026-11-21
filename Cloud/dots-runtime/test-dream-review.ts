@@ -16,7 +16,7 @@ test('dream runs once a night, writes files and keeps the synthesis for the next
   say(store, 'user', '帮我把文档写完整，不要只给一半', at(10, 20, 0)); say(store, 'assistant', '好的', at(10, 20, 1));
   const assess = async (data, schema, control) => { calls++; prompt = data; assert.equal(control.source, 'dots-dream'); return { dream: '今天用户要完整文件。', repairs: ['补齐文档'], synthesis: '# 怎么对待这个用户\n要完整交付。' }; };
   let clock = at(11, 2, 50);
-  const dream = createDreamReview({ store, assess, writeFile: async (p, text) => { files[p] = text; }, now: () => clock, logger: {} });
+  const dream = createDreamReview({ store, assess, writeFile: async (p, text) => { files[p] = text; }, now: () => clock, logger: {} as any });
   assert.equal(await dream.tick(), null, 'before 03:00');
   clock = at(11, 3, 10);
   await dream.tick(); await dream.tick();
@@ -31,7 +31,7 @@ test('no new user message since the last dream means no review and no model call
   const store = fakeStore(); let calls = 0;
   say(store, 'user', '你好', at(10, 20, 0));
   let clock = at(11, 3, 5);
-  const dream = createDreamReview({ store, assess: async () => { calls++; return { dream: 'd', repairs: [], synthesis: 's1' }; }, now: () => clock, logger: {} });
+  const dream = createDreamReview({ store, assess: async () => { calls++; return { dream: 'd', repairs: [], synthesis: 's1' }; }, now: () => clock, logger: {} as any });
   await dream.tick(); assert.equal(calls, 1);
   say(store, 'assistant', '主动推送', at(11, 9, 0));
   clock = at(12, 3, 5); assert.deepEqual(await dream.tick(), { skipped: true }); assert.equal(calls, 1);
@@ -43,7 +43,7 @@ test('no new user message since the last dream means no review and no model call
 test('a failed model call is not retried the same night', async () => {
   const store = fakeStore(); let calls = 0;
   say(store, 'user', '你好', at(10, 20, 0));
-  const dream = createDreamReview({ store, assess: async () => { calls++; throw new Error('down'); }, now: () => at(11, 3, 5), logger: {} });
+  const dream = createDreamReview({ store, assess: async () => { calls++; throw new Error('down'); }, now: () => at(11, 3, 5), logger: {} as any });
   await dream.tick(); await dream.tick(); assert.equal(calls, 1); assert.equal(dream.synthesis(), '');
 });
 
@@ -58,7 +58,7 @@ test('skill review rides on the same dream call and writes learned skills with a
   store.db.prepare("INSERT INTO goals(manager_id,title,status,instruction,last_summary,updated_at) VALUES('m1','整理论文','done','整理十篇论文成 Word','已交付',?)").run(Math.floor(at(11, 1, 0) / 1000));
   say(store, 'user', '论文要带链接', at(10, 20, 0));
   const assess = async data => { calls++; prompt = data; return { dream: 'd', repairs: [], synthesis: 's', skills: [{ action: 'create', name: 'Paper Lists', description: '整理论文清单时用', body: '- 每篇带标题、年份、链接\n- 交付前逐个打开链接核对', evidence: '整理论文任务' }] }; };
-  const dream = createDreamReview({ store, assess, writeFile: async (p, t) => { files[p] = t; }, now: () => at(11, 3, 5), logger: {} });
+  const dream = createDreamReview({ store, assess, writeFile: async (p, t) => { files[p] = t; }, now: () => at(11, 3, 5), logger: {} as any });
   await dream.tick();
   assert.equal(calls, 1); assert.match(prompt, /整理论文/);
   assert.match(files['learned-skills/paper-lists/SKILL.md'], /name: paper-lists[\s\S]*逐个打开链接/);

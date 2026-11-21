@@ -21,7 +21,7 @@ test('学习对象：导入只调用一次模型，并为 Dots 主对话提供�
   const person=a.service.create({name:'小美',relationship:'女朋友'}).person;
   assert.equal(a.service.list().activePersonId,person.id);
   assert.equal(b.service.list().people.length,0);
-  const messages=[];
+  const messages: any[]=[];
   for(let i=0;i<300;i++){messages.push({speaker:'owner',content:i%7?'今天吃什么':'晚上去海边吗',sourceId:'f:'+(2*i)});messages.push({speaker:'person',content:i%5?'好的':'那年一起去了海边 哈哈',sourceId:'f:'+(2*i+1)});}
   messages.push({speaker:'other',content:'第三方隐私不应保存',sourceId:'f:9999'});
   let last;
@@ -30,7 +30,7 @@ test('学习对象：导入只调用一次模型，并为 Dots 主对话提供�
   assert.equal(last.status,'completed');
   assert.equal(last.memoryCount,1);
   assert.equal(last.person.personMessages,300);
-  assert.equal(Number(a.db.prepare("SELECT COUNT(*) AS n FROM digital_person_import_messages WHERE speaker='other'").get().n),0);
+  assert.equal(Number(a.db.prepare("SELECT COUNT(*) AS n FROM digital_person_import_messages WHERE speaker='other'").get()!.n),0);
   const voice=JSON.parse(await a.service.voiceContext('还记得海边吗'));
   assert.equal(voice.person.name,'小美');
   assert.ok(voice.sample_exchanges.length>=10);
@@ -46,7 +46,7 @@ test('学习对象：导入只调用一次模型，并为 Dots 主对话提供�
   a.service.remove(person.id);
   assert.equal(a.service.list().people.length,0);
   assert.equal(await a.service.voiceContext('海边'),'');
-  assert.equal(Number(a.db.prepare('SELECT COUNT(*) AS n FROM digital_person_import_messages').get().n),0);
+  assert.equal(Number(a.db.prepare('SELECT COUNT(*) AS n FROM digital_person_import_messages').get()!.n),0);
 });
 test('影子人：服务器端会隐藏聊天中的敏感信息',async()=>{
   const {DatabaseSync}=await import('node:sqlite');

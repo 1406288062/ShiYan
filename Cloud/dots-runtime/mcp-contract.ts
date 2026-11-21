@@ -10,7 +10,7 @@ const requestId={type:'string',minLength:1,maxLength:128,pattern:'^[A-Za-z0-9][A
 const owner={type:'string',minLength:1,maxLength:200,pattern:'^[A-Za-z0-9][A-Za-z0-9._:-]*$',default:'shiyan-private-owner'};
 const limit = {type:'integer',minimum:1,maximum:200,default:50};
 const read = {readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false};
-const write = {readOnlyHint:false,destructiveHint:false,openWorldHint:false};
+const write = {readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:false};
 function tool(name, description, properties, required, annotations=read) {
  const securitySchemes=[{type:'noauth'}];
  return {name,description,inputSchema:{type:'object',properties,required,additionalProperties:false},annotations,securitySchemes,_meta:{securitySchemes}};
@@ -54,7 +54,7 @@ export function validateToolArguments(name,args) {
   if(schema.pattern&&!new RegExp(schema.pattern).test(value))throw new Error(at+' has invalid characters');
   if(schema.enum&&!schema.enum.includes(value))throw new Error(at+' is not supported');
  }
- try{check(definition.inputSchema,args,'arguments');}catch(e){e.rpcCode=-32602;throw e;}
+ try{check(definition.inputSchema,args,'arguments');}catch(e){(e as any).rpcCode=-32602;throw e;}
  return args;
 }
 export const CLIENT_CONTEXT_SCHEMA=context;

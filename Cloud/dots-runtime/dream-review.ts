@@ -69,7 +69,7 @@ export interface DreamReviewOptions {
 export function createDreamReview({ store, assess, writeFile = async () => {}, now = () => Date.now(), hour = 3, windowMinutes = 180, intervalMs = 5 * 60_000, logger = console }: DreamReviewOptions) {
   const { db, managerId } = store;
   db.exec("CREATE TABLE IF NOT EXISTS dots_dream(manager_id TEXT PRIMARY KEY,last_day TEXT NOT NULL DEFAULT '',last_message_id INTEGER NOT NULL DEFAULT 0,state TEXT NOT NULL DEFAULT '',synthesis TEXT NOT NULL DEFAULT '',dream TEXT NOT NULL DEFAULT '',updated_at INTEGER NOT NULL DEFAULT 0)");
-  let timer = null, running = false, stopped = false;
+  let timer: ReturnType<typeof setInterval> | null = null, running = false, stopped = false;
   const row = () => db.prepare('SELECT * FROM dots_dream WHERE manager_id=?').get(managerId) || null;
   const save = fields => {
     const keys = Object.keys(fields);
@@ -105,7 +105,7 @@ export function createDreamReview({ store, assess, writeFile = async () => {}, n
     const before = db.prepare("SELECT id,role,content,origin,created_at FROM manager_messages WHERE manager_id=? AND id<=? ORDER BY id DESC LIMIT 6").all(managerId, sinceId).reverse();
     const after = db.prepare("SELECT id,role,content,origin,created_at FROM manager_messages WHERE manager_id=? AND id>? ORDER BY id DESC LIMIT 160").all(managerId, sinceId).reverse();
     let budget = 60_000;
-    const messages = [];
+    const messages: any[] = [];
     for (const m of [...before, ...after].reverse()) {
       const item = { id: m.id, from: m.role === 'user' ? '用户' : m.origin === 'proactive' ? 'Dots（主动推送）' : 'Dots', at: dreamDay((m.created_at > 1e12 ? m.created_at : m.created_at * 1000)), text: clip(m.content, m.role === 'user' ? 800 : m.origin === 'proactive' ? 160 : 500) };
       budget -= item.text.length + 40; if (budget < 0) break;
@@ -137,13 +137,13 @@ export function createDreamReview({ store, assess, writeFile = async () => {}, n
       const dreamText = `# 梦境回顾 ${today}\n\n${dream}\n` + (repairs.length ? `\n## 需要修补\n\n${repairs.map(r => '- ' + r).join('\n')}\n` : '');
       save({ last_message_id: lastId, state: 'done', synthesis, dream: dreamText });
       try { await writeFile(`dreams/${today}.md`, dreamText); await writeFile('dreams/ALIGNMENT_SYNTHESIS.md', synthesis + '\n'); }
-      catch (error) { logger.warn?.('[dream] 写文件失败：' + String(error?.message || error).slice(0, 200)); }
+      catch (error) { logger.warn?.('[dream] 写文件失败：' + String((error as any)?.message || error).slice(0, 200)); }
       try { await reviewSkills(Array.isArray(result.skills) ? result.skills : [], today); }
-      catch (error) { logger.warn?.('[dream] 技能复查失败：' + String(error?.message || error).slice(0, 200)); }
+      catch (error) { logger.warn?.('[dream] 技能复查失败：' + String((error as any)?.message || error).slice(0, 200)); }
       return { synthesis, dream: dreamText };
     } catch (error) {
       save({ state: 'failed' });
-      logger.warn?.('[dream] ' + String(error?.message || error).slice(0, 200));
+      logger.warn?.('[dream] ' + String((error as any)?.message || error).slice(0, 200));
       return null;
     } finally { running = false; }
   }
@@ -153,6 +153,6 @@ export function createDreamReview({ store, assess, writeFile = async () => {}, n
     learnedSkills,
     synthesis() { const value = row()?.synthesis || ''; return value.length > SYNTHESIS_LIMIT ? value.slice(0, SYNTHESIS_LIMIT) + '…' : value; },
     start() { if (timer || stopped) return; timer = setInterval(() => void tick(), intervalMs); timer.unref?.(); void tick(); },
-    close() { stopped = true; clearInterval(timer); timer = null; },
+    close() { stopped = true; clearInterval(timer!); timer = null; },
   };
 }
