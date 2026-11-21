@@ -29,7 +29,7 @@ function sendJson(res, status, value) {
   res.end(bytes);
 }
 async function jsonBody(req) {
-  const parts = []; let size = 0;
+  const parts: Buffer[] = []; let size = 0;
   for await (const part of req) {
     size += part.length;
     if (size > JSON_LIMIT) throw fail(413, 'BODY_TOO_LARGE', '请求内容过大');
@@ -91,7 +91,7 @@ async function receiveFile(req, filename, limit, beforeChunk) {
   const expected = lengthHeader(req, limit);
   const handle = await open(filename, 'wx', 0o600);
   const hash = createHash('sha256');
-  let count = 0, headSize = 0, head = [], tail = Buffer.alloc(0);
+  let count = 0, headSize = 0, head: Buffer[] = [], tail = Buffer.alloc(0);
   try {
     for await (const chunk of req) {
       await beforeChunk();
@@ -144,7 +144,8 @@ function validateEmbeddings(value, count) {
 }
 
 /** Returns a normal http.Server. Tests may inject authorization callbacks and a clock. */
-export function createComputeBroker(options = {}) {
+interface ComputeBrokerOptions { clientToken: string; workerToken: string; deviceId: string; allowedOwners: string[]; now?: () => number; leaseMs?: number; taskTimeoutMs?: number; dataDir: string; authorizeOwner?: (owner: string) => boolean | Promise<boolean>; accountsDb?: string; authorizeDevice?: (deviceId: string) => boolean | Promise<boolean>; deviceRegistryPath?: string; deviceAccountId?: string | null; }
+export function createComputeBroker(options: ComputeBrokerOptions) {
   const { clientToken, workerToken, deviceId } = options;
   if (typeof clientToken !== 'string' || clientToken.length < 32 || typeof workerToken !== 'string' || workerToken.length < 32 ||
       equalToken(clientToken, workerToken) || !strictText(deviceId, 256) || !Array.isArray(options.allowedOwners) ||
@@ -180,18 +181,18 @@ export function createComputeBroker(options = {}) {
     CREATE INDEX IF NOT EXISTS compute_ready ON compute_tasks(state,created_at);`);
   let accounts;
   if (!options.authorizeOwner) {
-    try { accounts = new DatabaseSync(options.accountsDb, { readOnly: true }); }
+    try { accounts = new DatabaseSync(options.accountsDb!, { readOnly: true }); }
     catch (error) { db.close(); throw new Error('Cannot open account authorization database', { cause: error }); }
   }
   const accountStatement = accounts?.prepare('SELECT status FROM account_users WHERE owner=?');
   const authorizeOwner = options.authorizeOwner || (owner => accountStatement.get(owner)?.status === 'active');
   let cachedRegistry, cachedIdentity;
   const authorizeDevice = options.authorizeDevice || (() => {
-    const stat = statSync(options.deviceRegistryPath);
+    const stat = statSync(options.deviceRegistryPath!);
     if (!stat.isFile() || stat.size > 128 * MIB) return false;
     const identity = `${stat.dev}:${stat.ino}:${stat.mtimeMs}:${stat.ctimeMs}:${stat.size}`;
     if (identity !== cachedIdentity) {
-      cachedRegistry = JSON.parse(readFileSync(options.deviceRegistryPath, 'utf8'));
+      cachedRegistry = JSON.parse(readFileSync(options.deviceRegistryPath!, 'utf8'));
       cachedIdentity = identity;
     }
     const device = cachedRegistry?.devices?.find(record => record.deviceId === deviceId);
@@ -242,14 +243,14 @@ export function createComputeBroker(options = {}) {
       throw fail(403, 'OWNER_FORBIDDEN', '账号未授权或已停用');
     }
     expireTask(row);
-    const current = find(id);
-    if (current.state !== 'running' || !equalToken(token, current.lease_token) || current.lease_expires_at <= now()) {
+    const current = find(id)!;
+    if (current.state !== 'running' || !equalToken(token, current.lease_token) || Number(current.lease_expires_at) <= now()) {
       throw fail(409, 'STALE_LEASE', '计算租约已失效');
     }
     return current;
   }
   function taskView(row, online) {
-    const task = { id: row.id, state: row.state, progress: row.progress,
+    const task: any = { id: row.id, state: row.state, progress: row.progress,
       label: row.state === 'queued' ? online ? '等待 Mac 处理' : '等待 Mac 上线' : row.label,
       details: JSON.parse(row.details_json) };
     if (row.state === 'completed') task.result = { kind: row.kind, ...(row.kind === 'enhance' ? {
@@ -268,7 +269,7 @@ export function createComputeBroker(options = {}) {
     try {
       for await (const chunk of stream) {
         await authorize();
-        if (!res.write(chunk)) await new Promise((resolve, reject) => {
+        if (!res.write(chunk)) await new Promise<void>((resolve, reject) => {
           const done = () => { cleanup(); resolve(); };
           const gone = () => { cleanup(); reject(fail(499, 'CLIENT_CLOSED', '连接已断开')); };
           const cleanup = () => { res.off('drain', done); res.off('close', gone); };
@@ -281,7 +282,7 @@ export function createComputeBroker(options = {}) {
   const server = http.createServer(async (req, res) => {
     let temporary;
     try {
-      const url = new URL(req.url, 'http://127.0.0.1');
+      const url = new URL(req.url || '/', 'http://127.0.0.1');
       if (url.search || url.pathname.includes('%')) throw fail(400, 'INVALID_ROUTE', '请求路径无效');
       const bearer = /^Bearer ([^\r\n]+)$/.exec(req.headers.authorization || '')?.[1];
       const isWorker = equalToken(bearer, workerToken), isClient = equalToken(bearer, clientToken);
@@ -294,7 +295,7 @@ export function createComputeBroker(options = {}) {
       if (req.method === 'GET' && url.pathname === '/v1/health') {
         if (isClient && owner !== undefined) await requireOwner(owner);
         sendJson(res, 200, { ok: true, workerOnline: online(), deviceId,
-          queued: db.prepare("SELECT COUNT(*) AS count FROM compute_tasks WHERE state='queued'").get().count }); return;
+          queued: Number(db.prepare("SELECT COUNT(*) AS count FROM compute_tasks WHERE state='queued'").get()?.count || 0) }); return;
       }
       if (req.method === 'POST' && url.pathname === '/v1/tasks') {
         const input = await jsonBody(req);
@@ -302,12 +303,12 @@ export function createComputeBroker(options = {}) {
         const params = validateParams(input.kind, input.params);
         const fingerprint = createHash('sha256').update(JSON.stringify([input.kind, params])).digest('hex');
         await requireOwner(owner); await requireDevice();
-        let row = db.prepare('SELECT * FROM compute_tasks WHERE owner_id=? AND request_id=?').get(owner, input.request_id);
+        let row = db.prepare('SELECT * FROM compute_tasks WHERE owner_id=? AND request_id=?').get(String(owner), input.request_id);
         if (row && row.fingerprint !== fingerprint) throw fail(409, 'REQUEST_CONFLICT', '同一请求编号的内容不一致');
         if (!row) {
           const id = randomUUID(), timestamp = now();
           db.prepare(`INSERT INTO compute_tasks(id,owner_id,request_id,fingerprint,kind,params_json,state,created_at,updated_at)
-            VALUES(?,?,?,?,?,?,?,?,?)`).run(id, owner, input.request_id, fingerprint, input.kind, JSON.stringify(params), input.kind === 'enhance' ? 'uploading' : 'queued', timestamp, timestamp);
+            VALUES(?,?,?,?,?,?,?,?,?)`).run(id, String(owner), input.request_id, fingerprint, input.kind, JSON.stringify(params), input.kind === 'enhance' ? 'uploading' : 'queued', timestamp, timestamp);
           row = find(id);
         }
         sendJson(res, 200, { ok: true, task: taskView(expireTask(row), online()) }); return;
@@ -321,7 +322,7 @@ export function createComputeBroker(options = {}) {
         for (const row of rows) {
           if (!await ownerAllowed(row.owner_id)) { invalidate(row, 'OWNER_FORBIDDEN', '账号未授权或已停用'); continue; }
           if (expireTask(row).state !== row.state) continue;
-          if (row.state === 'running' && row.lease_expires_at <= now()) {
+          if (row.state === 'running' && Number(row.lease_expires_at) <= now()) {
             db.prepare("UPDATE compute_tasks SET state='queued',progress=0,lease_token=NULL,lease_expires_at=NULL,label='等待 Mac 重新连接',updated_at=? WHERE id=? AND state='running'").run(now(), row.id);
           }
         }
@@ -339,7 +340,7 @@ export function createComputeBroker(options = {}) {
             .run(token, now() + leaseMs, now(), now(), candidate.id).changes;
           if (!changed) continue;
           sendJson(res, 200, { ok: true, task: { id: candidate.id, kind: candidate.kind, owner_id: candidate.owner_id,
-            params: JSON.parse(candidate.params_json), lease_token: token } }); return;
+            params: JSON.parse(String(candidate.params_json)), lease_token: token } }); return;
         }
         sendJson(res, 200, { ok: true, task: null }); return;
       }
@@ -355,7 +356,7 @@ export function createComputeBroker(options = {}) {
         }
         if (req.method === 'PUT' && action === 'input') {
           if (row.kind !== 'enhance' || ['cancelled', 'failed'].includes(row.state)) throw fail(409, 'INPUT_NOT_ALLOWED', '任务不能接收图片');
-          const params = JSON.parse(row.params_json);
+          const params = JSON.parse(String(row.params_json));
           if (lengthHeader(req, IMAGE_LIMIT) !== params.input_bytes) throw fail(422, 'LENGTH_MISMATCH', '图片长度不符');
           temporary = file(id, `input-${randomUUID()}.tmp`);
           const received = await receiveFile(req, temporary, IMAGE_LIMIT, async () => {
@@ -400,7 +401,7 @@ export function createComputeBroker(options = {}) {
           }
           row = await requireLease(id, lease); lastHeartbeat = now();
           db.prepare("UPDATE compute_tasks SET progress=MAX(progress,?),label=?,details_json=?,lease_expires_at=?,updated_at=? WHERE id=? AND state='running' AND lease_token=?")
-            .run(input.progress, input.label, JSON.stringify(details), now() + leaseMs, now(), id, lease);
+            .run(input.progress, input.label, JSON.stringify(details), now() + leaseMs, now(), id, String(lease));
           sendJson(res, 200, { ok: true }); return;
         }
         if (req.method === 'POST' && action === 'fail') {
@@ -411,12 +412,12 @@ export function createComputeBroker(options = {}) {
           sendJson(res, 200, { ok: true }); return;
         }
         if (req.method === 'PUT' && action === 'result') {
-          const params = JSON.parse(row.params_json);
+          const params = JSON.parse(String(row.params_json));
           if (row.kind === 'embed') {
             const result = validateEmbeddings(await jsonBody(req), params.texts.length);
             row = await requireLease(id, lease);
             db.prepare("UPDATE compute_tasks SET state='completed',progress=1,label='Mac 处理完成',result_json=?,lease_token=NULL,lease_expires_at=NULL,updated_at=? WHERE id=? AND state='running' AND lease_token=?")
-              .run(JSON.stringify(result), now(), id, lease);
+              .run(JSON.stringify(result), now(), id, String(lease));
           } else {
             temporary = file(id, `result-${randomUUID()}.tmp`);
             const received = await receiveFile(req, temporary, RESULT_LIMIT, () => requireLease(id, lease));
@@ -429,15 +430,15 @@ export function createComputeBroker(options = {}) {
             await rename(temporary, file(id, `${received.sha256}.result.jpg`)); temporary = undefined;
             await requireLease(id, lease);
             db.prepare("UPDATE compute_tasks SET state='completed',progress=1,label='Mac 处理完成',result_bytes=?,result_sha256=?,lease_token=NULL,lease_expires_at=NULL,updated_at=? WHERE id=? AND state='running' AND lease_token=?")
-              .run(received.bytes, received.sha256, now(), id, lease);
+              .run(received.bytes, received.sha256, now(), id, String(lease));
           }
           lastHeartbeat = now(); sendJson(res, 200, { ok: true }); return;
         }
       }
       throw fail(404, 'NOT_FOUND', '接口不存在');
     } catch (error) {
-      if (!res.headersSent) sendJson(res, error.status || 503, { ok: false,
-        code: error.status ? error.code : 'COMPUTE_UNAVAILABLE', error: error.status ? error.message : '计算服务暂不可用' });
+      if (!res.headersSent) sendJson(res, (error as any).status || 503, { ok: false,
+        code: (error as any).status ? (error as any).code : 'COMPUTE_UNAVAILABLE', error: (error as any).status ? (error as any).message : '计算服务暂不可用' });
       else res.destroy();
     } finally { if (temporary) await unlink(temporary).catch(() => {}); }
   });
