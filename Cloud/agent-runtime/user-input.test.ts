@@ -48,13 +48,13 @@ test('question validation, owner isolation, durable answers and first-answer win
 test('real stdio MCP waits, UI submits, and same in-flight call receives the answer',async()=>{
   const f=fixture();const token=f.store.registerJob({id:'job_stdio',owner:'alice'});
   const server=createInputSidecar({store:f.store,authenticate:req=>req.headers['x-test-owner']?{owner:req.headers['x-test-owner']}:null,legacyJobOwner:id=>id==='legacy_one'?'alice':null});
-  server.listen(0,'127.0.0.1');await once(server,'listening');const base='http://127.0.0.1:'+server.address().port;
+  server.listen(0,'127.0.0.1');await once(server,'listening');const base='http://127.0.0.1:'+(server.address() as any).port;
   const child=spawn(process.execPath,[new URL('./user-input-mcp.ts',import.meta.url).pathname],{env:{...process.env,SHIYAN_INPUT_URL:base,SHIYAN_INPUT_JOB:'job_stdio',SHIYAN_INPUT_TOKEN:token},stdio:['pipe','pipe','pipe']});
   const lines=createInterface({input:child.stdout});const replies=new Map(),waiters=new Map();let output='',error='';
   child.stdout.on('data',data=>output+=data);child.stderr.on('data',data=>error+=data);
   lines.on('line',line=>{const value=JSON.parse(line);replies.set(value.id,value);waiters.get(value.id)?.(value);});
-  const send=(id,method,params)=>{const result=new Promise(resolve=>waiters.set(id,resolve));child.stdin.write(JSON.stringify({jsonrpc:'2.0',id,method,params})+'\n');return result;};
-  const get=async(job,owner='alice')=>{const response=await fetch(base+'/shiyan/v1/jobs/'+job+'/questions',{headers:{'x-test-owner':owner}});return {status:response.status,data:await response.json()};};
+  const send=(id,method,params)=>{const result=new Promise<any>(resolve=>waiters.set(id,resolve));child.stdin.write(JSON.stringify({jsonrpc:'2.0',id,method,params})+'\n');return result;};
+  const get=async(job,owner='alice')=>{const response=await fetch(base+'/shiyan/v1/jobs/'+job+'/questions',{headers:{'x-test-owner':owner}});return {status:response.status,data:(await response.json()) as any};};
   try{
     const init=await send(1,'initialize',{protocolVersion:'2024-11-05'});assert.equal(init.result.serverInfo.name,'shiyan-input');
     assert.equal((await send(2,'tools/list',{})).result.tools[0].name,'ask_user');

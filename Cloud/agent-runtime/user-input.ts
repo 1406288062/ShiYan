@@ -52,7 +52,7 @@ export class UserInputStore {
   }
   job(id){return this.db.prepare('SELECT * FROM input_jobs WHERE id=?').get(id);}
   authorizeToken(id,token){
-    const job=this.job(id);if(!job||typeof token!=='string'||token.length!==64||!timingSafeEqual(Buffer.from(job.token_hash),Buffer.from(hash(token))))throw fail('任务问答未获授权',401);
+    const job=this.job(id);if(!job||typeof token!=='string'||token.length!==64||!timingSafeEqual(Buffer.from(String(job.token_hash)),Buffer.from(hash(token))))throw fail('任务问答未获授权',401);
     return job;
   }
   public(row){return {id:row.id,jobId:row.job_id,status:row.status,questions:JSON.parse(row.questions),createdAt:row.created_at,...(row.answers?{answers:JSON.parse(row.answers),answeredAt:row.answered_at}:{})};}
@@ -62,7 +62,7 @@ export class UserInputStore {
     const questions=JSON.stringify(normalizeQuestions(input.questions));
     const existing=this.db.prepare('SELECT * FROM input_requests WHERE job_id=? AND request_key=?').get(id,input.requestId);
     if(existing){if(existing.questions!==questions)throw fail('问答请求内容冲突',409);return this.public(existing);}
-    const count=this.db.prepare('SELECT COUNT(*) AS count FROM input_requests WHERE job_id=?').get(id).count;
+    const count=Number(this.db.prepare('SELECT COUNT(*) AS count FROM input_requests WHERE job_id=?').get(id)!.count);
     if(count>=32)throw fail('本次任务的问题过多',429);
     const requestID=randomUUID();this.db.prepare('INSERT INTO input_requests VALUES(?,?,?,?,?,?,?,?)').run(requestID,id,input.requestId,'pending',questions,null,Date.now(),null);
     return this.public(this.db.prepare('SELECT * FROM input_requests WHERE id=?').get(requestID));
@@ -75,7 +75,7 @@ export class UserInputStore {
     this.db.exec('BEGIN IMMEDIATE');
     try{
       const row=this.db.prepare('SELECT * FROM input_requests WHERE id=? AND job_id=?').get(requestID,id);if(!row)throw fail('问题不存在',404);
-      const answers=JSON.stringify(normalizeAnswers(JSON.parse(row.questions),input.answers));
+      const answers=JSON.stringify(normalizeAnswers(JSON.parse(String(row.questions)),input.answers));
       if(row.status==='answered'){if(row.answers!==answers)throw fail('该问题已提交了其他回答',409);this.db.exec('COMMIT');return this.public(row);}
       if(job.status!=='running'||row.status!=='pending')throw fail('问题已结束，请重新发送消息',409);
       this.db.prepare("UPDATE input_requests SET status='answered',answers=?,answered_at=? WHERE id=?").run(answers,Date.now(),row.id);

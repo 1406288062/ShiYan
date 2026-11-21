@@ -8,8 +8,8 @@ import { UserInputStore } from './user-input.ts';
 const ROOT=process.env.SHIYAN_ROOT||'/home/ubuntu/boss-codex-service/shiyan-v2';
 const fail=(message,status=400)=>Object.assign(new Error(message),{status});
 const json=(res,status,value)=>{const data=JSON.stringify(value);res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Content-Length':Buffer.byteLength(data)});res.end(data);};
-async function body(req,signed=false){let size=0;const chunks=[];for await(const chunk of req){size+=chunk.length;if(size>32768)throw fail('请求内容过大',413);chunks.push(chunk);}const data=Buffer.concat(chunks);if(signed&&digest(data)!==req.headers['x-shiyan-body-sha'])throw fail('请求校验失败',401);try{return JSON.parse(data.toString()||'{}');}catch{throw fail('请求格式无效');}}
-export function legacyOwnerReader(root,read=readFileSync){
+async function body(req,signed=false){let size=0;const chunks: Buffer[]=[];for await(const chunk of req){size+=chunk.length;if(size>32768)throw fail('请求内容过大',413);chunks.push(chunk);}const data=Buffer.concat(chunks);if(signed&&digest(data)!==req.headers['x-shiyan-body-sha'])throw fail('请求校验失败',401);try{return JSON.parse(data.toString()||'{}');}catch{throw fail('请求格式无效');}}
+export function legacyOwnerReader(root,read: (path: string, encoding: BufferEncoding) => string=readFileSync){
   const owners=new Map();
   return id=>{
     if(owners.has(id))return owners.get(id);
@@ -42,7 +42,7 @@ export function createInputSidecar({root=ROOT,authenticate=authenticateDevice,st
       }
       if(req.method==='POST'&&requestID)return json(res,200,{ok:true,request:store.answer(auth.owner,jobID,requestID,await body(req,true))});
       throw fail('接口不存在',404);
-    }catch(error){if(!res.headersSent)json(res,error.status||500,{ok:false,error:error.status?error.message:'问答暂时不可用，请重试'});else res.end();}
+    }catch(error){if(!res.headersSent)json(res,(error as any).status||500,{ok:false,error:(error as any).status?(error as any).message:'问答暂时不可用，请重试'});else res.end();}
   });
   server.on('close',()=>store.close());return server;
 }
