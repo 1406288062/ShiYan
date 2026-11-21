@@ -1,8 +1,17 @@
 /* Web-only adapter for the shared workbench. It deliberately does not own a
  * file tree, editor, diff view, terminal, or browser pane. */
+interface Window {
+  ShiYanPlatform?: any;
+  ShiYanAccount?: any;
+  shiyan?: any;
+  workbench?: any;
+  ShiYanV22?: any;
+  ShiYanV2?: any;
+  ShiYanWebWorkspace?: any;
+}
 (() => {
   'use strict';
-  if (window.ShiYanPlatform?.mode !== 'web') return;
+  if ((window as any).ShiYanPlatform?.mode !== 'web') return;
 
   const WEB_ROOT = '/api/web-workspace';
   const REMOTE_ID = /^web-device-[A-Za-z0-9-]+$/;
@@ -11,12 +20,12 @@
   ]);
   const BLOCKED_TOOLS = new Set(['browser', 'terminal', 'temporary', 'history', 'bookmarks', 'downloads', 'settings']);
   const documentTypes = new Set(['pdf', 'docx']);
-  const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const esc = (value: any) => String(value ?? '').replace(/[&<>"']/g, (c: string): string => (({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'} as Record<string,string>)[c]));
   const id = value => String(value || '');
   const uuid = () => (window.crypto?.randomUUID ? window.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  const accountId = () => window.ShiYanAccount?.user?.id || null;
+  const accountId = () => (window as any).ShiYanAccount?.user?.id || null;
   const isRemoteProjectId = value => REMOTE_ID.test(id(value));
-  const extension = value => id(value?.filename || value?.name || value).split('.').pop().toLowerCase();
+  const extension = (value: any) => id(value?.filename || value?.name || value).split('.').pop()?.toLowerCase() || '';
   const routePath = path => {
     try { return new URL(path, location.href).pathname; }
     catch { return String(path || '').split('?')[0]; }
@@ -32,8 +41,8 @@
     return url.href;
   }
 
-  function accountRequest(path, method = 'GET', body) {
-    const request = window.ShiYanAccount?.request;
+  function accountRequest(path: any, method: any = 'GET', body?: any) {
+    const request = (window as any).ShiYanAccount?.request;
     if (typeof request !== 'function') return Promise.reject(Error('账户连接未就绪，请重新登录后重试'));
     return request(WEB_ROOT.replace('/api', '') + path, method, body);
   }
@@ -57,7 +66,13 @@
   }
 
   class WebWorkspace {
-    constructor(C) {
+    C: any; files: any; remoteFiles: any; projects: any; devices: any; connected: any;
+    error: any; loading: any; generation: any; owner: any; refreshPromise: any;
+    tabSignature: any; reconcileQueued: any; formTarget: any; result: any;
+    tabObserver: any; tabSizeObserver: any; eventsBound: any; accountChanging: any;
+    stateChanged: any; pageHidden: any; browserShortcutBound: any; browserShortcut: any;
+    loadedFor: any; loadedAt: any; modal: any; removeBrowserShortcut: any;
+    constructor(C: any) {
       this.C = C;
       this.files = new Map();
       this.remoteFiles = new Map();
@@ -78,7 +93,7 @@
       return generation === this.generation && owner === accountId() && owner === this.owner;
     }
 
-    notify(error) { window.shiyan?.toast?.(error?.message || String(error)); }
+    notify(error) { (window as any).shiyan?.toast?.(error?.message || String(error)); }
 
     installContext() {
       // Start the web surface collapsed; tabs can restore without reserving space.
@@ -108,7 +123,7 @@
       C.native = () => false;
       C.nativeAvailable = () => false;
       C.pick = () => Promise.reject(Error('请在远程项目的目录选择器中选择文件夹，或手动填写路径'));
-      C.openTab = (options = {}, reuse = false) => {
+      C.openTab = (options: any = {}, reuse = false) => {
         if (!options.type) options = {type:'files', title:'项目文件', webDevicePane:true, ...options};
         if (BLOCKED_TOOLS.has(options.type)) return null;
         // The web client has one remote project-file workspace. Older entry
@@ -171,7 +186,7 @@
       const originalInit = result.initFile;
       result.initFile = (tab, pane) => {
         if (isRemoteProjectId(tab.projectId)) { tab.webDevicePane=true;tab.webDeviceId=this.project(tab.projectId)?.deviceId; }
-        const asset = tab.assetId ? (window.shiyan?.getState()?.conversations || []).flatMap(c=>(c.messages || []).flatMap(m=>m.assets || [])).find(a=>a.id===tab.assetId) : null;
+        const asset = tab.assetId ? ((window as any).shiyan?.getState()?.conversations || []).flatMap(c=>(c.messages || []).flatMap(m=>m.assets || [])).find(a=>a.id===tab.assetId) : null;
         const restoredDocument = tab.assetId && documentTypes.has(extension(asset?.filename || tab.assetName || tab.title));
         if (restoredDocument) { tab.webAttachment=true;tab.projectId=undefined;tab.path=undefined;tab.selectedPath=undefined;tab.fileId=undefined; }
         const isolateSelectedProject = !tab.projectId;
@@ -205,11 +220,11 @@
         const savedActive = this.C.tabs.find(t=>t.id===this.C.activeTab);
         this.ensureFilesTab();
         const filesTab = this.C.tabs.find(t => (t.type === 'files' || t.type === 'file') && !t.webAttachment);
-        if (!this.C.tabs.some(t => t.type === 'execution')) this.C.openTab({type:'execution',title:'执行过程',conversationId:window.shiyan?.getState()?.selectedConversationId},true);
+        if (!this.C.tabs.some(t => t.type === 'execution')) this.C.openTab({type:'execution',title:'执行过程',conversationId:(window as any).shiyan?.getState()?.selectedConversationId},true);
         const keepActive = savedActive && (isRemoteProjectId(savedActive.projectId) || savedActive.assetId || ['execution','changes'].includes(savedActive.type));
         if (keepActive && this.C.tabs.some(t=>t.id===savedActive.id)) this.C.selectTab(savedActive.id);
         else if (filesTab) this.C.selectTab(filesTab.id);
-        if (window.workbench) window.workbench.openTool = this.C.workspaceTool;
+        if ((window as any).workbench) (window as any).workbench.openTool = this.C.workspaceTool;
         this.C.prefs.rightOpen = false;
         this.C.persist();
         result.layout?.();
@@ -234,7 +249,7 @@
       if (workspace && typeof ResizeObserver === 'function') {
         this.tabSizeObserver = new ResizeObserver(() => {
           // A collapsed pane measures zero; size tabs again when it becomes visible.
-          if (workspace.clientWidth > 0) window.ShiYanV22?.adaptTabs?.(this.C);
+          if (workspace.clientWidth > 0) (window as any).ShiYanV22?.adaptTabs?.(this.C);
         });
         this.tabSizeObserver.observe(workspace);
       }
@@ -335,7 +350,7 @@
         this.renderAllControls();
       }).catch(error => {
         if (!this.valid(generation, owner)) return;
-        this.error = error.message || '远程项目暂时不可用';
+        this.error = (error as any).message || '远程项目暂时不可用';
         this.projects = [];
         this.devices = [];
         this.connected = false;
@@ -407,13 +422,13 @@
       directory.prepend(controls);
       f.__webControls = controls;
       const refresh = () => this.renderControls(f);
-      controls.querySelector('[data-web-refresh]').onclick = () => this.refreshProjects(true).catch(this.notify.bind(this));
-      controls.querySelector('[data-web-device]').onchange = refresh;
-      controls.querySelector('[data-web-project]').onchange = event => this.openProject(event.target.value);
-      controls.querySelector('[data-web-open]').onclick = () => this.openProject(controls.querySelector('[data-web-project]').value);
-      controls.querySelector('[data-web-add]').onclick = () => this.showProjectForm(f, 'add');
-      controls.querySelector('[data-web-rename]').onclick = () => this.showProjectForm(f, 'rename');
-      controls.querySelector('[data-web-delete]').onclick = () => this.removeProject(f).catch(this.notify.bind(this));
+      (controls.querySelector('[data-web-refresh]') as any).onclick = () => this.refreshProjects(true).catch(this.notify.bind(this));
+      (controls.querySelector('[data-web-device]') as any).onchange = refresh;
+      (controls.querySelector('[data-web-project]') as any).onchange = event => this.openProject((event.target as any).value);
+      (controls.querySelector('[data-web-open]') as any).onclick = () => this.openProject((controls.querySelector('[data-web-project]') as any).value);
+      (controls.querySelector('[data-web-add]') as any).onclick = () => this.showProjectForm(f, 'add');
+      (controls.querySelector('[data-web-rename]') as any).onclick = () => this.showProjectForm(f, 'rename');
+      (controls.querySelector('[data-web-delete]') as any).onclick = () => this.removeProject(f).catch(this.notify.bind(this));
       this.disableExternalEditor(f);
       this.bindEmptyPane(f);
       this.installDocumentBridge(f);
@@ -449,12 +464,12 @@
       render();
     }
 
-    renderWebDocument(f, explicitFile) {
+    renderWebDocument(f: any, explicitFile?: any) {
       const file = explicitFile || f.selected;
       if (f.disposed || !file || file.kind !== 'web-document' || !f.preview?.isConnected) return;
       let url;
       try { url = safePreviewURL(file); }
-      catch (error) { f.preview.innerHTML = `<div class="v2-file-empty"><strong>无法预览文件</strong><span>${esc(error.message)}</span></div>`; return; }
+      catch (error) { f.preview.innerHTML = `<div class="v2-file-empty"><strong>无法预览文件</strong><span>${esc((error as any).message)}</span></div>`; return; }
       const revision = f.readRevision, selected = file;
       queueMicrotask(() => {
         if (f.disposed || f.readRevision !== revision || f.selected !== selected || !f.preview?.isConnected) return;
@@ -477,7 +492,7 @@
       if (!actions || !asset?.id) return;
       let button = actions.querySelector('[data-web-download]');
       if (!button) { button = document.createElement('button'); button.type = 'button'; button.className = 'wb-text-button'; button.dataset.webDownload = 'true'; button.textContent = '下载'; actions.appendChild(button); }
-      button.onclick = () => window.shiyan.saveAsset(asset).catch(this.notify.bind(this));
+      button.onclick = () => (window as any).shiyan.saveAsset(asset).catch(this.notify.bind(this));
     }
 
     renderAllControls() { for (const f of this.files.values()) this.renderControls(f); }
@@ -520,10 +535,10 @@
       modal.hidden = true;
       modal.innerHTML = `<form class="wb-dialog web-project-form" data-web-project-form aria-label="远程项目设置"><header><h2 data-web-form-title>添加远程项目</h2><button type="button" class="wb-icon-button" data-web-cancel aria-label="取消" title="取消">×</button></header><label>设备<select data-web-form-device required aria-label="远程项目设备"></select></label><label>名称<input data-web-form-name maxlength="100" required autocomplete="off"></label><label>目录<div class="path-picker web-path-field"><input data-web-form-path required placeholder="/Users/… 或 /workspace/…" autocomplete="off"><button type="button" class="wb-text-button" data-web-pick>选择…</button></div></label><p class="web-remote-form-error" data-web-form-error role="alert" hidden></p><footer><button type="button" class="wb-secondary" data-web-cancel>取消</button><button type="submit" class="wb-primary" data-web-submit>添加项目</button></footer></form>`;
       (document.body || document.documentElement).appendChild(modal);
-      const form = modal.querySelector('[data-web-project-form]');
+      const form: any = modal.querySelector('[data-web-project-form]');
       form.addEventListener('submit', event => { event.preventDefault(); this.submitProject().catch(error => this.formError(error)); });
-      modal.querySelectorAll('[data-web-cancel]').forEach(button => button.onclick = () => { modal.hidden = true; this.formTarget = null; });
-      modal.querySelector('[data-web-pick]').onclick = () => this.pickDirectory().catch(error => this.formError(error));
+      modal.querySelectorAll('[data-web-cancel]').forEach((button: any) => button.onclick = () => { modal.hidden = true; this.formTarget = null; });
+      (modal.querySelector('[data-web-pick]') as any).onclick = () => this.pickDirectory().catch(error => this.formError(error));
       modal.addEventListener('click', event => { if (event.target === modal) { modal.hidden = true; this.formTarget = null; } });
       this.modal = modal;
       return modal;
@@ -585,7 +600,7 @@
       button.textContent = '选择中…';
       modal.querySelector('[data-web-form-error]').hidden = true;
       const device = this.devices.find(item => item.deviceId === deviceId);
-      window.shiyan?.toast?.(`请在「${device?.name || '所选设备'}」上选择目录`);
+      (window as any).shiyan?.toast?.(`请在「${device?.name || '所选设备'}」上选择目录`);
       let timer;
       try {
         const timeout = new Promise((_, reject) => {
@@ -605,7 +620,7 @@
 
     formError(error) {
       const target = this.modal?.querySelector('[data-web-form-error]');
-      if (target) { target.textContent = error.message || String(error); target.hidden = false; }
+      if (target) { target.textContent = (error as any).message || String(error); target.hidden = false; }
     }
 
     async submitProject() {
@@ -629,7 +644,7 @@
 
     async removeProject(f) {
       const project = this.project(f.projectId); if (!project) return;
-      if (!(await window.shiyan.confirmAction('移除远程项目？', `仅移除拾燕中的「${project.name}」记录，不删除设备文件。`, '移除'))) return;
+      if (!(await (window as any).shiyan.confirmAction('移除远程项目？', `仅移除拾燕中的「${project.name}」记录，不删除设备文件。`, '移除'))) return;
       const generation = this.generation, owner = this.owner;
       const data = await accountRequest(`/projects/${encodeURIComponent(project.id)}`, 'DELETE');
       if (!this.valid(generation, owner)) return;
@@ -641,7 +656,7 @@
       this.C.renderTabs();this.C.persist();this.renderAllControls();
     }
 
-    async openAsset(asset, original) {
+    async openAsset(asset: any, original?: any) {
       const type = extension(asset), mime = id(asset?.mimeType).toLowerCase();
       const isDocument = documentTypes.has(type) || mime === 'application/pdf' || mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
       if (!isDocument) return original?.(asset);
@@ -668,10 +683,10 @@
   }
 
   function hookV2() {
-    const api = window.ShiYanV2;
+    const api = (window as any).ShiYanV2;
     if (!api?.install || api.install.__webWorkspaceHook) return !!api?.install;
     const original = api.install;
-    const wrapped = function(context) {
+    const wrapped = function(this: any, context: any) {
       const adapter = new WebWorkspace(context);
       adapter.installContext();
       const result = original.call(this, context);
@@ -679,7 +694,7 @@
     };
     wrapped.__webWorkspaceHook = true;
     api.install = wrapped;
-    window.ShiYanWebWorkspace = {isRemoteProjectId, safePreviewURL, blockedTools:[...BLOCKED_TOOLS], requestId:uuid, remoteFileRoutes:[...REMOTE_FILE_ROUTES]};
+    (window as any).ShiYanWebWorkspace = {isRemoteProjectId, safePreviewURL, blockedTools:[...BLOCKED_TOOLS], requestId:uuid, remoteFileRoutes:[...REMOTE_FILE_ROUTES]};
     return true;
   }
 
