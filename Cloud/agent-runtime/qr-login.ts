@@ -7,6 +7,8 @@ const opaque = x => typeof x === 'string' && /^[A-Za-z0-9_-]{43}$/.test(x);
 // A scan grants no session. Only the creating desktop can exchange an approved
 // challenge, and approval remains bound to a currently valid phone session.
 export class QRLogin {
+  accounts: any;
+  devices: DeviceLogin;
   constructor(accounts) {
     this.accounts = accounts;
     this.devices = new DeviceLogin(accounts);
