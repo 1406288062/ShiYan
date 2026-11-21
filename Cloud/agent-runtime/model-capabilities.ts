@@ -1,25 +1,25 @@
 // Query the actual Codex runtime; no assumed model names or reasoning levels.
 import {spawn} from 'node:child_process';
-let cached=[],checkedAt=0,inflight=null;
+let cached: any[]=[],checkedAt=0,inflight: any=null;
 export async function refreshModels(){
  if(cached.length&&Date.now()-checkedAt<300000)return cached;
  if(inflight)return inflight;
  inflight=new Promise((resolve,reject)=>{
   const child=spawn('/home/ubuntu/.local/bin/codex',['app-server'],{stdio:['pipe','pipe','ignore']});
-  let text='',finished=false,requestId=2,models=[];
+  let text='',finished=false,requestId=2,models: any[]=[];
   const timer=setTimeout(()=>done(new Error('模型能力读取超时')),30000);
   const send=v=>{
    if(finished||!child.stdin.writable)return;
    child.stdin.write(JSON.stringify(v)+'\n',error=>{
     if(error&&!finished){
-     console.error('[ModelCapabilitiesWrite]',error.code||error.name||'error','pid',child.pid,'requestId',requestId,'writable',child.stdin.writable,'destroyed',child.stdin.destroyed);
+     console.error('[ModelCapabilitiesWrite]',(error as any).code||error.name||'error','pid',child.pid,'requestId',requestId,'writable',child.stdin.writable,'destroyed',child.stdin.destroyed);
      done(error);
     }
    });
   };
-  function done(error){if(finished)return;finished=true;clearTimeout(timer);if(!child.killed)child.kill('SIGTERM');if(error)reject(error);else{cached=models;checkedAt=Date.now();resolve(cached);}}
+  function done(error?: any){if(finished)return;finished=true;clearTimeout(timer);if(!child.killed)child.kill('SIGTERM');if(error)reject(error);else{cached=models;checkedAt=Date.now();resolve(cached);}}
   child.stdin.on('error',error=>{
-   if(!finished)console.error('[ModelCapabilitiesStdin]',error.code||error.name||'error','pid',child.pid,'requestId',requestId,'writable',child.stdin.writable,'destroyed',child.stdin.destroyed);
+   if(!finished)console.error('[ModelCapabilitiesStdin]',(error as any).code||error.name||'error','pid',child.pid,'requestId',requestId,'writable',child.stdin.writable,'destroyed',child.stdin.destroyed);
    done(error);
   });
   child.on('error',done);child.on('exit',(code,signal)=>{if(!finished)done(new Error('模型能力进程提前退出 code='+String(code)+' signal='+String(signal)));});
