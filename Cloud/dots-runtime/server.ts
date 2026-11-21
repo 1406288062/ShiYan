@@ -417,7 +417,7 @@ async function readJson(req, maxBytes = 1024 * 1024) {
     total += chunk.length;
     if (total > maxBytes) {
       const error = new Error("payload too large");
-      error.statusCode = 413;
+      (error as any).statusCode = 413;
       throw error;
     }
     chunks.push(chunk);
@@ -990,7 +990,7 @@ async function runGoal(goalId, trigger = "scheduler") {
     };
     let autoApprovalRequest: { approvalId: any; mode: string; grants?: any } | null = null;
     const committed = run ? durableStore.commitRun(run, finalize) : {committed:true,value:finalize()};
-    if (committed.committed && autoApprovalRequest) scheduleAutoApproval(autoApprovalRequest.approvalId, goal.id, autoApprovalRequest.mode, 0, autoApprovalRequest.grants||null);
+    if (committed.committed && autoApprovalRequest) scheduleAutoApproval(autoApprovalRequest!.approvalId, goal.id, autoApprovalRequest!.mode, 0, autoApprovalRequest!.grants||null);
     if (committed.committed && committed.value.mustNotify) {
       const value = committed.value;
       if (run) {
@@ -1014,7 +1014,7 @@ async function runGoal(goalId, trigger = "scheduler") {
       };
       if(run)durableStore.commitRun(run,update);else update();
       if(!failureState.controlPreserved){
-        const retryText=failureState.retryKind==="network"?`Network failure. Automatic retry scheduled in ${failureState.retrySeconds/3600} hour(s).`:failureState.retryKind==="transient"?`Temporary service failure. Automatic retry scheduled in ${failureState.retrySeconds/3600} hour.`:failureState.nextWakeAt!==null&&failureState.nextWakeAt<=ts?"New input is queued for immediate retry.":"This error is not automatically retried; resolve the underlying issue and retry manually.";
+        const retryText=failureState.retryKind==="network"?`Network failure. Automatic retry scheduled in ${failureState.retrySeconds!/3600} hour(s).`:failureState.retryKind==="transient"?`Temporary service failure. Automatic retry scheduled in ${failureState.retrySeconds!/3600} hour.`:failureState.nextWakeAt!==null&&failureState.nextWakeAt<=ts?"New input is queued for immediate retry.":"This error is not automatically retried; resolve the underlying issue and retry manually.";
         await addNotification(goal.id,"error",goal.title,`Agent run failed. ${retryText} ${message.slice(0,1200)}`).catch(()=>{});
       }
     }
@@ -1080,7 +1080,7 @@ async function decideApproval(id, decision) {
     return {ok:true,httpStatus:200,approvalId:approval.id,state:'rejected'};
   }
   if(decision!=='approve')return {ok:false,httpStatus:400,error:'decision must be approve or reject'};
-  try{managerStore.validateApproval(approval);}catch(cause){return {ok:false,httpStatus:cause.statusCode||409,error:cause.message};}
+  try{managerStore.validateApproval(approval);}catch(cause){return {ok:false,httpStatus:(cause as any).statusCode||409,error:(cause as any).message};}
   const command=String(approval.command||'').trim();
   if(!command){
     managerStore.transaction(()=>{
@@ -1100,7 +1100,7 @@ async function decideApproval(id, decision) {
       db.prepare("UPDATE approvals SET status='executing',decided_at=? WHERE id=?").run(now(),approval.id);
       addTimeline(goal.id,'approval_executing',`Executing approved host command #${approval.id}`,{command,actionId:receipt.id});
     });
-  }catch(cause){return {ok:false,httpStatus:cause.statusCode||409,error:cause.message};}
+  }catch(cause){return {ok:false,httpStatus:(cause as any).statusCode||409,error:(cause as any).message};}
   const heartbeat=setInterval(()=>managerStore.renewRun(run.id,run.fence),10000);heartbeat.unref();
   let output='',failure=null;
   try{
@@ -1302,14 +1302,14 @@ async function handle(req, res) {
       assertGoalActionAllowed(current, action, { hasPendingApproval });
       if(typeof managerStore!=='undefined'&&['resume','wake','instruct'].includes(action)){
         const uncertain=managerStore.unknownActions().find(item=>item.goal_id===goalId);
-        if(uncertain){const error=new Error('Execution outcome is uncertain for action '+uncertain.id+'; reconcile its confirmed result before continuing.');error.statusCode=409;throw error;}
+        if(uncertain){const error=new Error('Execution outcome is uncertain for action '+uncertain.id+'; reconcile its confirmed result before continuing.');(error as any).statusCode=409;throw error;}
       }
       return current;
     };
     // Instruct receipts must replay before checking a later state change.
     const currentGoal = action === "instruct" ? null : guardAction();
-    if ((action === "pause" && currentGoal.status === "paused") ||
-        (action === "cancel" && currentGoal.status === "cancelled")) {
+    if ((action === "pause" && currentGoal!.status === "paused") ||
+        (action === "cancel" && currentGoal!.status === "cancelled")) {
       return send(res, 200, { ok: true, goal: detailedGoal(currentGoal) });
     }
 
