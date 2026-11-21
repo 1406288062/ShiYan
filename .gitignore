@@ -109,3 +109,8 @@ backup-*/
 
 # Runtime-installed Node dependencies
 /Cloud/agent-runtime/node_modules/
+node_modules/
+
+# Frontend build output (generated from .ts, rebuild with: cd shared/frontend && npm run build)
+shared/frontend/*.js
+shared/frontend/assets/*.js

@@ -2,5 +2,10 @@
   "dependencies": {
     "@openai/codex-sdk": "^0.159.0",
     "qrcode": "^1.5.4"
+  },
+  "type": "module",
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2"
   }
 }
