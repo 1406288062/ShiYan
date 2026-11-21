@@ -11,7 +11,7 @@ const ROOT = process.env.SHIYAN_ROOT || '/home/ubuntu/boss-codex-service/shiyan-
 export const BROWSER_SOCKET = process.env.SHIYAN_BROWSER_SOCKET || path.join(ROOT, 'data', 'browser', 'agent.sock');
 // The Dots sidecar (browser host, MCP bridges, tool definitions) is deployed in SHIYAN_ROOT.
 export const BROWSER_AGENT_DIR = process.env.SHIYAN_BROWSER_AGENT_DIR || ROOT;
-let toolDefsPromise = null;
+let toolDefsPromise: any = null;
 export const loadBrowserToolDefs = (dir = BROWSER_AGENT_DIR) => (toolDefsPromise ||= import(path.join(dir, 'browser-tool-defs.ts')));
 export const BROWSER_DOTS_TOOLS = ['browse', 'windows', 'search', 'open', 'find'];
 
@@ -19,8 +19,8 @@ export function request(route, body, { socketPath = BROWSER_SOCKET, timeoutMs = 
   const payload = Buffer.from(JSON.stringify(body || {}));
   return new Promise((resolve, reject) => {
     const req = http.request({ socketPath, path: route, method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': payload.length } }, res => {
-      const chunks = []; res.on('data', chunk => chunks.push(chunk));
-      res.on('end', () => { let data = {}; try { data = JSON.parse(Buffer.concat(chunks).toString() || '{}'); } catch {} if (res.statusCode < 300 && data.ok !== false) resolve(data); else reject(Object.assign(new Error(data.error || 'browser service error'), { status: res.statusCode })); });
+      const chunks: any[] = []; res.on('data', chunk => chunks.push(chunk));
+      res.on('end', () => { let data: any = {}; try { data = JSON.parse(Buffer.concat(chunks).toString() || '{}'); } catch {} if (res.statusCode! < 300 && data.ok !== false) resolve(data); else reject(Object.assign(new Error(data.error || 'browser service error'), { status: res.statusCode })); });
     });
     req.setTimeout(timeoutMs, () => req.destroy(new Error('browser service timeout')));
     req.on('error', reject);
@@ -34,7 +34,7 @@ export function browserMcpServer(owner, origin = 'chat') {
 }
 export const browserToolAllowlist = (server = 'browser') => BROWSER_DOTS_TOOLS.map(tool => `mcp__${server}__${tool}`);
 
-export function executorPrompt(task, inputs = []) {
+export function executorPrompt(task, inputs: any[] = []) {
   const fresh = inputs.length ? '\n本轮新输入（追加要求、问题答复或交还说明）：\n' + inputs.map(item => `- [${item.kind}] ${item.text}`).join('\n') + '\n' : '';
   const intro = task.resumed
     ? `继续执行拾燕 Dots 浏览器任务「${task.title}」（task_id ${task.task_id}）。浏览器窗口和登录状态保留着，但页面可能已变化：先 get_task，再 snapshot 查看当前页面。${fresh}`
@@ -78,15 +78,15 @@ export interface BrowserExecutorOptions {
 }
 export function createBrowserExecutor({ runAgent, route, report = () => {}, deliver, socketPath = BROWSER_SOCKET, toolDefs = loadBrowserToolDefs, concurrency = Number(process.env.SHIYAN_BROWSER_EXECUTORS || 1), pollMs = 2000, workerId = 'dots:' + process.pid, maxRunMs = 3 * 60 * 60_000, logger = console, call = request }: BrowserExecutorOptions) {
   const running = new Map();
-  let timer = null, closed = false, ticking = false, warned = 0;
+  let timer: any = null, closed = false, ticking = false, warned = 0;
   const rpc = (route_, body, options = {}) => call(route_, body, { socketPath, ...options });
   async function pumpEvents() {
     const { events = [] } = await rpc('/events/claim', { limit: 50 });
     if (!events.length) return;
-    const delivered = [];
+    const delivered: any[] = [];
     for (const event of events) {
       try { await deliver(event.owner, event); delivered.push(event.id); }
-      catch (error) { logger.warn?.('[browser-executor] deliver failed', error?.message || error); }
+      catch (error) { logger.warn?.('[browser-executor] deliver failed', (error as any)?.message || error); }
     }
     if (delivered.length) await rpc('/events/ack', { ids: delivered });
   }
@@ -95,7 +95,7 @@ export function createBrowserExecutor({ runAgent, route, report = () => {}, deli
     const renew = setInterval(() => { void rpc('/executor/renew', { task_id: task.task_id, token }).catch(() => {}); }, 60_000); renew.unref?.();
     const controller = new AbortController(), limit = setTimeout(() => controller.abort(new Error('浏览器任务单轮执行超过上限')), maxRunMs); limit.unref?.();
     const started = Date.now();
-    let error = '', chosen = null, usage = null;
+    let error = '', chosen: any = null, usage: any = null;
     try {
       chosen = await route('dots.browser');
       const { EXEC_TOOLS } = await toolDefs();
@@ -105,7 +105,7 @@ export function createBrowserExecutor({ runAgent, route, report = () => {}, deli
         system: '你是拾燕 Dots 的浏览器执行者。按用户消息里的规则，用 mcp__browser__ 工具在服务器的真实 Chrome 中完成任务，结束前必须调用 mcp__browser__finish。', prompt: executorPrompt(task, inputs), groups: { browser: tools }, signal: controller.signal, maxTurns: 400 });
       usage = out.usage;
       await rpc('/executor/checkpoint', { task_id: task.task_id, token, thread_id: out.sessionRef }).catch(() => {});
-    } catch (cause) { error = String(cause?.message || cause).slice(0, 600); logger.error?.('[browser-executor]', task.task_id, error); }
+    } catch (cause) { error = String((cause as any)?.message || cause).slice(0, 600); logger.error?.('[browser-executor]', task.task_id, error); }
     finally {
       clearInterval(renew); clearTimeout(limit);
       try { report('dots.browser', { provider: chosen?.provider || '', model: chosen?.model || '', reasoning: chosen?.reasoning || '', account: task.owner, ok: !error, ms: Date.now() - started, error, usage }); } catch {}
@@ -126,7 +126,7 @@ export function createBrowserExecutor({ runAgent, route, report = () => {}, deli
       warned = 0;
     } catch (error) {
       // The sidecar may simply not be running yet; log once per outage.
-      if (!warned++) logger.warn?.('[browser-executor] browser service unavailable:', error?.message || error);
+      if (!warned++) logger.warn?.('[browser-executor] browser service unavailable:', (error as any)?.message || error);
     } finally { ticking = false; }
   }
   return {
