@@ -60,7 +60,7 @@ async function loadProvider(provider, force) {
       // 失败时保留上次成功的列表一段时间，避免单个 SDK 抖动让模型从选择器里消失。
       const keep = entry?.models?.length && Date.now() - entry.checkedAt < TTL * 6 ? entry.models : [];
       next = { models: keep, checkedAt: Date.now(), error };
-      if (!keep.length) console.warn('[ModelCatalog]', provider.id, String(error?.message || error).slice(0, 300));
+      if (!keep.length) console.warn('[ModelCatalog]', provider.id, String((error as any)?.message || error).slice(0, 300));
     }
     cache.set(provider.id, next);
     return next;

@@ -19,7 +19,7 @@ export function createQuotaSidecar({ authenticate = authenticateDevice, readQuot
       const auth = authenticate(req);
       if (!auth) return json(res, 401, { ok: false, error: '服务连接未获授权' });
       if (auth.role !== 'admin' || auth.serverAccess !== true) return json(res, 403, { ok: false, error: '需要服务器访问权限' });
-      const pathname = new URL(req.url, 'http://localhost').pathname;
+      const pathname = new URL(req.url || '/', 'http://localhost').pathname;
       if (!['/shiyan/v1/account/quota', '/v1/account/quota'].includes(pathname)) return json(res, 404, { ok: false, error: '接口不存在' });
       if (req.method !== 'GET') return json(res, 405, { ok: false, error: '额度查询仅支持 GET' }, { Allow: 'GET' });
       if (req.headers['x-shiyan-body-sha'] !== digest(Buffer.alloc(0)) ||

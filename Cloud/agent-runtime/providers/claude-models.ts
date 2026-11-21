@@ -13,6 +13,6 @@ try {
     supportsEffort: m.supportsEffort, supportedEffortLevels: m.supportedEffortLevels })) });
   clearTimeout(timer); controller.abort(); setTimeout(() => process.exit(0), 50);
 } catch (error) {
-  write({ ok: false, error: String(error?.message || error).slice(0, 300) });
+  write({ ok: false, error: String((error as any)?.message || error).slice(0, 300) });
   clearTimeout(timer); process.exit(1);
 }

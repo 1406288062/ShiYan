@@ -29,7 +29,7 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
     }
     return { content: [{ type: 'text', text: JSON.stringify(result).slice(0, 60_000) }] };
   } catch (error) {
-    return { isError: true, content: [{ type: 'text', text: String(error?.message || error).slice(0, 2000) }] };
+    return { isError: true, content: [{ type: 'text', text: String((error as any)?.message || error).slice(0, 2000) }] };
   }
 });
 await server.connect(new StdioServerTransport());

@@ -4,7 +4,7 @@ const image = {id:'generated',mimeType:'image/png',sha256:'abc'};
 const uploads = {id:'uploaded',mimeType:'image/jpeg',sha256:'upload'};
 const store = {generated:{file:'/tmp/valid-generated',sha256:'abc'},uploaded:{file:'/tmp/input',sha256:'upload'}};
 const existing = p => p === '/tmp/valid-generated';
-const scenarios=[
+const scenarios: [string, string, string, boolean][]=[
  ['portrait fallback with actual image','抱歉，图片生成没有成功返回图片。你可以再试一次。','图片已生成。',true],
  ['portrait failure with no image','抱歉，图片生成没有成功返回图片。','抱歉，图片生成没有成功返回图片。',false],
  ['actual image and contradictory fallback','图片生成没有返回可展示的结果。你可以再发一次生成请求，我会重新尝试。','图片已生成。',true],

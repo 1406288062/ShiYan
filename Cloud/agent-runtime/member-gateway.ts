@@ -15,7 +15,7 @@ export function createMemberGateway({authenticate=authenticateDevice,adminPort=4
     // Authentication is repeated by the destination; no client-supplied owner
     // or upstream selection is trusted.
     const upstream=http.request({hostname:'127.0.0.1',port:member?memberPort:adminPort,path:req.url,method:req.method,headers},response=>{
-      res.writeHead(response.statusCode,response.headers);response.pipe(res);
+      res.writeHead(response.statusCode!,response.headers);response.pipe(res);
       response.on('error',()=>res.destroy());
     });
     upstream.on('error',()=>{if(res.headersSent){res.destroy();return;}res.writeHead(503,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify({ok:false,error:'服务暂不可用，请稍后重试'}));});

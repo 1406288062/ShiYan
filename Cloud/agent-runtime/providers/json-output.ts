@@ -13,7 +13,7 @@ async function getAjv() {
     const Ajv = mod.default?.default || mod.default || mod.Ajv;
     ajvInstance = new Ajv({ allErrors: true, strict: false, validateFormats: false });
   } catch (error) {
-    console.warn('[json-output] ajv 不可用，跳过 schema 校验：', String(error?.message || error).slice(0, 120));
+    console.warn('[json-output] ajv 不可用，跳过 schema 校验：', String((error as any)?.message || error).slice(0, 120));
     ajvInstance = null;
   }
   return ajvInstance;

@@ -13,7 +13,8 @@ export function partitionRuntimeState(source,includeOwner){
   }
   return result;
 }
-export function loadRuntimeState({data,stateFile,memberOnly=false,access}){
+interface LoadRuntimeStateOptions { data: any; stateFile?: any; memberOnly?: boolean; access: any; }
+export function loadRuntimeState({data,stateFile,memberOnly=false,access}: LoadRuntimeStateOptions){
   const file=stateFile||path.join(data,'state.json');
   if(memberOnly&&path.resolve(file)===path.resolve(data,'state.json'))throw new Error('Member runtime requires a separate state file');
   if(existsSync(file))return {file,state:JSON.parse(readFileSync(file,'utf8'))};

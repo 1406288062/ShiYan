@@ -21,7 +21,7 @@ export function normalizeFiles(value, images: any[]=[], maxCount=8) {
   return uploads;
 }
 export async function writeFileInputs(files, directory) {
-  const records=[];
+  const records: any[]=[];
   for(const [index,file] of files.entries()) {
     let diskName=file.filename;
     while(Buffer.byteLength(diskName)>200)diskName=Array.from(diskName).slice(0,-1).join('');

@@ -67,7 +67,7 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
     }
     return { content: [{ type: 'text', text: 'Unknown proxy tool' }], isError: true };
   } catch (error) {
-    return { isError: true, content: [{ type: 'text', text: String(error?.message || error).slice(0, 4000) }] };
+    return { isError: true, content: [{ type: 'text', text: String((error as any)?.message || error).slice(0, 4000) }] };
   }
 });
 await server.connect(new StdioServerTransport());

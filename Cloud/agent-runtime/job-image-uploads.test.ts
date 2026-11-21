@@ -17,7 +17,7 @@ const part = (bytes, offset = 0, end = bytes.length, overrides = {}) => ({
   data: bytes.subarray(offset, end).toString('base64'), ...overrides,
 });
 const reference = bytes => ({uploadId: sha(bytes), suffix: '.png', sha256: sha(bytes)});
-const rejects = (action, status) => assert.rejects(action, error => error.status === status);
+const rejects = (action, status) => assert.rejects(action, error => (error as any).status === status);
 
 test('resumes after recreation, accepts identical duplicate chunks and preserves ordered inline inputs', async () => fixture(async (uploads, root) => {
   const bytes = Buffer.alloc(100000, 42), id = sha(bytes);
