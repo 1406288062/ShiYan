@@ -30,7 +30,7 @@ function sendJson(res, status, value) {
   res.end(bytes);
 }
 async function jsonBody(req) {
-  const parts = []; let size = 0;
+  const parts: any[] = []; let size = 0;
   for await (const part of req) {
     size += part.length;
     if (size > JSON_LIMIT) throw fail(413, 'BODY_TOO_LARGE', '请求内容过大');
@@ -92,7 +92,7 @@ async function receiveFile(req, filename, limit, beforeChunk) {
   const expected = lengthHeader(req, limit);
   const handle = await open(filename, 'wx', 0o600);
   const hash = createHash('sha256');
-  let count = 0, headSize = 0, head = [], tail = Buffer.alloc(0);
+  let count = 0, headSize = 0, head: any[] = [], tail = Buffer.alloc(0);
   try {
     for await (const chunk of req) {
       await beforeChunk();
@@ -158,7 +158,7 @@ function validateEmbeddings(value, count) {
 }
 
 /** Returns a normal http.Server. Tests may inject authorization callbacks and a clock. */
-export function createComputeBroker(options = {}) {
+export function createComputeBroker(options: any = {}) {
   const { clientToken, workerToken } = options;
   const workerId = options.workerId ?? 'shiyan-compute-worker';
   const workerEnabled = options.workerEnabled ?? true;
@@ -204,7 +204,7 @@ export function createComputeBroker(options = {}) {
   // This fixed compute service authenticates with its own client/worker credentials.
   // Sponge pairing and revocation must not control enhancement availability.
   const authorizeWorker = options.authorizeWorker || (() => true);
-  const find = id => db.prepare('SELECT * FROM compute_tasks WHERE id=?').get(id);
+  const find = (id: any): any => db.prepare('SELECT * FROM compute_tasks WHERE id=?').get(id);
   const file = (id, suffix) => path.join(fileDir, `${id}.${suffix}`);
   let lastHeartbeat = -Infinity;
   async function ownerAllowed(owner) {
@@ -260,7 +260,7 @@ export function createComputeBroker(options = {}) {
     return current;
   }
   function taskView(row, online) {
-    const task = { id: row.id, state: row.state, progress: row.progress,
+    const task: any = { id: row.id, state: row.state, progress: row.progress,
       label: row.state === 'queued' ? online ? '等待 Mac 处理' : '等待 Mac 上线' : row.label,
       details: JSON.parse(row.details_json) };
     if (row.state === 'completed' && row.kind === 'enhance_cos') task.result = JSON.parse(row.result_json);
@@ -280,7 +280,7 @@ export function createComputeBroker(options = {}) {
     try {
       for await (const chunk of stream) {
         await authorize();
-        if (!res.write(chunk)) await new Promise((resolve, reject) => {
+        if (!res.write(chunk)) await new Promise<void>((resolve, reject) => {
           const done = () => { cleanup(); resolve(); };
           const gone = () => { cleanup(); reject(fail(499, 'CLIENT_CLOSED', '连接已断开')); };
           const cleanup = () => { res.off('drain', done); res.off('close', gone); };
@@ -293,29 +293,29 @@ export function createComputeBroker(options = {}) {
   const server = http.createServer(async (req, res) => {
     let temporary;
     try {
-      const url = new URL(req.url, 'http://127.0.0.1');
+      const url = new URL(req.url || '/', 'http://127.0.0.1');
       if (url.search || url.pathname.includes('%')) throw fail(400, 'INVALID_ROUTE', '请求路径无效');
       const bearer = /^Bearer ([^\r\n]+)$/.exec(req.headers.authorization || '')?.[1];
       const isWorker = equalToken(bearer, workerToken), isClient = equalToken(bearer, clientToken);
       if (!isWorker && !isClient) throw fail(401, 'UNAUTHORIZED', '需要有效的计算凭据');
       const workerRoute = url.pathname.startsWith('/v1/worker/');
       if (workerRoute && !isWorker || !workerRoute && url.pathname !== '/v1/health' && !isClient) throw fail(403, 'WRONG_CREDENTIAL', '计算凭据类型不匹配');
-      const owner = req.headers['x-shiyan-owner'];
+      const owner: any = req.headers['x-shiyan-owner'];
       if (!workerRoute && url.pathname !== '/v1/health') await requireOwner(owner);
       await requireWorker();
       if (req.method === 'GET' && url.pathname === '/v1/health') {
         if (isClient && owner !== undefined) await requireOwner(owner);
         sendJson(res, 200, { ok: true, workerOnline: online(), workerId,
-          queued: db.prepare("SELECT COUNT(*) AS count FROM compute_tasks WHERE state='queued'").get().count }); return;
+          queued: db.prepare("SELECT COUNT(*) AS count FROM compute_tasks WHERE state='queued'").get()?.count }); return;
       }
       if (req.method === 'POST' && url.pathname === '/v1/tasks') {
         const input = await jsonBody(req);
         if (!keysOnly(input, ['kind', 'request_id', 'params']) || !strictText(input.request_id, 256)) throw fail(400, 'INVALID_TASK', '任务参数无效');
-        const params = validateParams(input.kind, input.params, owner);
+        const params: any = validateParams(input.kind, input.params, owner);
         if (input.kind === 'enhance_cos' && !cos) throw fail(503,'COS_UNAVAILABLE','COS 计算传输未启用');
         const fingerprint = createHash('sha256').update(JSON.stringify([input.kind, params])).digest('hex');
         await requireOwner(owner); await requireWorker();
-        let row = db.prepare('SELECT * FROM compute_tasks WHERE owner_id=? AND request_id=?').get(owner, input.request_id);
+        let row: any = db.prepare('SELECT * FROM compute_tasks WHERE owner_id=? AND request_id=?').get(owner, input.request_id);
         if (row && row.fingerprint !== fingerprint) throw fail(409, 'REQUEST_CONFLICT', '同一请求编号的内容不一致');
         if (!row) {
           if (input.kind === 'enhance_cos') {
@@ -344,7 +344,7 @@ export function createComputeBroker(options = {}) {
         const supportsCos = input.capabilities?.includes('enhance_cos');
         await requireWorker();
         lastHeartbeat = now();
-        const rows = db.prepare("SELECT * FROM compute_tasks WHERE state IN ('running','queued') ORDER BY created_at,id").all();
+        const rows: any[] = db.prepare("SELECT * FROM compute_tasks WHERE state IN ('running','queued') ORDER BY created_at,id").all();
         for (const row of rows) {
           if (!await ownerAllowed(row.owner_id)) { invalidate(row, 'OWNER_FORBIDDEN', '账号未授权或已停用'); continue; }
           if (expireTask(row).state !== row.state) continue;
@@ -356,7 +356,7 @@ export function createComputeBroker(options = {}) {
           sendJson(res, 200, { ok: true, task: null }); return;
         }
         // All awaited authorization happens before the synchronous compare-and-set claim.
-        const ready = db.prepare("SELECT * FROM compute_tasks WHERE state='queued' ORDER BY created_at,id").all();
+        const ready: any[] = db.prepare("SELECT * FROM compute_tasks WHERE state='queued' ORDER BY created_at,id").all();
         for (const candidate of ready) {
           if (candidate.kind === 'enhance_cos' && (!supportsCos || !cos)) continue;
           if (!await ownerAllowed(candidate.owner_id)) continue;
@@ -410,7 +410,7 @@ export function createComputeBroker(options = {}) {
       const workerMatch = /^\/v1\/worker\/tasks\/([^/]+)\/(input|progress|result|fail|cos-input|cos-output)$/.exec(url.pathname);
       if (workerMatch && validId(workerMatch[1])) {
         const [, id, action] = workerMatch;
-        const lease = req.headers['x-task-lease'];
+        const lease: any = req.headers['x-task-lease'];
         let row = await requireLease(id, lease);
         if (req.method === 'GET' && action === 'cos-input' && row.kind === 'enhance_cos') {
           if (!cos) throw fail(503,'COS_UNAVAILABLE','COS 计算传输未启用');
@@ -478,8 +478,8 @@ export function createComputeBroker(options = {}) {
             const input = await jsonBody(req);
             if (!keysOnly(input,['transport']) || input.transport !== 'cos') throw fail(422,'INVALID_COS_RESULT','COS 结果确认无效');
             const leaseHash = ownerHash(lease).slice(0,32);
-            const records = db.prepare('SELECT kind,metadata_json FROM compute_cos_uploads WHERE task_id=? AND lease_hash=?').all(id,leaseHash);
-            const results = Object.fromEntries(records.map(item=>[item.kind,JSON.parse(item.metadata_json)]));
+            const records: any[] = db.prepare('SELECT kind,metadata_json FROM compute_cos_uploads WHERE task_id=? AND lease_hash=?').all(id,leaseHash);
+            const results: Record<string, any> = Object.fromEntries(records.map(item=>[item.kind,JSON.parse(item.metadata_json)]));
             if (!results.output || !results.thumbnail || JSON.stringify(results.output.input) !== JSON.stringify(results.thumbnail.input))
               throw fail(422,'INCOMPLETE_COS_RESULT','COS 结果尚未传完');
             for (const value of Object.values(results)) {
@@ -489,7 +489,7 @@ export function createComputeBroker(options = {}) {
                 throw fail(422,'COS_RESULT_MISMATCH','COS 结果信息不符');
               await requireLease(id,lease);
             }
-            const metadata = value => Object.fromEntries(Object.entries(value).filter(([key])=>!['input','kind'].includes(key)));
+            const metadata = (value: any): any => Object.fromEntries(Object.entries(value).filter(([key])=>!['input','kind'].includes(key)));
             const result = {kind:'enhance_cos',device:'mps',input:results.output.input,output:metadata(results.output),thumbnail:metadata(results.thumbnail)};
             row = await requireLease(id,lease);
             db.prepare("UPDATE compute_tasks SET state='completed',progress=1,label='Mac 处理完成',result_json=?,result_bytes=?,result_sha256=?,lease_token=NULL,lease_expires_at=NULL,updated_at=? WHERE id=? AND state='running' AND lease_token=?")
@@ -518,8 +518,9 @@ export function createComputeBroker(options = {}) {
       }
       throw fail(404, 'NOT_FOUND', '接口不存在');
     } catch (error) {
-      if (!res.headersSent) sendJson(res, error.status || 503, { ok: false,
-        code: error.status ? error.code : 'COMPUTE_UNAVAILABLE', error: error.status ? error.message : '计算服务暂不可用' });
+      const e = error as any;
+      if (!res.headersSent) sendJson(res, e.status || 503, { ok: false,
+        code: e.status ? e.code : 'COMPUTE_UNAVAILABLE', error: e.status ? e.message : '计算服务暂不可用' });
       else res.destroy();
     } finally { if (temporary) await unlink(temporary).catch(() => {}); }
   });
