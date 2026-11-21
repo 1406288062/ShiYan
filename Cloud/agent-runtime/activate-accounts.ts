@@ -18,7 +18,7 @@ for(let attempt=0;attempt<5400;attempt++){
     signature=current;
     const state=JSON.parse(await readFile(stateFile,'utf8'));
     const job=state.jobs?.[jobId];
-    const busy=Object.values(state.jobs||{}).some(value=>['queued','running'].includes(value.status));
+    const busy=(Object.values(state.jobs||{}) as any[]).some(value=>['queued','running'].includes(value.status));
     if(job?.status==='completed'&&!busy){
       const verified=await readFile(manifest+'.ready','utf8').catch(()=>'');
       if(verified.trim()===jobId){ready=true;break;}
@@ -31,7 +31,7 @@ await sleep(3000);
 await run('systemctl',['--user','restart','shiyan-runtime.service'],{timeout:60000});
 let healthy=false;
 for(let n=0;n<20;n++){
-  try{const response=await fetch('http://127.0.0.1:4323/shiyan/v1/auth/status',{signal:AbortSignal.timeout(2000)});if(response.ok&&(await response.json()).ok){healthy=true;break;}}catch{}
+  try{const response=await fetch('http://127.0.0.1:4323/shiyan/v1/auth/status',{signal:AbortSignal.timeout(2000)});if(response.ok&&((await response.json()) as any).ok){healthy=true;break;}}catch{}
   await sleep(500);
 }
 if(!healthy)throw new Error('Updated runtime did not become healthy; transition guard remains closed');
