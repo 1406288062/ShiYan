@@ -5,17 +5,18 @@ import vm from 'node:vm';
 
 const source=fs.readFileSync(process.env.SHIYAN_DOTS_SOURCE || new URL('../shared/frontend/assets/workbench-dots.js',import.meta.url),'utf8');
 const between=(start,end)=>{const a=source.indexOf(start),b=source.indexOf(end,a);assert.ok(a>=0&&b>a,`Missing source section: ${start}`);return source.slice(a,b);};
-const persistSource=between(' function persist(){','\n async function hydrate');
-const refreshSource=between(' function refresh(forceApprovals=false)','\n function managerTime');
-const monitorSource=between(' function monitorAllowed(){','\n');
-const prioritySource=between(' function handleUploadPriorityChange(){','\n function handleVisibilityChange');
+const persistSource=between('function persist() {','\n  async function hydrate');
+const refreshSource=between('function refresh(forceApprovals = false) {','\n  function managerTime');
+const monitorSource=between('function monitorAllowed() {','\n  const voiceGlyph');
+const prioritySource=between('function handleUploadPriorityChange() {','\n  function handleVisibilityChange');
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 function deferred(){let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};}
 function persistence(api){
  const stored: any[]=[],errors: any[]=[];
  const context=vm.createContext({JSON,Promise,Error,key:'account-isolated',saveChain:Promise.resolve(),persistedSnapshot:null,savingSnapshot:null,savingTask:null,
   manager:{status:'active'},messages:[{id:1,content:'unchanged history'}],tasks:[],goals:[],details:{},drafts:{},pending:{},cursor:1,readState:{readThrough:1},
-  api,localStorage:{setItem:(key,value)=>stored.push({key,value})},showError:error=>errors.push(error)});
+  api,localStorage:{setItem:(key,value)=>stored.push({key,value})},showError:error=>errors.push(error),URGENT_PARTS:['drafts','pending'],persistedParts:{},localParts:{},draftsAt:0,hydration:null,scheduleCacheFlush:()=>{},partsJSON:parts=>Object.fromEntries(Object.entries(parts).map(([k,v])=>[k,JSON.stringify(v??null)]))});
+ context.stateParts=()=>({manager:context.manager,messages:context.messages,tasks:context.tasks,goals:context.goals,details:context.details,drafts:context.drafts,pending:context.pending,cursor:context.cursor,readState:context.readState});
  vm.runInContext(persistSource,context);return {context,stored,errors};
 }
 
@@ -35,7 +36,7 @@ test('a failed Dots save is retried for the identical snapshot',async()=>{
 
 test('changed Dots snapshots retain their captured values and ordering',async()=>{
  const gate=deferred(),calls: any[]=[];
- const {context}=persistence(async(_path,_method,{state})=>{calls.push(state);if(calls.length===1)await gate.promise;});
+ const {context}=persistence(async(_path,_method,body)=>{calls.push(JSON.parse(JSON.stringify(body.patch)));if(calls.length===1)await gate.promise;});
  context.drafts.text='first';const first=context.persist();
  context.drafts.text='second';context.pending.send={requestId:'pending-message'};const second=context.persist();
  context.drafts.text='third';delete context.pending.send;const third=context.persist();

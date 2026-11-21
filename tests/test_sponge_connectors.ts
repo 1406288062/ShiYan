@@ -60,12 +60,12 @@ test('device management opens the fixed provider account page',()=>{
 test('Dots Connectors owns the Sponge management UI and image-only messages have no gray bubble',()=>{
   assert.match(panel,/data-sponge-act="manage"/);
   assert.match(panel,/data-sponge-act="connect"/);
-  assert.match(panel,/data-sponge-act="connect">连接<\/button>/);
+  assert.match(panel,/data-sponge-act="connect">连接海绵宝宝<\/button>/);
   assert.doesNotMatch(panel,/data-sponge-act="open">连接<\/button>/);
   assert.match(panel,/data-sponge-act="disconnect"/);
   assert.match(panel,/window\.ShiYanSpongeIntegration/);
   assert.doesNotMatch(source,/settings-devices-page|settings-section-title/);
-  assert.match(css,/\.dots-manager-message\.is-user:has\(\.message-body:empty\):has\(\.dots-images\)/);
+  assert.match(css,/\.dots-manager-message\.is-user\.is-image-only \{[^}]*background:transparent !important/);
   assert.match(css,/\.dots-image img[^\n]*box-shadow:none!important;filter:none!important/);
   assert.match(panel,/dots-weixin-expired-state/);
   assert.match(panel,/重新获取/);
