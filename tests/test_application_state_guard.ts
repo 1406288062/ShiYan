@@ -6,7 +6,7 @@ import vm from 'node:vm';
 const source = fs.readFileSync(new URL('../shared/frontend/app.js', import.meta.url), 'utf8');
 const declaration = source.match(/function isApplicationStateSnapshot\(value\) \{[\s\S]*?\n  \}/)?.[0];
 assert.ok(declaration, 'application state snapshot guard must exist');
-const context = {};
+const context: any = {};
 vm.runInNewContext(`${declaration}; this.isApplicationStateSnapshot = isApplicationStateSnapshot;`, context);
 
 test('domain status strings never qualify as application snapshots', () => {
