@@ -12,13 +12,13 @@ assert.deepEqual(claudeWindows(null), []);
 assert.equal(claudeExtraUsage(usage), null);
 assert.deepEqual(claudeExtraUsage({ extra_usage: { is_enabled: true, utilization: 12, used_credits: 300, monthly_limit: 2000, currency: 'USD' } }), { utilization: 12, usedCredits: 300, monthlyLimit: 2000, currency: 'USD' });
 
-await assert.rejects(readClaudeUsage({ credentials: async () => null }), e => e.code === 'not_logged_in');
-await assert.rejects(readClaudeUsage({ credentials: async () => ({ token: 't', expiresAt: Date.now() - 1 }) }), e => e.code === 'expired');
+await assert.rejects(readClaudeUsage({ credentials: async () => null }), e => (e as any).code === 'not_logged_in');
+await assert.rejects(readClaudeUsage({ credentials: async () => ({ token: 't', expiresAt: Date.now() - 1 }) }), e => (e as any).code === 'expired');
 let seen;
-const ok = await readClaudeUsage({ credentials: async () => ({ token: 'tok', expiresAt: Date.now() + 1e6, plan: 'max' }), fetchImpl: async (url, init) => { seen = init.headers; return { ok: true, status: 200, json: async () => usage }; } });
+const ok = await readClaudeUsage({ credentials: async () => ({ token: 'tok', expiresAt: Date.now() + 1e6, plan: 'max' }), fetchImpl: async (url, init) => { seen = init!.headers; return { ok: true, status: 200, json: async () => usage }; } });
 assert.equal(seen.Authorization, 'Bearer tok');
 assert.equal(ok.plan, 'max');
-await assert.rejects(readClaudeUsage({ credentials: async () => ({ token: 't' }), fetchImpl: async () => ({ ok: false, status: 401 }) }), e => e.code === 'unauthorized');
+await assert.rejects(readClaudeUsage({ credentials: async () => ({ token: 't' }), fetchImpl: async () => ({ ok: false, status: 401 }) }), e => (e as any).code === 'unauthorized');
 
 let reads = 0;
 const reader = createClaudeQuotaReader(async () => { reads++; return { plan: 'pro', usage }; });

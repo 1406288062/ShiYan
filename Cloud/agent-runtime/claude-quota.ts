@@ -27,9 +27,9 @@ const seconds = value => {
   return Number.isFinite(time) ? Math.round(time / 1000) : null;
 };
 
-export function claudeWindows(usage, plan = null) {
+export function claudeWindows(usage: any, plan: string | null = null) {
   if (!usage || typeof usage !== 'object') return [];
-  const bucket = PLAN_NAMES[plan] || 'Claude';
+  const bucket = (PLAN_NAMES as any)[plan as string] || 'Claude';
   return WINDOWS.flatMap(([key, period]) => {
     const w = usage[key];
     if (!w || typeof w.utilization !== 'number' || !Number.isFinite(w.utilization)) return [];
@@ -44,7 +44,8 @@ export function claudeExtraUsage(usage) {
   return { utilization: number(extra.utilization), usedCredits: number(extra.used_credits), monthlyLimit: number(extra.monthly_limit), currency: typeof extra.currency === 'string' ? extra.currency : null };
 }
 
-export async function readClaudeUsage({ credentials = readClaudeCredentials, fetchImpl = fetch } = {}) {
+interface ReadClaudeUsageOptions { credentials?: () => Promise<{ token: any; expiresAt?: number | null; plan?: any; } | null>; fetchImpl?: (input: string | URL | Request, init?: RequestInit) => Promise<any>; }
+export async function readClaudeUsage({ credentials = readClaudeCredentials, fetchImpl = fetch }: ReadClaudeUsageOptions = {}) {
   const auth = await credentials();
   if (!auth) throw Object.assign(new Error('服务器未登录 Claude'), { code: 'not_logged_in' });
   if (auth.expiresAt && auth.expiresAt <= Date.now()) throw Object.assign(new Error('Claude 登录已过期'), { code: 'expired' });
@@ -65,7 +66,7 @@ export function createClaudeQuotaReader(read = readClaudeUsage) {
     if (!pending) pending = read().then(({ plan, usage }) => {
       const windows = claudeWindows(usage, plan);
       if (!windows.length) throw new Error('Claude 账户未提供可显示的额度');
-      return cached = { available: true, plan: PLAN_NAMES[plan] || (plan ? `Claude ${plan}` : 'Claude'), windows, extraUsage: claudeExtraUsage(usage), fetchedAt: Date.now() };
+      return cached = { available: true, plan: (PLAN_NAMES as any)[plan as string] || (plan ? `Claude ${plan}` : 'Claude'), windows, extraUsage: claudeExtraUsage(usage), fetchedAt: Date.now() };
     }).finally(() => { pending = null; });
     return pending;
   };
