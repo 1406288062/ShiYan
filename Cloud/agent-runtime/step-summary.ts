@@ -24,7 +24,7 @@ export function createStepSummaries(db, { infer = inferClaude, logger = console 
   const read = db.prepare('SELECT value FROM step_summaries WHERE hash=?');
   const write = db.prepare('INSERT OR REPLACE INTO step_summaries(hash,value,created_at) VALUES(?,?,?)');
   const inflight = new Map();
-  async function generate(steps) {
+  async function generate(steps): Promise<Map<string, any>> {
     const prompt = `下面是 AI 助手执行一个任务时依次做的步骤（工具调用、命令、搜索等）。为每一步写给用户看的说明，用中文：
 - title：动宾短语，8-20 个字，说清这一步做了什么，例如“读取 GitHub 连接器说明”“查看服务器网络接口”。不要写“我”，不要只写工具名。
 - summary：一句话说结果，不超过 40 个字，例如“确认使用官方服务器，不支持企业版”。失败的步骤说明失败原因。
@@ -43,7 +43,7 @@ ${JSON.stringify(steps)}
   // 一轮对话：doing = 这轮在干嘛（列表里一句话），result = 结果的简短总结（详情页顶部）。
   const ROUND_SCHEMA = { type: 'object', additionalProperties: false, required: ['rounds'], properties: { rounds: { type: 'array', items: {
     type: 'object', additionalProperties: false, required: ['id', 'doing', 'result'], properties: { id: { type: 'string' }, doing: { type: 'string' }, result: { type: 'string' } } } } } };
-  async function generateRounds(rounds) {
+  async function generateRounds(rounds): Promise<Map<string, any>> {
     const prompt = `下面是用户发给 AI 助手的消息（prompt）和助手的回复（reply）。为每一轮写给用户看的简短说明，用中文：
 - doing：这一轮在做什么，动宾短语，6-20 个字，例如“查询武汉今天的天气”“修改 iOS 底部按钮的出现时机”。
 - result：用一两句话概括结果，不超过 60 个字，只说结论，不要照抄回复原文，不要列表和 Markdown。
@@ -59,17 +59,17 @@ ${JSON.stringify(rounds)}
   return {
     async rounds(input) {
       const items = (Array.isArray(input) ? input : []).slice(0, 40).map((r, i) => ({ id: line(r?.id || String(i), 120), prompt: clip(r?.prompt, 1200), reply: clip(r?.reply, 2500) })).filter(r => r.prompt || r.reply);
-      const out = new Map(), missing = [];
+      const out = new Map(), missing: any[] = [];
       for (const r of items) { const hash = 'round:' + keyOf({ type: 'round', title: '', status: '', input: r.prompt, output: r.reply }), row = read.get(hash); if (row) out.set(r.id, JSON.parse(row.value)); else missing.push({ r, hash }); }
       for (let i = 0; i < missing.length; i += 12) {
         const batch = missing.slice(i, i + 12);
         try { const made = await generateRounds(batch.map(m => m.r)); for (const { r, hash } of batch) { const v = made.get(r.id); if (v?.doing) { write.run(hash, JSON.stringify(v), Date.now()); out.set(r.id, v); } } }
-        catch (error) { logger.warn?.('[round-summary] ' + String(error?.message || error).slice(0, 200)); }
+        catch (error) { logger.warn?.('[round-summary] ' + String((error as any)?.message || error).slice(0, 200)); }
       }
       return items.filter(r => out.has(r.id)).map(r => ({ id: r.id, ...out.get(r.id) }));
     },
     async summarize(input) {
-      const steps = normalizeSteps(input), out = new Map(), missing = [];
+      const steps = normalizeSteps(input), out = new Map(), missing: any[] = [];
       for (const step of steps) {
         const hash = keyOf(step), row = read.get(hash);
         if (row) out.set(step.id, JSON.parse(row.value)); else missing.push({ step, hash });
@@ -83,7 +83,7 @@ ${JSON.stringify(rounds)}
             const value = made.get(step.id);
             if (value?.title) { write.run(hash, JSON.stringify(value), Date.now()); out.set(step.id, value); }
           }
-        } catch (error) { logger.warn?.('[step-summary] ' + String(error?.message || error).slice(0, 200)); }
+        } catch (error) { logger.warn?.('[step-summary] ' + String((error as any)?.message || error).slice(0, 200)); }
       }
       return steps.filter(s => out.has(s.id)).map(s => ({ id: s.id, ...out.get(s.id) }));
     },
