@@ -24,7 +24,7 @@ export const BROWSER_TOOLS = [
     inputSchema: { type: 'object', additionalProperties: false, required: ['query'], properties: { query: str('要查找的文字'), url: str('网址（可选）') } } },
 ];
 
-const obj = (properties, required = []) => ({ type: 'object', additionalProperties: false, properties, required });
+const obj = (properties, required: string[] = []) => ({ type: 'object', additionalProperties: false, properties, required });
 const s = description => ({ type: 'string', description });
 const n = description => ({ type: 'number', description });
 export const EXEC_TOOLS = [
