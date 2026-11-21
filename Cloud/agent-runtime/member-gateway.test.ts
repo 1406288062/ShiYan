@@ -1,7 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';import http from 'node:http';
 process.env.SHIYAN_GATEWAY_NO_LISTEN='1';
 const {createMemberGateway}=await import('./member-gateway.ts');
-const listen=server=>new Promise(resolve=>server.listen(0,'127.0.0.1',()=>resolve(server.address().port)));
+const listen=server=>new Promise<number>(resolve=>server.listen(0,'127.0.0.1',()=>resolve((server.address() as any).port)));
 const close=server=>new Promise(resolve=>{server.closeAllConnections();server.close(resolve);});
 test('gateway routes authenticated members to isolated execution and preserves streamed responses',async()=>{
   const destination=label=>http.createServer((req,res)=>{res.writeHead(200,{'Content-Type':'text/event-stream'});res.write('data: '+JSON.stringify({label,url:req.url,spoof:req.headers['x-shiyan-owner']||null})+'\n\n');setImmediate(()=>res.end('data: done\n\n'));});
@@ -26,13 +26,13 @@ test('Sponge connection routes use the isolated destination for every account wi
       for(const suffix of ['/integrations/sponge','/integrations/sponge/status?after=1','/integrations/sponge/start','/integrations/sponge/disconnect','/integrations/sponge/unknown']){
         for(const authorization of ['Bearer admin','Bearer ordinary',undefined]){
           const headers={'x-shiyan-owner':'spoofed-owner','x-dots-owner':'spoofed-owner',...(authorization?{authorization}:{})};
-          const value=await(await fetch(base+prefix+suffix,{headers})).json();
+          const value=(await(await fetch(base+prefix+suffix,{headers})).json()) as any;
           assert.equal(value.label,'member',authorization+' '+prefix+suffix);assert.equal(value.url,prefix+suffix);
           assert.equal(value.owner,null);assert.equal(value.dotsOwner,null);
         }
       }
       for(const suffix of ['/integrations/spongex/status','/integrations/sponge-other','/integrations/spongebob','/capabilities']){
-        const value=await(await fetch(base+prefix+suffix,{headers:{authorization:'Bearer admin'}})).json();assert.equal(value.label,'admin',prefix+suffix);
+        const value=(await(await fetch(base+prefix+suffix,{headers:{authorization:'Bearer admin'}})).json()) as any;assert.equal(value.label,'admin',prefix+suffix);
       }
     }
     const previous=authCalls;await fetch(base+'/shiyan/v1/integrations/sponge/status');assert.equal(authCalls,previous,'legacy proof is verified only at the destination');
