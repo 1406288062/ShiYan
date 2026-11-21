@@ -17,9 +17,9 @@ const validUrl = () => {
   return url.href;
 };
 function setup(startResult = {authorizeUrl:validUrl()}) {
-  const calls = [], opened = [];
-  const popup = {closed:false, opener:{}, location:{replace(url){this.url=url;}}, close(){this.closed=true;}};
-  const window = {
+  const calls: any[] = [], opened: any[] = [];
+  const popup: any = {closed:false, opener:{}, location:{url:'',replace(url){this.url=url;}}, close(){this.closed=true;}};
+  const window: any = {
     ShiYanAccount:{request:async(...args)=>{calls.push(args);if(args[0].endsWith('/start'))return startResult;return {ok:true,connected:true,devices:[]};}},
     ShiYanPlatform:{adapter:()=>({available:()=>false})},
     open:(...args)=>{opened.push(args);return popup;}
