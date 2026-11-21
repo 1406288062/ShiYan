@@ -37,7 +37,7 @@ export function createWorkspaceHandler({ operations = defaultOperations, revalid
       value.projects = value.projects.filter(p => validID(p.id) && typeof p.name === 'string').map(p => ({ ...p, path: virtualPath(p.path) }));
       return value;
     } catch (error) {
-      if (error.status && error.status !== 404) throw error;
+      if ((error as any).status && (error as any).status !== 404) throw error;
       return { projects: [], preferences: {} };
     }
   }
@@ -191,8 +191,8 @@ export function createWorkspaceHandler({ operations = defaultOperations, revalid
       if (file.kind !== 'text') throw failure('此文件不支持文本变更预览');
       if (typeof data.baselineText !== 'string') return respond({ changes: { name: file.name, available: false, diff: '', source: '请提供打开文件时的基准内容' } });
       if (Buffer.byteLength(data.baselineText) > 2 * 1024 * 1024) throw failure('基准内容过大', 413);
-      const before = data.baselineText.split('\n'), after = file.text.split('\n');
-      const changed = data.baselineText !== file.text;
+      const before = data.baselineText.split('\n'), after = (file as any).text.split('\n');
+      const changed = data.baselineText !== (file as any).text;
       return respond({ changes: { name: file.name, available: true, source: '打开文件时', diff: changed ? ['--- 打开文件时', '+++ 当前文件', ...before.map(l => '-' + l), ...after.map(l => '+' + l)].join('\n') : '', added: changed ? after.length : 0, removed: changed ? before.length : 0 } });
     }
     if (route === '/terminals' && req.method === 'POST') {
@@ -200,7 +200,7 @@ export function createWorkspaceHandler({ operations = defaultOperations, revalid
       if ([...terminals.values()].filter(t => t.owner === owner && !t.closed).length >= 8) throw failure('最多同时开启 8 个终端', 429);
       const cwd = virtualPath(data.cwd || (data.projectId ? project(state, data.projectId).path : '/workspace'));
       const child = await (await operations()).spawnSandbox(owner, { command: ['/bin/bash', '--noprofile', '--norc', '-i'], cwd, timeoutMs: 0 });
-      const item = { id: randomUUID(), owner, cwd, projectId: data.projectId || null, child, closed: false, sequence: 0, events: [], listeners: new Set() };
+      const item: any = { id: randomUUID(), owner, cwd, projectId: data.projectId || null, child, closed: false, sequence: 0, events: [], listeners: new Set() };
       // Revocation must terminate a detached terminal as well as one with an
       // active SSE listener; no expired account keeps a background shell.
       item.authorization=setInterval(()=>{if(!revalidate(auth))close(item);},2000);item.authorization.unref();
