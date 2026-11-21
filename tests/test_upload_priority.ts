@@ -5,12 +5,12 @@ import vm from 'node:vm';
 
 const source=fs.readFileSync(new URL('../shared/frontend/assets/upload-priority.js',import.meta.url),'utf8');
 const settle=async()=>{for(let n=0;n<8;n++)await Promise.resolve();};
-function setup(){
-  const requests=[],timers=new Map();let timerId=0;
+function setup(): any {
+  const requests: any[] = [], timers = new Map(); let timerId = 0;
   const setTimeout=(callback,delay)=>{const id=++timerId;timers.set(id,{callback,delay});return id;};
   const clearTimeout=id=>timers.delete(id);
-  class CustomEvent extends Event {constructor(type,options={}){super(type);this.detail=options.detail;}}
-  class MockXHR extends EventTarget {
+  class CustomEvent extends Event {detail: any; constructor(type: any, options: any = {}){super(type);this.detail=options.detail;}}
+  class MockXHR extends EventTarget { [key: string]: any;
     constructor(){super();this.upload=new EventTarget();this.headers={};this.status=0;this.responseText='';requests.push(this);}
     open(method,url,async=true){this.method=method;this.url=url;this.async=async;}
     setRequestHeader(name,value){this.headers[name.toLowerCase()]=value;}
@@ -21,14 +21,14 @@ function setup(){
     respond(status,data){this.status=status;this.responseText=typeof data==='string'?data:JSON.stringify(data);this.response=this.responseText;this.emit('load');}
     abort(){this.emit('abort');}
   }
-  const window=new EventTarget();window.window=window;
+  const window: any = new EventTarget(); window.window = window;
   const context={window,CustomEvent,Event,EventTarget,XMLHttpRequest:MockXHR,FormData:class{},Promise,Error,JSON,Math,Number,Set,Array,console,setTimeout,clearTimeout};
   vm.createContext(context);vm.runInContext(source,context,{filename:'upload-priority.js'});
   return {window,context,requests,timers,priority:window.ShiYanUploadPriority};
 }
 
 test('nested scopes wake waiters and emit transitions only on first begin and last release',async()=>{
-  const s=setup(),events=[];s.window.addEventListener('shiyan-upload-priority-change',()=>events.push(s.priority.active));
+  const s=setup(), events: any[] = [];s.window.addEventListener('shiyan-upload-priority-change',()=>events.push(s.priority.active));
   assert.equal(s.priority.active,false);await s.priority.wait();
   const first=s.priority.begin(),second=s.priority.begin();assert.equal(s.priority.active,true);
   let resumed=0;const a=s.priority.wait().then(()=>resumed++),b=s.priority.wait().then(()=>resumed++);
@@ -49,7 +49,7 @@ test('upload sends the original FormData with same-origin credentials and local 
 });
 
 test('progress reports bytes while full sent status still waits for the server response',async()=>{
-  const s=setup(),updates=[];let resolved=false;const result=s.priority.upload('/api/assets',new s.context.FormData(),p=>updates.push(p)).then(r=>{resolved=true;return r;});
+  const s=setup(), updates: any[] = [];let resolved=false;const result=s.priority.upload('/api/assets',new s.context.FormData(),p=>updates.push(p)).then(r=>{resolved=true;return r;});
   const xhr=s.requests[0];xhr.progress(25,100);const partial=updates.at(-1);
   assert.equal(partial.loaded,25);assert.equal(partial.total,100);assert.equal(partial.percent,25);assert.equal(partial.sent,false);
   xhr.progress(100,100);xhr.sent(100);await settle();assert.equal(resolved,false);
@@ -58,7 +58,7 @@ test('progress reports bytes while full sent status still waits for the server r
 });
 
 test('unknown-length transfer progress never invents a percentage or a completed response',async()=>{
-  const s=setup(),updates=[];const result=s.priority.upload('/api/assets',new s.context.FormData(),p=>updates.push(p));
+  const s=setup(), updates: any[] = [];const result=s.priority.upload('/api/assets',new s.context.FormData(),p=>updates.push(p));
   const xhr=s.requests[0];xhr.progress(512,0,false);const progress=updates.at(-1);assert.equal(progress.loaded,512);assert.equal(progress.sent,false);assert(progress.percent==null||progress.percent===0);
   xhr.respond(200,{ok:true});await result;
 });
@@ -94,17 +94,17 @@ test('inactivity deadline resets on progress and timeout aborts transport then r
   assert.equal(s.timers.size,1);const initial=[...s.timers.keys()][0];
   const xhr=s.requests[0];xhr.progress(10,100);assert.equal(s.timers.size,1);assert(!s.timers.has(initial));
   const timer=[...s.timers.values()][0];assert.equal(timer.delay,120000);timer.callback();await pending;
-  assert(failure instanceof Error);assert.equal(failure.status,408);assert.equal(s.priority.active,false);assert.equal(s.timers.size,0);
-  xhr.respond(200,{ok:true});assert.equal(failure.status,408);
+  assert(failure instanceof Error);assert.equal((failure as any).status,408);assert.equal(s.priority.active,false);assert.equal(s.timers.size,0);
+  xhr.respond(200,{ok:true});assert.equal((failure as any).status,408);
 });
 
 const appSource=fs.readFileSync(new URL('../shared/frontend/app.js',import.meta.url),'utf8');
-const extract=name=>appSource.match(new RegExp('  (?:async )?function '+name+'\\([^\\n]*\\) \\{[\\s\\S]*?\\n  \\}'))[0];
-function appSetup(){
-  const s=setup(),fetches=[],fields=new Map(),streams=[],toasts=[];let releaseSettings;
-  class EventSource extends EventTarget{constructor(path){super();this.path=path;this.closed=false;streams.push(this);}close(){this.closed=true;}}
+const extract=name=>appSource.match(new RegExp('  (?:async )?function '+name+'\\([^\\n]*\\) \\{[\\s\\S]*?\\n  \\}'))![0];
+function appSetup(): any {
+  const s=setup(), fetches: any[] = [], fields: any = new Map(), streams: any[] = [], toasts: any[] = []; let releaseSettings: any;
+  class EventSource extends EventTarget{path: any; closed: any; constructor(path: any){super();this.path=path;this.closed=false;streams.push(this);}close(){this.closed=true;}}
   Object.assign(s.context,{EventSource,ui:{input:null,result:null,photoUploadFile:null,photoLocalURL:null,feature:'enhance',model:'general',photoUploading:false},state:{settings:{}},
-    URL:{createObjectURL:()=> 'blob:fixture',revokeObjectURL(){}},Image:class{naturalWidth=32;naturalHeight=24;set src(value){this.onload?.();}},
+    URL:{createObjectURL:()=> 'blob:fixture',revokeObjectURL(){}},Image:class{naturalWidth=32;naturalHeight=24;onload: any;set src(value){this.onload?.();}},
     $:id=>{if(!fields.has(id))fields.set(id,{disabled:false,value:''});return fields.get(id);},renderPhoto(){},renderConnection(){},setText(){},show(){},
     remember:asset=>asset,applyState(){},humanError:value=>String(value),toast:value=>toasts.push(value),confirmAction:async()=>true,
     fetch:async(path,options)=>{fetches.push({path,options});if(path==='/api/settings?compact=1')return new Promise(resolve=>{releaseSettings=()=>resolve({ok:true,json:async()=>({ok:true})});});return {ok:true,json:async()=>({ok:true})};}
