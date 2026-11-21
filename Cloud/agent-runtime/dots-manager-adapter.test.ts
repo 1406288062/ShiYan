@@ -13,13 +13,13 @@ const OWNER='shiyan-private-owner';
 const disconnected=()=>Object.assign(new Error('fixture disconnected'),{status:503,code:'runtime_unavailable'});
 const copy=value=>JSON.parse(JSON.stringify(value));
 const instruction=(extra={})=>({requestId:'manager-first',message:'检查手机端表格',host:'shiyan_mobile',...extra});
-function fixture(t,{managerPollMs=0}={}){
+function fixture(t,{managerPollMs=0}={}): any {
   const root=mkdtempSync(path.join(os.tmpdir(),'shiyan-manager-fixture-'));
-  const store=new DotsStore(root),calls=[],receipts=new Map(),activity=[];
-  const manager={id:'manager:'+OWNER,ownerId:OWNER,name:'大内总管',status:'active',controlRevision:0,createdAt:1000,updatedAt:1000,lastSummary:'',workerLimit:2,runningWorkers:0,tasks:[],messages:[],capabilities:{manager:true,delegation:true,dependencies:true,durableRuns:true,workerConcurrency:2,apns:false,hardBudgets:false,recurringSchedules:false},thread_id:'private-thread',token:'never-project'};
+  const store=new DotsStore(root),calls: any[]=[],receipts=new Map(),activity: any[]=[];
+  const manager: any={id:'manager:'+OWNER,ownerId:OWNER,name:'大内总管',status:'active',controlRevision:0,createdAt:1000,updatedAt:1000,lastSummary:'',workerLimit:2,runningWorkers:0,tasks:[],messages:[],capabilities:{manager:true,delegation:true,dependencies:true,durableRuns:true,workerConcurrency:2,apns:false,hardBudgets:false,recurringSchedules:false},thread_id:'private-thread',token:'never-project'};
   let loseMessage=false,loseControl=false,unavailable=false,badCursor=false;
   const append=(kind,{taskId=null,message='',data={}}={})=>{const row={id:activity.length+1,managerId:manager.id,taskId,kind,message,data,createdAt:1000+activity.length};activity.push(row);return row;};
-  const client={async rpc(method){calls.push({method});if(method==='ping')return {};throw new Error('unsupported fixture rpc');},async tool(name,args){
+  const client={forOwner(value){return client;},async rpc(method){calls.push({method});if(method==='ping')return {};throw new Error('unsupported fixture rpc');},async tool(name,args){
     if(args.owner_id&&args.owner_id!==OWNER)throw Object.assign(Error('Manager not found'),{status:404});
     calls.push({name,args});if(unavailable)throw disconnected();
     if(name==='dots_get_manager')return {ok:true,manager:{...copy(manager),activityCursor:activity.length,messages:copy(manager.messages.slice(-100)),hasMoreMessages:manager.messages.length>100,oldestMessageId:manager.messages.slice(-100)[0]?.id??null}};
@@ -45,7 +45,7 @@ function fixture(t,{managerPollMs=0}={}){
     if(name==='dots_list_notifications')return {notifications:[],next_cursor:args.after_id,has_more:false};
     throw new Error('unsupported fixture tool '+name);
   }};
-  const adapter=new DotsAdapter({root,store,client,eventReader:{read(){return [];},close(){}},recoverIntervalMs:0,subscriptionRefreshMs:0,managerPollMs});
+  const adapter=new DotsAdapter({root,store,client,eventReader:{read(){return [];},request(){return null;},close(){}},recoverIntervalMs:0,subscriptionRefreshMs:0,managerPollMs});
   t.after(()=>{adapter.close();rmSync(root,{recursive:true,force:true});});
   return {root,store,adapter,client,calls,manager,activity,append,receipts,loseMessage(){loseMessage=true;},loseControl(){loseControl=true;},unavailable(value=true){unavailable=value;},badCursor(value=true){badCursor=value;},task(extra={}){const task={id:101+manager.tasks.length,managerId:manager.id,title:'检查表格',instruction:'验证手机表格渲染',status:'active',acceptanceStatus:'pending',dependencies:[],controlRevision:0,createdAt:1000,updatedAt:1000,nextWakeAt:1000,lastSummary:'',runCount:0,originHost:'shiyan_mobile',...extra};manager.tasks.push(task);return task;}};
 }
@@ -56,19 +56,19 @@ test('one authenticated manager is shared across hosts and legacy task bindings 
   const response=await f.adapter.manager(OWNER);assert.equal(response.manager.id,'manager:'+OWNER);assert.deepEqual(response.messages,[]);assert.equal(response.tasks[0].status,'paused');assert.equal(response.tasks[0].controlRevision,4);assert.equal(response.tasks[0].acceptanceStatus,'changes_requested');assert.deepEqual(response.tasks[0].dependencies,[99]);
   assert.ok(!('thread_id' in response.manager));assert.ok(!('token' in response.manager));assert.equal(f.store.mapping(OWNER,task.id).conversation_id,'original-conversation');assert.equal(f.store.mapping(OWNER,task.id).origin_host,'chatgpt');
   assert.equal(f.calls.filter(c=>c.name==='dots_control_goal'||c.name==='dots_create_goal').length,0);assert.equal((await f.adapter.list(OWNER)).goals[0].controlRevision,4);
-  await assert.rejects(f.adapter.manager('another-owner'),e=>e.status===404);
+  await assert.rejects(f.adapter.manager('another-owner'),e=>(e as any).status===404);
 });
 
 test('manager instructions are durably accepted once despite duplicate requests and response loss',async t=>{
   const f=fixture(t);f.loseMessage();await assert.rejects(f.adapter.messageManager(OWNER,instruction()));
   const [a,b]=await Promise.all([f.adapter.messageManager(OWNER,instruction()),f.adapter.messageManager(OWNER,instruction())]);assert.equal(a.accepted,true);assert.equal(a.message.id,b.message.id);assert.equal(f.manager.messages.length,1);assert.equal(f.receipts.size,1);
-  assert.ok(a.cursor>0);assert.equal(f.store.receipt(OWNER,'manager-first').state,'completed');assert.equal(f.adapter.events(OWNER).events.filter(e=>e.type==='manager_activity').length,1);
+  assert.ok(a.cursor>0);assert.equal(f.store.receipt(OWNER,'manager-first').state,'completed');assert.equal(f.adapter.events(OWNER).events.filter(e=>(e as any).type==='manager_activity').length,1);
   assert.equal(f.calls.filter(c=>c.name==='dots_message_manager').length,2);assert.ok(!f.calls.find(c=>c.name==='dots_message_manager').args.request_id.includes(OWNER));
-  await assert.rejects(f.adapter.messageManager(OWNER,instruction({message:'另一件事'})),e=>e.code==='request_conflict');
+  await assert.rejects(f.adapter.messageManager(OWNER,instruction({message:'另一件事'})),e=>(e as any).code==='request_conflict');
 });
 
 test('invalid instruction and foreign task IDs never reach runtime',async t=>{
-  const f=fixture(t);await assert.rejects(f.adapter.messageManager(OWNER,instruction({host:'chatgpt'})),e=>e.status===400);await assert.rejects(f.adapter.messageManager(OWNER,instruction({taskId:999})),e=>e.status===404);await assert.rejects(f.adapter.messageManager(OWNER,{...instruction(),owner_id:'forged'}),e=>e.status===400);assert.equal(f.calls.length,0);
+  const f=fixture(t);await assert.rejects(f.adapter.messageManager(OWNER,instruction({host:'chatgpt'})),e=>(e as any).status===400);await assert.rejects(f.adapter.messageManager(OWNER,instruction({taskId:999})),e=>(e as any).status===404);await assert.rejects(f.adapter.messageManager(OWNER,{...instruction(),owner_id:'forged'}),e=>(e as any).status===400);assert.equal(f.calls.length,0);
 });
 
 test('paused manager accepts new instructions without silently resuming',async t=>{
@@ -76,7 +76,7 @@ test('paused manager accepts new instructions without silently resuming',async t
 });
 
 test('runtime manager controls are receipt-deduplicated even after a lost reply',async t=>{
-  const f=fixture(t);f.loseControl();const command={requestId:'pause-manager',action:'pause'};await assert.rejects(f.adapter.controlManager(OWNER,command));const response=await f.adapter.controlManager(OWNER,command);assert.equal(response.manager.status,'paused');assert.equal(f.manager.controlRevision,1);await f.adapter.controlManager(OWNER,command);assert.equal(f.calls.filter(c=>c.name==='dots_control_manager').length,2);assert.equal(f.adapter.events(OWNER).events.filter(e=>e.type==='manager_snapshot').length,1);
+  const f=fixture(t);f.loseControl();const command={requestId:'pause-manager',action:'pause'};await assert.rejects(f.adapter.controlManager(OWNER,command));const response=await f.adapter.controlManager(OWNER,command);assert.equal(response.manager.status,'paused');assert.equal(f.manager.controlRevision,1);await f.adapter.controlManager(OWNER,command);assert.equal(f.calls.filter(c=>c.name==='dots_control_manager').length,2);assert.equal(f.adapter.events(OWNER).events.filter(e=>(e as any).type==='manager_snapshot').length,1);
 });
 
 test('assistant replies and worker lifecycle changes enter durable replay, deduplicated on catch-up',async t=>{
@@ -88,16 +88,16 @@ test('assistant replies and worker lifecycle changes enter durable replay, dedup
 
 test('manager activity cursor and event replay survive adapter database reopen',async t=>{
   const f=fixture(t);await f.adapter.manager(OWNER);f.append('manager.message',{message:'已完成'});await f.adapter.syncManagerActivity(OWNER);
-  const second=new DotsStore(f.root);t.after(()=>second.close());assert.equal(second.manager(OWNER).runtime_cursor,1);assert.equal(second.events(OWNER,0,10).events[0].payload.activity.message,'已完成');assert.equal(second.latestCursor(OWNER),1);assert.equal(second.latestCursor('another-owner'),0);
+  const second=new DotsStore(f.root);t.after(()=>second.close());assert.equal(second.manager(OWNER)!.runtime_cursor,1);assert.equal(second.events(OWNER,0,10).events[0].payload.activity.message,'已完成');assert.equal(second.latestCursor(OWNER),1);assert.equal(second.latestCursor('another-owner'),0);
 });
 
 test('invalid runtime cursor rolls back events and checkpoint together',async t=>{
-  const f=fixture(t);await f.adapter.manager(OWNER);f.append('manager.message',{message:'检查中'});f.badCursor();await assert.rejects(f.adapter.syncManagerActivity(OWNER),e=>e.code==='runtime_rejected');assert.equal(f.adapter.events(OWNER).events.length,0);assert.equal(f.store.manager(OWNER).runtime_cursor,0);f.badCursor(false);await f.adapter.syncManagerActivity(OWNER);assert.equal(f.adapter.events(OWNER).events.length,1);
+  const f=fixture(t);await f.adapter.manager(OWNER);f.append('manager.message',{message:'检查中'});f.badCursor();await assert.rejects(f.adapter.syncManagerActivity(OWNER),e=>(e as any).code==='runtime_rejected');assert.equal(f.adapter.events(OWNER).events.length,0);assert.equal(f.store.manager(OWNER).runtime_cursor,0);f.badCursor(false);await f.adapter.syncManagerActivity(OWNER);assert.equal(f.adapter.events(OWNER).events.length,1);
 });
 
 test('foreign manager/task activity is not silently bound or replayed',async t=>{
-  const f=fixture(t);await f.adapter.manager(OWNER);f.activity.push({id:1,managerId:'manager:other',taskId:null,kind:'manager.message',message:'private',data:{},createdAt:1001});await assert.rejects(f.adapter.syncManagerActivity(OWNER),e=>e.code==='runtime_rejected');assert.equal(f.adapter.events(OWNER).events.length,0);
-  f.activity.length=0;f.append('task.changed',{taskId:999});await assert.rejects(f.adapter.syncManagerActivity(OWNER),e=>e.code==='runtime_rejected');assert.equal(f.adapter.events(OWNER).events.length,0);
+  const f=fixture(t);await f.adapter.manager(OWNER);f.activity.push({id:1,managerId:'manager:other',taskId:null,kind:'manager.message',message:'private',data:{},createdAt:1001});await assert.rejects(f.adapter.syncManagerActivity(OWNER),e=>(e as any).code==='runtime_rejected');assert.equal(f.adapter.events(OWNER).events.length,0);
+  f.activity.length=0;f.append('task.changed',{taskId:999});await assert.rejects(f.adapter.syncManagerActivity(OWNER),e=>(e as any).code==='runtime_rejected');assert.equal(f.adapter.events(OWNER).events.length,0);
 });
 
 test('manager activity pagination drains more than one page without losing ordering',async t=>{
@@ -110,7 +110,7 @@ test('long-lived manager history is paginated independently of activity and pres
   const older=await f.adapter.managerMessages(OWNER,{before:136,limit:100});assert.equal(older.messages[0].id,36);assert.equal(older.messages.at(-1).id,135);assert.equal(older.hasMore,true);assert.equal(older.nextBeforeId,36);
   const oldest=await f.adapter.managerMessages(OWNER,{before:36,limit:100});assert.equal(oldest.messages.length,35);assert.equal(oldest.messages[0].id,1);assert.equal(oldest.hasMore,false);
   const empty=await f.adapter.managerMessages(OWNER,{before:1});assert.deepEqual(empty.messages,[]);assert.equal(empty.nextBeforeId,null);assert.equal(f.store.latestCursor(OWNER),0);
-  const latest=await f.adapter.managerMessages(OWNER,{before:'0',limit:'100'});assert.equal(latest.messages[0].id,136);await assert.rejects(f.adapter.managerMessages('another-owner'),e=>e.status===404);await assert.rejects(f.adapter.managerMessages(OWNER,{before:-1}),e=>e.status===400);
+  const latest=await f.adapter.managerMessages(OWNER,{before:'0',limit:'100'});assert.equal(latest.messages[0].id,136);await assert.rejects(f.adapter.managerMessages('another-owner'),e=>(e as any).status===404);await assert.rejects(f.adapter.managerMessages(OWNER,{before:-1}),e=>(e as any).status===400);
 });
 
 test('cached manager reads disclose offline state and never invent live webhook support',async t=>{
@@ -131,21 +131,21 @@ test('replayed old acceptance snapshot cannot overwrite a newer assistant reply 
 });
 
 test('active manager SSE listener receives worker changes using short polling, idle adapter does not poll',async t=>{
-  const f=fixture(t,{managerPollMs:10});await f.adapter.manager(OWNER);let received=[];const listener={destroyed:false,write(value){received.push(value);},end(){}};
+  const f=fixture(t,{managerPollMs:10});await f.adapter.manager(OWNER);let received: any[]=[];const listener={destroyed:false,write(value){received.push(value);},end(){}};
   const before=f.calls.filter(c=>c.name==='dots_get_manager_activity').length;await new Promise(resolve=>setTimeout(resolve,40));assert.equal(f.calls.filter(c=>c.name==='dots_get_manager_activity').length,before);
   f.listenersSet=new Set([listener]);f.adapter.listeners.set(OWNER,f.listenersSet);f.append('manager.message',{message:'后台结果'});await new Promise(resolve=>setTimeout(resolve,45));assert.ok(received.some(value=>value.includes('后台结果')));assert.equal(f.adapter.events(OWNER).events.length,1);
   f.listenersSet.clear();
 });
 
 test('authenticated manager REST validates body hashes and SSE durably replays messages',async t=>{
-  const f=fixture(t);const server=createDotsSidecar({adapter:f.adapter,recover:false,authenticate:req=>req.headers['x-fixture-owner']?{owner:req.headers['x-fixture-owner']}:null});await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const base='http://127.0.0.1:'+server.address().port;
+  const f=fixture(t);const server=createDotsSidecar({adapter:f.adapter,recover:false,authenticate:req=>req.headers['x-fixture-owner']?{owner:req.headers['x-fixture-owner']}:null});await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',()=>resolve()));const base='http://127.0.0.1:'+(server.address() as any).port;
   t.after(()=>{server.closeAllConnections();server.removeAllListeners('close');server.close();});
   assert.equal((await fetch(base+'/shiyan/v1/dots/manager')).status,401);assert.equal((await fetch(base+'/shiyan/v1/dots/manager',{headers:{'x-fixture-owner':'another-owner'}})).status,404);
-  const headers={'x-fixture-owner':OWNER};const fetched=await (await fetch(base+'/shiyan/v1/dots/manager',{headers})).json();assert.equal(fetched.manager.name,'大内总管');const body=JSON.stringify(instruction());const signed={...headers,'Content-Type':'application/json','x-shiyan-body-sha':createHash('sha256').update(body).digest('hex')};
-  assert.equal((await fetch(base+'/shiyan/v1/dots/manager/messages',{method:'POST',headers:{...signed,'x-shiyan-body-sha':'wrong'},body})).status,401);const accepted=await (await fetch(base+'/shiyan/v1/dots/manager/messages',{method:'POST',headers:signed,body})).json();assert.equal(accepted.accepted,true);assert.equal(accepted.message.content,'检查手机端表格');
-  const activity=await (await fetch(base+'/shiyan/v1/dots/manager/activity?after=0',{headers})).json();assert.equal(activity.activity.length,1);assert.equal(activity.nextCursor,1);
-  const history=await (await fetch(base+'/shiyan/v1/dots/manager/messages?before=0&limit=100',{headers})).json();assert.equal(history.messages.length,1);assert.equal(history.nextBeforeId,1);assert.equal(history.hasMore,false);
-  const stream=await fetch(base+'/shiyan/v1/dots/events?after=0',{headers});const reader=stream.body.getReader();const chunk=new TextDecoder().decode((await reader.read()).value);assert.match(chunk,/manager_snapshot/);assert.match(chunk,/manager_activity/);assert.match(chunk,/检查手机端表格/);await reader.cancel();
+  const headers={'x-fixture-owner':OWNER};const fetched: any=await (await fetch(base+'/shiyan/v1/dots/manager',{headers})).json();assert.equal(fetched.manager.name,'大内总管');const body=JSON.stringify(instruction());const signed={...headers,'Content-Type':'application/json','x-shiyan-body-sha':createHash('sha256').update(body).digest('hex')};
+  assert.equal((await fetch(base+'/shiyan/v1/dots/manager/messages',{method:'POST',headers:{...signed,'x-shiyan-body-sha':'wrong'},body})).status,401);const accepted: any=await (await fetch(base+'/shiyan/v1/dots/manager/messages',{method:'POST',headers:signed,body})).json();assert.equal(accepted.accepted,true);assert.equal(accepted.message.content,'检查手机端表格');
+  const activity: any=await (await fetch(base+'/shiyan/v1/dots/manager/activity?after=0',{headers})).json();assert.equal(activity.activity.length,1);assert.equal(activity.nextCursor,1);
+  const history: any=await (await fetch(base+'/shiyan/v1/dots/manager/messages?before=0&limit=100',{headers})).json();assert.equal(history.messages.length,1);assert.equal(history.nextBeforeId,1);assert.equal(history.hasMore,false);
+  const stream=await fetch(base+'/shiyan/v1/dots/events?after=0',{headers});const reader=stream.body!.getReader();const chunk=new TextDecoder().decode((await reader.read()).value);assert.match(chunk,/manager_snapshot/);assert.match(chunk,/manager_activity/);assert.match(chunk,/检查手机端表格/);await reader.cancel();
 });
 
 
@@ -158,5 +158,5 @@ test('one issue opens the combined history and keeps cancelled phases cancelled'
  const list=await f.adapter.activity(OWNER);assert.equal(list.activities.length,1);assert.equal(list.activities[0].taskId,second.id);assert.equal(list.activities[0].title,'Dots 更新与执行环境');
  const detail=await f.adapter.conversation(OWNER,second.id);assert.equal(detail.messages.length,2);assert.equal(new Set(detail.messages.map(m=>m.id)).size,2);assert.equal(detail.goal.title,'Dots 更新与执行环境');assert.equal(detail.relatedGoals.find(g=>g.id===first.id).status,'cancelled');
  const read=await f.adapter.activity(OWNER);assert.equal(read.activities[0].unread,false);
- await assert.rejects(()=>f.adapter.conversation('other-owner',second.id),e=>e.status===404);
+ await assert.rejects(()=>f.adapter.conversation('other-owner',second.id),e=>(e as any).status===404);
 });
