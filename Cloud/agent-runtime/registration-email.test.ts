@@ -8,9 +8,9 @@ import { RegistrationEmail, mailConfigured, registrationMailEnvironment } from '
 const password = 'test-only-password-42';
 function fixture(t, options={}) {
   const root=mkdtempSync(path.join(os.tmpdir(),'shiyan-otp-'));
-  let now=1000000; const messages=[];
+  let now=1000000; const messages: any[]=[];
   const store=new AccountStore(root,{now:()=>now});
-  const mail=new RegistrationEmail(store,{configured:()=>true,send:async m=>messages.push(m),...options});
+  const mail=new RegistrationEmail(store,{configured:()=>true,send:async m=>{messages.push(m);},...options});
   t.after(()=>{store.close();rmSync(root,{recursive:true,force:true});});
   return {root,store,mail,messages,advance:ms=>now+=ms,code:()=>messages.at(-1).text.match(/\d{6}/)[0]};
 }
@@ -33,7 +33,7 @@ test('wrong guesses stay counted, five guesses lock, and expired codes never cre
   f.advance(60001);await f.mail.request({email:'a@example.test'},'ip');
   const consume=f.mail.check({email:'a@example.test',verificationCode:f.code()});f.advance(600000);
   await assert.rejects(f.store.register({email:'a@example.test',password},{verifyEmail:consume}));
-  assert.equal(f.store.db.prepare('SELECT count(*) n FROM account_users').get().n,0);
+  assert.equal(f.store.db.prepare('SELECT count(*) n FROM account_users').get()!.n,0);
 });
 test('resend cooldown and replacement invalidate the previous registration claim',async t=>{
   const f=fixture(t);await f.mail.request({email:'a@example.test'},'ip');
@@ -45,7 +45,7 @@ test('resend cooldown and replacement invalidate the previous registration claim
 test('failed delivery and missing SMTP configuration fail closed',async t=>{
   const f=fixture(t,{send:async()=>{throw Object.assign(new Error('delivery'),{status:503});}});
   await assert.rejects(f.mail.request({email:'a@example.test'},'ip'),{status:503});
-  assert.equal(f.store.db.prepare('SELECT count(*) n FROM registration_email_codes').get().n,0);
+  assert.equal(f.store.db.prepare('SELECT count(*) n FROM registration_email_codes').get()!.n,0);
   const offline=fixture(t,{configured:()=>false});
   await assert.rejects(offline.mail.request({email:'a@example.test'},'ip'),{status:503});
   assert.equal(mailConfigured({}),false);
@@ -60,7 +60,7 @@ test('delivery must finish before a code can be used',async t=>{
 
 test('existing QQ configuration is resolved without copying credentials and honours disablement', t => {
   const f = fixture(t), filename = path.join(f.root, 'qq-mail.json');
-  const env = { SHIYAN_SMTP_CONFIG: filename };
+  const env: any = { SHIYAN_SMTP_CONFIG: filename };
   assert.equal(mailConfigured(env), false);
   writeFileSync(filename, JSON.stringify({enabled:true,address:'sender@example.test',authorizationCode:'fixture-code'}), {mode:0o600});
   const resolved = registrationMailEnvironment(env);
