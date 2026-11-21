@@ -10,15 +10,15 @@ const json = (res, status, value) => { res.writeHead(status, { 'Content-Type': '
 async function fixture(t, handler) {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'sponge-client-'));
   const socketPath = path.join(directory, 'connector.sock');
-  const received = [];
+  const received: any[] = [];
   const server = http.createServer(async (req, res) => {
-    const chunks = [];
+    const chunks: Buffer[] = [];
     for await (const chunk of req) chunks.push(chunk);
     const input = JSON.parse(Buffer.concat(chunks).toString());
     received.push({ path: req.url, headers: req.headers, input });
     await handler(req, res, input);
   });
-  await new Promise(resolve => server.listen(socketPath, resolve));
+  await new Promise<void>(resolve => server.listen(socketPath, () => resolve()));
   t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); await rm(directory, { recursive: true, force: true }); });
   return { socketPath, received };
 }
@@ -62,14 +62,14 @@ test('HTTP errors and malformed responses fail without any retry', async t => {
 test('lost RPC connection reports uncertain execution and does not repeat the action', async t => {
   const f = await fixture(t, req => req.socket.destroy());
   const client = createSpongeClient({ socketPath: f.socketPath });
-  await assert.rejects(client.rpc('A', 'tools/call', { name: 'start_process', arguments: { command: 'example' } }), error => error.status === 503 && error.uncertain === true && /勿重复/.test(error.message));
+  await assert.rejects(client.rpc('A', 'tools/call', { name: 'start_process', arguments: { command: 'example' } }), error => (error as any).status === 503 && (error as any).uncertain === true && /勿重复/.test((error as any).message));
   assert.equal(f.received.length, 1);
 });
 
 test('timeout and AbortSignal stop a pending request without retrying', async t => {
   const f = await fixture(t, () => {});
   const client = createSpongeClient({ socketPath: f.socketPath, timeoutMs: 30 });
-  await assert.rejects(client.rpc('A', 'tools/call', { name: 'start_process' }), error => error.status === 504 && error.uncertain === true);
+  await assert.rejects(client.rpc('A', 'tools/call', { name: 'start_process' }), error => (error as any).status === 504 && (error as any).uncertain === true);
   const controller = new AbortController();
   const pending = createSpongeClient({ socketPath: f.socketPath }).rpc('A', 'tools/list', {}, { signal: controller.signal });
   const reason = new Error('fixture cancelled');
@@ -81,12 +81,12 @@ test('timeout and AbortSignal stop a pending request without retrying', async t 
 });
 
 test('managed names cannot be shadowed and only connected owners discover Sponge', async () => {
-  const operations = [];
+  const operations: any[] = [];
   const adapter = createSpongeMcpAdapter({
     sandboxOperation: async (owner, input) => { operations.push([owner, input]); return { servers: [
       { name: 'sponge', transport: 'stdio' }, { name: ' 海绵宝宝 ', transport: 'http' }, { name: 'SPONGE', transport: 'stdio' }, { name: 'mine', transport: 'stdio' },
     ] }; },
-    client: { status: async owner => ({ connected: owner === 'A' }) },
+    client: { status: async owner => ({ connected: owner === 'A' }) } as any,
   });
   assert.deepEqual((await adapter('A', { operation: 'list_servers' })).servers, [{ name: 'mine', transport: 'stdio' }, { name: 'sponge', transport: 'managed' }]);
   assert.deepEqual((await adapter('B', { operation: 'list_servers' })).servers, [{ name: 'mine', transport: 'stdio' }]);
@@ -94,9 +94,9 @@ test('managed names cannot be shadowed and only connected owners discover Sponge
 });
 
 test('managed tools route the trusted owner and cannot replace transport/authentication', async () => {
-  const calls = [], sandbox = [];
+  const calls: any[] = [], sandbox: any[] = [];
   const adapter = createSpongeMcpAdapter({ sandboxOperation: async (...args) => { sandbox.push(args); return { result: 'generic' }; },
-    client: { rpc: async (...args) => { calls.push(args); return { content: [{ type: 'text', text: 'owned-result' }] }; } },
+    client: { rpc: async (...args) => { calls.push(args); return { content: [{ type: 'text', text: 'owned-result' }] }; } } as any,
   });
   const signal = new AbortController().signal;
   const result = await adapter('A', { operation: 'call_tool', server: '海绵宝宝', owner: 'B', url: 'http://127.0.0.1', headers: { Authorization: 'bad' }, name: 'list_devices', arguments: {} }, { signal });
@@ -111,7 +111,7 @@ test('managed tools route the trusted owner and cannot replace transport/authent
 });
 
 test('connector downtime preserves other MCPs, but cancellation is not swallowed', async () => {
-  const adapter = createSpongeMcpAdapter({ sandboxOperation: async () => ({ servers: [{ name: 'mine' }] }), client: { status: async () => { throw Error('broker down'); } } });
+  const adapter = createSpongeMcpAdapter({ sandboxOperation: async () => ({ servers: [{ name: 'mine' }] }), client: { status: async () => { throw Error('broker down'); } } as any });
   assert.deepEqual(await adapter('A', { operation: 'list_servers' }), { servers: [{ name: 'mine' }] });
   const controller = new AbortController(); controller.abort(new Error('cancelled'));
   await assert.rejects(adapter('A', { operation: 'list_servers' }, { signal: controller.signal }), /cancelled/);

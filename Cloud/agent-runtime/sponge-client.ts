@@ -73,14 +73,14 @@ export function createSpongeClient({ socketPath = process.env.SHIYAN_SPONGE_SOCK
   }
   const ownerInput = owner => { if (!validOwner(owner)) throw failure('用户身份无效', 401); return owner; };
   return {
-    status(owner, options) { return request('/status', { owner: ownerInput(owner) }, options); },
-    start(auth, options) {
+    status(owner, options: { signal?: AbortSignal } = {}) { return request('/status', { owner: ownerInput(owner) }, options); },
+    start(auth, options: { signal?: AbortSignal } = {}) {
       if (!object(auth) || auth.accountSession !== true || !validOwner(auth.owner) ||
           typeof auth.userId !== 'string' || !auth.userId || typeof auth.sessionId !== 'string' || !auth.sessionId) throw failure('请先登录拾燕账号', 401);
       return request('/start', { auth: { owner: auth.owner, userId: auth.userId, sessionId: auth.sessionId, accountSession: true } }, options);
     },
-    disconnect(owner, options) { return request('/disconnect', { owner: ownerInput(owner) }, options); },
-    rpc(owner, method, params = {}, options) {
+    disconnect(owner, options: { signal?: AbortSignal } = {}) { return request('/disconnect', { owner: ownerInput(owner) }, options); },
+    rpc(owner, method, params = {}, options: { signal?: AbortSignal } = {}) {
       if (!['tools/list', 'tools/call'].includes(method) || !object(params)) throw failure('海绵宝宝工具请求无效', 400);
       return request('/rpc', { owner: ownerInput(owner), method, params }, options);
     },
@@ -91,7 +91,7 @@ export function createSpongeClient({ socketPath = process.env.SHIYAN_SPONGE_SOCK
 // only its server-derived owner. User-configured MCP servers retain their path.
 export function createSpongeMcpAdapter({ sandboxOperation, client = createSpongeClient() }: {sandboxOperation?: (owner: any, input: any, options?: any) => Promise<any>; client?: ReturnType<typeof createSpongeClient>} = {}) {
   if (typeof sandboxOperation !== 'function') throw new TypeError('sandboxOperation is required');
-  return async function memberMcpOperation(owner, input, options: {signal?: AbortSignal} = {}) {
+  return async function memberMcpOperation(owner, input, options: {signal?: AbortSignal; [key: string]: any} = {}) {
     if (input.operation === 'list_servers') {
       const [configured, connection] = await Promise.all([
         sandboxOperation(owner, input, options),
