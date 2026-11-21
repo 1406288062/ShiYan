@@ -3,8 +3,8 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 
 const script = readFileSync(new URL('../shared/frontend/assets/account-avatar.js', import.meta.url), 'utf8');
-function launch({userId = 'owner-A', store = new Map(), legacy = 'old-asset-id', storageFails = false} = {}) {
-  const requests = [], listeners = new Map(), streams = [];
+function launch({userId = 'owner-A', store = new Map(), legacy = 'old-asset-id', storageFails = false} = {}): any {
+  const requests: any[] = [], listeners = new Map(), streams: any[] = [];
   const storage = {
     getItem(key) { return store.get(key) ?? null; },
     setItem(key, value) { if (storageFails) throw new Error('QuotaExceededError'); store.set(key, String(value)); },
@@ -19,7 +19,7 @@ function launch({userId = 'owner-A', store = new Map(), legacy = 'old-asset-id',
     toggleAttribute(name, enabled) { if (name === 'hidden') this.hidden = !!enabled; },
     removeAttribute(name) { if (name === 'hidden') this.hidden = false; }
   };
-  class EventSourceFake {
+  class EventSourceFake { [key: string]: any;
     static CLOSED = 2;
     constructor(url) { this.url = url; this.handlers = {}; this.readyState = 1; streams.push(this); }
     addEventListener(type, callback) { this.handlers[type] = callback; }
@@ -35,7 +35,7 @@ function launch({userId = 'owner-A', store = new Map(), legacy = 'old-asset-id',
       return new Promise((resolve, reject) => requests.push({resolve, reject}));
     }
   };
-  const window = {
+  const window: any = {
     ShiYanAccount: account,
     shiyan: {getState:()=>({settings:{avatarAssetId:legacy}}), toast:()=>{}},
     addEventListener(type, callback) { listeners.set(type, callback); }
@@ -87,7 +87,7 @@ const logo='UkVDRU5U', latest='TEFURVNU', old='T0xE';
   await boot.ready(); assert.equal(boot.requests.length,1);
   await boot.respond(avatar(3,latest));
   assert.equal(boot.image.src,'data:image/jpeg;base64,'+latest);
-  assert.deepEqual(JSON.parse(store.get(boot.key)), avatar(3,latest));
+  assert.deepEqual(JSON.parse(store.get(boot.key) as string), avatar(3,latest));
   const reopened=launch({store});
   assert.equal(reopened.image.src,'data:image/jpeg;base64,'+latest);
   console.log('PASS cached current avatar displays immediately after restart');
@@ -99,7 +99,7 @@ const logo='UkVDRU5U', latest='TEFURVNU', old='T0xE';
   assert.equal(boot.image.src,'data:image/jpeg;base64,'+latest);
   await boot.respond(avatar(6,old));
   assert.equal(boot.image.src,'data:image/jpeg;base64,'+latest);
-  assert.deepEqual(JSON.parse(store.get(boot.key)),avatar(7,latest));
+  assert.deepEqual(JSON.parse(store.get(boot.key) as string),avatar(7,latest));
   console.log('PASS stale delayed GET cannot undo a newer event');
 }
 {
@@ -109,7 +109,7 @@ const logo='UkVDRU5U', latest='TEFURVNU', old='T0xE';
   assert.equal(boot.image.src,'');
   assert.equal(boot.image.hidden,true);
   assert.equal(boot.placeholder.hidden,false);
-  assert.deepEqual(JSON.parse(store.get(boot.key)),avatar(3,null));
+  assert.deepEqual(JSON.parse(store.get(boot.key) as string),avatar(3,null));
   const reopened=launch({store});
   assert.equal(reopened.image.hidden,true);
   console.log('PASS deletion persists and does not resurrect old photo');
@@ -121,8 +121,8 @@ const logo='UkVDRU5U', latest='TEFURVNU', old='T0xE';
   assert.equal(other.placeholder.hidden,false);
   await other.ready();
   await other.respond(avatar(1,old));
-  assert.deepEqual(JSON.parse(store.get('shiyan.account.owner-A.avatar.snapshot.v1')),avatar(3,latest));
-  assert.deepEqual(JSON.parse(store.get(other.key)),avatar(1,old));
+  assert.deepEqual(JSON.parse(store.get('shiyan.account.owner-A.avatar.snapshot.v1') as string),avatar(3,latest));
+  assert.deepEqual(JSON.parse(store.get(other.key) as string),avatar(1,old));
   other.fire('shiyan-account-changing');
   assert.equal(other.image.hidden,true);
   other.send(avatar(2,logo));

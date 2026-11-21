@@ -4,12 +4,12 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import {execFileSync} from 'node:child_process';
 const source=fs.readFileSync(new URL('../shared/frontend/assets/photo-archive.js',import.meta.url),'utf8');
-function setup(options={}){
-  const written=[],calls=[],anchors=[],pickers=[];let closed=false,aborted=false;
+function setup(options: any = {}): any {
+  const written: any[] = [], calls: any[] = [], anchors: any[] = [], pickers: any[] = []; let closed=false,aborted=false;
   const writable={write:async bytes=>written.push(Buffer.from(bytes)),close:async()=>closed=true,abort:async()=>aborted=true};
-  const window=options.stream===false?{}:{showSaveFilePicker:async config=>{pickers.push(config);return {createWritable:async()=>writable};}};
+  const window: any = options.stream===false?{}:{showSaveFilePicker:async config=>{pickers.push(config);return {createWritable:async()=>writable};}};
   const localTime=new Date(2026,9,25,22,55,0);
-  class Clock extends Date{constructor(...args){super(...(args.length?args:[localTime.getTime()]));}}
+  class Clock extends Date{constructor(...args: any[]){super(...((args.length?args:[localTime.getTime()]) as [number, number, number, number, number, number, number]));}}
   const context={window,TextEncoder,Uint8Array,Uint32Array,DataView,Blob,URL,AbortController,Date:Clock,location:{href:'https://example.test/',origin:'https://example.test'},
     document:{createElement:()=>({click(){anchors.push(this);},remove(){}}),body:{appendChild(){}}},setTimeout(){},
     fetch:async(url,config)=>{calls.push({url,config});return {ok:!(options.failSecond&&calls.length===2),body:new Blob([calls.length===1?'first':'second']).stream()};}};
@@ -34,7 +34,7 @@ for(const stream of [true,false]){
   });
 }
 test('streamed ZIP is readable by Python with UTF-8 names, STORE data and deduplicated names',async()=>{
-  const s=setup(),progress=[];
+  const s=setup(), progress: any[] = [];
   const entries=['图片.jpg','图片.jpg'].map((filename,index)=>({filename,chunks:async function*(){yield new Uint8Array([65+index]);yield new Uint8Array([66+index]);}}));
   await s.api.writeZip(entries,{write:async bytes=>s.written.push(Buffer.from(bytes))},{onProgress:p=>progress.push(p)});
   const data=Buffer.concat(s.written);
