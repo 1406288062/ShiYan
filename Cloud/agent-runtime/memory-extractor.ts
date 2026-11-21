@@ -10,11 +10,12 @@ const memoryHub=createHubClient();
 
 // 账号记忆提取改用 Claude Haiku（最便宜的 Claude 档）。
 export const CLAUDE_MEMORY_MODEL='claude-haiku-4-5-20251001';
-const claudeMemoryInfer=(job,{schema,signal}={})=>inferClaude({...job,schema,signal});
+const claudeMemoryInfer=(job,{schema,signal}: {schema?: any; signal?: any}={})=>inferClaude({...job,schema,signal});
 
 export const MEMORY_SCHEMA={type:'object',properties:{memories:{type:'array',items:{type:'object',properties:{key:{type:'string'},category:{type:'string',enum:['preference','profile','project','context']},scope:{type:'string',enum:['global','project','conversation']},content:{type:'string'},evidence:{type:'string'},confidence:{type:'number'},expiresDays:{type:['integer','null']},explicitCorrection:{type:'boolean'}},required:['key','category','scope','content','evidence','confidence','expiresDays','explicitCorrection'],additionalProperties:false}},forget:{type:'array',items:{type:'object',properties:{key:{type:'string'},scope:{type:'string',enum:['global','project','conversation']},evidence:{type:'string'}},required:['key','scope','evidence'],additionalProperties:false}}},required:['memories','forget'],additionalProperties:false};
 const disabled=['shell_tool','unified_exec','apps','plugins','remote_plugin','hooks','multi_agent','multi_agent_v2','browser_use','browser_use_external','browser_use_full_cdp_access','in_app_browser','computer_use','code_mode','code_mode_host','goals','sleep_tool','memories','request_permissions_tool','skill_mcp_dependency_install','tool_suggest','recommended_plugins'];
-export function extractionArguments({directory,schema,model=process.env.SHIYAN_MEMORY_MODEL||'gpt-6-luna',effort='low'}={}){
+interface ExtractionArgumentsOptions { directory: string; schema: string; model?: string; effort?: string; }
+export function extractionArguments({directory,schema,model=process.env.SHIYAN_MEMORY_MODEL||'gpt-6-luna',effort='low'}: ExtractionArgumentsOptions){
   return ['exec','--ignore-user-config','--ignore-rules','--ephemeral','--skip-git-repo-check','--sandbox','read-only','--cd',directory,'--model',model,'--json','--color','never','--output-schema',schema,
     '-c','approval_policy="never"','-c','web_search="disabled"','-c','sandbox_workspace_write.network_access=false','-c','mcp_servers={}','-c',`model_reasoning_effort="${effort}"`,...disabled.flatMap(name=>['-c',`features.${name}=false`]),'-'];
 }
@@ -29,7 +30,8 @@ preference/profile可用global；项目细节有projectId时只能用project；�
 JSON数据：\n`+JSON.stringify({userText:job.user_text,assistantContext:job.assistant_text||'',projectId:job.project_id||null,conversationId:job.conversation_id||null,existingMemories:existing}).replace(/</g,'\\u003c');
 }
 const DEFAULT_MEMORY_BIN=process.env.SHIYAN_MEMORY_CODEX_BIN||'/home/ubuntu/.local/bin/codex';
-export async function extractMemories(job,existing=[],{binary=DEFAULT_MEMORY_BIN,timeoutMs=45000,model,infer=claudeMemoryInfer,hub=memoryHub}={}){
+interface ExtractMemoriesOptions { binary?: string; timeoutMs?: number; model?: string; infer?: any; hub?: any; }
+export async function extractMemories(job,existing=[],{binary=DEFAULT_MEMORY_BIN,timeoutMs=45000,model,infer=claudeMemoryInfer,hub=memoryHub}: ExtractMemoriesOptions={}){
   // 模型由模型中枢的 shiyan.memory 决定（调用方显式注入 infer/model 时除外）：
   // GPT 走下方 codex exec，采用中枢指定的模型与推理强度；其他提供方交给中枢推理。
   // 中枢不可用时沿用原有行为：成员账号用 Claude Haiku，私有账号用 codex exec。
@@ -44,7 +46,7 @@ export async function extractMemories(job,existing=[],{binary=DEFAULT_MEMORY_BIN
   if(route){model=route.model;if(route.reasoning&&route.reasoning!=='default')effort=route.reasoning;}
   if(route){const started=Date.now(),used={provider:'openai',model,reasoning:effort,account:job.owner};
     try{const value=await codexExtract(job,existing,{binary,timeoutMs,model,effort});hub.report?.('shiyan.memory',{...used,ok:true,ms:Date.now()-started});return value;}
-    catch(error){hub.report?.('shiyan.memory',{...used,ok:false,ms:Date.now()-started,error:String(error?.message||error)});throw error;}}
+    catch(error){hub.report?.('shiyan.memory',{...used,ok:false,ms:Date.now()-started,error:String((error as any)?.message||error)});throw error;}}
   if(!route&&job.owner?.startsWith('account:')){
     const result=await infer({model:model||CLAUDE_MEMORY_MODEL,reasoning:'low',prompt:extractionPrompt(job,existing)},
       {schema:MEMORY_SCHEMA,signal:AbortSignal.timeout(timeoutMs)});
@@ -63,7 +65,7 @@ async function codexExtract(job,existing,{binary,timeoutMs,model,effort}){
       // No per-job tokens or inherited app credentials enter this process.
       const child=spawn(binary,extractionArguments({directory,schema,model,effort}),{cwd:directory,env,stdio:['pipe','pipe','pipe']});
       let finished=false,buffer='',final='',bytes=0;const timer=setTimeout(()=>stop(new Error('memory extraction timed out')),timeoutMs);timer.unref();
-      function stop(error,value){if(finished)return;finished=true;clearTimeout(timer);if(error)child.kill('SIGKILL');error?reject(error):resolve(value);}
+      function stop(error,value?){if(finished)return;finished=true;clearTimeout(timer);if(error)child.kill('SIGKILL');error?reject(error):resolve(value);}
       const consume=line=>{if(!line.trim()||finished)return;let event;try{event=JSON.parse(line);}catch{return stop(new Error('invalid extraction stream'));}
         if(event.item){const item=event.item;if(item.type==='error'&&String(item.message||'').startsWith('Code Mode is unavailable because code-mode host is disabled.'))return;if(!['agent_message','reasoning'].includes(item.type))return stop(new Error('extractor attempted a tool operation'));if(item.type==='agent_message'&&event.type==='item.completed')final=item.text||'';}
         if(event.type==='turn.failed'||event.type==='error')stop(new Error('memory extraction model failed'));
@@ -78,7 +80,8 @@ async function codexExtract(job,existing,{binary,timeoutMs,model,effort}){
   }finally{await rm(directory,{recursive:true,force:true});}
 }
 
-export function createMemoryWorker(store,{extract=extractMemories,intervalMs=2000,logger=console,batch={minBatch:20,maxAgeMs:Number.POSITIVE_INFINITY,maxRows:20}}={}){
+interface MemoryWorkerOptions { extract?: any; intervalMs?: number; logger?: any; batch?: { minBatch?: number; maxAgeMs?: number; maxRows?: number; }; }
+export function createMemoryWorker(store,{extract=extractMemories,intervalMs=2000,logger=console,batch={minBatch:20,maxAgeMs:Number.POSITIVE_INFINITY,maxRows:20}}: MemoryWorkerOptions={}){
   let busy=false,closed=false,closedResolve;
   async function tick(){if(busy||closed)return false;const job=store.claimBatch(batch);if(!job)return false;busy=true;
     try{const existing=store.candidates(job.owner,job);const key=store.cacheKey(job,existing);let result=store.cacheGet(job.owner,key);
