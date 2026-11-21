@@ -5,8 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { spawn } from 'node:child_process';
-import { AccountStore, PRIVATE_OWNER } from './accounts.mjs';
-import { createAccountAvatarHandler } from './account-avatar.mjs';
+import { AccountStore, PRIVATE_OWNER } from './accounts.ts';
+import { createAccountAvatarHandler } from './account-avatar.ts';
 
 function python(code, input) {
   return new Promise((resolve, reject) => {
@@ -165,7 +165,7 @@ test('existing account handler mounts avatar routes and preserves auth/me', asyn
   const deviceRoot = mkdtempSync(path.join(os.tmpdir(), 'shiyan-avatar-device-test-'));
   process.env.SHIYAN_ROOT = deviceRoot;
   t.after(() => rmSync(deviceRoot, { recursive: true, force: true }));
-  const { createAccountHandler } = await import('./account-http.mjs');
+  const { createAccountHandler } = await import('./account-http.ts');
   const { a, request, base } = await setup(t, { createHandler: createAccountHandler });
   const response = await fetch(base.replace('/account/avatar', '/auth/me'), { headers: { Authorization: 'Bearer ' + a.token } });
   assert.equal(response.status, 200);

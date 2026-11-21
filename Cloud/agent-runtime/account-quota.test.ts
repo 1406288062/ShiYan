@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { quotaWindows, quotaResetCredits, createQuotaReader } from './account-quota.mjs';
+import { quotaWindows, quotaResetCredits, createQuotaReader } from './account-quota.ts';
 
 assert.deepEqual(quotaWindows({rateLimits:{primary:{usedPercent:25,windowDurationMins:300,resetsAt:100},secondary:{usedPercent:105,windowDurationMins:10080,resetsAt:200}}}).map(x=>[x.period,x.remainingPercent]),[['5 小时',75],['每周',0]]);
 assert.equal(quotaWindows({rateLimits:{primary:{usedPercent:null}}}).length,0);

@@ -3,8 +3,8 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { runMemberChat } from './member-chat.mjs';
-import { inferClaude } from './providers/claude.mjs';
+import { runMemberChat } from './member-chat.ts';
+import { inferClaude } from './providers/claude.ts';
 import { createHubClient } from '/home/ubuntu/model-hub/client.mjs';
 const memoryHub=createHubClient();
 

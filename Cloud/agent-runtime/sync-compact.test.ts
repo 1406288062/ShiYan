@@ -4,10 +4,10 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash, generateKeyPairSync, randomUUID, sign } from 'node:crypto';
-import { SyncStore, hydrateCompactMutation, hydrateMutation } from './sync-store.mjs';
+import { SyncStore, hydrateCompactMutation, hydrateMutation } from './sync-store.ts';
 
 process.env.SHIYAN_SYNC_NO_LISTEN='1';
-const { createSyncSidecar }=await import('./sync-sidecar.mjs');
+const { createSyncSidecar }=await import('./sync-sidecar.ts');
 const owner='compact-owner';
 const compactHeaders={'x-shiyan-sync-profile':'compact'};
 const mutation=(kind,id,data,baseRevision=0)=>({mutationId:randomUUID(),kind,id,data,baseRevision,deleted:false});

@@ -5,9 +5,9 @@ import os from 'node:os';
 import path from 'node:path';
 import {mkdtempSync,rmSync} from 'node:fs';
 import {randomBytes} from 'node:crypto';
-import {AccountStore} from './accounts.mjs';
-import {createAccountHandler} from './account-http.mjs';
-import {DeviceLogin} from './device-login.mjs';
+import {AccountStore} from './accounts.ts';
+import {createAccountHandler} from './account-http.ts';
+import {DeviceLogin} from './device-login.ts';
 
 const password='fixture-password-42';
 async function fixture(t) {

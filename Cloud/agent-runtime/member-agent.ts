@@ -3,11 +3,11 @@
 // authenticated account and the remote device's own permissions.
 import crypto from 'node:crypto';
 import path from 'node:path';
-import { memberProvider, refreshMemberProvider } from './member-chat.mjs';
-import { execSandbox, workspaceOperation, virtualWorkspacePath } from './member-sandbox.mjs';
-import { textFileChange } from './text-file-diff.mjs';
-import { createSpongeMcpAdapter } from './sponge-client.mjs';
-import { mcpConnectors } from './mcp-connectors.mjs';
+import { memberProvider, refreshMemberProvider } from './member-chat.ts';
+import { execSandbox, workspaceOperation, virtualWorkspacePath } from './member-sandbox.ts';
+import { textFileChange } from './text-file-diff.ts';
+import { createSpongeMcpAdapter } from './sponge-client.ts';
+import { mcpConnectors } from './mcp-connectors.ts';
 const unavailable=()=>Object.assign(new Error('AI服务暂不可用，请稍后重试'),{status:503});
 const fn=(name,description,properties,required=[])=>({type:'function',name,description,parameters:{type:'object',properties,required,additionalProperties:false},strict:false});
 const str={type:'string'},obj={type:'object',additionalProperties:true};

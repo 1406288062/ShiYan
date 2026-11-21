@@ -1,5 +1,5 @@
 import path from 'node:path';
-import {workspaceOperation} from './member-sandbox.mjs';
+import {workspaceOperation} from './member-sandbox.ts';
 import { DatabaseSync } from 'node:sqlite';
 import { readdirSync, readFileSync, lstatSync, realpathSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';

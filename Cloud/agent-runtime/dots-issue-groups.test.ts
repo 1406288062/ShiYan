@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {groupIssueTasks,DotsAdapter} from './dots-adapter.mjs';
+import {groupIssueTasks,DotsAdapter} from './dots-adapter.ts';
 const members=[{goal_id:1,issue_key:'dots',issue_title:'Dots 更新与执行环境'},{goal_id:2,issue_key:'dots',issue_title:'Dots 更新与执行环境'},{goal_id:3,issue_key:'mail',issue_title:'邮箱接入与通知'},{goal_id:4,issue_key:'mail',issue_title:'邮箱接入与通知'}];
 test('issue groups preserve history and select the outstanding phase',()=>{
  const tasks=[{id:1,title:'更新',status:'cancelled',updatedAt:20,createdAt:1},{id:2,title:'修复',status:'blocked',updatedAt:10,createdAt:2},{id:3,title:'评估',status:'done',acceptanceStatus:'accepted',updatedAt:11,createdAt:3},{id:4,title:'接入',status:'cancelled',updatedAt:12,createdAt:4}];

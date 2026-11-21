@@ -3,7 +3,7 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { createSpongeClient } from './sponge-client.mjs';
+import { createSpongeClient } from './sponge-client.ts';
 
 export const SPONGE_TOOLS = ['list_devices', 'run_device_tool', 'get_tool_result'];
 

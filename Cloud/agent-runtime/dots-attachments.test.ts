@@ -4,8 +4,8 @@ import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
-import { DotsAdapter } from './dots-adapter.mjs';
-import { createDotsSidecar } from './dots-sidecar.mjs';
+import { DotsAdapter } from './dots-adapter.ts';
+import { createDotsSidecar } from './dots-sidecar.ts';
 
 const owner='shiyan-private-owner';
 function fixture(t){

@@ -10,7 +10,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { createManagerStore } from '/home/ubuntu/dots-runtime/manager-store.mjs';
 import { createMcpBridge } from '/home/ubuntu/dots-runtime/mcp-events.mjs';
 import { startLocalMcpSocket } from '/home/ubuntu/dots-runtime/local-mcp-socket.mjs';
-import { DotsAdapter, DotsStore, createLocalDotsClient } from './dots-adapter.mjs';
+import { DotsAdapter, DotsStore, createLocalDotsClient } from './dots-adapter.ts';
 
 const OWNER='shiyan-private-owner';
 function fixture(t){

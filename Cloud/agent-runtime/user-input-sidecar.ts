@@ -2,8 +2,8 @@ import http from 'node:http';
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { authenticateDevice, digest } from './device-auth.mjs';
-import { UserInputStore } from './user-input.mjs';
+import { authenticateDevice, digest } from './device-auth.ts';
+import { UserInputStore } from './user-input.ts';
 
 const ROOT=process.env.SHIYAN_ROOT||'/home/ubuntu/boss-codex-service/shiyan-v2';
 const fail=(message,status=400)=>Object.assign(new Error(message),{status});

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { createSpongeHTTPHandler } from './sponge-http.mjs';
+import { createSpongeHTTPHandler } from './sponge-http.ts';
 
 async function fixture(t, overrides = {}) {
   const calls = [];

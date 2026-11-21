@@ -33,6 +33,7 @@ export function normalizeAnswers(questions,input){
   }));
 }
 export class UserInputStore {
+  db: DatabaseSync;
   constructor(root){
     mkdirSync(root,{recursive:true,mode:0o700});const file=path.join(root,'user-input.sqlite3');
     this.db=new DatabaseSync(file);chmodSync(file,0o600);

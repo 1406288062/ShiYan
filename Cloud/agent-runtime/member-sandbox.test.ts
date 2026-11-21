@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import {execSandbox,workspaceOperation,resolveSandboxDestination,isPublicSandboxAddress,runIsolatedJob,mcpSandboxOperation} from './member-sandbox.mjs';
+import {execSandbox,workspaceOperation,resolveSandboxDestination,isPublicSandboxAddress,runIsolatedJob,mcpSandboxOperation} from './member-sandbox.ts';
 const temp=await fs.mkdtemp(path.join(os.tmpdir(),'shiyan-member-test-'));const root=temp;test.after(()=>fs.rm(temp,{recursive:true,force:true}));
 const event=e=>'data: '+JSON.stringify(e)+'\n\n';
 const response=output=>new Response(output.map(event).join(''));
@@ -48,7 +48,7 @@ test('untrusted summaries cannot execute model-returned tools and strict structu
  assert.deepEqual(request.tools,[]);assert.equal(request.tool_choice,'none');assert.equal(request.text.format.strict,true);await assert.rejects(workspaceOperation('account:summary',{operation:'read',path:'/workspace/unsafe'},{root}),/不存在/);
 });
 test('download artifacts are captured only from the same owner and skip private configuration',async()=>{
- const {collectSandboxArtifacts}=await import('./member-sandbox.mjs');await workspaceOperation('account:download',{operation:'mkdir',path:'/workspace/.shiyan',recursive:true},{root});
+ const {collectSandboxArtifacts}=await import('./member-sandbox.ts');await workspaceOperation('account:download',{operation:'mkdir',path:'/workspace/.shiyan',recursive:true},{root});
  await workspaceOperation('account:download',{operation:'write',path:'/workspace/report.txt',content:'private result'},{root});await workspaceOperation('account:download',{operation:'write',path:'/workspace/.shiyan/mcp.json',content:'private credential'},{root});
  const found=await collectSandboxArtifacts('account:download',{text:'[下载](/workspace/report.txt) [配置](/workspace/.shiyan/mcp.json)',root});assert.equal(found.length,1);assert.equal(Buffer.from(found[0].data,'base64').toString(),'private result');assert.deepEqual(await collectSandboxArtifacts('account:download-other',{text:'[下载](/workspace/report.txt)',root}),[]);
 });
@@ -61,7 +61,7 @@ test('aggregate workspace quota stops shell writes without deleting data and rej
 });
 
 test('terminal cancellation kills background descendants, not only the client process',async()=>{
- const {spawnSandbox,memberWorkspaceHostPath}=await import('./member-sandbox.mjs');const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+ const {spawnSandbox,memberWorkspaceHostPath}=await import('./member-sandbox.ts');const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
  for(const method of ['SIGTERM','SIGKILL','abort']){const owner='account:lifetime:'+method,abort=new AbortController();const child=await spawnSandbox(owner,{command:'(while true; do echo tick >> /workspace/ticks; sleep 0.1; done) & echo ready; wait',signal:abort.signal,root,timeoutMs:5000});child.stderr.resume();await new Promise(resolve=>child.stdout.once('data',resolve));const closed=new Promise(resolve=>child.once('close',resolve));if(method==='abort')abort.abort();else child.kill(method);await closed;const file=memberWorkspaceHostPath(owner,{root})+'/ticks',before=await fs.readFile(file,'utf8').catch(()=>null);await pause(350);assert.equal(await fs.readFile(file,'utf8').catch(()=>null),before,method);}
 });
 test('agent project IDs bind to the authenticated owner project and cannot select another owner project',async()=>{
@@ -77,7 +77,7 @@ test('real before/after edits return unified diffs and exact counts for the file
  const file=result.fileChanges.find(f=>f.path==='/workspace/main.txt');assert.equal(file.kind,'update');assert.equal(file.available,true);assert.equal(file.added,2);assert.equal(file.removed,2);assert.equal(file.additions,2);assert.equal(file.deletions,2);assert.match(file.diff,/^--- a\/main.txt\n\+\+\+ b\/main.txt\n/m);assert.match(file.diff,/^-old first$/m);assert.match(file.diff,/^\+new last$/m);assert.equal((file.diff.match(/^@@/gm)||[]).length,2);assert(!file.diff.includes('/home/ubuntu'));
 });
 test('diff add/delete, binary explanations and aggregate limits preserve honest viewer semantics',async()=>{
- const {changedFiles}=await import('./member-agent.mjs');
+ const {changedFiles}=await import('./member-agent.ts');
  const change=await changedFiles({files:[{path:'/workspace/removed.txt',text:'old\n',sha256:'a'}]},{files:[{path:'/workspace/added.txt',text:'new\n',sha256:'b'},{path:'/workspace/binary.dat',size:2,textUnavailableReason:'binary'}]});
  const added=change.find(f=>f.kind==='add'&&f.path.endsWith('added.txt')),removed=change.find(f=>f.kind==='delete');assert.equal(added.available,true);assert.equal(added.added,1);assert.equal(added.removed,0);assert.match(added.diff,/^\+new$/m);assert.equal(removed.available,true);assert.equal(removed.added,0);assert.equal(removed.removed,1);assert.match(removed.diff,/^-old$/m);
  const binary=change.find(f=>f.path.endsWith('.dat'));assert.equal(binary.available,false);assert.equal(binary.added,null);assert.equal(binary.diff,'');assert.match(binary.source,/二进制/);

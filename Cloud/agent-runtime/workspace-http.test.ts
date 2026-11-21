@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
-import { createWorkspaceHandler, virtualPath } from './workspace-http.mjs';
+import { createWorkspaceHandler, virtualPath } from './workspace-http.ts';
 
 async function fixture(t) {
   const files = new Map(), spawned = [];

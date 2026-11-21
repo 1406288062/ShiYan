@@ -1,4 +1,4 @@
-import { editedBranchInput } from './edit-history.mjs';
+import { editedBranchInput } from './edit-history.ts';
 
 // Codex CLI requires nonempty stdin even when images are passed with --image.
 // Keep the stored user prompt intact; supply context only for image-only turns.

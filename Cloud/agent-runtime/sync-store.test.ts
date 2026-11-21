@@ -4,8 +4,8 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { generateKeyPairSync, createHash, randomUUID, sign } from 'node:crypto';
-import { mobileSyncChange } from './sync-mobile-projection.mjs';
-import { SyncStore, hydrateMutation, hydrateStoredMutation, materializeJob, readSyncAsset, jobMessageData } from './sync-store.mjs';
+import { mobileSyncChange } from './sync-mobile-projection.ts';
+import { SyncStore, hydrateMutation, hydrateStoredMutation, materializeJob, readSyncAsset, jobMessageData } from './sync-store.ts';
 
 const fixture=()=>{const root=mkdtempSync(path.join(os.tmpdir(),'shiyan-sync-'));const store=new SyncStore(root);return {root,store,done(){store.close();rmSync(root,{recursive:true,force:true});}};};
 const mutation=(kind,id,data,baseRevision=0,deleted=false)=>({mutationId:randomUUID(),kind,id,data,baseRevision,deleted});
@@ -100,7 +100,7 @@ test('legacy signature verifier covers full path/query and synchronizes two devi
   const keys=[generateKeyPairSync('ed25519'),generateKeyPairSync('ed25519'),generateKeyPairSync('ed25519')];const registry={};
   const identities=keys.map((key,n)=>{const raw=key.publicKey.export({format:'der',type:'spki'}).subarray(-32),id=createHash('sha256').update(raw).digest('hex');registry[id]={approved:true,publicKey:raw.toString('base64'),owner:n===2?'owner-b':'owner-a'};return {id,key:key.privateKey};});
   writeFileSync(path.join(root,'devices.json'),JSON.stringify(registry));process.env.SHIYAN_ROOT=root;process.env.SHIYAN_SYNC_NO_LISTEN='1';
-  const {createSyncSidecar}=await import('./sync-sidecar.mjs');const {authenticateLegacyDevice}=await import('./device-auth.mjs');const server=createSyncSidecar({root,authenticate:authenticateLegacyDevice});await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const base='http://127.0.0.1:'+server.address().port;
+  const {createSyncSidecar}=await import('./sync-sidecar.ts');const {authenticateLegacyDevice}=await import('./device-auth.ts');const server=createSyncSidecar({root,authenticate:authenticateLegacyDevice});await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const base='http://127.0.0.1:'+server.address().port;
   async function request(device,method,route,data,sentRoute=route){const body=data===undefined?'':JSON.stringify(data),timestamp=Date.now(),nonce=randomUUID(),digest=createHash('sha256').update(body).digest('hex');const message=[method,route,String(timestamp),nonce,digest].join('\n');return fetch(base+sentRoute,{method,headers:{'Content-Type':'application/json','x-shiyan-device':device.id,'x-shiyan-time':String(timestamp),'x-shiyan-nonce':nonce,'x-shiyan-body-sha':digest,'x-shiyan-signature':sign(null,Buffer.from(message),device.key).toString('base64')},...(method==='POST'?{body}:{})});}
   try{
     const id=randomUUID(),m=mutation('projects',id,project(id));assert.equal((await request(identities[0],'POST','/shiyan/v1/sync',{after:0,mutations:[m]})).status,200);
@@ -213,7 +213,7 @@ test('stored executor output hydrates stale phone mutations without loading exec
 
 test('runtime-backed sidecar serves and hydrates SQLite without parsing unavailable archive',async()=>{
  const f=fixture();process.env.SHIYAN_SYNC_NO_LISTEN='1';
- const {createSyncSidecar}=await import('./sync-sidecar.mjs');
+ const {createSyncSidecar}=await import('./sync-sidecar.ts');
  const server=createSyncSidecar({root:f.root,store:f.store,runtimeWrites:true,authenticate:()=>({owner:'owner-a'})});
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  const base='http://127.0.0.1:'+server.address().port;
@@ -281,7 +281,7 @@ test('mobile sync bounds verbose execution data while preserving full records an
 });
 
 test('mobile profile serves compact snapshots and authenticated full details separately',async()=>{
- const f=fixture();process.env.SHIYAN_SYNC_NO_LISTEN='1';const {createSyncSidecar}=await import('./sync-sidecar.mjs');
+ const f=fixture();process.env.SHIYAN_SYNC_NO_LISTEN='1';const {createSyncSidecar}=await import('./sync-sidecar.ts');
  const server=createSyncSidecar({root:f.root,store:f.store,runtimeWrites:true,authenticate:req=>({owner:req.headers['x-test-owner']||'owner-a',platform:'ios'})});await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  try{
   const mid=randomUUID(),cid=randomUUID();f.store.putAuthoritative('owner-a','conversations',cid,{id:cid,title:'details'});f.store.putAuthoritative('owner-a','messages',mid,{...assistant(mid,cid,'req'),rawResult:'full raw'.repeat(20000),fileChanges:[{path:'big.swift',diff:'full diff'.repeat(150000)}]});

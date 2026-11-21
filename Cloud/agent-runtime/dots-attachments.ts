@@ -45,7 +45,7 @@ export class DotsAttachments {
   }
   async bindRuntimeMessage(owner,requestId,text,attachments,{privateOwner='shiyan-private-owner'}={}){
     if(owner===privateOwner||!attachments.length)return this.bindMessage(owner,requestId,text,attachments);
-    const {workspaceOperation}=await import('./member-sandbox.mjs');
+    const {workspaceOperation}=await import('./member-sandbox.ts');
     for(const attachment of attachments){
       const file=this.download(owner,attachment.id),target='/workspace/inputs/'+attachment.id+'/'+attachment.filename;
       await workspaceOperation(owner,{operation:'mkdir',path:'/workspace/inputs/'+attachment.id,recursive:true});

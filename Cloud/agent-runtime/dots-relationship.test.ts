@@ -4,11 +4,11 @@ import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
-import {DotsAdapter,DotsStore,createLocalDotsClient} from './dots-adapter.mjs';
+import {DotsAdapter,DotsStore,createLocalDotsClient} from './dots-adapter.ts';
 import http from 'node:http';
 import {DatabaseSync} from 'node:sqlite';
 import {pathToFileURL} from 'node:url';
-import {createDotsSidecar} from './dots-sidecar.mjs';
+import {createDotsSidecar} from './dots-sidecar.ts';
 
 const owner='shiyan-private-owner';
 function fixture(t){

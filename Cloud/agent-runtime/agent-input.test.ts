@@ -3,7 +3,7 @@ import { mkdtemp, writeFile, readFile, chmod, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { Codex } from '@openai/codex-sdk';
-import { agentPrompt } from './agent-input.mjs';
+import { agentPrompt } from './agent-input.ts';
 const dir=await mkdtemp(path.join(os.tmpdir(),'shiyan-input-'));
 try {
  const cli=path.join(dir,'fake-codex.cjs'),report=path.join(dir,'input.json');

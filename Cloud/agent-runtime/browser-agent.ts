@@ -13,8 +13,8 @@ import path from 'node:path';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync, unlinkSync, chmodSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { normalizeBrowserURL, normalizeIdentity, runLxc as defaultLxc, BROWSER_CONTAINER_NAME } from './browser-session.mjs';
-import { ACTIVE_STATUSES, DOTS_ANSWERABLE, USER_ONLY, originMatches } from './browser-store.mjs';
+import { normalizeBrowserURL, normalizeIdentity, runLxc as defaultLxc, BROWSER_CONTAINER_NAME } from './browser-session.ts';
+import { ACTIVE_STATUSES, DOTS_ANSWERABLE, USER_ONLY, originMatches } from './browser-store.ts';
 
 const fail = (message, status = 400, code = undefined) => Object.assign(new Error(message), { status }, code ? { code } : {});
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));

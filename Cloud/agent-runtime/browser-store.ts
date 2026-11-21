@@ -66,6 +66,8 @@ export class SecretBox {
 }
 
 export class BrowserStore {
+  root: string;
+  db: DatabaseSync;
   constructor(root, { databasePath = path.join(root, 'browser.sqlite3'), secretBox = null } = {}) {
     mkdirSync(root, { recursive: true, mode: 0o700 });
     this.root = root;

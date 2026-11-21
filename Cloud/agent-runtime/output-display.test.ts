@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { projectDisplayItem, upsertDisplayItem, displayItemsForJob, jobSnapshot, projectUsage } from './output-display.mjs';
-import { cleanSyncData, jobMessageData } from './sync-store.mjs';
+import { projectDisplayItem, upsertDisplayItem, displayItemsForJob, jobSnapshot, projectUsage } from './output-display.ts';
+import { cleanSyncData, jobMessageData } from './sync-store.ts';
 
 const command = (id, overrides = {}) => ({ id, type: 'command_execution', command: 'npm test', aggregated_output: '', status: 'in_progress', ...overrides });
 const message = (overrides = {}) => ({ id: 'message-id', conversationId: 'conversation-id', role: 'assistant', text: 'answer', ...overrides });

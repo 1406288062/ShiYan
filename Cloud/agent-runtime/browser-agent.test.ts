@@ -4,9 +4,9 @@ import { EventEmitter } from 'node:events';
 import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { BrowserStore, SecretBox } from './browser-store.mjs';
-import { BrowserAgentHost, startBrowserAgentSocket, browserAgentRequest } from './browser-agent.mjs';
-import { BrowserSessionManager, identityProfilePath } from './browser-session.mjs';
+import { BrowserStore, SecretBox } from './browser-store.ts';
+import { BrowserAgentHost, startBrowserAgentSocket, browserAgentRequest } from './browser-agent.ts';
+import { BrowserSessionManager, identityProfilePath } from './browser-session.ts';
 
 // ---- a scripted Chrome: pages are { url, elements: {ref: {name,type}}, text } ----------------------
 function fakeChrome(host) {

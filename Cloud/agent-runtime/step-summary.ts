@@ -2,7 +2,7 @@
 // - 按步骤内容做哈希缓存，同一步骤只生成一次；
 // - 模型不可用时返回空，客户端继续显示原始的步骤标题。
 import crypto from 'node:crypto';
-import { inferClaude } from './providers/claude.mjs';
+import { inferClaude } from './providers/claude.ts';
 
 export const STEP_MODEL = 'claude-haiku-4-5-20251001';
 const SCHEMA = { type: 'object', additionalProperties: false, required: ['steps'], properties: { steps: { type: 'array', items: {

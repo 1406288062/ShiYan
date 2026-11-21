@@ -22,12 +22,12 @@ test('runtime mounts Sponge only after real account authentication and keeps own
   res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify(value));
  });
  connector.listen(process.env.SHIYAN_SPONGE_SOCKET);await once(connector,'listening');
- const {getAccountStore,PRIVATE_OWNER}=await import('./accounts.mjs');
+ const {getAccountStore,PRIVATE_OWNER}=await import('./accounts.ts');
  const store=getAccountStore();
  const admin=await store.register({username:'route_admin',password:'route-password'},{bootstrap:true,trustedOwner:PRIVATE_OWNER});
  const member=await store.register({username:'route_member',password:'route-password'});
  const other=await store.register({username:'route_other',password:'route-password'});
- const {createServer}=await import('./server.mjs');const runtime=createServer();const base='http://127.0.0.1:'+await listen(runtime);
+ const {createServer}=await import('./server.ts');const runtime=createServer();const base='http://127.0.0.1:'+await listen(runtime);
  t.after(async()=>{await Promise.all([close(runtime),close(connector)]);store.close();await rm(root,{recursive:true,force:true});});
  const request=(route,token,{method='GET',body}={})=>fetch(base+route,{method,headers:{...(token?{Authorization:'Bearer '+token}:{}),...(body===undefined?{}:{'Content-Type':'application/json'}),'x-shiyan-owner':'spoofed-admin','x-dots-owner':'spoofed-admin'},...(body===undefined?{}:{body:JSON.stringify(body)})});
  for(const prefix of ['/v1','/shiyan/v1']){

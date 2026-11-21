@@ -1,6 +1,6 @@
 import { createHash, createPublicKey, verify } from 'node:crypto';
-import { memberExecution, prepareMemberSchedule } from './member-schedules.mjs';
-import { verifiedCatalog } from './providers/index.mjs';
+import { memberExecution, prepareMemberSchedule } from './member-schedules.ts';
+import { verifiedCatalog } from './providers/index.ts';
 
 export const SCHEDULE_CONFIG = ['title','instruction','emoji','enabled','repeat','time','timezone','startDate','endDate','runLocally','notificationMode','newChatEachRun','model','reasoning','projectId'];
 export const SCHEDULE_REPORT = ['executorDeviceId','executionMode','status','nextRunAt','lastRunAt','lastRunState','lastError','conversationId','createdAt','updatedAt','source'];

@@ -1,6 +1,6 @@
 import http from 'node:http';
 import { pathToFileURL } from 'node:url';
-import { handleAccountRequest } from './account-http.mjs';
+import { handleAccountRequest } from './account-http.ts';
 
 export function createAccountSidecar(){
   return http.createServer(async(req,res)=>{

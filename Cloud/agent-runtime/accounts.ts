@@ -4,7 +4,7 @@ import { createHash, randomBytes, randomUUID, scrypt, timingSafeEqual } from 'no
 import { promisify } from 'node:util';
 import { mkdirSync, chmodSync } from 'node:fs';
 import path from 'node:path';
-import { accountRegistrationOutbox, enqueueAccountRegistration, REGISTRATION_SOCKET } from './registration-events.mjs';
+import { accountRegistrationOutbox, enqueueAccountRegistration, REGISTRATION_SOCKET } from './registration-events.ts';
 
 export const PRIVATE_OWNER = 'shiyan-private-owner';
 const ROOT = process.env.SHIYAN_ROOT || '/home/ubuntu/boss-codex-service/shiyan-v2';
@@ -37,6 +37,9 @@ const fields = input => {
 };
 
 export class AccountStore {
+  now: () => number;
+  sessionDays: number;
+  db: DatabaseSync;
   constructor(root = path.join(ROOT, 'data'), { now = Date.now, sessionDays = 30,
     registrationSocketPath = path.resolve(root) === path.resolve(ROOT, 'data') ? REGISTRATION_SOCKET : false } = {}) {
     mkdirSync(root, { recursive: true, mode: 0o700 });

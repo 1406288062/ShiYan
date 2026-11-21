@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {chatMemoryScope,createChatMemory} from './memory-chat.mjs';
+import {chatMemoryScope,createChatMemory} from './memory-chat.ts';
 
 function fixture(){
   const reads=[],contexts=[],captures=[],warnings=[];

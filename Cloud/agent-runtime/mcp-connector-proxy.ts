@@ -3,7 +3,7 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { mcpConnectors } from './mcp-connectors.mjs';
+import { mcpConnectors } from './mcp-connectors.ts';
 
 const owner = String(process.env.SHIYAN_MCP_OWNER || '');
 const connectorId = String(process.env.SHIYAN_MCP_ID || '');

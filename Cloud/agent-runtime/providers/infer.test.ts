@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { extractJson, validateJson, schemaInstruction, addUsage } from './json-output.mjs';
-import { inferClaude } from './claude.mjs';
+import { extractJson, validateJson, schemaInstruction, addUsage } from './json-output.ts';
+import { inferClaude } from './claude.ts';
 
 const SCHEMA = { type: 'object', additionalProperties: false, required: ['summary', 'score'], properties: { summary: { type: 'string', maxLength: 20 }, score: { type: 'integer', minimum: 0, maximum: 10 } } };
 

@@ -4,8 +4,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash, generateKeyPairSync, randomUUID, sign } from 'node:crypto';
-import { SyncStore } from './sync-store.mjs';
-import { SyncedSchedules, prepareScheduleMutation } from './sync-schedules.mjs';
+import { SyncStore } from './sync-store.ts';
+import { SyncedSchedules, prepareScheduleMutation } from './sync-schedules.ts';
 
 const owner = 'schedule-test-owner';
 const keys = [generateKeyPairSync('ed25519'), generateKeyPairSync('ed25519')];

@@ -8,9 +8,9 @@ import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { setTimeout as delay } from 'node:timers/promises';
 import { Codex } from '@openai/codex-sdk';
-import { UserInputStore, normalizeQuestions } from './user-input.mjs';
-import { createInputSidecar, legacyOwnerReader } from './user-input-sidecar.mjs';
-import { digest } from './device-auth.mjs';
+import { UserInputStore, normalizeQuestions } from './user-input.ts';
+import { createInputSidecar, legacyOwnerReader } from './user-input-sidecar.ts';
+import { digest } from './device-auth.ts';
 
 const questions=[{id:'entry',header:'网页入口',question:'你使用哪个网页入口？',options:[{label:'本机网页',description:'Mac 本机'},{label:'服务器网页',description:'远程服务'}]}];
 const answer={answers:{entry:{answers:['本机网页']}}};
@@ -49,7 +49,7 @@ test('real stdio MCP waits, UI submits, and same in-flight call receives the ans
   const f=fixture();const token=f.store.registerJob({id:'job_stdio',owner:'alice'});
   const server=createInputSidecar({store:f.store,authenticate:req=>req.headers['x-test-owner']?{owner:req.headers['x-test-owner']}:null,legacyJobOwner:id=>id==='legacy_one'?'alice':null});
   server.listen(0,'127.0.0.1');await once(server,'listening');const base='http://127.0.0.1:'+server.address().port;
-  const child=spawn(process.execPath,[new URL('./user-input-mcp.mjs',import.meta.url).pathname],{env:{...process.env,SHIYAN_INPUT_URL:base,SHIYAN_INPUT_JOB:'job_stdio',SHIYAN_INPUT_TOKEN:token},stdio:['pipe','pipe','pipe']});
+  const child=spawn(process.execPath,[new URL('./user-input-mcp.ts',import.meta.url).pathname],{env:{...process.env,SHIYAN_INPUT_URL:base,SHIYAN_INPUT_JOB:'job_stdio',SHIYAN_INPUT_TOKEN:token},stdio:['pipe','pipe','pipe']});
   const lines=createInterface({input:child.stdout});const replies=new Map(),waiters=new Map();let output='',error='';
   child.stdout.on('data',data=>output+=data);child.stderr.on('data',data=>error+=data);
   lines.on('line',line=>{const value=JSON.parse(line);replies.set(value.id,value);waiters.get(value.id)?.(value);});

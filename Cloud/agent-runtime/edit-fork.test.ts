@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { retainedTurnID } from './edit-fork.mjs';
+import { retainedTurnID } from './edit-fork.ts';
 
 const jobID = '11111111-1111-4111-8111-111111111111';
 const manifest = `/workspace/.shiyan/changes/${jobID}.jsonl`;

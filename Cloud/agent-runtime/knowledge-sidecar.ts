@@ -1,7 +1,7 @@
 import http from 'node:http';
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { authenticateDevice, digest } from './device-auth.mjs';
+import { authenticateDevice, digest } from './device-auth.ts';
 
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
 const MAX_BODY = 60 * 1024 * 1024;

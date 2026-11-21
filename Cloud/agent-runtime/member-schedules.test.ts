@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { SyncStore } from './sync-store.mjs';
-import { prepareScheduleMutation, SyncedSchedules } from './sync-schedules.mjs';
-import { MemberScheduleWorker, nextMemberRun } from './member-schedules.mjs';
+import { SyncStore } from './sync-store.ts';
+import { prepareScheduleMutation, SyncedSchedules } from './sync-schedules.ts';
+import { MemberScheduleWorker, nextMemberRun } from './member-schedules.ts';
 
 const clock = Date.parse('2026-10-23T01:00:00Z');
 const task = () => ({ id: 'schedule-test-id', title: 'Own task', instruction: 'Write my report', enabled: true, repeat: 'daily', time: '09:00', timezone: 'Asia/Shanghai', startDate: '2026-10-23', endDate: null, runLocally: true, notificationMode: 'all', newChatEachRun: false, model: 'test-model', reasoning: 'low', projectId: null });

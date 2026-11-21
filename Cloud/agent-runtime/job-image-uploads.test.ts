@@ -4,7 +4,7 @@ import {mkdtemp, rm, stat, writeFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
-import {JobImageUploads} from './job-image-uploads.mjs';
+import {JobImageUploads} from './job-image-uploads.ts';
 
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 async function fixture(run) {

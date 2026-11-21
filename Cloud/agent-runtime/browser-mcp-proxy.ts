@@ -6,8 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { browserAgentRequest, defaultBrowserSocket } from './browser-agent.mjs';
-import { BROWSER_TOOLS } from './browser-tool-defs.mjs';
+import { browserAgentRequest, defaultBrowserSocket } from './browser-agent.ts';
+import { BROWSER_TOOLS } from './browser-tool-defs.ts';
 
 const owner = String(process.env.SHIYAN_MCP_OWNER || '');
 const origin = ['chat', 'scheduled', 'push', 'webapp'].includes(process.env.SHIYAN_BROWSER_ORIGIN) ? process.env.SHIYAN_BROWSER_ORIGIN : 'chat';

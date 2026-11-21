@@ -6,8 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { browserAgentRequest, defaultBrowserSocket } from './browser-agent.mjs';
-import { EXEC_TOOLS } from './browser-tool-defs.mjs';
+import { browserAgentRequest, defaultBrowserSocket } from './browser-agent.ts';
+import { EXEC_TOOLS } from './browser-tool-defs.ts';
 
 const taskId = String(process.env.SHIYAN_BROWSER_TASK || ''), token = String(process.env.SHIYAN_BROWSER_EXEC_TOKEN || '');
 const socketPath = process.env.SHIYAN_BROWSER_SOCKET || defaultBrowserSocket(process.env.SHIYAN_ROOT || path.resolve(path.dirname(fileURLToPath(import.meta.url))));

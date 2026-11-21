@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {mkdtemp,readFile,rm} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import {normalizeFiles,writeFileInputs} from './file-input.mjs';
+import {normalizeFiles,writeFileInputs} from './file-input.ts';
 const encode=text=>Buffer.from(text).toString('base64');
 const files=normalizeFiles([{filename:'../../notes.txt',data:encode('完整内容\n第二行')},{filename:'notes.txt',data:encode('second')}]);
 assert.equal(files[0].filename,'notes.txt');

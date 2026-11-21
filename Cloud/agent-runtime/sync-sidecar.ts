@@ -1,15 +1,15 @@
-import { reconcileSyncImageResult } from './image-result-consistency.mjs';
-import { sendSyncAsset } from './sync-asset-response.mjs';
+import { reconcileSyncImageResult } from './image-result-consistency.ts';
+import { sendSyncAsset } from './sync-asset-response.ts';
 import http from 'node:http';
 import path from 'node:path';
 import { readFileSync, statSync } from 'node:fs';
-import { authenticateDevice, digest } from './device-auth.mjs';
-import { SyncStore, materializeJob, hydrateMutation, hydrateCompactMutation, hydrateStoredMutation, readSyncAsset, withAcceptedSnapshots } from './sync-store.mjs';
-import { mobileSyncChange } from './sync-mobile-projection.mjs';
-import { SyncedSchedules } from './sync-schedules.mjs';
-import { createFilePathResolver } from './sync-file-paths.mjs';
-import { createRemoteFileChangeProjector } from './remote-file-changes.mjs';
-import { combinedRuntimeState } from './runtime-state.mjs';
+import { authenticateDevice, digest } from './device-auth.ts';
+import { SyncStore, materializeJob, hydrateMutation, hydrateCompactMutation, hydrateStoredMutation, readSyncAsset, withAcceptedSnapshots } from './sync-store.ts';
+import { mobileSyncChange } from './sync-mobile-projection.ts';
+import { SyncedSchedules } from './sync-schedules.ts';
+import { createFilePathResolver } from './sync-file-paths.ts';
+import { createRemoteFileChangeProjector } from './remote-file-changes.ts';
+import { combinedRuntimeState } from './runtime-state.ts';
 
 const ROOT=process.env.SHIYAN_ROOT||'/home/ubuntu/boss-codex-service/shiyan-v2';
 const PORT=Number(process.env.SHIYAN_SYNC_PORT||4324);

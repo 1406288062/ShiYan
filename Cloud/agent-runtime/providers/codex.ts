@@ -3,8 +3,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { Codex } from '@openai/codex-sdk';
-import { refreshModels } from '../model-capabilities.mjs';
-import { runIsolatedJob } from '../member-agent.mjs';
+import { refreshModels } from '../model-capabilities.ts';
+import { runIsolatedJob } from '../member-agent.ts';
 
 const CODEX_BIN = process.env.SHIYAN_CODEX_BIN || '/home/ubuntu/.local/bin/codex';
 

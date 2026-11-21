@@ -1,8 +1,8 @@
 import http from 'node:http';
 import { pathToFileURL } from 'node:url';
-import { authenticateDevice, digest } from './device-auth.mjs';
-import { createQuotaReader } from './account-quota.mjs';
-import { createAccountQuotaReader } from './claude-quota.mjs';
+import { authenticateDevice, digest } from './device-auth.ts';
+import { createQuotaReader } from './account-quota.ts';
+import { createAccountQuotaReader } from './claude-quota.ts';
 
 const json = (res, status, value, headers = {}) => {
   const body = JSON.stringify(value);

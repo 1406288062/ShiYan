@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {AccountStore} from './accounts.mjs';
-import {DeviceLogin} from './device-login.mjs';
+import {AccountStore} from './accounts.ts';
+import {DeviceLogin} from './device-login.ts';
 const root=mkdtempSync(path.join(os.tmpdir(),'device-login-'));test.after(()=>rmSync(root,{recursive:true,force:true}));
 async function setup(t){let now=Date.now();const a=new AccountStore(path.join(root,Math.random().toString()),{now:()=>now});t.after(()=>a.close());const phone=await a.register({email:'phone@example.test',password:'test-password-42'}),other=await a.register({email:'other@example.test',password:'test-password-42'});const d=new DeviceLogin(a),row=a.db.prepare('SELECT * FROM account_users WHERE id=?').get(phone.user.id),device=d.pair(row);return {a,d,phone,other,creds:{deviceId:device.id,deviceSecret:device.secret},advance:()=>now+=120001};}
 test('remembered device never authenticates until the correct phone explicitly approves, then exchanges once',async t=>{
@@ -26,7 +26,7 @@ test('rejection, expiry, wrong device secret and revoked phone sessions never au
 });
 
 import http from 'node:http';
-import {createAccountHandler} from './account-http.mjs';
+import {createAccountHandler} from './account-http.ts';
 test('HTTP first QR pairing enables subsequent phone-confirmed login without scanning',async t=>{
  const {a,phone,other}=await setup(t),handler=createAccountHandler({store:a});
  const server=http.createServer(async(req,res)=>{if(!await handler(req,res)){res.writeHead(404);res.end();}});

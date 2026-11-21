@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
-import { createComputeBroker } from './mac-compute-sidecar.mjs';
+import { createComputeBroker } from './mac-compute-sidecar.ts';
 
 const clientToken = 'test-client-' + 'c'.repeat(40);
 const workerToken = 'test-worker-' + 'w'.repeat(40);

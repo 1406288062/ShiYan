@@ -9,8 +9,8 @@ import path from 'node:path';
 const root = await mkdtemp(path.join(path.dirname(fileURLToPath(import.meta.url)), '.quota-auth-test-'));
 const originalRoot = process.env.SHIYAN_ROOT;
 process.env.SHIYAN_ROOT = root;
-const { createQuotaSidecar } = await import('./account-quota-sidecar.mjs');
-const { createQuotaReader } = await import('./account-quota.mjs');
+const { createQuotaSidecar } = await import('./account-quota-sidecar.ts');
+const { createQuotaReader } = await import('./account-quota.ts');
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const emptyHash = hash(Buffer.alloc(0));
 function makeDevice() {

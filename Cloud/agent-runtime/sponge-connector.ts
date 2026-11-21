@@ -8,7 +8,7 @@ import {chmodSync, mkdirSync} from 'node:fs';
 import {DatabaseSync} from 'node:sqlite';
 import {randomBytes, createHash, createHmac} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
-import {getAccountStore} from './accounts.mjs';
+import {getAccountStore} from './accounts.ts';
 
 const ROOT=process.env.SHIYAN_ROOT || '/home/ubuntu/boss-codex-service/shiyan-v2';
 export const SPONGE_SOCKET=process.env.SHIYAN_SPONGE_SOCKET || path.join(ROOT,'data/sponge/connector.sock');
@@ -27,6 +27,8 @@ function decodeMcp(result){
 }
 
 export class SpongeConnector {
+  db: DatabaseSync;
+  now: () => number;
   constructor({directory=path.join(ROOT,'data/sponge'),secret,issuer='https://mcp.yandot.ai',
     transportBase='http://127.0.0.1:4341',callback=issuer+'/shiyan/callback',accountStore,
     fetchImpl=fetch,now=Date.now}={}){

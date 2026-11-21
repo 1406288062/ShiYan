@@ -1,4 +1,4 @@
-import { createSpongeClient } from './sponge-client.mjs';
+import { createSpongeClient } from './sponge-client.ts';
 
 const failure = (message, status = 400) => Object.assign(new Error(message), { status });
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);

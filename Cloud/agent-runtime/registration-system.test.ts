@@ -10,12 +10,12 @@ import net from 'node:net';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { DatabaseSync } from 'node:sqlite';
-import { AccountStore, PRIVATE_OWNER } from './accounts.mjs';
-import { createAccountHandler } from './account-http.mjs';
-import { DotsAdapter, createLocalDotsClient } from './dots-adapter.mjs';
-import { createDotsSidecar } from './dots-sidecar.mjs';
-import { postRegistrationEvent } from './registration-events.mjs';
-import { createApp as createSpongeApp } from '../../yu-remote-commander/src/server.mjs';
+import { AccountStore, PRIVATE_OWNER } from './accounts.ts';
+import { createAccountHandler } from './account-http.ts';
+import { DotsAdapter, createLocalDotsClient } from './dots-adapter.ts';
+import { createDotsSidecar } from './dots-sidecar.ts';
+import { postRegistrationEvent } from './registration-events.ts';
+import { createApp as createSpongeApp } from '../../yu-remote-commander/src/server.ts';
 
 const password = 'isolated-system-test-password-42';
 const waitFor = async predicate => {

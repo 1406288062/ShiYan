@@ -3,7 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { randomUUID, createHash } from 'node:crypto';
 import { mkdirSync, chmodSync } from 'node:fs';
 import path from 'node:path';
-import { worthExtracting } from './memory-filter.mjs';
+import { worthExtracting } from './memory-filter.ts';
 
 const DAY=86400000;
 export const MAX_MEMORIES=500;
@@ -26,6 +26,9 @@ const tokens=value=>{
 const equalScope=(a,b)=>a.scope===b.scope&&(a.project_id||'')===(b.projectId||'')&&(a.conversation_id||'')===(b.conversationId||'');
 
 export class MemoryStore {
+  root: string;
+  now: () => number;
+  db: DatabaseSync;
   constructor(root,{now=Date.now}={}){
     mkdirSync(root,{recursive:true,mode:0o700});this.root=root;this.now=now;
     const file=path.join(root,'memory.sqlite3');this.db=new DatabaseSync(file);chmodSync(file,0o600);

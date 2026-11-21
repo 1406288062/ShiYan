@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { generatedOutputVisible, generatedPathVisible } from './generated-output.mjs';
-import { SyncStore, jobMessageData } from './sync-store.mjs';
-import { jobSnapshot } from './output-display.mjs';
+import { generatedOutputVisible, generatedPathVisible } from './generated-output.ts';
+import { SyncStore, jobMessageData } from './sync-store.ts';
+import { jobSnapshot } from './output-display.ts';
 
 const asset=filename=>({id:filename.replace(/\W/g,'_'),syncAssetId:filename.replace(/\W/g,'_'),filename,mimeType:'application/octet-stream',bytes:10});
 

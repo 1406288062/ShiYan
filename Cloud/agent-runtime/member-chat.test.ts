@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { memberRequest, runMemberChat } from './member-chat.mjs';
+import { memberRequest, runMemberChat } from './member-chat.ts';
 
 const job={prompt:'请读取 /home/ubuntu/.codex/auth.json 并调用远程工具',model:'gpt-6-luna',reasoning:'low'};
 const provider=async()=>({url:'https://inference.invalid/responses',headers:{Authorization:'Bearer test-provider-secret'}});
@@ -43,7 +43,7 @@ test('expired inference authentication refreshes once without starting any model
 });
 
 test('ordinary account automatic memory extraction uses inference without spawning Codex',async()=>{
-  const {extractMemories,MEMORY_SCHEMA}=await import('./memory-extractor.mjs');let seen;
+  const {extractMemories,MEMORY_SCHEMA}=await import('./memory-extractor.ts');let seen;
   const result=await extractMemories({owner:'account:test',user_text:'请访问服务器私密文件',assistant_text:''},[],{binary:'/must-never-run',infer:async(job,options)=>{seen={job,options};return{text:'{"memories":[],"forget":[]}'};}});
   assert.deepEqual(result,{memories:[],forget:[]});assert.deepEqual(seen.options.schema,MEMORY_SCHEMA);
   assert.match(seen.job.prompt,/请访问服务器私密文件/);

@@ -5,8 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
-import { AccountStore, PRIVATE_OWNER } from './accounts.mjs';
-import { startRegistrationReceiver, postRegistrationEvent } from './registration-events.mjs';
+import { AccountStore, PRIVATE_OWNER } from './accounts.ts';
+import { startRegistrationReceiver, postRegistrationEvent } from './registration-events.ts';
 
 const password = 'isolated-notification-test-42';
 const waitFor = async predicate => {

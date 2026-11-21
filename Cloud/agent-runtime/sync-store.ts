@@ -2,10 +2,10 @@ import { DatabaseSync } from 'node:sqlite';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync, renameSync, existsSync, unlinkSync } from 'node:fs';
 import path from 'node:path';
-import { displayItemsForJob, projectDisplayItem, projectUsage, terminalJobStatus } from './output-display.mjs';
-import { mobileSyncChange } from './sync-mobile-projection.mjs';
-import { prepareScheduleMutation, SCHEDULE_CONFIG, SCHEDULE_REPORT } from './sync-schedules.mjs';
-import { generatedOutputs } from './generated-output.mjs';
+import { displayItemsForJob, projectDisplayItem, projectUsage, terminalJobStatus } from './output-display.ts';
+import { mobileSyncChange } from './sync-mobile-projection.ts';
+import { prepareScheduleMutation, SCHEDULE_CONFIG, SCHEDULE_REPORT } from './sync-schedules.ts';
+import { generatedOutputs } from './generated-output.ts';
 
 const KINDS = new Set(['projects', 'conversations', 'messages', 'scheduledTasks']);
 const LOCAL = new Set(['draft','queue','queuedMessages','pendingJobId','pendingMessageId','pendingRequestId','lastEventId','submissionFailed','fileChangeRoots','localPath','path','directory','url','publicURL']);
@@ -50,6 +50,9 @@ export function cleanSyncData(kind,id,input) {
 }
 
 export class SyncStore {
+  root: string;
+  assetRoot: string;
+  db: DatabaseSync;
   constructor(root,{databasePath=path.join(root,'sync.sqlite3')}={}) {
     mkdirSync(root,{recursive:true,mode:0o700});
     this.root=root;this.assetRoot=path.join(root,'sync-assets');mkdirSync(this.assetRoot,{recursive:true,mode:0o700});

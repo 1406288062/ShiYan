@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { MemoryStore } from './memory-store.mjs';
-import { buildMemorySummary, createMemorySummary } from './memory-summary.mjs';
+import { MemoryStore } from './memory-store.ts';
+import { buildMemorySummary, createMemorySummary } from './memory-summary.ts';
 
 test('memory summary is deterministic, cached by revision, and never needs an LLM', async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'shiyan-memory-summary-'));

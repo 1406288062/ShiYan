@@ -6,8 +6,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { DotsAdapter, DotsStore } from './dots-adapter.mjs';
-import { createDotsSidecar } from './dots-sidecar.mjs';
+import { DotsAdapter, DotsStore } from './dots-adapter.ts';
+import { createDotsSidecar } from './dots-sidecar.ts';
 
 const OWNER='shiyan-private-owner';
 const disconnected=()=>Object.assign(new Error('fixture disconnected'),{status:503,code:'runtime_unavailable'});

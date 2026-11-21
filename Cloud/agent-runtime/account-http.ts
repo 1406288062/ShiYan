@@ -1,10 +1,10 @@
 // Standalone account routes can also be mounted before the existing device transport.
-import { getAccountStore, requestBearer, PRIVATE_OWNER } from './accounts.mjs';
-import { authenticateLegacyDevice, digest } from './device-auth.mjs';
+import { getAccountStore, requestBearer, PRIVATE_OWNER } from './accounts.ts';
+import { authenticateLegacyDevice, digest } from './device-auth.ts';
 import { isIP } from 'node:net';
-import { RegistrationEmail } from './registration-email.mjs';
-import { QRLogin } from './qr-login.mjs';
-import { createAccountAvatarHandler } from './account-avatar.mjs';
+import { RegistrationEmail } from './registration-email.ts';
+import { QRLogin } from './qr-login.ts';
+import { createAccountAvatarHandler } from './account-avatar.ts';
 const qrStores = new WeakMap(), emailStores = new WeakMap(), resetStores = new WeakMap();
 const emailFor = store => { if (!emailStores.has(store)) emailStores.set(store, new RegistrationEmail(store)); return emailStores.get(store); };
 const resetFor = store => { if (!resetStores.has(store)) resetStores.set(store, new RegistrationEmail(store, { purpose: 'password-reset' })); return resetStores.get(store); };

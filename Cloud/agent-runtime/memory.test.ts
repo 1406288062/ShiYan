@@ -4,10 +4,10 @@ import {mkdtempSync,rmSync,writeFileSync,chmodSync,statSync} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {once} from 'node:events';
-import {MemoryStore} from './memory-store.mjs';
-import {createMemoryWorker,extractMemories,extractionArguments,extractionPrompt} from './memory-extractor.mjs';
-import {createMemorySidecar} from './memory-sidecar.mjs';
-import {digest} from './device-auth.mjs';
+import {MemoryStore} from './memory-store.ts';
+import {createMemoryWorker,extractMemories,extractionArguments,extractionPrompt} from './memory-extractor.ts';
+import {createMemorySidecar} from './memory-sidecar.ts';
+import {digest} from './device-auth.ts';
 const OWNER='owner-a',OTHER='owner-b',DAY=86400000;
 function fixture(t){const root=mkdtempSync(path.join(os.tmpdir(),'shiyan-memory-test-'));let clock=1800000000000;const store=new MemoryStore(root,{now:()=>clock});t.after(()=>{try{store.close();}catch{}rmSync(root,{recursive:true,force:true});});return {store,root,now:()=>clock,advance:(ms=1)=>clock+=ms};}
 function candidate(content,evidence=content,extra={}){return {key:'reply.length',category:'preference',scope:'global',content,evidence,confidence:0.95,expiresDays:null,...extra};}

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { nextScheduleRun } from './dots-schedules.mjs';
+import { nextScheduleRun } from './dots-schedules.ts';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 const uuid = value => { const s = hash(value).slice(0, 32); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };

@@ -7,7 +7,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import { Client as McpClient } from '@modelcontextprotocol/sdk/client/index.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
-import { resolveSandboxDestination } from './member-sandbox.mjs';
+import { resolveSandboxDestination } from './member-sandbox.ts';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 export const REDIRECT_URI = process.env.SHIYAN_MCP_REDIRECT_URI || 'https://hub.yandot.ai/oauth/mcp/callback';

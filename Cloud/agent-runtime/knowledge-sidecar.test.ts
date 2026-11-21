@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { once } from 'node:events';
-import { digest } from './device-auth.mjs';
-import { createKnowledgeSidecar, knowledgeRoute } from './knowledge-sidecar.mjs';
+import { digest } from './device-auth.ts';
+import { createKnowledgeSidecar, knowledgeRoute } from './knowledge-sidecar.ts';
 
 async function serve(t, server) {
   server.listen(0, '127.0.0.1'); await once(server, 'listening');

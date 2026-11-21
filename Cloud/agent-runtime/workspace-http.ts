@@ -21,7 +21,7 @@ const writeJSON = (res, status, value) => {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': bytes.length, 'Cache-Control': 'no-store' });
   res.end(bytes);
 };
-const defaultOperations = async () => import('./member-sandbox.mjs');
+const defaultOperations = async () => import('./member-sandbox.ts');
 
 export function createWorkspaceHandler({ operations = defaultOperations, revalidate = () => true, getAsset } = {}) {
   const terminals = new Map(), locks = new Map(), previews = new Map();

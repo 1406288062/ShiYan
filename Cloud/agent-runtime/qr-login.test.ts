@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { AccountStore } from './accounts.mjs';
-import { QRLogin } from './qr-login.mjs';
+import { AccountStore } from './accounts.ts';
+import { QRLogin } from './qr-login.ts';
 const root=mkdtempSync(path.join(os.tmpdir(),'shiyan-qr-'));
 test.after(()=>rmSync(root,{recursive:true,force:true}));
 async function setup(t){let now=Date.now();const store=new AccountStore(path.join(root,Math.random().toString()),{now:()=>now});t.after(()=>store.close());const phone=await store.register({email:'member@example.test',password:'test-password-only'});return {store,phone,qr:new QRLogin(store),advance:()=>now+=120001};}
@@ -25,7 +25,7 @@ test('expired, rejected and revoked phone confirmations never authorize the desk
 });
 
 import http from 'node:http';
-import { createAccountHandler } from './account-http.mjs';
+import { createAccountHandler } from './account-http.ts';
 test('HTTP QR routes require phone authentication and ignore forged roles',async t=>{
  const {store,phone}=await setup(t);const handler=createAccountHandler({store});
  const server=http.createServer(async(req,res)=>{if(!await handler(req,res)){res.writeHead(404);res.end();}});

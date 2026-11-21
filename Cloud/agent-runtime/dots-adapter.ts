@@ -1,12 +1,12 @@
-import { PRIVATE_OWNER } from './accounts.mjs';
-import { normalizeMailPresentationLinks } from '../dots-runtime/qq-mail-content.mjs';
+import { PRIVATE_OWNER } from './accounts.ts';
+import { normalizeMailPresentationLinks } from '../dots-runtime/qq-mail-content.ts';
 // Device owners never receive the private Dots capability or webhook signing key.
 import http from 'node:http';
 import path from 'node:path';
 import { mkdirSync, chmodSync, readFileSync, realpathSync, readdirSync, statSync } from 'node:fs';
-import { DotsAttachments } from './dots-attachments.mjs';
-import { createDotsActivityReader, millis, readableResult } from './dots-activity.mjs';
-import { DotsSchedules } from './dots-schedules.mjs';
+import { DotsAttachments } from './dots-attachments.ts';
+import { createDotsActivityReader, millis, readableResult } from './dots-activity.ts';
+import { DotsSchedules } from './dots-schedules.ts';
 import { DatabaseSync } from 'node:sqlite';
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 
@@ -102,6 +102,7 @@ export function groupIssueTasks(tasks, memberships) {
 }
 
 export class DotsStore {
+  db: DatabaseSync;
   constructor(root,{databasePath=path.join(root,'dots-adapter.sqlite3')}={}) {
     mkdirSync(root,{recursive:true,mode:0o700});this.db=new DatabaseSync(databasePath);
     try{chmodSync(databasePath,0o600);}catch{}
@@ -238,6 +239,7 @@ export function taskArtifactOutputs(attachments,owner,taskIds,{privateOwner=fals
   return out.sort((a,b)=>b.createdAt-a.createdAt).slice(0,limit);
 }
 export class DotsAdapter {
+  store: DotsStore;
   weixinView(owner,message){if(message?.role!=='user'||typeof message.content!=='string'||!message.content.includes('[用户从微信发来的附件]'))return message;return weixinDisplay(message,owner===this.allowedOwner?weixinImageAttachments(this.attachments,owner,message):[]);}
   constructor({root,store=new DotsStore(root),client=createLocalDotsClient(),eventReader=createDotsEventReader(),activityReader=createDotsActivityReader(),allowedOwner='shiyan-private-owner',callbackURL='',importPrivateGoals=false,recoverIntervalMs=30000,subscriptionRefreshMs=4*3600000,managerPollMs=1000,schedulePollMs=15000}={}) {
     this.store=store;this.attachments=new DotsAttachments(root,store.db);this.client=client;this.eventReader=eventReader;this.allowedOwner=allowedOwner;this.callbackURL=callbackURL;this.importPrivateGoals=importPrivateGoals;this.listeners=new Map();this.inflight=new Map();this.subscriptionInflight=new Map();this.managerSyncInflight=new Map();this.recovering=false;this.managerPollMs=managerPollMs;

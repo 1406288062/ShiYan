@@ -3,7 +3,7 @@
 import path from 'node:path';
 import { readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs';
 import { createHash, createPublicKey, verify } from 'node:crypto';
-import { getAccountStore, requestBearer, PRIVATE_OWNER } from './accounts.mjs';
+import { getAccountStore, requestBearer, PRIVATE_OWNER } from './accounts.ts';
 const root=process.env.SHIYAN_ROOT||'/home/ubuntu/boss-codex-service/shiyan-v2';
 mkdirSync(root,{recursive:true,mode:0o700});
 const registry=path.join(root,'devices.json');

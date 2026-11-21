@@ -1,7 +1,7 @@
 // A compact, factual projection for rendering Codex execution details.
 // Keep raw SDK items unchanged; arguments, structured results and binary data
 // belong to the execution record, not to this display payload.
-import { generatedOutputs } from './generated-output.mjs';
+import { generatedOutputs } from './generated-output.ts';
 const MAX_ITEMS = 128;
 const MAX_PAYLOAD_BYTES = 64 * 1024;
 const terminalStatuses = new Set(['completed', 'failed', 'cancelled', 'interrupted']);

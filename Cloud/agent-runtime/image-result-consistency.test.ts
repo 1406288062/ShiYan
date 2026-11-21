@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {reconcileImageResultText, verifiedGeneratedImageCount} from './image-result-consistency.mjs';
+import {reconcileImageResultText, verifiedGeneratedImageCount} from './image-result-consistency.ts';
 const image = {id:'generated',mimeType:'image/png',sha256:'abc'};
 const uploads = {id:'uploaded',mimeType:'image/jpeg',sha256:'upload'};
 const store = {generated:{file:'/tmp/valid-generated',sha256:'abc'},uploaded:{file:'/tmp/input',sha256:'upload'}};

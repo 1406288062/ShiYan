@@ -7,8 +7,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { createHmac, createHash } from 'node:crypto';
-import { DotsAdapter, DotsStore, createLocalDotsClient } from './dots-adapter.mjs';
-import { createDotsSidecar } from './dots-sidecar.mjs';
+import { DotsAdapter, DotsStore, createLocalDotsClient } from './dots-adapter.ts';
+import { createDotsSidecar } from './dots-sidecar.ts';
 
 const OWNER='shiyan-private-owner';
 const input=(extra={})=>({requestId:'create-one',conversationId:'conversation-one',title:'Fixture goal',instruction:'Fixture instruction',runNow:false,host:'shiyan_desktop',...extra});

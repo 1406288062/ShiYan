@@ -4,7 +4,7 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { mkdtemp, rm } from 'node:fs/promises';
-import { createSpongeClient, createSpongeMcpAdapter } from './sponge-client.mjs';
+import { createSpongeClient, createSpongeMcpAdapter } from './sponge-client.ts';
 
 const json = (res, status, value) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(value)); };
 async function fixture(t, handler) {

@@ -2,7 +2,7 @@
 import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { getAccountStore, requestBearer } from './accounts.mjs';
+import { getAccountStore, requestBearer } from './accounts.ts';
 
 const MAX_BYTES = 1024 * 1024;
 const MAX_BASE64 = 4 * Math.ceil(MAX_BYTES / 3);

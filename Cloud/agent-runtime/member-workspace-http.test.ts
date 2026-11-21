@@ -4,8 +4,8 @@ import http from 'node:http';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import {createWorkspaceHandler} from './workspace-http.mjs';
-import * as sandbox from './member-sandbox.mjs';
+import {createWorkspaceHandler} from './workspace-http.ts';
+import * as sandbox from './member-sandbox.ts';
 
 test('real HTTP file, project and PTY routes isolate two simultaneously authenticated accounts',async t=>{
  const root=await fs.mkdtemp(path.join(os.tmpdir(),'member-http-real-'));const handler=createWorkspaceHandler({operations:async()=>({workspaceOperation:(owner,input)=>sandbox.workspaceOperation(owner,input,{root}),spawnSandbox:(owner,input)=>sandbox.spawnSandbox(owner,{...input,root})})});

@@ -6,10 +6,10 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, mkdirSync, promises as fs } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { createClaudeEventMapper } from './claude-events.mjs';
-import { transcriptText } from './transcript.mjs';
-import { extractJson, validateJson, schemaInstruction, addUsage } from './json-output.mjs';
-import { MEMBER_AGENT_TOOLS, memberInstructions, prepareIsolatedJob, executeMemberTool, finishIsolatedJob } from '../member-agent.mjs';
+import { createClaudeEventMapper } from './claude-events.ts';
+import { transcriptText } from './transcript.ts';
+import { extractJson, validateJson, schemaInstruction, addUsage } from './json-output.ts';
+import { MEMBER_AGENT_TOOLS, memberInstructions, prepareIsolatedJob, executeMemberTool, finishIsolatedJob } from '../member-agent.ts';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SDK = process.env.SHIYAN_CLAUDE_SDK || '@anthropic-ai/claude-agent-sdk';

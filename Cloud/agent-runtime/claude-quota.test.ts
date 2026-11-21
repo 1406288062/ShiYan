@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { claudeWindows, claudeExtraUsage, readClaudeUsage, createClaudeQuotaReader, createAccountQuotaReader } from './claude-quota.mjs';
+import { claudeWindows, claudeExtraUsage, readClaudeUsage, createClaudeQuotaReader, createAccountQuotaReader } from './claude-quota.ts';
 
 const usage = { five_hour: { utilization: 19, resets_at: '2026-10-30T06:00:00.416021+00:00' }, seven_day: { utilization: 60, resets_at: '2026-10-31T03:00:00+00:00' }, seven_day_opus: null, extra_usage: { is_enabled: false } };
 assert.deepEqual(claudeWindows(usage, 'pro'), [

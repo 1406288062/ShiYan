@@ -1,7 +1,7 @@
 // Account-aware transport routing. The administrative runtime stays independent
 // of the isolated runtime, including during upgrades and long-running jobs.
 import http from 'node:http';
-import {authenticateDevice} from './device-auth.mjs';
+import {authenticateDevice} from './device-auth.ts';
 
 export function createMemberGateway({authenticate=authenticateDevice,adminPort=4323,memberPort=4350}={}){
   return http.createServer((req,res)=>{

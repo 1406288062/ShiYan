@@ -5,10 +5,10 @@ import os from 'node:os';
 import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { createHash } from 'node:crypto';
-import { DotsAdapter } from './dots-adapter.mjs';
-import { createDotsActivityReader } from './dots-activity.mjs';
-import { DotsSchedules, nextScheduleRun } from './dots-schedules.mjs';
-import { createDotsSidecar } from './dots-sidecar.mjs';
+import { DotsAdapter } from './dots-adapter.ts';
+import { createDotsActivityReader } from './dots-activity.ts';
+import { DotsSchedules, nextScheduleRun } from './dots-schedules.ts';
+import { createDotsSidecar } from './dots-sidecar.ts';
 
 const OWNER='shiyan-private-owner';
 const baseSchedule={enabled:true,repeat:'daily',time:'21:00',timezone:'Asia/Shanghai',startDate:'2026-10-13',endDate:null};

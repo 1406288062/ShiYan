@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { AccountStore } from './accounts.mjs';
-import { RegistrationEmail, mailConfigured, registrationMailEnvironment } from './registration-email.mjs';
+import { AccountStore } from './accounts.ts';
+import { RegistrationEmail, mailConfigured, registrationMailEnvironment } from './registration-email.ts';
 const password = 'test-only-password-42';
 function fixture(t, options={}) {
   const root=mkdtempSync(path.join(os.tmpdir(),'shiyan-otp-'));

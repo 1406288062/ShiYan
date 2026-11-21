@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,writeFileSync,readFileSync,rmSync} from 'node:fs';
 import os from 'node:os';import path from 'node:path';
-import {loadRuntimeState,combinedRuntimeState} from './runtime-state.mjs';
+import {loadRuntimeState,combinedRuntimeState} from './runtime-state.ts';
 test('isolated runtime migrates only member state and never rewrites active administrator state',()=>{
   const dir=mkdtempSync(path.join(os.tmpdir(),'shiyan-state-'));
   try{

@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { z } from 'zod';
-import { createClaudeEventMapper, claudeUsage } from './claude-events.mjs';
-import { registerProvider, unregisterProvider, refreshCatalog, verifiedCatalog, providerForModel, listProviders } from './registry.mjs';
-import { toCatalogModel, zodShape, claudeMcpConfig, streamClaude, effortOption, readEnvFile, claudeCredentialsConfigured } from './claude.mjs';
-import { codexMcpConfig } from './codex.mjs';
-import { transcriptText, appendTranscript, retainTranscript } from './transcript.mjs';
+import { createClaudeEventMapper, claudeUsage } from './claude-events.ts';
+import { registerProvider, unregisterProvider, refreshCatalog, verifiedCatalog, providerForModel, listProviders } from './registry.ts';
+import { toCatalogModel, zodShape, claudeMcpConfig, streamClaude, effortOption, readEnvFile, claudeCredentialsConfigured } from './claude.ts';
+import { codexMcpConfig } from './codex.ts';
+import { transcriptText, appendTranscript, retainTranscript } from './transcript.ts';
 import { writeFileSync, mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';

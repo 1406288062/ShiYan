@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeHistory, editedBranchInput } from './edit-history.mjs';
+import { normalizeHistory, editedBranchInput } from './edit-history.ts';
 
 test('ordinary unedited sends stay byte-for-byte unchanged', () => {
   assert.deepEqual(normalizeHistory(undefined), []);

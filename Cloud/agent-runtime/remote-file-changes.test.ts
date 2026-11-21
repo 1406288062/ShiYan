@@ -4,10 +4,10 @@ import path from 'node:path';
 import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
-import { readRemoteFileChanges, remoteChangeManifestPath, createRemoteFileChangeProjector, mergeFileChanges } from './remote-file-changes.mjs';
-import { snapshotWorkspace, collectFileChanges } from './file-changes.mjs';
-import { SyncStore, materializeJob } from './sync-store.mjs';
-import { createFilePathResolver } from './sync-file-paths.mjs';
+import { readRemoteFileChanges, remoteChangeManifestPath, createRemoteFileChangeProjector, mergeFileChanges } from './remote-file-changes.ts';
+import { snapshotWorkspace, collectFileChanges } from './file-changes.ts';
+import { SyncStore, materializeJob } from './sync-store.ts';
+import { createFilePathResolver } from './sync-file-paths.ts';
 
 const hash = text => createHash('sha256').update(text).digest('hex');
 const snapshot = text => text === undefined ? { exists: false, text: null, sha256: null } : { exists: true, text, sha256: hash(text) };
@@ -157,7 +157,7 @@ test('completed sync records merge evidence and invalidate cache; in-flight and 
 
 test('sidecar projects the same remote paths on both platforms and serves full diffs without loading state', async () => {
   const f = await fixture(), store = new SyncStore(path.join(f.root, 'data'));
-  process.env.SHIYAN_SYNC_NO_LISTEN = '1'; const { createSyncSidecar } = await import('./sync-sidecar.mjs');
+  process.env.SHIYAN_SYNC_NO_LISTEN = '1'; const { createSyncSidecar } = await import('./sync-sidecar.ts');
   const server = createSyncSidecar({ root: f.root, store, runtimeWrites: true, authenticate: req => ({ owner: req.headers['x-test-owner'] || 'owner-a', platform: req.headers['x-test-platform'] || 'mac' }) });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   try {
@@ -178,7 +178,7 @@ test('sidecar projects the same remote paths on both platforms and serves full d
 
 test('supplemented pages retain parents and exact cursors without skipping messages; a large first message is delivered', async () => {
   const f = await fixture(), store = new SyncStore(path.join(f.root, 'data'));
-  process.env.SHIYAN_SYNC_NO_LISTEN = '1'; const { createSyncSidecar } = await import('./sync-sidecar.mjs');
+  process.env.SHIYAN_SYNC_NO_LISTEN = '1'; const { createSyncSidecar } = await import('./sync-sidecar.ts');
   const server = createSyncSidecar({ root: f.root, store, runtimeWrites: true, authenticate: () => ({ owner: 'owner-a' }) });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   try {
@@ -214,7 +214,7 @@ test('supplemented pages retain parents and exact cursors without skipping messa
 
 test('a parent snapshot from a later sequence does not advance past undelivered messages', async () => {
   const f = await fixture(), store = new SyncStore(path.join(f.root, 'data'));
-  process.env.SHIYAN_SYNC_NO_LISTEN = '1'; const { createSyncSidecar } = await import('./sync-sidecar.mjs');
+  process.env.SHIYAN_SYNC_NO_LISTEN = '1'; const { createSyncSidecar } = await import('./sync-sidecar.ts');
   const server = createSyncSidecar({ root: f.root, store, runtimeWrites: true, authenticate: () => ({ owner: 'owner-a' }) });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   try {

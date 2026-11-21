@@ -1,10 +1,10 @@
 import http from 'node:http';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { authenticateDevice, digest } from './device-auth.mjs';
-import { MemoryStore } from './memory-store.mjs';
-import { createMemoryWorker } from './memory-extractor.mjs';
-import { createMemorySummary } from './memory-summary.mjs';
+import { authenticateDevice, digest } from './device-auth.ts';
+import { MemoryStore } from './memory-store.ts';
+import { createMemoryWorker } from './memory-extractor.ts';
+import { createMemorySummary } from './memory-summary.ts';
 
 const ROOT=process.env.SHIYAN_ROOT||'/home/ubuntu/boss-codex-service/shiyan-v2';
 const fail=(message,status=400)=>Object.assign(new Error(message),{status});

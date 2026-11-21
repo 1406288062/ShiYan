@@ -1,4 +1,4 @@
-import { DeviceLogin } from './device-login.mjs';
+import { DeviceLogin } from './device-login.ts';
 import { randomBytes, randomInt, createHash } from 'node:crypto';
 const hash = s => createHash('sha256').update(s).digest('hex');
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });

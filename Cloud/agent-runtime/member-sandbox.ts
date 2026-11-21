@@ -115,4 +115,4 @@ export async function workspaceOperation(owner,input,{signal,root}={}){
  let value;try{value=JSON.parse(result.stdout);}catch{throw fail('隔离工作区暂不可用',503);}
  if(result.exitCode!==0||value.error)throw fail(value.error||'工作区操作失败',value.error==='文件或目录不存在'?404:400);return value;
 }
-export { runIsolatedJob, mcpSandboxOperation, MEMBER_AGENT_TOOLS, collectSandboxArtifacts } from './member-agent.mjs';
+export { runIsolatedJob, mcpSandboxOperation, MEMBER_AGENT_TOOLS, collectSandboxArtifacts } from './member-agent.ts';

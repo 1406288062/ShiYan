@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { constants, promises as fs } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { textFileChange } from './text-file-diff.mjs';
+import { textFileChange } from './text-file-diff.ts';
 
 export const REMOTE_CHANGE_LIMITS = Object.freeze({ manifestBytes: 16 * 1024 * 1024, fileBytes: 1024 * 1024, files: 200, records: 1000 });
 const validId = value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,120}$/.test(value);

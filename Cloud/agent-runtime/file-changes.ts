@@ -1,8 +1,8 @@
 // Bound snapshots to this conversation workspace. Never follow symlinks or scan dependencies.
 import path from 'node:path';
 import {promises as fs} from 'node:fs';
-import {textFileChange} from './text-file-diff.mjs';
-import {readRemoteFileChanges,mergeFileChanges} from './remote-file-changes.mjs';
+import {textFileChange} from './text-file-diff.ts';
+import {readRemoteFileChanges,mergeFileChanges} from './remote-file-changes.ts';
 const skip=new Set(['.git','.shiyan','node_modules','.venv','venv','__pycache__','inputs','.next','dist','build']);
 const binary=/\.(?:png|jpe?g|webp|gif|ico|heic|pdf|zip|gz|tar|mp[34]|mov|woff2?|ttf|sqlite3?|db|pt|pth|safetensors)$/i;
 export async function snapshotWorkspace(root){

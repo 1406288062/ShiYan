@@ -7,9 +7,9 @@ import http from 'node:http';
 import {randomUUID} from 'node:crypto';
 const root=mkdtempSync(path.join(os.tmpdir(),'shiyan-reset-'));
 process.env.SHIYAN_ROOT=root;
-const {AccountStore}=await import('./accounts.mjs');
-const {RegistrationEmail}=await import('./registration-email.mjs');
-const {createAccountHandler}=await import('./account-http.mjs');
+const {AccountStore}=await import('./accounts.ts');
+const {RegistrationEmail}=await import('./registration-email.ts');
+const {createAccountHandler}=await import('./account-http.ts');
 const password='initial-test-password',nextPassword='new-test-password-2026';
 test.after(()=>rmSync(root,{recursive:true,force:true}));
 async function fixture(t){

@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';import http from 'node:http';
 process.env.SHIYAN_GATEWAY_NO_LISTEN='1';
-const {createMemberGateway}=await import('./member-gateway.mjs');
+const {createMemberGateway}=await import('./member-gateway.ts');
 const listen=server=>new Promise(resolve=>server.listen(0,'127.0.0.1',()=>resolve(server.address().port)));
 const close=server=>new Promise(resolve=>{server.closeAllConnections();server.close(resolve);});
 test('gateway routes authenticated members to isolated execution and preserves streamed responses',async()=>{
