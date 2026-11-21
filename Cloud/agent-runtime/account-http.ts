@@ -17,14 +17,15 @@ const json = (res, status, value) => {
     'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); res.end(bytes);
 };
 async function body(req) {
-  const chunks = []; let size = 0;
+  const chunks: Buffer[] = []; let size = 0;
   for await (const chunk of req) { size += chunk.length; if (size > 16384) throw failure('账户请求过大', 413); chunks.push(chunk); }
   const bytes = Buffer.concat(chunks);
   if (req.headers['x-shiyan-body-sha'] !== undefined && req.headers['x-shiyan-body-sha'] !== digest(bytes)) throw failure('请求校验失败', 401);
   try { const value = JSON.parse(bytes.toString() || '{}'); if (!value || typeof value !== 'object' || Array.isArray(value)) throw 0; return value; }
   catch { throw failure('账户请求格式无效'); }
 }
-export function createAccountHandler({ store, registrationEmail, passwordResetEmail, authenticateLegacy = authenticateLegacyDevice } = {}) {
+interface AccountHandlerOptions { store?: any; registrationEmail?: any; passwordResetEmail?: any; authenticateLegacy?: (req: any) => { owner: any; deviceID: string; platform: any; } | null; }
+export function createAccountHandler({ store, registrationEmail, passwordResetEmail, authenticateLegacy = authenticateLegacyDevice }: AccountHandlerOptions = {}) {
   const avatarHandler = createAccountAvatarHandler({ store });
   return async function handleAccountRequest(req, res) {
     if (await avatarHandler(req, res)) return true;
@@ -115,7 +116,7 @@ export function createAccountHandler({ store, registrationEmail, passwordResetEm
       if (req.method === 'PATCH' && user) { json(res, 200, accounts.updateUser(auth, user[1], await body(req))); return true; }
       throw failure('接口不存在', 404);
     } catch (error) {
-      if (!res.headersSent) json(res, error.status || 500, { ok: false, error: error.status ? error.message : '账户操作暂时不可用，请重试' });
+      if (!res.headersSent) json(res, (error as any).status || 500, { ok: false, error: (error as any).status ? (error as any).message : '账户操作暂时不可用，请重试' });
       else res.end();
       return true;
     }

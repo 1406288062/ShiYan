@@ -17,13 +17,13 @@ async function fixture(t) {
   const other=await accounts.register({email:'other@example.test',password});
   const handler=createAccountHandler({store:accounts,registrationEmail:{check:()=>()=>{}}});
   const server=http.createServer(async(req,res)=>{if(!await handler(req,res)){res.writeHead(404);res.end();}});
-  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',()=>resolve()));
   t.after(async()=>{await new Promise(resolve=>server.close(resolve));accounts.close();rmSync(directory,{recursive:true,force:true});});
-  async function call(route,body,token,platform='web') {
-    const response=await fetch(`http://127.0.0.1:${server.address().port}/v1/auth/${route}`,{
+  async function call(route: string, body?: any, token?: string, platform: string = 'web') {
+    const response=await fetch(`http://127.0.0.1:${(server.address() as any).port}/v1/auth/${route}`,{
       method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json','X-Shiyan-Platform':platform,...(token?{Authorization:'Bearer '+token}:{})},
       ...(body===undefined?{}:{body:JSON.stringify(body)})});
-    return {status:response.status,value:await response.json()};
+    return {status:response.status,value:(await response.json()) as any};
   }
   return {accounts,phone,other,call};
 }
@@ -73,7 +73,7 @@ test('browser pairing does not evict desktop devices and keeps the legacy table 
   const desktop=devices.pair(row);
   for(let i=0;i<12;i++)devices.pair(row,{platform:'web'});
   assert.equal(devices.device({deviceId:desktop.id,deviceSecret:desktop.secret}).id,phone.user.id);
-  assert.equal(accounts.db.prepare("SELECT count(*) AS n FROM account_login_device_context WHERE platform='web'").get().n,10);
+  assert.equal(accounts.db.prepare("SELECT count(*) AS n FROM account_login_device_context WHERE platform='web'").get()!.n,10);
   // Running older account workers can continue using their four-column inserts.
   accounts.db.prepare('INSERT INTO account_desktop_devices VALUES(?,?,?,?)').run(randomBytes(32).toString('base64url'),'old-secret-hash',phone.user.id,Date.now()+10000);
 });

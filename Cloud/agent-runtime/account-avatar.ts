@@ -36,7 +36,7 @@ function snapshot(accounts, userId) {
 
 async function body(req) {
   if (Number(req.headers['content-length']) > MAX_BODY) throw failure('头像图片过大，请重新选择', 413);
-  const chunks = []; let size = 0;
+  const chunks: Buffer[] = []; let size = 0;
   for await (const chunk of req) {
     size += chunk.length;
     if (size > MAX_BODY) throw failure('头像图片过大，请重新选择', 413);
@@ -71,7 +71,7 @@ export async function normalizeAvatarImage(bytes) {
   try {
     return await new Promise((resolve, reject) => {
       const child = spawn(process.env.SHIYAN_AVATAR_PYTHON || 'python3', [imageScript], { stdio: ['pipe', 'pipe', 'ignore'] });
-      const output = []; let length = 0, complete = false;
+      const output: Buffer[] = []; let length = 0, complete = false;
       const timer = setTimeout(() => { child.kill('SIGKILL'); finish(failure('头像处理超时，请重新选择', 422)); }, 8000);
       timer.unref();
       function finish(error) {
@@ -92,7 +92,8 @@ export async function normalizeAvatarImage(bytes) {
   } finally { decoding--; }
 }
 
-export function createAccountAvatarHandler({ store, heartbeatMs = 15000, normalizeImage = normalizeAvatarImage } = {}) {
+interface AccountAvatarHandlerOptions { store?: any; heartbeatMs?: number; normalizeImage?: (bytes: any) => Promise<unknown>; }
+export function createAccountAvatarHandler({ store, heartbeatMs = 15000, normalizeImage = normalizeAvatarImage }: AccountAvatarHandlerOptions = {}) {
   return async function handleAccountAvatar(req, res) {
     const pathname = new URL(req.url || '/', 'http://localhost').pathname.replace(/^\/shiyan(?=\/)/, '');
     if (pathname !== '/v1/account/avatar' && pathname !== '/v1/account/avatar/events') return false;
@@ -163,7 +164,7 @@ export function createAccountAvatarHandler({ store, heartbeatMs = 15000, normali
       for (const listener of [...(state.listeners.get(userId) || [])]) listener(result);
       json(res, 200, result); return true;
     } catch (error) {
-      if (!res.headersSent) json(res, error.status || 500, { ok: false, error: error.status ? error.message : '头像操作暂时不可用，请重试' });
+      if (!res.headersSent) json(res, (error as any).status || 500, { ok: false, error: (error as any).status ? (error as any).message : '头像操作暂时不可用，请重试' });
       else res.end();
       return true;
     }
