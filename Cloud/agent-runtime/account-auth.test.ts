@@ -55,7 +55,7 @@ test('registration scopes every account and stores only salted password hashes a
   assert(!raw.includes(password)); assert(!raw.includes(a.token));
   const users = store.db.prepare('SELECT password_hash,password_salt FROM account_users').all();
   assert.notEqual(users[0].password_hash, users[1].password_hash); assert.notEqual(users[0].password_salt, users[1].password_salt);
-  assert.equal(store.authenticate(a.token).owner, a.user.owner);
+  assert.equal(store.authenticate(a.token)!.owner, a.user.owner);
   assert.equal(store.authenticate(a.token + 'a'), null);
 });
 
@@ -65,10 +65,10 @@ test('only verified original owner can bootstrap and duplicate concurrent claims
   await assert.rejects(store.register({ email: 'admin@example.test', password }, { bootstrap: true, trustedOwner: 'other' }), { status: 403 });
   const results = await Promise.allSettled([bootstrap(store), bootstrap(store)]);
   assert.equal(results.filter(value => value.status === 'fulfilled').length, 1);
-  const admin = results.find(value => value.status === 'fulfilled').value;
+  const admin = results.find(value => value.status === 'fulfilled')!.value;
   assert.equal(admin.user.owner, PRIVATE_OWNER); assert.equal(admin.user.role, 'admin'); assert.equal(admin.user.serverAccess, true);
   assert.equal(store.bootstrapRequired(), false);
-  assert.equal(store.db.prepare("SELECT COUNT(*) AS count FROM account_users WHERE role='admin'").get().count, 1);
+  assert.equal(store.db.prepare("SELECT COUNT(*) AS count FROM account_users WHERE role='admin'").get()!.count, 1);
 });
 
 test('login aliases, password verification, expiry and logout enforce session boundaries', async t => {
@@ -77,7 +77,7 @@ test('login aliases, password verification, expiry and logout enforce session bo
   const initial = await register(store);
   await assert.rejects(store.login({ email: initial.user.email, password: 'wrong-password' }), { status: 401 });
   const login = await store.login({ email: 'MEMBER@EXAMPLE.TEST', password });
-  assert.equal(store.authenticate(login.token).userId, initial.user.id);
+  assert.equal(store.authenticate(login.token)!.userId, initial.user.id);
   store.logout(login.token); assert.equal(store.authenticate(login.token), null);
   assert(store.authenticate(initial.token)); now += 86400001; assert.equal(store.authenticate(initial.token), null);
   assert.equal(store.authenticate('not-a-token'), null);
@@ -109,14 +109,14 @@ test('account disablement during password calculation cannot create a new sessio
   const pending = store.login({ email: member.user.email, password });
   store.updateUser(store.authenticate(admin.token), member.user.id, { status: 'disabled' });
   await assert.rejects(pending, { status: 401 });
-  assert.equal(store.db.prepare('SELECT COUNT(*) AS count FROM account_sessions WHERE user_id=?').get(member.user.id).count, 0);
+  assert.equal(store.db.prepare('SELECT COUNT(*) AS count FROM account_sessions WHERE user_id=?').get(member.user.id)!.count, 0);
 });
 
 test('administrator without server access cannot grant that permission to self or another account', async t => {
   const store=storeFor(t),owner=await bootstrap(store),limited=await register(store),other=await register(store,'other@example.test');
   store.updateUser(store.authenticate(owner.token),limited.user.id,{role:'admin',serverAccess:false});
   const session=await store.login({email:limited.user.email,password}),auth=store.authenticate(session.token);
-  assert.equal(auth.role,'admin');assert.equal(auth.serverAccess,false);
+  assert.equal(auth!.role,'admin');assert.equal(auth!.serverAccess,false);
   assert.throws(()=>store.updateUser(auth,limited.user.id,{serverAccess:true}),{status:403});
   assert.throws(()=>store.updateUser(auth,other.user.id,{role:'admin',serverAccess:true}),{status:403});
   assert.equal(store.access(other.user.owner).role,'user');
@@ -141,12 +141,12 @@ test('same object IDs never cross account sync, memory or attachment boundaries'
 test('HTTP routes reject anonymous admin, invalid hashes and forged bootstrap; support new-device sessions', async t => {
   const store = storeFor(t);
   const codes = new Map();
-  const registrationEmail = new RegistrationEmail(store, {configured:()=>true, send:async message=>codes.set(message.to,message.text.match(/\d{6}/)[0])});
-  const handler = createAccountHandler({ store, registrationEmail, authenticateLegacy: req => req.headers['x-test-trusted'] === 'yes' ? { owner: PRIVATE_OWNER } : null });
+  const registrationEmail = new RegistrationEmail(store, {configured:()=>true, send:async message=>{codes.set(message.to,message.text.match(/\d{6}/)[0]);}});
+  const handler = createAccountHandler({ store, registrationEmail, authenticateLegacy: req => req.headers['x-test-trusted'] === 'yes' ? { owner: PRIVATE_OWNER, deviceID: 'test', platform: 'test' } : null });
   const server = http.createServer(async (req, res) => { if (!await handler(req, res)) { res.writeHead(404); res.end(); } });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve)); t.after(() => new Promise(resolve => server.close(resolve)));
-  const url = 'http://127.0.0.1:' + server.address().port;
-  const request = (route, method = 'GET', data, headers = {}) => fetch(url + '/shiyan/v1/' + route, { method, headers: { 'Content-Type': 'application/json', ...headers }, ...(data === undefined ? {} : { body: JSON.stringify(data) }) });
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', () => resolve())); t.after(() => new Promise(resolve => server.close(resolve)));
+  const url = 'http://127.0.0.1:' + (server.address() as any).port;
+  const request = (route, method = 'GET', data?: any, headers = {}) => fetch(url + '/shiyan/v1/' + route, { method, headers: { 'Content-Type': 'application/json', ...headers }, ...(data === undefined ? {} : { body: JSON.stringify(data) }) });
   let response = await request('auth/status'); assert.deepEqual(await response.json(), { ok: true, registrationEnabled: true, bootstrapRequired: true, canBootstrap: false, emailVerificationRequired: true, emailDeliveryAvailable: true });
   response = await request('admin/users'); assert.equal(response.status, 401);
   response = await request('auth/bootstrap', 'POST', { email: 'owner@example.test', password }); assert.equal(response.status, 403);
@@ -154,8 +154,8 @@ test('HTTP routes reject anonymous admin, invalid hashes and forged bootstrap; s
   response = await request('auth/register', 'POST', { email: 'a@example.test', password }); assert.equal(response.status, 400);
   response = await request('auth/register-code', 'POST', { email: 'a@example.test' }); assert.equal(response.status, 200);
   response = await request('auth/register', 'POST', { email: 'a@example.test', password, verificationCode:codes.get('a@example.test') }); assert.equal(response.status, 201);
-  const account = await response.json(), bearer = { Authorization: 'Bearer ' + account.token };
-  response = await request('auth/me', 'GET', undefined, bearer); assert.equal((await response.json()).user.id, account.user.id);
+  const account: any = await response.json(), bearer = { Authorization: 'Bearer ' + account.token };
+  response = await request('auth/me', 'GET', undefined, bearer); assert.equal(((await response.json()) as any).user.id, account.user.id);
   response = await request('admin/users', 'GET', undefined, bearer); assert.equal(response.status, 403);
   response = await request('auth/register-code', 'POST', { email: 'owner@example.test' }); assert.equal(response.status, 200);
   response = await request('auth/bootstrap', 'POST', { email: 'owner@example.test', password, verificationCode:codes.get('owner@example.test') }, { 'x-test-trusted': 'yes' }); assert.equal(response.status, 201);
@@ -174,12 +174,12 @@ test('signed owner bootstrap disables legacy fallback, including invalid-token a
       'x-shiyan-signature': sign(null, Buffer.from([method, url, time, nonce, bodyHash].join('\n')), privateKey).toString('base64') } };
   };
   assert.equal(authenticateDevice(signed()).owner, PRIVATE_OWNER);
-  const invalid = signed(); invalid.headers.authorization = 'Bearer ' + 'x'.repeat(43); assert.equal(authenticateDevice(invalid), null);
+  const invalid = signed(); (invalid.headers as any).authorization = 'Bearer ' + 'x'.repeat(43); assert.equal(authenticateDevice(invalid), null);
   const required = signed(); required.headers['x-shiyan-account-required'] = '1'; assert.equal(authenticateDevice(required), null);
   const replay = signed(); assert(authenticateLegacyDevice(replay)); assert.equal(authenticateLegacyDevice(replay), null);
   const store = getAccountStore(), admin = await bootstrap(store);
   assert.equal(authenticateDevice(signed()), null);
-  const active = signed(); active.headers.authorization = 'Bearer ' + admin.token;
+  const active = signed(); (active.headers as any).authorization = 'Bearer ' + admin.token;
   assert.equal(authenticateDevice(active).owner, PRIVATE_OWNER);
   store.logout(admin.token); assert.equal(authenticateDevice(active), null); assert.equal(authenticateDevice(signed()), null);
   assert(!readFileSync(path.join(root, 'data/accounts.sqlite3')).includes(Buffer.from(password)));
