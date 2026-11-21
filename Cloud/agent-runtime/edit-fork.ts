@@ -58,7 +58,7 @@ function matchesUserText(turn, expected, trustedInputs) {
   return prompt === expected || withoutMemory(prompt) === expected;
 }
 
-export function retainedTurnID(turns, expectedPrompts, replacedPrompt = null, { trustedInputs = {} } = {}) {
+export function retainedTurnID(turns, expectedPrompts, replacedPrompt: any = null, { trustedInputs = {} } = {}) {
   if (!Array.isArray(turns) || !Array.isArray(expectedPrompts) || expectedPrompts.length > turns.length) {
     throw new Error('云端会话回合数不匹配；原消息未修改');
   }
@@ -109,7 +109,7 @@ export async function forkPreviousTurns(sourceThreadID, expectedPrompts, { ephem
   });
   function rpc(method, params) {
     if (closed) return Promise.reject(new Error('Codex 分支服务已关闭'));
-    return new Promise((resolve, reject) => {
+    return new Promise<any>((resolve, reject) => {
       const id = ++nextID;
       const timer = setTimeout(() => {
         pending.delete(id);
