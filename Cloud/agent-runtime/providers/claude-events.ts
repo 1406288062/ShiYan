@@ -3,7 +3,8 @@
 // item 类型：agent_message, reasoning, command_execution, mcp_tool_call, file_change, todo_list, web_search
 const FILE_TOOLS = { Write: 'add', Edit: 'update', MultiEdit: 'update', NotebookEdit: 'update' };
 
-export function toolItem(block, { isolatedServer } = {}) {
+interface IsolatedServerOptions { isolatedServer?: string; }
+export function toolItem(block, { isolatedServer }: IsolatedServerOptions = {}) {
   const input = block.input && typeof block.input === 'object' ? block.input : {};
   const id = String(block.id || '');
   const name = String(block.name || '');
@@ -31,7 +32,7 @@ export function toolItem(block, { isolatedServer } = {}) {
 function resultParts(content) {
   if (typeof content === 'string') return [{ type: 'text', text: content }];
   if (!Array.isArray(content)) return [];
-  const parts = [];
+  const parts: any[] = [];
   for (const block of content) {
     if (block?.type === 'text' && typeof block.text === 'string') parts.push({ type: 'text', text: block.text });
     else if (block?.type === 'image' && block.source?.type === 'base64' && typeof block.source.data === 'string')
@@ -62,7 +63,7 @@ export function claudeUsage(usage) {
   return { input_tokens: n(usage.input_tokens) + n(usage.cache_creation_input_tokens) + cached, cached_input_tokens: cached, output_tokens: n(usage.output_tokens) };
 }
 
-export function createClaudeEventMapper({ isolatedServer } = {}) {
+export function createClaudeEventMapper({ isolatedServer }: IsolatedServerOptions = {}) {
   const tools = new Map();          // tool_use_id -> item
   const partial = new Map();        // 流式块 index -> {id,type,text}
   const streamCounts = new Map();   // message.id -> {t,r} 流式阶段已见文本/思考块数
@@ -72,7 +73,7 @@ export function createClaudeEventMapper({ isolatedServer } = {}) {
   return {
     get finished() { return finished; },
     map(message) {
-      const out = [];
+      const out: any[] = [];
       if (!message || typeof message !== 'object' || finished) return out;
       if (message.type === 'system' && message.subtype === 'init') {
         if (!started && message.session_id) { started = true; out.push({ type: 'thread.started', thread_id: message.session_id }); }
