@@ -19,8 +19,8 @@ function fixture(t){
   db.exec(`CREATE TABLE goals(id INTEGER PRIMARY KEY AUTOINCREMENT,title TEXT NOT NULL,instruction TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'active',thread_id TEXT,workspace TEXT NOT NULL,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,next_wake_at INTEGER,last_run_at INTEGER,last_summary TEXT NOT NULL DEFAULT '',run_count INTEGER NOT NULL DEFAULT 0);CREATE TABLE events(id INTEGER PRIMARY KEY AUTOINCREMENT,goal_id INTEGER NOT NULL,type TEXT NOT NULL,payload TEXT NOT NULL DEFAULT '',created_at INTEGER NOT NULL,consumed_at INTEGER);CREATE TABLE approvals(id INTEGER PRIMARY KEY AUTOINCREMENT,goal_id INTEGER NOT NULL,status TEXT NOT NULL DEFAULT 'pending');`);
   db.prepare("INSERT INTO goals(title,instruction,status,thread_id,workspace,created_at,updated_at,next_wake_at) VALUES('旧任务','保留原线程','paused','original-thread',?,1000,1000,NULL)").run(path.join(root,'legacy'));
   const runtime=createManagerStore({db,ownerId:OWNER,workspaceRoot:path.join(root,'workspaces'),now:()=>1000});
-  const store=new DotsStore(path.join(root,'gateway'));let lost=false;const calls=[];
-  const client={async rpc(){return {};},async tool(name,args){
+  const store=new DotsStore(path.join(root,'gateway'));let lost=false;const calls: any[]=[];
+  const client={async rpc(){return {};},forOwner(value){return client;},async tool(name,args){
     calls.push({name,args});runtime.requireOwner(args.owner_id);
     if(name==='dots_get_manager')return {ok:true,manager:runtime.snapshot()};
     if(name==='dots_get_manager_messages')return runtime.messages({beforeId:args.before_id,limit:args.limit});
@@ -30,18 +30,18 @@ function fixture(t){
     if(name==='dots_get_goal')return {ok:true,goal:db.prepare('SELECT * FROM goals WHERE id=?').get(args.goal_id)};
     throw new Error('unsupported fixture tool '+name);
   }};
-  const adapter=new DotsAdapter({root:path.join(root,'gateway'),store,client,eventReader:{read(){return [];},close(){}},recoverIntervalMs:0,subscriptionRefreshMs:0,managerPollMs:0});
+  const adapter=new DotsAdapter({root:path.join(root,'gateway'),store,client,eventReader:{read(){return [];},request(){return null;},close(){}},recoverIntervalMs:0,subscriptionRefreshMs:0,managerPollMs:0});
   t.after(()=>{adapter.close();db.close();rmSync(root,{recursive:true,force:true});});
   return {root,db,runtime,store,adapter,calls,lose(){lost=true;}};
 }
 
 test('real manager migration only reparents legacy goals and preserves status, wake time and thread',async t=>{
-  const f=fixture(t);const response=await f.adapter.manager(OWNER);assert.equal(response.manager.name,'大内总管');assert.equal(response.tasks.length,1);const row=f.db.prepare('SELECT * FROM goals WHERE id=1').get();assert.equal(row.status,'paused');assert.equal(row.next_wake_at,null);assert.equal(row.thread_id,'original-thread');assert.equal(row.manager_id,'manager:'+OWNER);assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM manager_runs').get().n,0);assert.equal(f.store.mapping(OWNER,1).conversation_id,'dots-task-1');
+  const f=fixture(t);const response=await f.adapter.manager(OWNER);assert.equal(response.manager.name,'大内总管');assert.equal(response.tasks.length,1);const row=f.db.prepare('SELECT * FROM goals WHERE id=1').get();assert.equal(row!.status,'paused');assert.equal(row!.next_wake_at,null);assert.equal(row!.thread_id,'original-thread');assert.equal(row!.manager_id,'manager:'+OWNER);assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM manager_runs').get()!.n,0);assert.equal(f.store.mapping(OWNER,1)!.conversation_id,'dots-task-1');
 });
 
 test('real runtime receipt survives gateway response loss and mobile and desktop share message order',async t=>{
   const f=fixture(t);const input={requestId:'mobile-write',message:'先检查渲染',host:'shiyan_mobile'};f.lose();await assert.rejects(f.adapter.messageManager(OWNER,input));const first=await f.adapter.messageManager(OWNER,input);assert.equal(first.accepted,true);assert.equal(first.message.createdAt,1000);assert.equal(first.message.host,'shiyan_mobile');
-  await f.adapter.messageManager(OWNER,{requestId:'desktop-write',message:'同时检查同步',host:'shiyan_desktop'});await f.adapter.syncManagerActivity(OWNER);assert.equal(f.runtime.snapshot().messages.length,2);assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM manager_requests').get().n,2);assert.deepEqual((await f.adapter.manager(OWNER)).messages.map(m=>m.content),['先检查渲染','同时检查同步']);assert.equal(f.adapter.events(OWNER).events.filter(e=>e.type==='manager_activity').length,2);
+  await f.adapter.messageManager(OWNER,{requestId:'desktop-write',message:'同时检查同步',host:'shiyan_desktop'});await f.adapter.syncManagerActivity(OWNER);assert.equal(f.runtime.snapshot().messages.length,2);assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM manager_requests').get()!.n,2);assert.deepEqual((await f.adapter.manager(OWNER)).messages.map(m=>m.content),['先检查渲染','同时检查同步']);assert.equal(f.adapter.events(OWNER).events.filter(e=>e.type==='manager_activity').length,2);
 });
 
 test('real manager structured delegation produces dependent child tasks and assistant SSE replay',async t=>{
@@ -65,8 +65,8 @@ test('voice reply attribution survives gateway snapshot, pagination and activity
   assert.deepEqual(history.messages[0].respondsToMessageIds,sources);
   const event=f.adapter.events(OWNER).events.find(item=>item.payload.activity?.kind==='assistant_message');
   assert.deepEqual(event.payload.activity.data.message.respondsToMessageIds,sources);
-  await assert.rejects(f.adapter.manager('other-owner'),e=>e.statusCode===404||e.status===404);
-  await assert.rejects(f.adapter.managerMessages('other-owner'),e=>e.statusCode===404||e.status===404);
+  await assert.rejects(f.adapter.manager('other-owner'),e=>(e as any).statusCode===404||(e as any).status===404);
+  await assert.rejects(f.adapter.managerMessages('other-owner'),e=>(e as any).statusCode===404||(e as any).status===404);
 });
 
 test('gateway rejects malformed reply attribution and preserves empty historical associations',async t=>{
@@ -96,15 +96,15 @@ test('real reported done waits for manager acceptance before dependent task beco
 });
 
 test('real pause and cancellation controls preserve manager identity and do not double-apply',async t=>{
-  const f=fixture(t);const [task]=f.runtime.createTasks([{key:'one',title:'工作',instruction:'办理',dependencies:[]}]);const paused=await f.adapter.controlManager(OWNER,{requestId:'pause',action:'pause'});assert.equal(paused.manager.status,'paused');assert.equal(f.db.prepare('SELECT status FROM goals WHERE id=?').get(task.id).status,'active');await f.adapter.messageManager(OWNER,{requestId:'while-paused',message:'先记着这个要求',host:'shiyan_mobile'});assert.equal(f.runtime.snapshot().status,'paused');assert.equal(f.runtime.claimGoal(task.id),null);
-  const cancelled=await f.adapter.controlManager(OWNER,{requestId:'cancel-all',action:'cancel'});assert.equal(cancelled.manager.status,'cancelled');assert.equal(f.db.prepare('SELECT status FROM goals WHERE id=?').get(task.id).status,'cancelled');const revision=cancelled.manager.controlRevision;await f.adapter.controlManager(OWNER,{requestId:'cancel-all',action:'cancel'});assert.equal(f.runtime.snapshot().controlRevision,revision);const resumed=await f.adapter.controlManager(OWNER,{requestId:'resume',action:'resume'});assert.equal(resumed.manager.id,paused.manager.id);assert.equal(resumed.manager.status,'active');assert.equal(f.db.prepare('SELECT status FROM goals WHERE id=?').get(task.id).status,'cancelled');
+  const f=fixture(t);const [task]=f.runtime.createTasks([{key:'one',title:'工作',instruction:'办理',dependencies:[]}]);const paused=await f.adapter.controlManager(OWNER,{requestId:'pause',action:'pause'});assert.equal(paused.manager.status,'paused');assert.equal(f.db.prepare('SELECT status FROM goals WHERE id=?').get(task.id)!.status,'active');await f.adapter.messageManager(OWNER,{requestId:'while-paused',message:'先记着这个要求',host:'shiyan_mobile'});assert.equal(f.runtime.snapshot().status,'paused');assert.equal(f.runtime.claimGoal(task.id),null);
+  const cancelled=await f.adapter.controlManager(OWNER,{requestId:'cancel-all',action:'cancel'});assert.equal(cancelled.manager.status,'cancelled');assert.equal(f.db.prepare('SELECT status FROM goals WHERE id=?').get(task.id)!.status,'cancelled');const revision=cancelled.manager.controlRevision;await f.adapter.controlManager(OWNER,{requestId:'cancel-all',action:'cancel'});assert.equal(f.runtime.snapshot().controlRevision,revision);const resumed=await f.adapter.controlManager(OWNER,{requestId:'resume',action:'resume'});assert.equal(resumed.manager.id,paused.manager.id);assert.equal(resumed.manager.status,'active');assert.equal(f.db.prepare('SELECT status FROM goals WHERE id=?').get(task.id)!.status,'cancelled');
 });
 
 test('real private Unix MCP bridge translates manager writes, activity and message history into gateway contracts',async t=>{
   const f=fixture(t);f.db.exec(`CREATE TABLE notifications(id INTEGER PRIMARY KEY,goal_id INTEGER,level TEXT,title TEXT,body TEXT,created_at INTEGER,output_id INTEGER,read_at INTEGER,delivered_at INTEGER);CREATE TABLE timeline(id INTEGER PRIMARY KEY,goal_id INTEGER,kind TEXT,message TEXT,data TEXT,created_at INTEGER);`);
-  const TOKEN='fixture-token-local-only';const requests=[];
+  const TOKEN='fixture-token-local-only';const requests: any[]=[];
   const server=http.createServer(async(req,res)=>{
-    const url=new URL(req.url,'http://fixture');const chunks=[];for await(const chunk of req)chunks.push(chunk);const body=chunks.length?JSON.parse(Buffer.concat(chunks).toString()):{};
+    const url=new URL(req.url||'/','http://fixture');const chunks: any[]=[];for await(const chunk of req)chunks.push(chunk);const body=chunks.length?JSON.parse(Buffer.concat(chunks).toString()):{};
     const reply=(status,value)=>{res.writeHead(status,{'Content-Type':'application/json'});res.end(JSON.stringify(value));};
     if(req.headers.authorization!=='Bearer '+TOKEN)return reply(401,{error:'Fixture authorization failed'});requests.push({method:req.method,url:req.url,body});
     try{
@@ -115,10 +115,10 @@ test('real private Unix MCP bridge translates manager writes, activity and messa
       if(req.method==='POST'&&match[2]==='control')return reply(200,f.runtime.control(body));
       if(req.method==='GET'&&match[2]==='activity')return reply(200,f.runtime.activity({afterId:Number(url.searchParams.get('afterId')||0),limit:Number(url.searchParams.get('limit')||50)}));
       return reply(404,{error:'Fixture method not found'});
-    }catch(error){reply(error.statusCode||500,{error:error.message});}
+    }catch(error){reply((error as any).statusCode||500,{error:(error as any).message});}
   });
-  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
-  const bridge=createMcpBridge({db:f.db,pathSecret:'fixture-path-only',runtimeToken:TOKEN,runtimeBase:'http://127.0.0.1:'+server.address().port,retryIntervalMs:0});
+  await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',()=>resolve()));
+  const bridge=createMcpBridge({db:f.db,pathSecret:'fixture-path-only',runtimeToken:TOKEN,runtimeBase:'http://127.0.0.1:'+(server.address() as any).port,retryIntervalMs:0});
   const stopSocket=await startLocalMcpSocket({root:f.root,bridge});f.adapter.client=createLocalDotsClient({socketPath:path.join(f.root,'local-ipc','mcp.sock')});
   try{
     const tools=await f.adapter.client.rpc('tools/list');assert.ok(tools.tools.some(tool=>tool.name==='dots_get_manager_messages'));
@@ -126,7 +126,7 @@ test('real private Unix MCP bridge translates manager writes, activity and messa
     const run=f.runtime.claimManager();f.runtime.completeManager(run,{reply:'已安排子任务。',summary:'派工',tasks:[{key:'one',title:'核对项目',instruction:'只读检查',dependencies:[],acceptanceCriteria:'提供证据',resourceKey:''}],reviews:[],controls:[],instructions:[]});await f.adapter.syncManagerActivity(OWNER);
     const current=await f.adapter.manager(OWNER);assert.equal(current.messages.at(-1).content,'已安排子任务。');assert.equal(current.tasks.length,2);assert.ok(f.adapter.events(OWNER).events.some(event=>event.payload.activity?.kind==='task_created'));
     const insert=f.db.prepare("INSERT INTO manager_messages(manager_id,role,content,created_at) VALUES(?,'assistant',?,1000)");for(let n=0;n<110;n++)insert.run(f.runtime.managerId,'history '+n);
-    const latest=await f.adapter.manager(OWNER);assert.equal(latest.messages.length,100);assert.equal(latest.hasMoreMessages,true);const older=await f.adapter.managerMessages(OWNER,{before:latest.oldestMessageId,limit:100});assert.equal(older.hasMore,false);assert.equal(older.messages.length,12);assert.equal(older.messages[0].content,'在总管下创建子任务');
+    const latest: any=await f.adapter.manager(OWNER);assert.equal(latest.messages.length,100);assert.equal(latest.hasMoreMessages,true);const older=await f.adapter.managerMessages(OWNER,{before:latest.oldestMessageId,limit:100});assert.equal(older.hasMore,false);assert.equal(older.messages.length,12);assert.equal(older.messages[0].content,'在总管下创建子任务');
     const paused=await f.adapter.controlManager(OWNER,{requestId:'unix-real-pause',action:'pause'});assert.equal(paused.manager.status,'paused');assert.ok(requests.some(request=>request.url.includes('/messages?limit=100&beforeId=')));
   }finally{stopSocket();bridge.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
 });
