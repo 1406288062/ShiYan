@@ -13,11 +13,11 @@ const {createAccountHandler}=await import('./account-http.ts');
 const password='initial-test-password',nextPassword='new-test-password-2026';
 test.after(()=>rmSync(root,{recursive:true,force:true}));
 async function fixture(t){
- let now=1000000;const messages=[];
+ let now=1000000;const messages: any[]=[];
  const store=new AccountStore(path.join(root,randomUUID()),{now:()=>now,registrationSocketPath:false});t.after(()=>store.close());
  const member=await store.register({email:'member@example.test',password});
  const other=await store.register({email:'other@example.test',password});
- const mail=new RegistrationEmail(store,{purpose:'password-reset',configured:()=>true,secret:Buffer.alloc(32,7),send:async m=>messages.push(m)});
+ const mail=new RegistrationEmail(store,{purpose:'password-reset',configured:()=>true,secret:Buffer.alloc(32,7),send:async m=>{messages.push(m);}});
  const input=()=>({email:member.user.email,password:nextPassword,confirmPassword:nextPassword,verificationCode:messages.at(-1).text.match(/：([0-9]{6})/)[1]});
  return {store,mail,member,other,messages,input,advance:ms=>now+=ms};
 }
@@ -31,7 +31,7 @@ test('verified reset rotates password, revokes only the matching account session
  const session=await f.store.login({email:input.email,password:nextPassword});assert.equal(session.user.id,f.member.user.id);assert.equal(session.user.role,'user');
  assert.throws(()=>f.mail.check(input));
  await assert.rejects(f.store.resetPassword(input,{verifyEmail:claim}));
- assert.equal(f.store.authenticate(session.token).userId,f.member.user.id);
+ assert.equal(f.store.authenticate(session.token)!.userId,f.member.user.id);
 });
 test('expired and replaced claims cannot change password',async t=>{
  const f=await fixture(t);await f.mail.request({email:f.member.user.email},'ip');
@@ -71,9 +71,9 @@ test('two simultaneous uses of the same verified code allow only one password up
 });
 test('password-reset HTTP endpoints work without logging in and never issue a session',async t=>{
  const f=await fixture(t),handler=createAccountHandler({store:f.store,passwordResetEmail:f.mail});
- const server=http.createServer((req,res)=>handler(req,res));await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+ const server=http.createServer((req,res)=>handler(req,res));await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',()=>resolve()));
  t.after(()=>new Promise(resolve=>server.close(resolve)));
- const post=(route,body)=>fetch('http://127.0.0.1:'+server.address().port+'/v1/auth/'+route,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+ const post=(route,body)=>fetch('http://127.0.0.1:'+(server.address() as any).port+'/v1/auth/'+route,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
  let response=await post('password-reset-code',{email:f.member.user.email});assert.equal(response.status,200);
  response=await post('password-reset',f.input());assert.equal(response.status,200);assert.deepEqual(await response.json(),{ok:true});assert.equal(response.headers.get('set-cookie'),null);
  response=await post('login',{email:f.member.user.email,password:nextPassword});assert.equal(response.status,200);
