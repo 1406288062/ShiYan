@@ -30,10 +30,10 @@ import {createAccountHandler} from './account-http.ts';
 test('HTTP first QR pairing enables subsequent phone-confirmed login without scanning',async t=>{
  const {a,phone,other}=await setup(t),handler=createAccountHandler({store:a});
  const server=http.createServer(async(req,res)=>{if(!await handler(req,res)){res.writeHead(404);res.end();}});
- await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)));
- const call=async(route,body,token)=>{
-  const r=await fetch(`http://127.0.0.1:${server.address().port}/v1/auth/${route}`,{method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});
-  return {status:r.status,value:await r.json()};
+ await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',()=>resolve()));t.after(()=>new Promise(resolve=>server.close(resolve)));
+ const call=async(route,body?: any,token?: any)=>{
+  const r=await fetch(`http://127.0.0.1:${(server.address() as any).port}/v1/auth/${route}`,{method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});
+  return {status:r.status,value:(await r.json()) as any};
  };
  const c=(await call('qr/create',{})).value,scan={id:c.id,scanSecret:new URL(c.payload).searchParams.get('secret')};
  assert.equal((await call('qr/approve',{...scan,approve:true},phone.token)).status,200);
