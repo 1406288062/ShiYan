@@ -31,7 +31,7 @@ test('account event is atomic with successful registration, contains only notice
   await assert.rejects(store.register({ username: 'alice', password }), { status: 409 });
   await assert.rejects(store.register({ username: 'unverified', password }, { verifyEmail() { throw new Error('bad code'); } }));
   assert.equal(rows(store).length, 1);
-  assert.equal(store.db.prepare("SELECT COUNT(*) AS n FROM account_users WHERE username='unverified'").get().n, 0);
+  assert.equal(store.db.prepare("SELECT COUNT(*) AS n FROM account_users WHERE username='unverified'").get()!.n, 0);
 });
 
 test('offline delivery survives account-store restart and acknowledgement loss replays the same immutable event', async t => {
@@ -77,7 +77,7 @@ test('legacy pending outbox migration restores account email once and retains th
 });
 
 test('private receiver rejects owner injection, secrets, malformed sources and oversized events before ingest', async t => {
-  const { socketPath } = await fixture(t); const received = [];
+  const { socketPath } = await fixture(t); const received: any[] = [];
   const receiver = await startRegistrationReceiver({ socketPath, ingest: event => received.push(event) }); t.after(() => receiver.close());
   const event = { id: 'registration:shiyan_web:abc', source: 'shiyan_web', username: 'alice', email: 'alice@example.test', registeredAt: Date.now() };
   await postRegistrationEvent(socketPath, event); assert.equal(received.length, 1);
