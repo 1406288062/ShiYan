@@ -40,12 +40,12 @@ export function createSubscriptionIntent({ store, subscriptions, assess, fetchIm
       const r = await fetchImpl('https://api.github.com/repos/' + repo, { headers: { 'User-Agent': 'dots-runtime', Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(10000) });
       if (r.status === 404) return false;
       if (!r.ok) return null;
-      const data = await r.json();
+      const data: any = await r.json();
       return data && data.private === false;
     } catch { return null; }
   }
-  const card = (provider, action, fields = [], note = '') => ({ type: 'subscription', provider, action, fields, state: 'open', note });
-  const reply = (message, content, c = null) => { store.postSubscriptionReply({ content, card: c, respondsTo: message.id }); return true; };
+  const card = (provider, action, fields: any[] = [], note = '') => ({ type: 'subscription', provider, action, fields, state: 'open', note });
+  const reply = (message, content, c: any = null) => { store.postSubscriptionReply({ content, card: c, respondsTo: message.id }); return true; };
 
   async function handle(message, decision) {
     const { action, provider } = decision;
@@ -105,10 +105,10 @@ export function createSubscriptionIntent({ store, subscriptions, assess, fetchIm
     if (!message?.id || !store.claimSubscriptionIntent(message.id)) return true; // 已处理过（重复请求）
     let decision;
     try { decision = await assess(prompt(message.content, await current()), SUBSCRIBE_SCHEMA, { source: 'dots-subscribe', signal: AbortSignal.timeout(60000) }); }
-    catch (error) { logger.warn?.('[subscription-intent] classify failed', error?.message || error); return false; }
+    catch (error) { logger.warn?.('[subscription-intent] classify failed', (error as any)?.message || error); return false; }
     if (!decision || !['subscribe', 'unsubscribe', 'list'].includes(decision.action)) return false;
     try { return await handle(message, decision); }
-    catch (error) { logger.warn?.('[subscription-intent] handle failed', error?.message || error); return reply(message, '订阅没有成功：' + String(error?.message || error).slice(0, 200)); }
+    catch (error) { logger.warn?.('[subscription-intent] handle failed', (error as any)?.message || error); return reply(message, '订阅没有成功：' + String((error as any)?.message || error).slice(0, 200)); }
   }
   return { candidate, process };
 }
