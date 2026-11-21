@@ -9,16 +9,16 @@ import * as sandbox from './member-sandbox.ts';
 
 test('real HTTP file, project and PTY routes isolate two simultaneously authenticated accounts',async t=>{
  const root=await fs.mkdtemp(path.join(os.tmpdir(),'member-http-real-'));const handler=createWorkspaceHandler({operations:async()=>({workspaceOperation:(owner,input)=>sandbox.workspaceOperation(owner,input,{root}),spawnSandbox:(owner,input)=>sandbox.spawnSandbox(owner,{...input,root})})});
- const server=http.createServer(async(req,res)=>{try{await handler(req,res,req.headers['x-owner']?{owner:req.headers['x-owner'],serverAccess:false,role:'user'}:null,async req=>{const chunks=[];for await(const d of req)chunks.push(d);return JSON.parse(Buffer.concat(chunks).toString()||'{}');});}catch(e){res.writeHead(e.status||500,{'Content-Type':'application/json'}).end(JSON.stringify({error:e.message}));}});
- await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(async()=>{server.closeAllConnections();server.close();await fs.rm(root,{recursive:true,force:true});});
- const request=(owner,route,method='GET',body)=>fetch('http://127.0.0.1:'+server.address().port+'/v1/workspace'+route,{method,headers:{'x-owner':owner,'Content-Type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})});
+ const server=http.createServer(async(req,res)=>{try{await handler(req,res,req.headers['x-owner']?{owner:req.headers['x-owner'],serverAccess:false,role:'user'}:null,async req=>{const chunks: any[]=[];for await(const d of req)chunks.push(d);return JSON.parse(Buffer.concat(chunks).toString()||'{}');});}catch(e){res.writeHead((e as any).status||500,{'Content-Type':'application/json'}).end(JSON.stringify({error:(e as any).message}));}});
+ await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',()=>resolve()));t.after(async()=>{server.closeAllConnections();server.close();await fs.rm(root,{recursive:true,force:true});});
+ const request=(owner,route,method='GET',body?: any)=>fetch('http://127.0.0.1:'+(server.address() as any).port+'/v1/workspace'+route,{method,headers:{'x-owner':owner,'Content-Type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})});
  const projectId='same-project-123';const results=await Promise.all(['alice','bob'].map(async owner=>{
   let response=await request(owner,'/projects','POST',{id:projectId,name:owner});assert.equal(response.status,200);
-  response=await request(owner,'/files/write','POST',{projectId,path:'private.txt',text:owner+' private',confirmed:true});assert.equal(response.status,200);return(await response.json()).file;
+  response=await request(owner,'/files/write','POST',{projectId,path:'private.txt',text:owner+' private',confirmed:true});assert.equal(response.status,200);return((await response.json()) as any).file;
  }));assert.equal(results[0].text,'alice private');assert.equal(results[1].text,'bob private');
- const replay=await request('bob','/files/read','POST',{fileId:results[0].fileId});assert.equal((await replay.json()).file.text,'bob private');
+ const replay=await request('bob','/files/read','POST',{fileId:results[0].fileId});assert.equal(((await replay.json()) as any).file.text,'bob private');
  for(const owner of ['alice','bob']){const response=await request(owner,'/files/read','POST',{path:'/home/ubuntu/.codex/auth.json'});assert.equal(response.status,403);}
- const opening=await request('alice','/terminals','POST',{projectId});assert.equal(opening.status,200);const terminal=(await opening.json()).terminal;
+ const opening=await request('alice','/terminals','POST',{projectId});assert.equal(opening.status,200);const terminal=((await opening.json()) as any).terminal;
  assert.equal((await request('bob','/terminals/'+terminal.id+'/input','POST',{data:'echo bad\n'})).status,404);
  assert.equal((await request('alice','/terminals/'+terminal.id+'/resize','POST',{cols:120,rows:40})).status,200);
  assert.equal((await request('alice','/terminals/'+terminal.id+'/input','POST',{data:'printf terminal-owned > terminal.txt; stty size; echo done-private-pty; exit\n'})).status,200);
