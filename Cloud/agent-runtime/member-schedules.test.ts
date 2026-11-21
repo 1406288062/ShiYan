@@ -8,7 +8,7 @@ import { prepareScheduleMutation, SyncedSchedules } from './sync-schedules.ts';
 import { MemberScheduleWorker, nextMemberRun } from './member-schedules.ts';
 
 const clock = Date.parse('2026-10-23T01:00:00Z');
-const task = () => ({ id: 'schedule-test-id', title: 'Own task', instruction: 'Write my report', enabled: true, repeat: 'daily', time: '09:00', timezone: 'Asia/Shanghai', startDate: '2026-10-23', endDate: null, runLocally: true, notificationMode: 'all', newChatEachRun: false, model: 'test-model', reasoning: 'low', projectId: null });
+const task = (): any => ({ id: 'schedule-test-id', title: 'Own task', instruction: 'Write my report', enabled: true, repeat: 'daily', time: '09:00', timezone: 'Asia/Shanghai', startDate: '2026-10-23', endDate: null, runLocally: true, notificationMode: 'all', newChatEachRun: false, model: 'test-model', reasoning: 'low', projectId: null });
 function fixture(t) {
   const root = mkdtempSync(path.join(os.tmpdir(), 'shiyan-member-schedules-')), store = new SyncStore(root);
   t.after(() => { store.close(); rmSync(root, { recursive: true, force: true }); }); return store;
@@ -24,7 +24,7 @@ test('member schedule mutations force isolated execution without a registered Ma
   assert.throws(() => schedules.claim(auth, input.id, {}), { status: 403 });
 });
 test('two accounts using the same task id execute independently and repeated ticks never duplicate a run', async t => {
-  const store = fixture(t), submitted = [], statuses = new Map();
+  const store = fixture(t), submitted: any[] = [], statuses = new Map();
   for (const owner of ['alice', 'bob']) store.write(owner, 'scheduledTasks', 'same-task-id', { ...task(), id: 'same-task-id', runLocally: false, executionMode: 'isolated', executorDeviceId: 'isolated', nextRunAt: new Date(clock - 1000).toISOString() });
   const worker = new MemberScheduleWorker(store, { pollMs: 0, now: () => clock, access: () => ({ status: 'active' }),
     submit: async (input, owner) => { submitted.push({ input, owner }); const job = { id: 'job-' + owner, status: 'running' }; statuses.set(owner + ':' + job.id, job); return job; },
@@ -32,10 +32,10 @@ test('two accounts using the same task id execute independently and repeated tic
   await Promise.all([worker.tick(), worker.tick()]); await worker.tick();
   assert.equal(submitted.length, 2); assert.notEqual(submitted[0].input.requestId, submitted[1].input.requestId);
   assert.notEqual(submitted[0].input.conversationId, submitted[1].input.conversationId);
-  for (const owner of ['alice', 'bob']) assert.equal(store.get(owner, 'scheduledTasks', 'same-task-id').data.lastRunState, 'running');
+  for (const owner of ['alice', 'bob']) assert.equal(store.get(owner, 'scheduledTasks', 'same-task-id')!.data.lastRunState, 'running');
   statuses.get('alice:job-alice').status = 'completed'; await worker.tick();
-  assert.equal(store.get('alice', 'scheduledTasks', 'same-task-id').data.lastRunState, 'completed');
-  assert.equal(store.get('bob', 'scheduledTasks', 'same-task-id').data.lastRunState, 'running');
+  assert.equal(store.get('alice', 'scheduledTasks', 'same-task-id')!.data.lastRunState, 'completed');
+  assert.equal(store.get('bob', 'scheduledTasks', 'same-task-id')!.data.lastRunState, 'running');
 });
 test('disabled owners do not execute and hourly scheduling remains bounded across future dates', async t => {
   const store = fixture(t); let called = false;
