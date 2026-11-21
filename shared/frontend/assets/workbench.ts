@@ -1,8 +1,11 @@
  
+declare const C: any;
+declare const Terminal: any;
+declare const FitAddon: any;
 (() => {
   'use strict';
-  const $ = id => document.getElementById(id);
-  const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const $: any = (id: string): any => document.getElementById(id);
+  const esc = (v: any): any => String(v ?? '').replace(/[&<>"']/g, (c: string): string => (({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'} as Record<string,string>)[c]));
   const paths = {
     home:'M3 10 12 3l9 7v10H15v-6H9v6H3Z',
     enhance:'M4 8V4h4m8 0h4v4m0 8v4h-4M8 20H4v-4M12 7l1.4 3.6L17 12l-3.6 1.4L12 17l-1.4-3.6L7 12l3.6-1.4Z',
@@ -47,12 +50,12 @@
   const toolbarButtonIds=new Set(['sidebarSearch','toggleLeftSidebar','toggleRightWorkspace','addWorkspaceTab']);
   const button = (id, name, title, extra='') => `<button id="${id}" class="wb-icon-button ${extra}" type="button" title="${esc(title)}" aria-label="${esc(title)}">${toolbarButtonIds.has(id)?toolbarIcon(name):icon(name)}</button>`;
   const uuid = () => crypto.randomUUID();
-  let token = '', projects = [], prefs = {leftOpen:true,rightOpen:false,leftWidth:window.ShiYanPlatform?.mode==='web'?248:262,rightWidth:460,groups:{pinned:true,projects:true,recent:true}}, tabs = [], activeTab = '', defaultDirectory = '', lastSelected = '';
-  let browserState = {tabs:[],history:[],bookmarks:[],downloads:[],searchEngine:'bing'};
+  let token = '', projects: any[] = [], prefs: any = {leftOpen:true,rightOpen:false,leftWidth:window.ShiYanPlatform?.mode==='web'?248:262,rightWidth:460,groups:{pinned:true,projects:true,recent:true}}, tabs: any[] = [], activeTab = '', defaultDirectory = '', lastSelected = '';
+  let browserState: any = {tabs:[],history:[],bookmarks:[],downloads:[],searchEngine:'bing'};
   let ready = false, saveTimer, resizeRAF, loading = true;
    
   let compactPane = 'left', wasCompact = false;
-  let v2 = null;
+  let v2: any = null;
   const panes = new Map(), sessions = new Map(), openedBrowsers = new Set(), pickerRequests = new Map();
   const nativeAvailable = () => !!window.ShiYanAccount?.user?.serverAccess && (window.ShiYanPlatform?.adapter('native')?.available?.() ?? !!window.webkit?.messageHandlers?.native);
   function native(op, data={}) {
@@ -62,8 +65,8 @@
     return true;
   }
   function notify(text) { window.shiyan?.toast?.(String(text)); }
-  async function api(path, method='GET', body) {
-    const headers = {'X-Shiyan-Local':'1'};
+  async function api(path: any, method: any = 'GET', body?: any) {
+    const headers: any = {'X-Shiyan-Local':'1'};
     if(token) headers['X-Shiyan-Workspace'] = token;
     if(body !== undefined) headers['Content-Type'] = 'application/json';
     const r = await fetch('/api/workspace'+path,{method,headers,body:body===undefined?undefined:JSON.stringify(body)});
@@ -74,7 +77,7 @@
   function persist() {
     if(!ready) return;
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(()=>api('/preferences','PATCH',{...prefs,tabs:tabs.map(({id,type,title,url,projectId,path,fileId,selectedPath,directoryOpen,directoryPath,cwd,conversationId,messageId,assetId,assetName})=>({id,type,title,url,projectId,path,fileId,selectedPath,directoryOpen,directoryPath,cwd,conversationId,messageId,assetId,assetName})),activeTab}).catch(e=>notify(e.message)),180);
+    saveTimer = setTimeout(()=>api('/preferences','PATCH',{...prefs,tabs:tabs.map(({id,type,title,url,projectId,path,fileId,selectedPath,directoryOpen,directoryPath,cwd,conversationId,messageId,assetId,assetName})=>({id,type,title,url,projectId,path,fileId,selectedPath,directoryOpen,directoryPath,cwd,conversationId,messageId,assetId,assetName})),activeTab}).catch(e=>notify((e as any).message)),180);
   }
   function createShell() {
     document.body.classList.add('desktop-workbench');
@@ -210,7 +213,7 @@
   function pick(op,path='') {
     if(!window.ShiYanAccount?.user?.serverAccess) return Promise.reject(Error('请在项目目录中填写自己的工作区路径，例如 /workspace'));
     if(!nativeAvailable()) return Promise.reject(Error('请在桌面应用中选择文件；本机网页可直接填写项目路径'));
-    return new Promise(resolve=>{const id=uuid();pickerRequests.set(id,resolve);native(op,{id,path});});
+    return new Promise<any>(resolve=>{const id=uuid();pickerRequests.set(id,resolve);native(op,{id,path});});
   }
   async function selectProject(id) {
     await api('/projects/'+encodeURIComponent(id)+'/select','POST',{});
@@ -228,7 +231,7 @@
     const base={bing:'https://www.bing.com/search?q=',baidu:'https://www.baidu.com/s?wd=',duckduckgo:'https://duckduckgo.com/?q='}[browserState.searchEngine]||'https://www.bing.com/search?q=';
     return base+encodeURIComponent(raw);
   }
-  function openTab(options={type:'browser',title:'新标签页',url:''},reuse=false) {
+  function openTab(options: any = {type:'browser',title:'新标签页',url:''}, reuse: any = false) {
     if(reuse) {
       const existing=tabs.find(t=>t.type===options.type&&(options.type==='files'?t.projectId===options.projectId:options.type==='file'?t.path===options.path&&t.projectId===options.projectId&&t.fileId===options.fileId:true));
       if(existing){selectTab(existing.id);return existing;}
@@ -240,7 +243,7 @@
   async function closeTab(id) {
     v2?.onCloseTab(id);
     const term=sessions.get(id);
-    if(term){try{if(term.sessionId)await api('/terminals/'+term.sessionId,'DELETE');}catch(e){notify('终端关闭未确认：'+e.message);}term.controller?.abort();term.observer?.disconnect();term.term?.dispose();sessions.delete(id);}
+    if(term){try{if(term.sessionId)await api('/terminals/'+term.sessionId,'DELETE');}catch(e){notify('终端关闭未确认：'+(e as any).message);}term.controller?.abort();term.observer?.disconnect();term.term?.dispose();sessions.delete(id);}
     native('close',{tabId:id});openedBrowsers.delete(id);
     const index=tabs.findIndex(t=>t.id===id);tabs=tabs.filter(t=>t.id!==id);panes.get(id)?.remove();panes.delete(id);
     if(activeTab===id)activeTab=tabs[Math.min(index,tabs.length-1)]?.id||'';
@@ -283,7 +286,7 @@
     else if(tab.type==='terminal'){
       pane.classList.add('terminal-pane');
       pane.innerHTML=`<div class="terminal-heading"><span>${esc(projects.find(p=>p.id===tab.projectId)?.name||'本地终端')}</span><span class="terminal-status">未启动</span></div><div class="terminal-host"></div><div class="terminal-launch"><button class="wb-primary" type="button">启动终端</button></div>`;
-      pane.querySelector('.terminal-launch button').onclick=()=>startTerminal(tab).catch(e=>notify(e.message));
+      pane.querySelector('.terminal-launch button').onclick=()=>startTerminal(tab).catch(e=>notify((e as any).message));
       v2?.decorateTerminal(tab,pane);
     } else renderManager(tab,pane);
   }
@@ -304,7 +307,7 @@
         <div class="settings-row"><span>浏览记录</span><button class="wb-secondary" data-clear-history>清除历史记录</button></div><div class="settings-row"><span>网站数据</span><button class="wb-secondary" data-clear-browser-data>清除 Cookie 和缓存</button></div>
         <p class="settings-note">浏览器记录、聊天记录、图片历史分开保存。</p></div>`;
       $('searchEngineSelect').value=browserState.searchEngine||'bing';
-      $('searchEngineSelect').onchange=e=>native('searchEngine',{value:e.target.value});
+      $('searchEngineSelect').onchange=e=>native('searchEngine',{value:(e as any).target.value});
       return;
     }
     const rows=browserState[tab.type]||[], title={history:'浏览历史',bookmarks:'书签',downloads:'下载记录'}[tab.type];
@@ -319,7 +322,7 @@
     tab.projectId=project.id;
     const heading=document.createElement('div');heading.className='tree-project';heading.textContent=project.name;heading.title=project.path;tree.appendChild(heading);
     const root=document.createElement('div');tree.appendChild(root);
-    try{await loadDirectory(root,project.id,'');}catch(e){root.innerHTML=`<p class="wb-error">${esc(e.message)}</p>`;}
+    try{await loadDirectory(root,project.id,'');}catch(e){root.innerHTML=`<p class="wb-error">${esc((e as any).message)}</p>`;}
   }
   async function loadDirectory(container,projectId,path) {
     const result=await api('/directory?projectId='+encodeURIComponent(projectId)+'&path='+encodeURIComponent(path));
@@ -329,7 +332,7 @@
       const b=document.createElement('button');b.type='button';b.className='file-tree-row';b.title=entry.blocked?'此链接位于项目之外':entry.path;b.disabled=entry.blocked;
       b.innerHTML=(entry.directory?icon('forward','tree-chevron'):'<span class="tree-indent"></span>')+icon(entry.directory?'folder':'file')+`<span>${esc(entry.name)}</span>`;
       node.appendChild(b);container.appendChild(node);
-      if(entry.directory){const child=document.createElement('div');child.className='tree-children';child.hidden=true;node.appendChild(child);let loaded=false;b.onclick=async()=>{child.hidden=!child.hidden;b.classList.toggle('expanded',!child.hidden);if(!child.hidden&&!loaded){try{await loadDirectory(child,projectId,entry.path);loaded=true;}catch(e){child.innerHTML=`<p class="wb-error">${esc(e.message)}</p>`;}}};}
+      if(entry.directory){const child=document.createElement('div');child.className='tree-children';child.hidden=true;node.appendChild(child);let loaded=false;b.onclick=async()=>{child.hidden=!child.hidden;b.classList.toggle('expanded',!child.hidden);if(!child.hidden&&!loaded){try{await loadDirectory(child,projectId,entry.path);loaded=true;}catch(e){child.innerHTML=`<p class="wb-error">${esc((e as any).message)}</p>`;}}};}
       else b.onclick=()=>openTab({type:'file',title:entry.name,projectId,path:entry.path},true);
     }
     if(result.truncated){const p=document.createElement('p');p.className='wb-empty';p.textContent='此目录仅显示前 600 项。';container.appendChild(p);}
@@ -360,7 +363,7 @@
   }
   async function docxHTML(buffer){
     const xml=new DOMParser().parseFromString(await zipEntry(buffer,'word/document.xml'),'application/xml');
-    const W='http://schemas.openxmlformats.org/wordprocessingml/2006/main',text=[];
+    const W='http://schemas.openxmlformats.org/wordprocessingml/2006/main', text: any[] = [];
     const runText=p=>[...p.getElementsByTagNameNS(W,'*')].map(n=>n.localName==='t'?n.textContent:n.localName==='tab'?'\t':n.localName==='br'?'\n':'').join('');
     const para=p=>{const style=p.getElementsByTagNameNS(W,'pStyle')[0]?.getAttributeNS(W,'val')||p.getElementsByTagNameNS(W,'pStyle')[0]?.getAttribute('w:val')||'',value=runText(p);text.push(value);if(!value.trim())return '';
       const level=/^title$/i.test(style)?1:Number((/heading\s*(\d)/i.exec(style)||/^(\d)$/.exec(style)||[])[1]||0);
@@ -393,7 +396,7 @@
           else{try{text=new TextDecoder('utf-8',{fatal:true}).decode(buffer);}catch{try{text=new TextDecoder('gb18030').decode(buffer);}catch{text=new TextDecoder().decode(buffer);}}}
         }
       }
-    }catch(e){pane.innerHTML='<p class="wb-error file-error">'+esc(e.message)+'</p>';return;}
+    }catch(e){pane.innerHTML='<p class="wb-error file-error">'+esc((e as any).message)+'</p>';return;}
     const isMd=/\.md$/i.test(filename)||/\.markdown$/i.test(filename);
     let rawText=text;
     pane.innerHTML='<div class="file-preview-toolbar"><span title="'+esc(filename)+'">'+esc(filename)+'</span><span class="toolbar-spacer"></span><button type="button" class="wb-icon-button dots-output-more" aria-label="更多" title="更多">'+icon('more')+'</button></div><div class="dots-output-viewer"></div>';
@@ -414,7 +417,7 @@
     showRendered();
     const moreBtn=pane.querySelector('.dots-output-more');
     const closeMenu=()=>{const m=pane.querySelector('.dots-output-menu');if(m)m.remove();document.removeEventListener('click',onDocClick);};
-    const onDocClick=e=>{if(!e.target.closest('.dots-output-menu')&&!e.target.closest('.dots-output-more'))closeMenu();};
+    const onDocClick=e=>{if(!(e as any).target.closest('.dots-output-menu')&&!(e as any).target.closest('.dots-output-more'))closeMenu();};
     moreBtn.onclick=e=>{
       e.stopPropagation();
       if(pane.querySelector('.dots-output-menu')){closeMenu();return;}
@@ -428,7 +431,7 @@
         {label:'删除',danger:true,run:async()=>{if(!await window.shiyan?.confirmAction?.('删除这个文件？','删除后任务输出里将不再显示它。','删除'))return;try{await api('/outputs/'+encodeURIComponent(String(outputId)),'DELETE');}catch(err){}closeTab(tab.id);}},
       ];
       menu.innerHTML=items.map((it,i)=>'<button type="button" data-mi="'+i+'" class="'+(it.danger?'danger':'')+'">'+esc(it.label)+'</button>').join('');
-      menu.querySelectorAll('button').forEach(b=>{b.onclick=async ev=>{ev.stopPropagation();const it=items[Number(b.dataset.mi)];closeMenu();try{await it.run();}catch(err){notify(err.message);}};});
+      menu.querySelectorAll('button').forEach(b=>{b.onclick=async ev=>{ev.stopPropagation();const it=items[Number(b.dataset.mi)];closeMenu();try{await it.run();}catch(err){notify((err as any).message);}};});
       const r=moreBtn.getBoundingClientRect();menu.style.position='fixed';menu.style.top=(r.bottom+6)+'px';menu.style.right=Math.max(8,innerWidth-r.right)+'px';menu.style.zIndex='300';
       pane.appendChild(menu);
       document.addEventListener('click',onDocClick);
@@ -441,7 +444,7 @@
     try{
       const {file}=await api('/files/read','POST',tab.fileId?{fileId:tab.fileId}:{projectId:tab.projectId,path:tab.path});
       displayFile(tab,pane,file);
-    }catch(e){pane.innerHTML=`<p class="wb-error file-error">${esc(e.message)}</p>`;}
+    }catch(e){pane.innerHTML=`<p class="wb-error file-error">${esc((e as any).message)}</p>`;}
   }
   function displayFile(tab,pane,file) {
     tab.title=file.name;tab.file=file;
@@ -482,16 +485,16 @@
     term.parser.registerOscHandler(7,value=>{try{const url=new URL(value);if(url.protocol==='file:'){session.cwd=decodeURIComponent(url.pathname);tab.cwd=session.cwd;status.title=session.cwd;window.dispatchEvent(new CustomEvent('shiyan-terminal'));persist();}}catch(_){}return true;});
     tab.cwd=terminal.cwd;status.textContent='已连接';status.title=terminal.cwd;
     window.dispatchEvent(new CustomEvent('shiyan-terminal',{detail:{tabId:tab.id}}));
-    term.onData(data=>{session.input+=data;if(!session.inputTimer)session.inputTimer=setTimeout(()=>{session.inputTimer=null;const input=session.input;session.input='';session.writeQueue=session.writeQueue.then(()=>api('/terminals/'+session.sessionId+'/input','POST',{data:input})).catch(e=>{status.textContent=e.message;});},12);});
+    term.onData(data=>{session.input+=data;if(!session.inputTimer)session.inputTimer=setTimeout(()=>{session.inputTimer=null;const input=session.input;session.input='';session.writeQueue=session.writeQueue.then(()=>api('/terminals/'+session.sessionId+'/input','POST',{data:input})).catch(e=>{status.textContent=(e as any).message;});},12);});
     term.onResize(({cols,rows})=>{if(!session.exited)api('/terminals/'+session.sessionId+'/resize','POST',{cols:Math.max(20,Math.min(500,cols)),rows:Math.max(5,Math.min(200,rows))}).catch(()=>{});});
     session.observer=new ResizeObserver(()=>{if(!pane.hidden&&!$('rightWorkspace').hidden)try{fit.fit();}catch(_){}});session.observer.observe(host);
     requestAnimationFrame(()=>{try{fit.fit();term.focus();}catch(_){}});
-    readTerminal(session,status,pane).catch(e=>{if(e.name!=='AbortError'){status.textContent='连接中断';notify('终端连接中断：'+e.message);}});
+    readTerminal(session,status,pane).catch(e=>{if(e.name!=='AbortError'){status.textContent='连接中断';notify('终端连接中断：'+(e as any).message);}});
   }
   async function readTerminal(session,status,pane) {
     const response=await fetch('/api/workspace/terminals/'+session.sessionId+'/events',{headers:{'X-Shiyan-Workspace':token},signal:session.controller.signal});
     if(!response.ok)throw Error('终端订阅被拒绝 ('+response.status+')');
-    const reader=response.body.getReader(),decoder=new TextDecoder();let pending='';
+    const reader=(response.body as any).getReader(),decoder=new TextDecoder();let pending='';
     while(true){
       const {done,value}=await reader.read();if(done)break;
       pending+=decoder.decode(value,{stream:true});let end;
@@ -505,7 +508,7 @@
     if(!session.exited&&!session.controller.signal.aborted){session.exited=true;status.textContent='连接已结束';pane.querySelector('.terminal-launch').hidden=false;}
   }
   function fitTerminals(){if(v2)return v2.fitTerminals();for(const[id,s]of sessions){if(id===activeTab&&!$('rightWorkspace').hidden)requestAnimationFrame(()=>{try{s.fit.fit();}catch(_){}});}}
-  let chatSearchModal=null,chatSearchOrigin=null,chatSearchComposing=false;
+  let chatSearchModal: any = null, chatSearchOrigin: any = null, chatSearchComposing=false;
   function closeChatSearch(restore=true){
     if(!chatSearchModal)return;
     chatSearchModal.hidden=true;
@@ -518,7 +521,7 @@
     const term=$('wbChatSearchInput').value.trim().toLocaleLowerCase();
     const all=window.shiyan.getState()?.conversations||[];
     const matches=all.filter(c=>(c.messages||[]).some(m=>m.role==='user') && (!term||[c.title,projects.find(p=>p.id===c.projectId)?.name,...(c.messages||[]).map(m=>m.text)].some(v=>String(v||'').toLocaleLowerCase().includes(term))))
-      .sort((a,b)=>new Date(b.lastOpenedAt||b.updatedAt||0)-new Date(a.lastOpenedAt||a.updatedAt||0));
+      .sort((a,b)=>new Date(b.lastOpenedAt||b.updatedAt||0).getTime()-new Date(a.lastOpenedAt||a.updatedAt||0).getTime());
     const results=matches.slice(0,term?50:12);
     $('wbChatSearchResults').innerHTML=results.length?results.map(c=>{
       const project=projects.find(p=>p.id===c.projectId);
@@ -534,11 +537,11 @@
       input.addEventListener('compositionstart',()=>{chatSearchComposing=true});
       input.addEventListener('compositionend',()=>{chatSearchComposing=false;renderChatSearch()});
       chatSearchModal.addEventListener('click',async e=>{
-        if(e.target===chatSearchModal){closeChatSearch();return;}
-        const row=e.target.closest('[data-chat-search-id]');if(!row||row.disabled)return;
+        if((e as any).target===chatSearchModal){closeChatSearch();return;}
+        const row=(e as any).target.closest('[data-chat-search-id]');if(!row||row.disabled)return;
         row.disabled=true;
         try{await window.shiyan.selectConversation(row.dataset.chatSearchId);closeChatSearch(false);}
-        catch(error){window.shiyan.toast(error.message);if(row.isConnected)row.disabled=false;}
+        catch(error){window.shiyan.toast((error as any).message);if(row.isConnected)row.disabled=false;}
       });
       chatSearchModal.addEventListener('keydown',e=>{
         if(e.isComposing||e.keyCode===229)return;
@@ -561,7 +564,7 @@
     if(type==='execution'){window.ShiYanExecution?.openLatest();return;}
     const title={files:'文件',terminal:'终端',history:'浏览历史',bookmarks:'书签',downloads:'下载记录',settings:'浏览器设置'}[type];
     const tab=openTab({type,title,projectId:['files','terminal'].includes(type)?prefs.selectedProjectId||undefined:undefined},type!=='terminal');
-    if(type==='terminal'&&tab)startTerminal(tab).catch(e=>notify(e.message));
+    if(type==='terminal'&&tab)startTerminal(tab).catch(e=>notify((e as any).message));
   }
   function bind() {
     $('railHome').onclick=()=>window.shiyan.navigate('agent');
@@ -586,24 +589,24 @@
     $('addProjectButton').onclick=e=>{e.preventDefault();e.stopPropagation();projectDialog(false);};
     $('cancelProject').onclick=()=>{$('workbenchModal').hidden=true;scheduleNative();};
     $('importProjectMode').onclick=()=>setProjectMode(false);$('createProjectMode').onclick=()=>setProjectMode(true);
-    $('chooseProjectDirectory').onclick=async()=>{try{const result=await pick('chooseDirectory',$('projectPath').value);if(result&&!result.cancelled){$('projectPath').value=result.path;if(!$('projectName').value&&!createProject)$('projectName').value=result.path.split('/').filter(Boolean).pop();}}catch(e){notify(e.message);}};
+    $('chooseProjectDirectory').onclick=async()=>{try{const result=await pick('chooseDirectory',$('projectPath').value);if(result&&!result.cancelled){$('projectPath').value=result.path;if(!$('projectName').value&&!createProject)$('projectName').value=result.path.split('/').filter(Boolean).pop();}}catch(e){notify((e as any).message);}};
     $('projectForm').onsubmit=async e=>{
       e.preventDefault();$('submitProject').disabled=true;$('projectFormError').hidden=true;
       try{const result=await api('/projects','POST',{name:$('projectName').value,path:$('projectPath').value,create:createProject});projects=result.projects;renderProjects();$('workbenchModal').hidden=true;await selectProject(result.project.id);}
-      catch(error){$('projectFormError').textContent=error.message;$('projectFormError').hidden=false;}
+      catch(error){$('projectFormError').textContent=(error as any).message;$('projectFormError').hidden=false;}
       finally{$('submitProject').disabled=false;scheduleNative();}
     };
-    $('projectList').onclick=e=>{const p=e.target.closest('[data-project]');if(p)selectProject(p.dataset.project).catch(error=>notify(error.message));};
+    $('projectList').onclick=e=>{const p=(e as any).target.closest('[data-project]');if(p)selectProject(p.dataset.project).catch(error=>notify((error as any).message));};
     $('addWorkspaceTab').onclick=()=>openTab();
-    $('workspaceTabs').onclick=e=>{const close=e.target.closest('[data-close-tab]');if(close){e.stopPropagation();closeTab(close.dataset.closeTab);return;}const t=e.target.closest('[data-tab]');if(t)selectTab(t.dataset.tab);};
-    $('workspaceTabs').onkeydown=e=>{if(e.key==='Enter'||e.key===' '){const t=e.target.closest('[data-tab]');if(t){e.preventDefault();selectTab(t.dataset.tab);}}};
-    $('addressForm').onsubmit=e=>{e.preventDefault();try{const t=tabs.find(t=>t.id===activeTab);if(t?.type!=='browser')return;const url=normalizeAddress($('browserAddress').value);if(!url)return;t.url=url;t.title=new URL(url).hostname;openedBrowsers.add(t.id);native('navigate',{tabId:t.id,url});renderTabs();persist();}catch(error){notify(error.message);}};
+    $('workspaceTabs').onclick=e=>{const close=(e as any).target.closest('[data-close-tab]');if(close){e.stopPropagation();closeTab(close.dataset.closeTab);return;}const t=(e as any).target.closest('[data-tab]');if(t)selectTab(t.dataset.tab);};
+    $('workspaceTabs').onkeydown=e=>{if(e.key==='Enter'||e.key===' '){const t=(e as any).target.closest('[data-tab]');if(t){e.preventDefault();selectTab(t.dataset.tab);}}};
+    $('addressForm').onsubmit=e=>{e.preventDefault();try{const t=tabs.find(t=>t.id===activeTab);if(t?.type!=='browser')return;const url=normalizeAddress($('browserAddress').value);if(!url)return;t.url=url;t.title=new URL(url).hostname;openedBrowsers.add(t.id);native('navigate',{tabId:t.id,url});renderTabs();persist();}catch(error){notify((error as any).message);}};
     $('browserBack').onclick=()=>native('back',{tabId:activeTab});$('browserForward').onclick=()=>native('forward',{tabId:activeTab});
     $('browserReload').onclick=()=>{const tab=tabs.find(t=>t.id===activeTab);native('reload',{tabId:activeTab,url:tab?.url});};
     $('browserTools').onclick=()=>workspaceTool('settings');
     $('bookmarkPage').onclick=()=>{const t=tabs.find(t=>t.id===activeTab);if(t?.url)native('bookmark',{url:t.url,title:t.title});};
     $('rightContent').addEventListener('click',async e=>{
-      const b=e.target.closest('button');if(!b)return;
+      const b=(e as any).target.closest('button');if(!b)return;
       try{
         if(b.dataset.workspaceTool)workspaceTool(b.dataset.workspaceTool);
         else if(b.hasAttribute('data-open-file'))await chooseFile();
@@ -615,12 +618,12 @@
         else if(b.hasAttribute('data-clear-history')){if(await window.shiyan.confirmAction('清除浏览历史？','只清除浏览器记录，不影响聊天记录或图片作品。','清除'))native('clearHistory');}
         else if(b.hasAttribute('data-clear-downloads')){if(await window.shiyan.confirmAction('清除下载记录？','已保存的文件不会被删除。','清除'))native('clearDownloads');}
         else if(b.hasAttribute('data-clear-browser-data')){if(await window.shiyan.confirmAction('清除网站数据？','会清除浏览器 Cookie 和缓存，网站可能需要重新登录。','清除'))native('clearWebsiteData');}
-      }catch(error){notify(error.message);}
+      }catch(error){notify((error as any).message);}
     });
-    window.addEventListener('shiyan-state',e=>renderState(e.detail));
+    window.addEventListener('shiyan-state',e=>renderState((e as CustomEvent).detail));
     window.addEventListener('shiyan-view',()=>renderState(window.shiyan?.getState()));
     document.addEventListener('click',event=>{
-      const link=event.target.closest?.('#dotsView a.message-reference[href]');
+      const link=(event.target as any)?.closest?.('#dotsView a.message-reference[href]');
       if(!link||event.defaultPrevented||event.button>0)return;
       let url;try{url=new URL(link.getAttribute('href'),location.href);}catch{return;}
       if(!['http:','https:'].includes(url.protocol))return;
@@ -631,7 +634,7 @@
       openTab({type:'browser',title:url.hostname,url:url.href});
     });
     window.addEventListener('shiyan-native',event=>{
-      const d=event.detail||{};
+      const d=(event as CustomEvent).detail||{};
       if(d.type==='workspacePicked'){pickerRequests.get(d.id)?.(d);pickerRequests.delete(d.id);scheduleNative();}
       else if(d.type==='workbenchNotice')notify(d.message);
       else if(d.type==='browserNewTab')openTab({type:'browser',title:'网页',url:d.url});
@@ -644,7 +647,7 @@
     new MutationObserver(scheduleNative).observe($('app'),{attributes:true,subtree:true,attributeFilter:['hidden']});
     window.addEventListener('resize',layout);
     for(const[id,which]of [['leftResizeHandle','left'],['rightResizeHandle','right']]){
-      let drag=null;const handle=$(id);
+      let drag: any = null;const handle=$(id);
       handle.onpointerdown=e=>{if(e.button!==0)return;drag={x:e.clientX,value:prefs[which+'Width']};handle.setPointerCapture(e.pointerId);document.body.classList.add('resizing-workbench');};
       handle.onpointermove=e=>{if(!drag)return;const amount=(e.clientX-drag.x)*(which==='right'?-1:1);prefs[which+'Width']=Math.max(which==='left'?210:280,Math.min(which==='left'?350:900,drag.value+amount));layout();};
       handle.onpointerup=handle.onpointercancel=()=>{if(drag){drag=null;document.body.classList.remove('resizing-workbench');persist();}};
@@ -690,7 +693,7 @@
       if(!tabs.length){if(rightWorkspaceEnabled&&prefs.rightOpen)openTab();else renderTabs();}else{if(!tabs.some(t=>t.id===activeTab))activeTab=tabs[0].id;renderTabs();}
       if(window.innerWidth<1140)compactPane='left';
       renderState(window.shiyan?.getState());await v2?.afterBoot();layout();native('state');
-    }catch(error){notify(error.message);$('rightContent').innerHTML=`<p class="wb-error">${esc(error.message)}</p>`;}
+    }catch(error){notify((error as any).message);$('rightContent').innerHTML=`<p class="wb-error">${esc((error as any).message)}</p>`;}
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();
