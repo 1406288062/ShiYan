@@ -1,11 +1,14 @@
 import path from 'node:path';
 import { mkdirSync, writeFileSync, readFileSync, renameSync, unlinkSync, openSync, fsyncSync, closeSync } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
+import type { DatabaseSync } from 'node:sqlite';
 
 const fail=(message,status=400)=>Object.assign(new Error(message),{status,code:'invalid_attachment'});
 const sha=data=>createHash('sha256').update(data).digest('hex');
 const validId=id=>typeof id==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 export class DotsAttachments {
+  root: string;
+  db: DatabaseSync;
   constructor(root,db){
     this.root=path.resolve(root||'.','dots-attachments');this.db=db;
     db.exec(`CREATE TABLE IF NOT EXISTS dots_attachments(owner TEXT NOT NULL,id TEXT NOT NULL,filename TEXT NOT NULL,mime TEXT NOT NULL,bytes INTEGER NOT NULL,sha TEXT NOT NULL,PRIMARY KEY(owner,id));
@@ -57,7 +60,7 @@ export class DotsAttachments {
   }
   message(owner,requestId){
     if(!requestId)return null;const row=this.db.prepare('SELECT * FROM dots_message_attachments WHERE owner=? AND request_id=?').get(owner,requestId);
-    return row?{text:row.text,attachments:JSON.parse(row.attachments)}:null;
+    return row?{text:row.text,attachments:JSON.parse(String(row.attachments))}:null;
   }
   download(owner,id){const row=this.row(owner,id),data=readFileSync(this.file(owner,id,row.filename));if(data.length!==row.bytes||sha(data)!==row.sha)throw fail('文件校验失败',500);return {...this.public(row),data};}
 }

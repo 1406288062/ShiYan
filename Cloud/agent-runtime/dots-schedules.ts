@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import type { DatabaseSync } from 'node:sqlite';
+import type { DotsAdapter } from './dots-adapter.ts';
 
 const fail=(message,status=400,code='invalid_schedule')=>Object.assign(new Error(message),{status,code});
 const datePattern=/^\d{4}-\d{2}-\d{2}$/;
@@ -31,6 +33,11 @@ export function nextScheduleRun(schedule,after=Date.now()){
 }
 
 export class DotsSchedules {
+  adapter: DotsAdapter;
+  db: DatabaseSync;
+  now: () => number;
+  running: boolean;
+  timer: NodeJS.Timeout | null;
   constructor(adapter,{pollMs=15000,now=()=>Date.now()}={}){
     this.adapter=adapter;this.db=adapter.store.db;this.now=now;this.running=false;
     this.db.exec(`CREATE TABLE IF NOT EXISTS dots_schedules(id TEXT PRIMARY KEY,owner TEXT NOT NULL,title TEXT NOT NULL,instruction TEXT NOT NULL,enabled INTEGER NOT NULL,repeat TEXT NOT NULL,time TEXT NOT NULL,timezone TEXT NOT NULL,start_date TEXT NOT NULL,end_date TEXT,next_run_at INTEGER,last_run_at INTEGER,last_task_id INTEGER,revision INTEGER NOT NULL DEFAULT 1,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);
@@ -38,17 +45,17 @@ export class DotsSchedules {
       CREATE TABLE IF NOT EXISTS dots_schedule_runs(id TEXT PRIMARY KEY,owner TEXT NOT NULL,schedule_id TEXT NOT NULL,revision INTEGER NOT NULL,due_at INTEGER NOT NULL,goal_id INTEGER,state TEXT NOT NULL,updated_at INTEGER NOT NULL,last_error TEXT NOT NULL DEFAULT '');`);
     this.timer=pollMs>0?setInterval(()=>void this.tick().catch(()=>{}),pollMs):null;this.timer?.unref();
   }
-  close(){clearInterval(this.timer);}
+  close(){if(this.timer!==null)clearInterval(this.timer);}
   public(row){return {id:row.id,title:row.title,instruction:row.instruction,enabled:Boolean(row.enabled),repeat:row.repeat,time:row.time,timezone:row.timezone,startDate:row.start_date,endDate:row.end_date,nextRunAt:row.next_run_at,lastRunAt:row.last_run_at,lastTaskId:row.last_task_id,revision:row.revision,createdAt:row.created_at,updatedAt:row.updated_at,status:row.enabled?'active':'paused'};}
   row(owner,id){this.adapter.authorize(owner);if(typeof id!=='string'||!/^[0-9a-f-]{36}$/i.test(id))throw fail('定时任务不存在',404);const row=this.db.prepare('SELECT * FROM dots_schedules WHERE owner=? AND id=?').get(owner,id);if(!row)throw fail('定时任务不存在',404);return row;}
   get(owner,id){return {ok:true,schedule:this.public(this.row(owner,id))};}
   list(owner){this.adapter.authorize(owner);return {ok:true,schedules:this.db.prepare('SELECT * FROM dots_schedules WHERE owner=? ORDER BY updated_at DESC LIMIT 500').all(owner).map(row=>this.public(row)),scheduler:{available:true,durable:true,transport:'server',pollIntervalMs:15000,managerPauseBlocksRuns:true,missedRuns:'one-catch-up-run'}};}
-  validate(input,prior=null){
+  validate(input,prior: ReturnType<DotsSchedules['public']> | null=null){
     if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(k=>!['requestId','title','instruction','enabled','repeat','time','timezone','startDate','endDate'].includes(k)))throw fail('定时任务包含不支持的字段');
     const timezone=input.timezone??prior?.timezone??'Asia/Shanghai';
     try{if(typeof timezone!=='string'||timezone.length>100)throw new Error();new Intl.DateTimeFormat('en',{timeZone:timezone});}catch{throw fail('时区无效');}
     const value={title:input.title??prior?.title,instruction:input.instruction??prior?.instruction,enabled:input.enabled??prior?.enabled??true,repeat:input.repeat??prior?.repeat??'daily',time:input.time??prior?.time??'21:00',timezone,startDate:input.startDate??prior?.startDate??localDate(this.now(),timezone),endDate:input.endDate===undefined?prior?.endDate??null:input.endDate};
-    for(const [key,max] of [['title',200],['instruction',20000]]){if(typeof value[key]!=='string'||!value[key].trim()||value[key].length>max)throw fail('定时任务'+(key==='title'?'标题':'指令')+'无效');value[key]=value[key].trim();}
+    for(const [key,max] of [['title',200],['instruction',20000]] as const){if(typeof value[key]!=='string'||!value[key].trim()||value[key].length>max)throw fail('定时任务'+(key==='title'?'标题':'指令')+'无效');value[key]=value[key].trim();}
     if(typeof value.enabled!=='boolean'||!['once','daily','weekdays','weekly','monthly'].includes(value.repeat)||typeof value.time!=='string'||!/^([01]\d|2[0-3]):[0-5]\d$/.test(value.time))throw fail('重复频率或执行时间无效');
     if(!validDate(value.startDate)||value.endDate!==null&&(!validDate(value.endDate)||value.endDate<value.startDate))throw fail('开始或结束日期无效');
     return value;
@@ -109,7 +116,7 @@ export class DotsSchedules {
           const next=nextScheduleRun(this.public(row),this.now());
           this.db.prepare('UPDATE dots_schedules SET next_run_at=?,last_run_at=?,last_task_id=?,enabled=CASE WHEN ? IS NULL THEN 0 ELSE enabled END,updated_at=? WHERE owner=? AND id=? AND revision=? AND next_run_at=?').run(next,this.now(),result.goal.id,next,this.now(),owner,row.id,row.revision,row.next_run_at);
           const fresh=this.db.prepare('SELECT * FROM dots_schedules WHERE owner=? AND id=?').get(owner,row.id);if(fresh)this.emit(owner,this.public(fresh),requestId);
-        }catch(error){this.db.prepare('UPDATE dots_schedule_runs SET last_error=?,updated_at=? WHERE id=?').run(String(error.message||error).slice(0,500),this.now(),requestId);}
+        }catch(error){this.db.prepare('UPDATE dots_schedule_runs SET last_error=?,updated_at=? WHERE id=?').run(String(error instanceof Error?error.message:error).slice(0,500),this.now(),requestId);}
       }
     }finally{this.running=false;}
   }
