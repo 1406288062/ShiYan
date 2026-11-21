@@ -33,13 +33,13 @@ test('legacy assistant helper cards create a fresh sync revision once; user uplo
     store.write('owner','messages','assistant',{id:'assistant',conversationId:'conversation',role:'assistant',text:'原文',state:'completed',assets});
     store.write('owner','messages','user',{id:'user',conversationId:'conversation',role:'user',assets});
     const cursor=store.list('owner').cursor;store.close();store=new SyncStore(root);
-    assert.equal(store.get('owner','messages','assistant').revision,2);
-    assert.deepEqual(store.get('owner','messages','assistant').data.assets.map(a=>a.filename),['report.docx','photo.png']);
-    assert.equal(store.get('owner','messages','assistant').data.text,'原文');
-    assert.equal(store.get('owner','messages','user').revision,1);
-    assert.deepEqual(store.get('owner','messages','user').data.assets,assets);
+    assert.equal(store.get('owner','messages','assistant')!.revision,2);
+    assert.deepEqual(store.get('owner','messages','assistant')!.data.assets.map(a=>a.filename),['report.docx','photo.png']);
+    assert.equal(store.get('owner','messages','assistant')!.data.text,'原文');
+    assert.equal(store.get('owner','messages','user')!.revision,1);
+    assert.deepEqual(store.get('owner','messages','user')!.data.assets,assets);
     assert.deepEqual(store.list('owner',cursor).changes.map(c=>c.id),['assistant']);
-    store.close();store=new SyncStore(root);assert.equal(store.get('owner','messages','assistant').revision,2);
+    store.close();store=new SyncStore(root);assert.equal(store.get('owner','messages','assistant')!.revision,2);
   }finally{store.close();rmSync(root,{recursive:true,force:true});}
 });
 test('incoming assistant mutations cannot restore hidden attachments, while arbitrary user uploads sync',()=>{
@@ -47,8 +47,8 @@ test('incoming assistant mutations cannot restore hidden attachments, while arbi
   try{
     const assets=[asset('snapshot.b64'),asset('document.docx')];
     for(const role of ['assistant','user'])store.putAuthoritative('owner','messages',role,{id:role,conversationId:'conversation',role,assets});
-    assert.deepEqual(store.get('owner','messages','assistant').data.assets.map(a=>a.filename),['document.docx']);
-    assert.equal(store.get('owner','messages','user').data.assets.length,2);
+    assert.deepEqual(store.get('owner','messages','assistant')!.data.assets.map(a=>a.filename),['document.docx']);
+    assert.equal(store.get('owner','messages','user')!.data.assets.length,2);
   }finally{store.close();rmSync(root,{recursive:true,force:true});}
 });
 test('streamed startup migration preserves large execution archives and visits each changed primary key once',()=>{
@@ -58,17 +58,17 @@ test('streamed startup migration preserves large execution archives and visits e
     for(let i=0;i<4;i++)store.write('owner','messages','assistant-'+i,{id:'assistant-'+i,conversationId:'conversation',role:'assistant',text:'原文'+i,rawResult,displayItems,assets:[asset('snapshot.b64'),asset('report.docx')]});
     store.write('owner','messages','empty',{id:'empty',conversationId:'conversation',role:'assistant',rawResult,displayItems});
     store.write('owner','messages','user',{id:'user',conversationId:'conversation',role:'user',assets:[asset('snapshot.b64')]});
-    const cursor=Number(store.db.prepare('SELECT MAX(seq) AS seq FROM sync_changes').get().seq);store.close();store=new SyncStore(root);
+    const cursor=Number(store.db.prepare('SELECT MAX(seq) AS seq FROM sync_changes').get()!.seq);store.close();store=new SyncStore(root);
     for(let i=0;i<4;i++){
-      const current=store.get('owner','messages','assistant-'+i);
+      const current=store.get('owner','messages','assistant-'+i)!;
       assert.equal(current.revision,2);assert.equal(current.data.rawResult,rawResult);assert.deepEqual(current.data.displayItems,displayItems);assert.equal(current.data.text,'原文'+i);
       assert.deepEqual(current.data.assets.map(a=>a.filename),['report.docx']);
     }
-    assert.equal(store.get('owner','messages','empty').revision,1);
-    assert.equal(store.get('owner','messages','empty').data.rawResult,rawResult);
-    assert.equal(store.get('owner','messages','user').revision,1);
-    store.removeInternalGeneratedAttachments();for(let i=0;i<4;i++)assert.equal(store.get('owner','messages','assistant-'+i).revision,2);
-    let after=cursor,changed=[];while(true){const page=store.list('owner',after);changed.push(...page.changes.map(c=>c.id));after=page.cursor;if(!page.hasMore)break;}
+    assert.equal(store.get('owner','messages','empty')!.revision,1);
+    assert.equal(store.get('owner','messages','empty')!.data.rawResult,rawResult);
+    assert.equal(store.get('owner','messages','user')!.revision,1);
+    store.removeInternalGeneratedAttachments();for(let i=0;i<4;i++)assert.equal(store.get('owner','messages','assistant-'+i)!.revision,2);
+    let after=cursor,changed: any[]=[];while(true){const page=store.list('owner',after);changed.push(...page.changes.map(c=>c.id));after=page.cursor;if(!page.hasMore)break;}
     assert.deepEqual(changed,['assistant-0','assistant-1','assistant-2','assistant-3']);
   }finally{store.close();rmSync(root,{recursive:true,force:true});}
 });
