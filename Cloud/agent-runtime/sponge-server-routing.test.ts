@@ -14,9 +14,9 @@ test('runtime mounts Sponge only after real account authentication and keeps own
  process.env.SHIYAN_STATE_FILE=path.join(root,'data','member-state.json');
  process.env.SHIYAN_SPONGE_SOCKET=path.join(root,'connector.sock');
  process.env.DOTS_REGISTRATION_SOCKET=path.join(root,'unused-registration.sock');
- const calls=[];
+ const calls: any[]=[];
  const connector=http.createServer(async(req,res)=>{
-  const chunks=[];for await(const part of req)chunks.push(part);const input=JSON.parse(Buffer.concat(chunks).toString()||'{}');calls.push({route:req.url,input});
+  const chunks: Buffer[]=[];for await(const part of req)chunks.push(part);const input=JSON.parse(Buffer.concat(chunks).toString()||'{}');calls.push({route:req.url,input});
   const value=req.url==='/status'?{ok:true,connected:true,devices:[{id:input.owner+'-device',online:true,credential:'private'}],accessToken:'never-return-this'}:
    {ok:true,result:req.url==='/start'?{authorizeUrl:'https://mcp.yandot.ai/oauth/authorize?test=fixture'}:{}};
   res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify(value));
@@ -29,17 +29,17 @@ test('runtime mounts Sponge only after real account authentication and keeps own
  const other=await store.register({username:'route_other',password:'route-password'});
  const {createServer}=await import('./server.ts');const runtime=createServer();const base='http://127.0.0.1:'+await listen(runtime);
  t.after(async()=>{await Promise.all([close(runtime),close(connector)]);store.close();await rm(root,{recursive:true,force:true});});
- const request=(route,token,{method='GET',body}={})=>fetch(base+route,{method,headers:{...(token?{Authorization:'Bearer '+token}:{}),...(body===undefined?{}:{'Content-Type':'application/json'}),'x-shiyan-owner':'spoofed-admin','x-dots-owner':'spoofed-admin'},...(body===undefined?{}:{body:JSON.stringify(body)})});
+ const request=(route,token,{method='GET',body}: {method?: string; body?: any}={})=>fetch(base+route,{method,headers:{...(token?{Authorization:'Bearer '+token}:{}),...(body===undefined?{}:{'Content-Type':'application/json'}),'x-shiyan-owner':'spoofed-admin','x-dots-owner':'spoofed-admin'},...(body===undefined?{}:{body:JSON.stringify(body)})});
  for(const prefix of ['/v1','/shiyan/v1']){
   const before=calls.length;
   for(const token of [undefined,'invalid-session'])assert.equal((await request(prefix+'/integrations/sponge/status',token)).status,401);
   assert.equal(calls.length,before,'unauthenticated HTTP requests never reach the connector');
   for(const entry of [admin,member,other]){
    const status=await request(prefix+'/integrations/sponge/status',entry.token);assert.equal(status.status,200);
-   const payload=await status.json();assert.equal(payload.connected,true);assert.equal(payload.devices[0].id,entry.user.owner+'-device');
+   const payload=(await status.json()) as any;assert.equal(payload.connected,true);assert.equal(payload.devices[0].id,entry.user.owner+'-device');
    assert.equal(payload.devices[0].credential,undefined);assert.equal(payload.accessToken,undefined);
   }
-  let result=await request(prefix+'/integrations/sponge/start',member.token,{method:'POST',body:{}});assert.equal(result.status,200);assert.ok((await result.json()).authorizeUrl);
+  let result=await request(prefix+'/integrations/sponge/start',member.token,{method:'POST',body:{}});assert.equal(result.status,200);assert.ok(((await result.json()) as any).authorizeUrl);
   const submitted=calls.at(-1).input.auth,expected=store.authenticate(member.token);assert.equal(submitted.owner,expected.owner);assert.equal(submitted.userId,expected.userId);assert.equal(submitted.sessionId,expected.sessionId);
   assert.equal(submitted.token,undefined);assert.notEqual(submitted.owner,'spoofed-admin');
   const beforeSpoof=calls.length;
