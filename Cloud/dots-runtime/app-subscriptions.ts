@@ -8,8 +8,8 @@ const exec=promisify(execFile);
 const hash=v=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
 const text=v=>String(v??'').replace(/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/g,' ').slice(0,800).replace(/[\\`*_{}\[\]()<>!|]/g,'\\$&');
 export async function readSubscriptionConfig(file){
- let f;try{f=await open(file,constants.O_RDONLY|constants.O_NOFOLLOW);}catch(e){if(e.code==='ENOENT')return null;throw Error('config_unreadable');}
- try{const s=await f.stat();if(!s.isFile()||(s.mode&0o077)||s.uid!==process.getuid()||s.size>16384)throw Error('config_permissions');const v=JSON.parse(await f.readFile('utf8'));return v.enabled===false?null:v;}finally{await f.close();}
+ let f;try{f=await open(file,constants.O_RDONLY|constants.O_NOFOLLOW);}catch(e){if((e as any).code==='ENOENT')return null;throw Error('config_unreadable');}
+ try{const s=await f.stat();if(!s.isFile()||(s.mode&0o077)||s.uid!==process.getuid!()||s.size>16384)throw Error('config_permissions');const v=JSON.parse(await f.readFile('utf8'));return v.enabled===false?null:v;}finally{await f.close();}
 }
 export interface AppSubscriptionsOptions {
   store: any;
@@ -45,7 +45,7 @@ export function createAppSubscriptions({store,dataDir,fetchImpl=fetch,summarizeG
   const r=await fetchImpl(url,{...options,redirect:'error',signal:AbortSignal.any([signal,AbortSignal.timeout(20000)])});
   if(r.status===304)return {unchanged:true};
   if(!r.ok)throw Object.assign(Error('http_'+r.status),{status:r.status,retryAfter:r.headers.get('retry-after'),rateReset:r.headers.get('x-ratelimit-reset'),rateRemaining:r.headers.get('x-ratelimit-remaining')});
-  const reader=r.body?.getReader();let raw='';if(reader){const chunks=[];let size=0;for(;;){const x=await reader.read();if(x.done)break;size+=x.value.length;if(size>4*1024*1024){await reader.cancel();throw Error('response_too_large');}chunks.push(Buffer.from(x.value));}raw=Buffer.concat(chunks).toString('utf8');}else raw=await r.text();
+  const reader=r.body?.getReader();let raw='';if(reader){const chunks: Buffer[]=[];let size=0;for(;;){const x=await reader.read();if(x.done)break;size+=x.value.length;if(size>4*1024*1024){await reader.cancel();throw Error('response_too_large');}chunks.push(Buffer.from(x.value));}raw=Buffer.concat(chunks).toString('utf8');}else raw=await r.text();
   return {data:JSON.parse(raw),etag:r.headers.get('etag')};
  }
  function commit(source,cursor,events,baseline=false,signal){
@@ -68,7 +68,7 @@ export function createAppSubscriptions({store,dataDir,fetchImpl=fetch,summarizeG
   if(cursor?.retryAt>now())throw Object.assign(Error('github_backoff'),{retryAt:cursor.retryAt});
   const token=await githubToken();if(!token)throw Error('github_auth_missing');
   const headers={Authorization:'Bearer '+token,Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28','User-Agent':'ShiYan-Dots'};
-  const observed=[],events=[],next={...cursor},base='https://api.github.com/repos/'+cfg.repository;
+  const observed: any[]=[],events: any[]=[],next={...cursor},base='https://api.github.com/repos/'+cfg.repository;
   // Keep enrichment bounded independently of event-list fetching. Failure to read
   // details publishes an accurate unavailable/partial label, never a made-up zero.
   const detailSignal=AbortSignal.any([signal,AbortSignal.timeout(55000)]),details=new Map();
@@ -91,7 +91,7 @@ export function createAppSubscriptions({store,dataDir,fetchImpl=fetch,summarizeG
       // Baseline and durable receipts suppress old-event detail requests as well
       // as old notifications, including events found again on later pages.
       const known=db.prepare('SELECT 1 FROM dots_app_events WHERE manager_id=? AND source=? AND event_key=?').get(managerId,source,key);
-      const e=!cursor||known?{key,content:''}:await formatGithubEvent(row,{repository:cfg.repository,load,summarize:input=>summarizeGithub?.(input,{signal:detailSignal})});
+      const e=!cursor||known?{key,content:''}:await formatGithubEvent(row,{repository:cfg.repository,load,summarize:async input=>summarizeGithub?.(input,{signal:detailSignal})});
       if(e)events.push({...e,key,retryEvent:row});
      }
      else if(row.status==='completed')events.push({key:`run:${row.id}:${row.run_attempt}:${row.conclusion}`,content:`GitHub · ${text(cfg.repository)}\n\n构建：${text(row.name)}\n结果：${text(row.conclusion)}\n分支：${text(row.head_branch)}\n${/^https:\/\/github\.com\//.test(row.html_url||'')?row.html_url:''}`});
@@ -116,7 +116,7 @@ export function createAppSubscriptions({store,dataDir,fetchImpl=fetch,summarizeG
    }
    const key='push:'+ref+':'+head;
    if(before&&before!==head&&!events.some(e=>e.key===key)&&!db.prepare('SELECT 1 FROM dots_app_events WHERE manager_id=? AND source=? AND event_key=?').get(managerId,source,key)){
-    const e=await formatGithubEvent({id:'head:'+head,type:'PushEvent',actor:{login:repo.owner?.login},payload:{before,head,ref}},{repository:cfg.repository,load,summarize:input=>summarizeGithub?.(input,{signal:detailSignal})});
+    const e=await formatGithubEvent({id:'head:'+head,type:'PushEvent',actor:{login:repo.owner?.login},payload:{before,head,ref}},{repository:cfg.repository,load,summarize:async input=>summarizeGithub?.(input,{signal:detailSignal})});
     events.push({...e,key,retryEvent:{id:'head:'+head,type:'PushEvent',actor:{login:repo.owner?.login},payload:{before,head,ref}}});
    }
    next.branchName=branch;next.branchHead=head;
@@ -140,7 +140,7 @@ export function createAppSubscriptions({store,dataDir,fetchImpl=fetch,summarizeG
   }catch(error){
    if(stopped)return 'interrupted';
    const attempts=job.attempts+1,delay=Math.min(21600,60*2**Math.min(attempts,9));
-   const code=signal.aborted?'summary_deadline':/^http_\d+$/.test(error.message)?error.message:'github_summary_unavailable';
+   const code=signal.aborted?'summary_deadline':/^http_\d+$/.test((error as any).message)?(error as any).message:'github_summary_unavailable';
    db.prepare('UPDATE dots_github_summary_jobs SET attempts=?,retry_at=?,error_code=? WHERE manager_id=? AND source=? AND event_key=?').run(attempts,now()+delay,code,managerId,source,job.event_key);
    logger.warn?.('[github-summary-retry] '+code+' attempt='+attempts);
   }
@@ -158,10 +158,10 @@ export function createAppSubscriptions({store,dataDir,fetchImpl=fetch,summarizeG
    auth={accessToken:result.data.access_token,expiresAt:now()+Math.max(0,Math.min(3600,Number(result.data.expires_in)||0))};
    if(stopped||signal.aborted)return;tokens.clear();tokens.set(tokenKey,auth);
   }
-  let pageToken,finalToken,events=[];
+  let pageToken,finalToken,events: any[]=[];
   for(let page=0;page<100;page++){
    const params=new URLSearchParams({maxResults:'2500',showDeleted:'true'});if(cursor?.syncToken)params.set('syncToken',cursor.syncToken);if(pageToken)params.set('pageToken',pageToken);
-   let result;try{result=await request('https://www.googleapis.com/calendar/v3/calendars/'+encodeURIComponent(calendarId)+'/events?'+params,{headers:{Authorization:'Bearer '+auth.accessToken}},signal);}catch(e){if(e.status===410){db.prepare('UPDATE dots_app_sources SET cursor=NULL,status=?,error_code=? WHERE manager_id=? AND source=?').run('resync_required','expired_sync_token',managerId,source);return 'resync_required';}throw e;}
+   let result;try{result=await request('https://www.googleapis.com/calendar/v3/calendars/'+encodeURIComponent(calendarId)+'/events?'+params,{headers:{Authorization:'Bearer '+auth.accessToken}},signal);}catch(e){if((e as any).status===410){db.prepare('UPDATE dots_app_sources SET cursor=NULL,status=?,error_code=? WHERE manager_id=? AND source=?').run('resync_required','expired_sync_token',managerId,source);return 'resync_required';}throw e;}
    for(const e of result.data.items||[]){
     const start=e.start?.dateTime||e.start?.date||'';
     if(start&&Date.parse(start)<now()*1000&&e.status!=='cancelled')continue;
@@ -205,7 +205,7 @@ export function createAppSubscriptions({store,dataDir,fetchImpl=fetch,summarizeG
     const feed=await fetchFeed(url,signal);
     const events=feed.items.slice(0,prior?5:50).reverse().map(i=>({key:hash(i.id).slice(0,32),content:`RSS · ${text(feed.title)}\n\n${text(i.title)}\n${i.summary?text(i.summary)+'\n':''}${i.link}`}));
     commit(source,{url},events,!prior,signal);
-   }catch(error){if(signal.aborted)throw error;failures++;status(source,'backoff',String(error.message||'feed_failed').slice(0,60));}
+   }catch(error){if(signal.aborted)throw error;failures++;status(source,'backoff',String((error as any).message||'feed_failed').slice(0,60));}
   }
   if(failures&&failures===cfg.feeds.length)throw Error('rss_all_feeds_failed');
   return 'listening';
@@ -227,9 +227,9 @@ export function createAppSubscriptions({store,dataDir,fetchImpl=fetch,summarizeG
   }catch(e){
    if(stopped)return;
    const failures=(health(provider)?.failures||0)+1;
-   const code=signal.aborted?'subscription_deadline':/^(http_\d+|[a-z_]+)$/.test(e.message)?e.message:'subscription_failed';
-   if(provider==='google-calendar'&&(e.status===401||e.status===400))tokens.clear();
-   const retryAt=Math.max(now()+retryDelay(e,failures),e.retryAt||0);
+   const code=signal.aborted?'subscription_deadline':/^(http_\d+|[a-z_]+)$/.test((e as any).message)?(e as any).message:'subscription_failed';
+   if(provider==='google-calendar'&&((e as any).status===401||(e as any).status===400))tokens.clear();
+   const retryAt=Math.max(now()+retryDelay(e,failures),(e as any).retryAt||0);
    db.prepare(`INSERT INTO dots_app_health(manager_id,provider,failures,retry_at,last_duration_ms,checks,status,error_code) VALUES(?,?,?,?,?,1,'backoff',?) ON CONFLICT(manager_id,provider) DO UPDATE SET failures=excluded.failures,retry_at=excluded.retry_at,last_duration_ms=excluded.last_duration_ms,checks=checks+1,status='backoff',error_code=excluded.error_code`).run(managerId,provider,failures,retryAt,Math.round(performance.now()-started),code);
    status(provider,'backoff',code);logger.warn?.('[app-subscription] '+provider+' '+code);
   }finally{lanes.delete(provider);}
