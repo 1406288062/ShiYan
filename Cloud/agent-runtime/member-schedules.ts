@@ -35,6 +35,13 @@ export function prepareMemberSchedule(current, data, auth, now = Date.now()) {
 
 interface MemberScheduleWorkerOptions { submit?: any; access?: any; jobStatus?: (owner: any, id: any) => any; now?: () => number; pollMs?: number; }
 export class MemberScheduleWorker {
+  store: any;
+  submit: any;
+  access: any;
+  jobStatus: (owner: any, id: any) => any;
+  now: () => number;
+  running: boolean;
+  timer: any;
   constructor(store, { submit, access, jobStatus = () => null, now = Date.now, pollMs = 15000 }: MemberScheduleWorkerOptions = {}) {
     this.store = store; this.submit = submit; this.access = access; this.jobStatus = jobStatus; this.now = now; this.running = false;
     store.db.exec(`CREATE TABLE IF NOT EXISTS member_schedule_runs(owner TEXT NOT NULL,task_id TEXT NOT NULL,due_at TEXT NOT NULL,request_id TEXT NOT NULL,job_id TEXT,state TEXT NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(owner,task_id,due_at));`);
