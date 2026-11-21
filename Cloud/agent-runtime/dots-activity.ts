@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 
 const fail=(message,status=400,code='invalid_request')=>Object.assign(new Error(message),{status,code});
 export const millis=value=>{const n=Number(value)||0;return n>0&&n<1e12?n*1000:n;};
-const decode=(value,fallback={})=>{try{return JSON.parse(value);}catch{return fallback;}};
+const decode=(value,fallback: any={})=>{try{return JSON.parse(value);}catch{return fallback;}};
 export function readableResult(value){
   const result=decode(value,null);
   if(result&&typeof result==='object'){
@@ -42,7 +42,7 @@ export function createDotsActivityReader({databasePath='/home/ubuntu/dots-runtim
   };
   const assistantMessages=threadId=>{
     const file=sessionFile(threadId);if(!file||statSync(file).size>32*1024*1024)return [];
-    const messages=[],seen=new Set();
+    const messages: any[]=[],seen=new Set();
     for(const [index,line] of readFileSync(file,'utf8').split('\n').entries()){
       const event=decode(line,null),message=event?.payload;
       if(event?.type!=='response_item'||message?.type!=='message'||message.role!=='assistant'||message.channel==='analysis'||message.phase==='analysis')continue;
@@ -69,7 +69,7 @@ export function createDotsActivityReader({databasePath='/home/ubuntu/dots-runtim
     return DELIVERABLE_EXTENSIONS.has(ext);
   };
   const files=(ids,owner,{limit=100}={})=>{
-    const found=[];
+    const found: any[]=[];
     for(const id of ids){
       let workspace;try{workspace=scopedWorkspace(id,owner);}catch{continue;}
       let inspected=0;
@@ -93,7 +93,7 @@ export function createDotsActivityReader({databasePath='/home/ubuntu/dots-runtim
   const memberFiles=async(ids,owner,{limit=100}={})=>{
     const allowed=new Set(ids.filter(id=>goal(id)?.manager_id==='manager:'+owner).map(Number));
     if(!allowed.size)return [];
-    const snapshot=await workspaceOperationImpl(owner,{operation:'snapshot'}),result=[];
+    const snapshot=await workspaceOperationImpl(owner,{operation:'snapshot'}),result: any[]=[];
     for(const file of snapshot.files||[]){
       const match=String(file.path||'').match(/^\/workspace\/dots\/(\d+)\/(.+)$/);if(!match||!allowed.has(Number(match[1])))continue;
       const relative=match[2];if(relative.split('/').some(part=>part.startsWith('.')||['node_modules','__pycache__','venv'].includes(part)))continue;
@@ -113,7 +113,7 @@ export function createDotsActivityReader({databasePath='/home/ubuntu/dots-runtim
   return {
     conversation(id,owner){
       const row=goal(id);if(!row||row.manager_id!=='manager:'+owner)throw fail('对话不存在',404,'not_found');
-      const messages=[{id:'instruction:'+id,role:'user',content:row.instruction,createdAt:millis(row.created_at),source:'task_instruction'}];
+      const messages: any[]=[{id:'instruction:'+id,role:'user',content:row.instruction,createdAt:millis(row.created_at),source:'task_instruction'}];
       for(const item of database().prepare("SELECT id,payload,created_at FROM events WHERE goal_id=? AND type IN ('user_instruction','user_message') ORDER BY id LIMIT 300").all(id)){
         const parsed=decode(item.payload,null),content=typeof parsed==='string'?parsed:parsed?.message||parsed?.content||item.payload;
         if(content)messages.push({id:'input:'+item.id,role:'user',content,createdAt:millis(item.created_at),source:'user_instruction'});
