@@ -14,7 +14,7 @@ const actionSource = source.slice(source.indexOf("async function executeSafeActi
 const scheduleSource = source.slice(source.indexOf("function scheduleGoalNow("), source.indexOf("function catastrophicCommand("));
 const handleSource = source.slice(source.indexOf("async function handle("), source.indexOf("let closeLocalMcpSocket"));
 
-function fixture({ onPlan = () => {}, onActions, plannerError, status = "done", actions = [] } = {}) {
+function fixture({ onPlan = () => {}, onActions, plannerError, status = "done", actions = [] }: { onPlan?: (arg: any) => any; onActions?: (arg: any) => any; plannerError?: string; status?: string; actions?: any[] } = {}) {
   const db = new DatabaseSync(":memory:");
   db.exec(`
     CREATE TABLE goals(id INTEGER PRIMARY KEY,title TEXT,instruction TEXT,status TEXT,thread_id TEXT,
@@ -24,11 +24,11 @@ function fixture({ onPlan = () => {}, onActions, plannerError, status = "done", 
       status TEXT,raw_result TEXT,summary TEXT,notification TEXT,created_at INTEGER);
     INSERT INTO goals VALUES(1,'test','test','active',NULL,'/isolated-test',100,NULL,100,'',0,0);
   `);
-  const notifications = [];
-  const timeline = [];
+  const notifications: any[] = [];
+  const timeline: any[] = [];
   let actionCalls = 0;
   let approvals = 0;
-  const getGoal = (id) => db.prepare("SELECT * FROM goals WHERE id=?").get(id);
+  const getGoal = (id: any) => db.prepare("SELECT * FROM goals WHERE id=?").get(id)!;
   const addEvent = () => db.prepare("INSERT INTO events(goal_id,type,payload,created_at) VALUES(1,'user_instruction','new instruction',100)").run();
   const ctx = vm.createContext({
     db, canApplyGoalActions, resolveGoalRunState, resolveGoalRunFailure,
@@ -64,7 +64,7 @@ for (const control of ["paused", "cancelled"]) {
       assert.equal(f.getGoal(1).thread_id, "stub-thread");
       assert.equal(f.actionCalls(), 0);
       assert.equal(f.notifications.length, 0);
-      assert.equal(f.db.prepare("SELECT status FROM agent_outputs").get().status, control);
+      assert.equal(f.db.prepare("SELECT status FROM agent_outputs").get()!.status, control);
     } finally { f.db.close(); }
   });
 
@@ -101,7 +101,7 @@ for (const status of ["done", "blocked", "needs_approval"]) {
       await f.run();
       assert.equal(f.getGoal(1).status, "active");
       assert.equal(f.getGoal(1).next_wake_at, 100);
-      assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM events WHERE consumed_at IS NULL").get().n, 1);
+      assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM events WHERE consumed_at IS NULL").get()!.n, 1);
       assert.equal(f.approvals(), 0);
       assert.equal(f.notifications.length, 0);
     } finally { f.db.close(); }
@@ -196,8 +196,8 @@ test("safe action loop stops after pause instead of starting the next action", a
   assert.equal(result.length, 1);
 });
 
-function httpFixture(status = "active", onReadJson = () => {}) {
-  const f = fixture();
+function httpFixture(status = "active", onReadJson: (f: any) => any = () => {}) {
+  const f: any = fixture();
   f.db.exec("CREATE TABLE approvals(id INTEGER PRIMARY KEY,goal_id INTEGER,status TEXT)");
   f.db.prepare("UPDATE goals SET status=?,next_wake_at=? WHERE id=1").run(status, status === "active" ? 100 : null);
   Object.assign(f.ctx, {
@@ -209,11 +209,11 @@ function httpFixture(status = "active", onReadJson = () => {}) {
   });
   vm.runInContext(scheduleSource + handleSource, f.ctx);
   f.request = async (action, payload = {}, event = false) => {
-    const res = {};
+    const res: any = {};
     const req = { method: "POST", url: event ? "/v1/events" : "/v1/goals/1/" + action,
       headers: { authorization: "Bearer isolated-test-token" }, payload };
     try { await f.ctx.handle(req, res); }
-    catch (error) { res.status = error.statusCode || 500; res.response = { error: error.message }; }
+    catch (error) { res.status = (error as any).statusCode || 500; res.response = { error: (error as any).message }; }
     return res;
   };
   return f;
@@ -230,7 +230,7 @@ test("backend lifecycle guards reject terminal and inactive execution requests",
         const response = await f.request(action, { message: "new instruction" });
         assert.equal(response.status, 409, `${status} ${action}`);
         assert.equal(f.getGoal(1).status, status);
-        assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM events").get().n, 0);
+        assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM events").get()!.n, 0);
       } finally { f.db.close(); }
     }
   }
@@ -241,7 +241,7 @@ test("status changes while reading a control request are checked again", async (
   try {
     assert.equal((await f.request("wake")).status, 409);
     assert.equal(f.getGoal(1).status, "paused");
-    assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM events").get().n, 0);
+    assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM events").get()!.n, 0);
   } finally { f.db.close(); }
 });
 
@@ -279,9 +279,9 @@ test("instruct receipt replays before later cancellation guards", async () => {
     f.db.exec("UPDATE goals SET status='cancelled',next_wake_at=NULL WHERE id=1");
     assert.equal((await f.request("instruct", body)).status, 200);
     assert.equal(f.getGoal(1).status, "cancelled");
-    assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM events").get().n, 1);
+    assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM events").get()!.n, 1);
     assert.equal((await f.request("instruct", { ...body, message: "changed" })).status, 409);
-    assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM events").get().n, 1);
+    assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM events").get()!.n, 1);
   } finally { f.db.close(); }
 });
 
@@ -309,7 +309,7 @@ test("approval results preserve stopped goals and explicitly resume approval-wai
       const activates = ["active", "blocked", "waiting_approval"].includes(status);
       assert.equal(f.getGoal(1).status, activates ? "active" : status);
       assert.equal(f.getGoal(1).next_wake_at, activates ? 100 : null);
-      assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM events").get().n, 1);
+      assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM events").get()!.n, 1);
     } finally { f.db.close(); }
   }
 });
