@@ -18,8 +18,8 @@ export async function textFileChange(filename, before, after) {
     try {
       diff = (await exec('/usr/bin/diff', ['-u', '--label', 'a/' + filename, '--label', 'b/' + filename, oldFile, newFile], { maxBuffer: 4 * 1024 * 1024 })).stdout;
     } catch (error) {
-      if (error.code !== 1) throw error;
-      diff = error.stdout || '';
+      if ((error as any).code !== 1) throw error;
+      diff = (error as any).stdout || '';
     }
     let inHunk = false, added = 0, removed = 0;
     for (const line of diff.split('\n')) {
