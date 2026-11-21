@@ -21,7 +21,7 @@ async function listen(server) {
   return 'http://127.0.0.1:' + server.address().port;
 }
 async function closeServer(server) {
-  await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+  await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
 }
 async function fixture(t, injections = {}) {
   const db = new DatabaseSync(':memory:');
@@ -41,16 +41,16 @@ async function fixture(t, injections = {}) {
     [4, { id: 4, title: 'Needs consent', status: 'waiting_approval' }],
   ]);
   const approvals = [{ id: 7, goal_id: 1, status: 'pending', command: 'printf reviewed', reason: 'Fixture only' }];
-  const requests = [];
+  const requests: any[] = [];
   const replayedRequests = new Map();
   let nextGoal = 10;
   const runtime = http.createServer(async (req, res) => {
-    const chunks = [];
+    const chunks: Buffer[] = [];
     for await (const chunk of req) chunks.push(chunk);
     const input = Buffer.concat(chunks).toString();
     const body = input ? JSON.parse(input) : null;
     requests.push({ method: req.method, path: req.url, body, authorized: req.headers.authorization === 'Bearer ' + TOKEN });
-    const url = new URL(req.url, 'http://fixture');
+    const url = new URL(req.url || '/', 'http://fixture');
     const reply = (status, value) => {
       res.writeHead(status, { 'content-type': 'application/json' });
       res.end(JSON.stringify(value));
@@ -108,9 +108,9 @@ async function fixture(t, injections = {}) {
   const options = { db, pathSecret: 'fixture-capability', runtimeToken: TOKEN, runtimeBase, retryIntervalMs: 0,
     deliver: async () => { throw new Error('No real webhook delivery is permitted in these tests'); },
     verify: async () => {}, ...injections };
-  const f = { db, requests, goals, approvals, options, bridge: createMcpBridge(options), requestID: 0 };
+  const f: any = { db, requests, goals, approvals, options, bridge: createMcpBridge(options), requestID: 0 };
   const transport = http.createServer((req, res) => {
-    if (!f.bridge.matches(new URL(req.url, 'http://fixture').pathname)) { res.writeHead(404); res.end(); return; }
+    if (!f.bridge.matches(new URL(req.url || '/', 'http://fixture').pathname)) { res.writeHead(404); res.end(); return; }
     f.bridge.handle(req, res).catch(error => { res.writeHead(500); res.end(String(error)); });
   });
   const base = await listen(transport);
@@ -446,7 +446,7 @@ test('rejecting an approval does not require a command confirmation', async t =>
 });
 
 test('failed webhook is stored, retries after bridge rebuild with stable identity, and never claims user receipt', async t => {
-  const attempts = [];
+  const attempts: any[] = [];
   const f = await fixture(t, { deliver: async (subscription, event, messageID) => {
     attempts.push({ subscriptionID: subscription.id, event, messageID });
     return { status: 503, ok: false };
