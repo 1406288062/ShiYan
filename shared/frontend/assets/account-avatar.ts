@@ -4,10 +4,10 @@
   const owner = account.user?.id;
   // A verified snapshot is scoped to the authenticated account, never global legacy settings.
   const cacheKey = owner ? 'shiyan.account.' + encodeURIComponent(owner) + '.avatar.snapshot.v1' : null;
-  const images = new Set();
-  let profile = readCachedProfile(), busy = false, stopped = false, stream = null, pending = null;
+  const images = new Set<any>();
+  let profile = readCachedProfile(), busy = false, stopped = false, stream: any = null, pending: any = null;
   let migrationAttempted = false, serverConfirmed = false;
-  let retryTimer = null, retryDelay = 1000;
+  let retryTimer: any = null, retryDelay = 1000;
   const active = () => !stopped && owner && account.user?.id === owner;
   const placeholderIcon = '<svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="12" r="5"/><path d="M6 29v-4a10 10 0 0 1 20 0v4Z"/></svg>';
   const input = document.createElement('input');
@@ -55,7 +55,7 @@
         if (src) view.image.src = src; else view.image.removeAttribute('src');
       }
     }
-    for (const button of document.querySelectorAll('[data-account-avatar-change],[data-avatar-change]')) {
+    for (const button of [...document.querySelectorAll('[data-account-avatar-change],[data-avatar-change]')] as any[]) {
       button.disabled = busy;
       button.setAttribute('aria-busy', String(busy));
     }
@@ -100,12 +100,12 @@
       if (!side) throw new Error('无法读取这张图片');
       const canvas = document.createElement('canvas');
       canvas.width = canvas.height = Math.min(512, side);
-      const context = canvas.getContext('2d');
+      const context: any = canvas.getContext('2d');
       context.fillStyle = '#fff'; context.fillRect(0, 0, canvas.width, canvas.height);
       context.drawImage(image, (image.naturalWidth - side) / 2, (image.naturalHeight - side) / 2, side, side, 0, 0, canvas.width, canvas.height);
       return canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
     } catch (error) {
-      throw new Error(error.message?.includes('20 MB') ? error.message : '无法读取这张图片，请选择其他照片');
+      throw new Error((error as any).message?.includes('20 MB') ? (error as any).message : '无法读取这张图片，请选择其他照片');
     } finally { URL.revokeObjectURL(url); }
   }
 
@@ -121,7 +121,7 @@
       if (!active() || profile?.revision !== 0 || busy) return;
       accept(await account.request('/account/avatar', 'PUT', {data, expectedRevision:0}));
     } catch (error) {
-      if (active() && error.status === 409) refresh().catch(() => {});
+      if (active() && (error as any).status === 409) refresh().catch(() => {});
     }
   }
 
@@ -134,7 +134,7 @@
       accept(await account.request('/account/avatar', 'PUT', {data}));
       if (active()) window.shiyan?.toast('头像已更新');
     } catch (error) {
-      if (active() && error.name !== 'AbortError') window.shiyan?.toast(error.message);
+      if (active() && (error as any).name !== 'AbortError') window.shiyan?.toast((error as any).message);
     } finally { busy = false; input.value = ''; render(); }
   }
 
@@ -147,8 +147,8 @@
     const section = document.createElement('section');
     section.className = 'account-avatar-profile';
     section.innerHTML = '<button type="button" class="account-avatar-picker" data-account-avatar-change aria-label="更换头像"><span class="account-avatar-picture">' + placeholderIcon + '<img alt="用户头像" hidden></span><span class="account-avatar-pencil" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m16 4 4 4M4 20l5-1L21 7a2.8 2.8 0 0 0-4-4L5 15z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg></span></button><strong></strong>';
-    section.querySelector('strong').textContent = account.user.displayName || account.user.email || account.user.username || '账户';
-    section.querySelector('[data-account-avatar-change]').onclick = choose;
+    (section.querySelector('strong') as any).textContent = account.user.displayName || account.user.email || account.user.username || '账户';
+    (section.querySelector('[data-account-avatar-change]') as any).onclick = choose;
     home.querySelector('.memory-header')?.after(section);
     bind(section.querySelector('img'), section.querySelector('.account-avatar-picture>svg'));
   }
