@@ -1,5 +1,5 @@
 // Dedicated inference-only transport for memory extraction and other read-only
-// cognition. Interactive ordinary-account agents use member-sandbox.mjs tools.
+// cognition. Interactive ordinary-account agents use member-sandbox.ts tools.
 // This path never executes model tools or resolves model-supplied file paths.
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';

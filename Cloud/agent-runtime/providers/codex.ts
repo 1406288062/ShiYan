@@ -39,7 +39,7 @@ export default {
     const thread = resume ? codex.resumeThread(resume, options) : codex.startThread(options);
     return thread.runStreamed(input, { signal });
   },
-  // 普通账号：Responses API + 隔离沙箱工具（member-agent.mjs）。
+  // 普通账号：Responses API + 隔离沙箱工具（member-agent.ts）。
   runIsolatedJob,
 
   // 纯推理：只读沙箱、无网络、无工具调用需求。供模型中枢（RAG、Dots 的推理类调用）使用。

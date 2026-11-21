@@ -85,15 +85,15 @@ export async function spawnSandbox(owner,{command=['/bin/bash','--noprofile','--
  const args=['--unshare-all','--unshare-user','--disable-userns','--die-with-parent','--new-session','--cap-drop','ALL','--hostname','workspace','--clearenv',
  '--ro-bind','/usr','/usr','--symlink','usr/bin','/bin','--symlink','usr/lib','/lib','--symlink','usr/lib64','/lib64',
  '--dir','/etc','--ro-bind','/etc/ssl/certs','/etc/ssl/certs','--dir','/opt','--dir','/opt/shiyan',
- '--ro-bind',path.join(ROOT,'member-sandbox-bridge.mjs'),'/opt/shiyan/bridge.mjs',
- '--ro-bind',path.join(ROOT,'member-workspace-ops.mjs'),'/opt/shiyan/workspace-ops.mjs',
- '--ro-bind',path.join(ROOT,'member-mcp.mjs'),'/opt/shiyan/mcp.mjs',
+ '--ro-bind',path.join(ROOT,'member-sandbox-bridge.ts'),'/opt/shiyan/bridge.ts',
+ '--ro-bind',path.join(ROOT,'member-workspace-ops.ts'),'/opt/shiyan/workspace-ops.ts',
+ '--ro-bind',path.join(ROOT,'member-mcp.ts'),'/opt/shiyan/mcp.ts',
  '--dir','/home','--bind',home,'/home/member','--bind',workspace,'/workspace',
  '--tmpfs','/tmp','--dir','/proc','--dir','/sys','--dev','/dev',
  '--setenv','HOME','/home/member','--setenv','USER','member','--setenv','LOGNAME','member','--setenv','PATH','/home/member/.local/bin:/workspace/node_modules/.bin:/usr/local/bin:/usr/bin:/bin',
  '--setenv','LANG','C.UTF-8','--setenv','TERM','xterm-256color','--setenv','SSL_CERT_FILE','/etc/ssl/certs/ca-certificates.crt',
  '--setenv','NODE_OPTIONS','--max-old-space-size=256 --disable-wasm-trap-handler --use-env-proxy','--setenv','GIT_CONFIG_NOSYSTEM','1','--setenv','PYTHONDONTWRITEBYTECODE','1','--chdir',cwd,
- '--','/usr/bin/node','/opt/shiyan/bridge.mjs',JSON.stringify(command)];
+ '--','/usr/bin/node','/opt/shiyan/bridge.ts',JSON.stringify(command)];
  let child;try{child=spawn('/usr/bin/systemd-run',['--user','--scope','--quiet','--collect','--unit','shiyan-member-run-'+crypto.randomUUID(),'--slice',slice,'--property','MemoryMax=805306368','--property','TasksMax=64','/usr/bin/prlimit','--as=17179869184','--nproc=1024','--fsize=134217728','--nofile=512','--cpu=120','--','/usr/bin/bwrap',...args],{env:resourceEnvironment,stdio:['pipe','pipe','pipe','pipe','pipe']});}catch(error){activeByOwner.set(owner,active);throw fail('隔离执行环境不可用',503);}
  const broker=networkBroker(child);child.resize=(cols,rows)=>broker.send({type:'resize',cols,rows});let timer;
  if(timeoutMs>0){timer=setTimeout(()=>child.kill('SIGKILL'),Math.min(timeoutMs,30*60*1000));timer.unref();}
@@ -111,7 +111,7 @@ export async function execSandbox(owner,{command,cwd,timeoutMs=120000,signal,inp
  });
 }
 export async function workspaceOperation(owner,input,{signal,root}={}){
- virtualWorkspacePath(input?.path);const result=await execSandbox(owner,{command:['/usr/bin/node','/opt/shiyan/workspace-ops.mjs'],input:JSON.stringify(input),signal,root,maxOutput:24*1024*1024});
+ virtualWorkspacePath(input?.path);const result=await execSandbox(owner,{command:['/usr/bin/node','/opt/shiyan/workspace-ops.ts'],input:JSON.stringify(input),signal,root,maxOutput:24*1024*1024});
  let value;try{value=JSON.parse(result.stdout);}catch{throw fail('隔离工作区暂不可用',503);}
  if(result.exitCode!==0||value.error)throw fail(value.error||'工作区操作失败',value.error==='文件或目录不存在'?404:400);return value;
 }
