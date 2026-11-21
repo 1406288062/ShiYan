@@ -1,9 +1,9 @@
 import { spawn } from 'node:child_process';
 import readline from 'node:readline';
 
-export function quotaWindows(result = {}) {
+export function quotaWindows(result: any = {}) {
   if (!result || typeof result !== 'object') return [];
-  const buckets = Object.values(result.rateLimitsByLimitId || {});
+  const buckets = (Object.values(result.rateLimitsByLimitId || {}) as any[]);
   if (!buckets.length && result.rateLimits) buckets.push(result.rateLimits);
   return buckets.flatMap(bucket => ['primary','secondary'].flatMap(key => {
     const w=bucket?.[key];
@@ -36,10 +36,10 @@ export function quotaResetCredits(result) {
 }
 
 export function readAccountLimits() {
-  return new Promise((resolve,reject)=>{
+  return new Promise<any>((resolve,reject)=>{
     const child=spawn(process.env.CODEX_BIN || '/home/ubuntu/.local/bin/codex',['app-server','--listen','stdio://'],{stdio:['pipe','pipe','pipe']});
     child.stderr.resume();const lines=readline.createInterface({input:child.stdout});let settled=false;
-    const finish=(error,value)=>{if(settled)return;settled=true;clearTimeout(timer);lines.close();child.stdin.end();child.kill();error?reject(error):resolve(value);};
+    const finish=(error,value?)=>{if(settled)return;settled=true;clearTimeout(timer);lines.close();child.stdin.end();child.kill();error?reject(error):resolve(value);};
     const timer=setTimeout(()=>finish(new Error('额度查询超时')),12000);
     child.on('error',()=>finish(new Error('额度查询服务暂不可用')));
     child.on('exit',()=>{if(!settled)finish(new Error('额度查询服务已退出'));});
