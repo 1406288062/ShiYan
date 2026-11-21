@@ -53,8 +53,8 @@ export function createSpongeHTTPHandler({ client = createSpongeClient() } = {}) 
         respond(res, 200, { ok: true, connected: false, devices: [], needsPairing: false });
       }
     } catch (error) {
-      if (!res.headersSent && !res.destroyed) respond(res, Number.isInteger(error.status) && error.status >= 400 && error.status <= 599 ? error.status : 502,
-        { ok: false, error: error.status ? error.message : '海绵宝宝连接暂不可用，请稍后重试' });
+      if (!res.headersSent && !res.destroyed) respond(res, Number.isInteger((error as any).status) && (error as any).status >= 400 && (error as any).status <= 599 ? (error as any).status : 502,
+        { ok: false, error: (error as any).status ? (error as any).message : '海绵宝宝连接暂不可用，请稍后重试' });
     } finally { req.removeListener('aborted', stop); res.removeListener('close', close); }
     return true;
   };
