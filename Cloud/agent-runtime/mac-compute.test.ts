@@ -12,7 +12,7 @@ const workerToken = 'test-worker-' + 'w'.repeat(40);
 const deviceId = 'device-test-mac';
 const ownerA = 'account:a', ownerB = 'account:b';
 const sha = data => createHash('sha256').update(data).digest('hex');
-const vector = () => Array.from({ length: 1024 }, (_, index) => index === 0 ? 1 : 0);
+const vector = (): number[] => Array.from({ length: 1024 }, (_, index) => index === 0 ? 1 : 0);
 function png(width = 2, height = 3) {
   const bytes = Buffer.alloc(33); Buffer.from([137,80,78,71,13,10,26,10]).copy(bytes);
   bytes.writeUInt32BE(13, 8); bytes.write('IHDR', 12); bytes.writeUInt32BE(width, 16); bytes.writeUInt32BE(height, 20);
@@ -32,17 +32,19 @@ async function fixture(t, overrides = {}) {
   let server, base;
   async function start() {
     server = createComputeBroker(config);
-    await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
+    await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', () => resolve()); });
     base = `http://127.0.0.1:${server.address().port}`;
   }
   async function stop() {
     if (!server) return;
-    const closing = new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    const closing = new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
     server.closeIdleConnections(); await closing; server = undefined;
   }
   t.after(async () => { await stop(); await rm(root, { recursive: true, force: true }); });
   await start();
-  async function call(route, { token = clientToken, owner = ownerA, lease, method = 'GET', body, bytes, headers = {} } = {}) {
+  interface CallOptions { token?: string; owner?: string | null; lease?: string; method?: string; body?: any; bytes?: any; headers?: Record<string, string>; }
+  async function call(route, options: CallOptions = {}) {
+    const { token = clientToken, owner = ownerA, lease, method = 'GET', body, bytes, headers = {} } = options;
     const allHeaders = { Authorization: `Bearer ${token}`, ...headers };
     if (owner !== null) allHeaders['X-Shiyan-Owner'] = owner;
     if (lease) allHeaders['X-Task-Lease'] = lease;
@@ -50,7 +52,7 @@ async function fixture(t, overrides = {}) {
     if (body !== undefined) { payload = JSON.stringify(body); allHeaders['Content-Type'] = 'application/json'; }
     if (bytes) allHeaders['Content-Length'] = String(bytes.length);
     const response = await fetch(base + route, { method, headers: allHeaders, body: payload });
-    const data = response.headers.get('content-type')?.includes('json') ? await response.json() : Buffer.from(await response.arrayBuffer());
+    const data: any = response.headers.get('content-type')?.includes('json') ? await response.json() : Buffer.from(await response.arrayBuffer());
     return { status: response.status, data };
   }
   async function submitEmbed(request_id = 'embedding-1', owner = ownerA, params = {}) {
@@ -137,7 +139,7 @@ test('expired lease is reclaimed and old worker cannot progress, fail, or comple
     ['progress', 'POST', { progress: 1, label: 'late' }],
     ['fail', 'POST', { error: '/private/secret', code: 'LATE' }],
     ['result', 'PUT', { embeddings: [vector()], dimensions: 1024, device: 'mps' }],
-  ]) assert.equal((await f.call(`/v1/worker/tasks/${old.id}/${action}`, { token: workerToken, lease: old.lease_token, method, body })).status, 409);
+  ] as [string, string, any][]) assert.equal((await f.call(`/v1/worker/tasks/${old.id}/${action}`, { token: workerToken, lease: old.lease_token, method, body })).status, 409);
   assert.equal((await f.complete(current)).status, 200);
   assert.equal((await f.call(`/v1/tasks/${old.id}`)).data.task.state, 'completed');
 });
