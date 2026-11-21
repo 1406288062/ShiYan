@@ -84,7 +84,17 @@ function chunks(text, size = 3800) {
   return out;
 }
 
-export function createWeixinBridge({ store, ingest, owner, saveInbound = null, onAudit = () => {}, fetchImpl = fetch, logger = console, now = () => Date.now() }) {
+export interface WeixinBridgeOptions {
+  store: any;
+  ingest: (text: string, requestId: any) => any;
+  owner: string;
+  saveInbound?: ((input: { data: any; filename: string }) => Promise<string>) | null;
+  onAudit?: (kind: any, summary: any) => void;
+  fetchImpl?: any;
+  logger?: Console;
+  now?: () => number;
+}
+export function createWeixinBridge({ store, ingest, owner, saveInbound = null, onAudit = () => {}, fetchImpl = fetch, logger = console, now = () => Date.now() }: WeixinBridgeOptions) {
   const { db, managerId } = store;
   db.exec(`CREATE TABLE IF NOT EXISTS dots_weixin(manager_id TEXT PRIMARY KEY,bot_id TEXT,token TEXT,base_url TEXT,user_id TEXT,sync_buf TEXT NOT NULL DEFAULT '',
     state TEXT NOT NULL DEFAULT 'unbound',context_token TEXT,last_error TEXT NOT NULL DEFAULT '',push_proactive INTEGER NOT NULL DEFAULT 1,last_pushed_id INTEGER NOT NULL DEFAULT 0,

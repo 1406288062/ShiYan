@@ -27,7 +27,15 @@ export function nextCheckin(fromMs, cadence, time) {
   return Math.floor(at / 1000);
 }
 
-export function createLifeGoals({ store, assess, now = () => Date.now(), intervalMs = 60_000, onAudit = () => {}, logger = console }) {
+export interface LifeGoalsOptions {
+  store: any;
+  assess: (data: any, schema: any, control?: any) => Promise<any>;
+  now?: () => number;
+  intervalMs?: number;
+  onAudit?: (kind: any, summary: any) => void;
+  logger?: Console;
+}
+export function createLifeGoals({ store, assess, now = () => Date.now(), intervalMs = 60_000, onAudit = () => {}, logger = console }: LifeGoalsOptions) {
   const { db, managerId } = store;
   db.exec(`CREATE TABLE IF NOT EXISTS dots_life_goals(id INTEGER PRIMARY KEY AUTOINCREMENT, manager_id TEXT NOT NULL, title TEXT NOT NULL, why TEXT NOT NULL DEFAULT '',
     target_date TEXT, cadence TEXT NOT NULL DEFAULT 'weekly', checkin_time TEXT NOT NULL DEFAULT '20:00', status TEXT NOT NULL DEFAULT 'active',

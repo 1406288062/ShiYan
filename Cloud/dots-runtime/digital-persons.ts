@@ -60,11 +60,22 @@ const spread = (rows, limit) => {
   return out;
 };
 
+export interface DigitalPersonServiceOptions {
+  db: DatabaseSync;
+  owner: string;
+  assess: (data: any, schema: any, control?: any) => Promise<any>;
+  now?: () => number;
+  embed?: (texts: any, timeout?: number) => Promise<any[]>;
+  logger?: Console;
+}
 export class DigitalPersonService {
   db: DatabaseSync;
   owner: string;
   now: () => number;
-  constructor({db,owner,assess,now=()=>Date.now(),embed=embedTexts,logger=console}={}) {
+  assess: (data: any, schema: any, control?: any) => Promise<any>;
+  embed: (texts: any, timeout?: number) => Promise<any[]>;
+  logger: Console;
+  constructor({db,owner,assess,now=()=>Date.now(),embed=embedTexts,logger=console}: DigitalPersonServiceOptions) {
     if(!db||!owner||typeof assess!=='function')throw new Error('DigitalPersonService requires db, owner and assess');
     this.db=db;this.owner=owner;this.assess=assess;this.now=now;this.embed=embed;this.logger=logger;this.cache=new Map();this.learning=new Set();
     db.exec(`

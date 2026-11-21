@@ -33,7 +33,16 @@ export const MOMENT_SCHEMA=object({action:{type:'string',enum:['send','hold','dr
 // Cognitive work, communication intent and expression are separate durable
 // states. There is no send_at, silence counter, relationship tier, task gate or
 // periodic greeting. The compute allowance controls spend, not social timing.
-export function createDotsCognition({store,assess,memory,now=()=>Math.floor(Date.now()/1000),callsPerHour=24,propagateErrors=false,logger=console}={}){
+export interface DotsCognitionOptions {
+  store: any;
+  assess: (data: any, schema: any, control?: any) => Promise<any>;
+  memory: any;
+  now?: () => number;
+  callsPerHour?: number;
+  propagateErrors?: boolean;
+  logger?: Console;
+}
+export function createDotsCognition({store,assess,memory,now=()=>Math.floor(Date.now()/1000),callsPerHour=24,propagateErrors=false,logger=console}: DotsCognitionOptions){
   const {db,managerId}=store,owner=randomUUID();
   db.exec(`
     CREATE TABLE IF NOT EXISTS dots_cognition_state(manager_id TEXT PRIMARY KEY,knowledge_key TEXT NOT NULL DEFAULT '',understanding TEXT NOT NULL DEFAULT '',understanding_refs TEXT NOT NULL DEFAULT '[]',memory_key TEXT NOT NULL DEFAULT '',source_floor INTEGER NOT NULL DEFAULT 0,lease_owner TEXT,lease_until INTEGER NOT NULL DEFAULT 0,compute_start INTEGER NOT NULL DEFAULT 0,compute_calls INTEGER NOT NULL DEFAULT 0);

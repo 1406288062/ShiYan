@@ -11,7 +11,19 @@ export async function readSubscriptionConfig(file){
  let f;try{f=await open(file,constants.O_RDONLY|constants.O_NOFOLLOW);}catch(e){if(e.code==='ENOENT')return null;throw Error('config_unreadable');}
  try{const s=await f.stat();if(!s.isFile()||(s.mode&0o077)||s.uid!==process.getuid()||s.size>16384)throw Error('config_permissions');const v=JSON.parse(await f.readFile('utf8'));return v.enabled===false?null:v;}finally{await f.close();}
 }
-export function createAppSubscriptions({store,dataDir,fetchImpl=fetch,summarizeGithub=null,loadConfig=readSubscriptionConfig,githubToken=async()=>{const r=await exec('/usr/bin/gh',['auth','token','--hostname','github.com'],{timeout:10000,maxBuffer:8192});return r.stdout.trim();},now=()=>Math.floor(Date.now()/1000),intervalMs=60000,cycleTimeoutMs=90000,logger=console}){
+export interface AppSubscriptionsOptions {
+  store: any;
+  dataDir: string;
+  fetchImpl?: any;
+  summarizeGithub?: ((input: any, control?: any) => Promise<any>) | null;
+  loadConfig?: any;
+  githubToken?: () => Promise<string>;
+  now?: () => number;
+  intervalMs?: number;
+  cycleTimeoutMs?: number;
+  logger?: Console;
+}
+export function createAppSubscriptions({store,dataDir,fetchImpl=fetch,summarizeGithub=null,loadConfig=readSubscriptionConfig,githubToken=async()=>{const r=await exec('/usr/bin/gh',['auth','token','--hostname','github.com'],{timeout:10000,maxBuffer:8192});return r.stdout.trim();},now=()=>Math.floor(Date.now()/1000),intervalMs=60000,cycleTimeoutMs=90000,logger=console}: AppSubscriptionsOptions){
  const {db,managerId}=store;let stopped=false,timer;const lanes=new Map(),tokens=new Map();
  if(!Number.isFinite(intervalMs)||intervalMs<1000||!Number.isFinite(cycleTimeoutMs)||cycleTimeoutMs<1000)throw Error('invalid_subscription_options');
  db.exec(`CREATE TABLE IF NOT EXISTS dots_app_sources(manager_id TEXT,source TEXT,cursor TEXT,status TEXT,error_code TEXT,updated_at INTEGER,PRIMARY KEY(manager_id,source));CREATE TABLE IF NOT EXISTS dots_app_events(manager_id TEXT,source TEXT,event_key TEXT,message_id INTEGER,PRIMARY KEY(manager_id,source,event_key));`);

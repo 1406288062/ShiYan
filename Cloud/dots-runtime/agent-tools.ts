@@ -17,7 +17,7 @@ import { rmSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 
 const MAX_TEXT = 200_000;
-export const tool = (name, description, properties = {}, required = [], handler) => ({ name, description, inputSchema: { type: 'object', properties, required, additionalProperties: false }, handler });
+export const tool = (name: string, description: string, properties: Record<string, any> = {}, required: string[] = [], handler: (args: any) => any) => ({ name, description, inputSchema: { type: 'object', properties, required, additionalProperties: false }, handler });
 
 // Normalizes a handler return value to MCP tool-call content.
 export function toContent(value) {

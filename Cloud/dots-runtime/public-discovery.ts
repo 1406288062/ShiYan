@@ -44,7 +44,18 @@ export async function readPublicNews(query,{fetchImpl=fetch,signal}={}){
 // A source monitor, not a scheduled chat. Network checks run independently of
 // user messages/tasks. Only a newly published, unseen external item can create
 // a candidate; elapsed chat silence never creates one.
-export function createPublicDiscovery({store,assess,memory,readNews=readPublicNews,now=()=>Math.floor(Date.now()/1000),pollSeconds=900,onObservation=null,propagateErrors=false,logger=console}={}){
+export interface PublicDiscoveryOptions {
+  store: any;
+  assess: (data: any, schema: any, control?: any) => Promise<any>;
+  memory: any;
+  readNews?: any;
+  now?: () => number;
+  pollSeconds?: number;
+  onObservation?: ((observation: any) => boolean) | null;
+  propagateErrors?: boolean;
+  logger?: Console;
+}
+export function createPublicDiscovery({store,assess,memory,readNews=readPublicNews,now=()=>Math.floor(Date.now()/1000),pollSeconds=900,onObservation=null,propagateErrors=false,logger=console}: PublicDiscoveryOptions){
   const {db,managerId}=store;
   db.exec(`
     CREATE TABLE IF NOT EXISTS dots_discovery_state(manager_id TEXT PRIMARY KEY,source_key TEXT NOT NULL DEFAULT '',memory_key TEXT NOT NULL DEFAULT '',source_floor INTEGER NOT NULL DEFAULT 0,next_extract_at INTEGER NOT NULL DEFAULT 0);

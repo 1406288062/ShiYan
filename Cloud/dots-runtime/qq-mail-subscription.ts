@@ -20,7 +20,17 @@ export async function readMailConfig(file){
   return {address:value.address.toLowerCase(),authorizationCode:value.authorizationCode};
  }finally{await promisify(fs.close)(fd);}
 }
-export function createQQMailSubscription({store,configPath,clientFactory,prepareMail=null,loadConfig=readMailConfig,logger=console,setTimer=setTimeout,clearTimer=clearTimeout}){
+export interface QQMailSubscriptionOptions {
+  store: any;
+  configPath: string;
+  clientFactory: (options: any) => any;
+  prepareMail?: ((client: any, message: any, control: any) => Promise<any>) | null;
+  loadConfig?: any;
+  logger?: Console;
+  setTimer?: any;
+  clearTimer?: any;
+}
+export function createQQMailSubscription({store,configPath,clientFactory,prepareMail=null,loadConfig=readMailConfig,logger=console,setTimer=setTimeout,clearTimer=clearTimeout}: QQMailSubscriptionOptions){
  let stopped=false,started=false,client=null,retry=null,watchdog=null,watcher=null,reloadTimer=null,generation=0,failures=0,status='waiting_configuration';
  let config=null,events=null,syncOwner=null,pending=false,connectionAbort=null;
  const publishStatus=(code)=>{status=code;logger.info?.('[qq-mail]',code);};

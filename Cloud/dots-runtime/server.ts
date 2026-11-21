@@ -27,6 +27,7 @@ import { DatabaseSync } from "node:sqlite";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { Codex } from "@openai/codex-sdk";
+import type { ThreadOptions, ModelReasoningEffort } from "@openai/codex-sdk";
 import { mcpConnectors } from "../agent-runtime/mcp-connectors.ts";
 import { createMcpBridge } from "./mcp-events.ts";
 // 2026-10-29：Mac 本机 Codex 执行（mac_codex）已停用，只在云端执行。
@@ -224,8 +225,8 @@ async function agentRoute(consumer) {
 async function workerToolGroups(owner) {
   const groups: Record<string, any> = {}, closers: Array<{ close(): void }> = [];
   const { BROWSER_TOOLS } = await loadBrowserToolDefs().catch(() => ({ BROWSER_TOOLS: [] }));
-  groups.browser = BROWSER_TOOLS.map(def => ({ ...def, handler: async args => (await browserRequest('/dots/call', { owner, origin: 'scheduled', tool: def.name, args }, { timeoutMs: 180_000 })).result }));
-  const attach = async (name, spec) => { try { const set = await hostMcpTools(spec); if (set.tools.length) { groups[name] = set.tools; closers.push(set); } else set.close(); } catch (error) { console.warn('[worker-agent] tools unavailable', name, error?.message || error); } };
+  groups.browser = BROWSER_TOOLS.map(def => ({ ...def, handler: async args => ((await browserRequest('/dots/call', { owner, origin: 'scheduled', tool: def.name, args }, { timeoutMs: 180_000 })) as any).result }));
+  const attach = async (name, spec) => { try { const set = await hostMcpTools(spec); if (set.tools.length) { groups[name] = set.tools; closers.push(set); } else set.close(); } catch (error) { console.warn('[worker-agent] tools unavailable', name, (error as any)?.message || error); } };
   await attach('sponge', spongeMcpServer(owner));
   const bridge = '/home/ubuntu/boss-codex-service/shiyan-v2/mcp-connector-proxy.mjs';
   for (const server of await mcpConnectors().runtimeServers(owner).catch(() => [])) {
@@ -287,10 +288,10 @@ function createOwnerRuntime(owner){
   const thread=createTenantThread(owner,{threadId:null,options});
   const started=Date.now(),used={provider:'openai',model:options.model||'',reasoning:options.modelReasoningEffort||'',account:owner};
   try{const turn=await runStructuredTurn(thread,data,schema,{signal});const value=JSON.parse(turn.finalResponse);dotsHub.report(dotsConsumer(source),{...used,ok:true,ms:Date.now()-started,usage:turn.usage||null});return value;}
-  catch(error){dotsHub.report(dotsConsumer(source),{...used,ok:false,cancelled:signal?.aborted===true,ms:Date.now()-started,error:String(error?.message||error)});throw error;}
+  catch(error){dotsHub.report(dotsConsumer(source),{...used,ok:false,cancelled:signal?.aborted===true,ms:Date.now()-started,error:String((error as any)?.message||error)});throw error;}
  };
  const people=new DigitalPersonService({db,owner,assess});
- let trigger;const assessed=(...args)=>trigger.assess(assess,...args);
+ let trigger: ReturnType<typeof createProactiveTrigger>;const assessed=(...args)=>trigger.assess(assess,...args);
  const cognition=createDotsCognition({store,memory:memoryStore,assess:assessed,callsPerHour:Infinity,propagateErrors:true});
  const discovery=createPublicDiscovery({store,memory:memoryStore,assess:assessed,propagateErrors:true,onObservation:observation=>{const accepted=cognition.observe(observation);if(accepted)trigger.signal('L2-observation');return accepted;}});
  const epoch=()=>JSON.stringify([memoryStore.settings(owner),db.prepare('SELECT status,control_revision FROM managers WHERE id=?').get(store.managerId),db.prepare("SELECT id,revision FROM manager_messages WHERE manager_id=? AND role='user' ORDER BY id DESC LIMIT 32").all(store.managerId)]);
@@ -310,7 +311,7 @@ function createOwnerRuntime(owner){
   update:async(provider,input)=>{const value=await ownerSubscriptions.update(provider,input);try{store.resolveSubscriptionCards(provider,'subscribe');}catch{}return value;},
   remove:async provider=>{const value=await ownerSubscriptions.remove(provider);try{store.resolveSubscriptionCards(provider,'unsubscribe');}catch{}return value;}};
  const subscriptionIntent=createSubscriptionIntent({store,subscriptions,assess});
- const guardedMemory=new Proxy(memoryStore,{get(target,key){const value=target[key];if(typeof value!=='function')return value;if(['create','remove','update','delete'].includes(key))return (...args)=>{const result=value.apply(target,args);audit(owner,'memory',key==='create'?'记住了一条信息':'删除了一条记忆');return result;};return value.bind(target);}});
+ const guardedMemory=new Proxy(memoryStore,{get(target,key){const value=target[key];if(typeof value!=='function')return value;if(typeof key==='string'&&['create','remove','update','delete'].includes(key))return (...args)=>{const result=value.apply(target,args);audit(owner,'memory',key==='create'?'记住了一条信息':'删除了一条记忆');return result;};return value.bind(target);}});
  const memoryIntent=createMemoryIntent({store,memory:guardedMemory,owner,assess});
  // 先看是不是“记住 / 忘掉”，不是再看是不是订阅；都不是交还总管。
  const intent={candidate:text=>memoryIntent.candidate(text)||subscriptionIntent.candidate(text),process:async message=>{if(await memoryIntent.process(message))return true;return subscriptionIntent.candidate(message?.content)?subscriptionIntent.process(message):false;}};
@@ -396,7 +397,7 @@ function json(value) {
   try { return JSON.stringify(value); } catch { return "{}"; }
 }
 
-function parseJson(text, fallback = {}) {
+function parseJson(text, fallback: any = {}) {
   try { return JSON.parse(text); } catch { return fallback; }
 }
 
@@ -411,7 +412,7 @@ function send(res, status, body) {
 }
 
 async function readJson(req, maxBytes = 1024 * 1024) {
-  const chunks = [];
+  const chunks: Buffer[] = [];
   let total = 0;
   for await (const chunk of req) {
     total += chunk.length;
@@ -574,13 +575,17 @@ At the end, return the required structured result. Keep summary concise but spec
 `.trim();
 }
 
-function threadOptions(goal) {
+export interface DotsThreadOptions extends ThreadOptions {
+  mcpServers?: Record<string, any>;
+  mcpToolAllowlist?: string[];
+}
+function threadOptions(goal): DotsThreadOptions {
   return {
     model: MODEL,
     sandboxMode: "read-only",
     workingDirectory: goal.workspace,
     skipGitRepoCheck: true,
-    modelReasoningEffort: REASONING,
+    modelReasoningEffort: REASONING as ModelReasoningEffort,
     networkAccessEnabled: false,
     webSearchMode: "live",
     approvalPolicy: "never",
@@ -607,7 +612,7 @@ function codexWithConnectors(servers, owner) {
   return new Codex({ codexPathOverride: CODEX_PATH, config: { mcp_servers: mcp } });
 }
 
-function getThread(goal, connectorServers = []) {
+function getThread(goal: any, connectorServers: any[] = []) {
   const options = threadOptions(goal), owner = ownerRegistry.currentOwner();
   const client = owner === PRIVATE_OWNER ? codexWithConnectors(connectorServers, owner) : codex;
   // 中枢把 dots.manager 路由到 Claude 时经中枢推理（带联网检索）；否则沿用 Codex 线程。
@@ -698,7 +703,7 @@ function scheduleAutoApproval(approvalId,goalId,mode,attempt=0,grants=null){
       if(result.ok){if(grants)grantStore.markUsed(grants);addTimeline(goalId,'approval_auto',`Approval #${approvalId} auto-approved (${mode})`,{mode,grants});return;}
       if(result.httpStatus===409&&attempt<4)return scheduleAutoApproval(approvalId,goalId,mode,attempt+1,grants);
       addTimeline(goalId,'approval_auto_failed',String(result.error||'auto approval failed'),{mode});
-    }catch(cause){addTimeline(goalId,'approval_auto_failed',String(cause?.message||cause),{mode});}
+    }catch(cause){addTimeline(goalId,'approval_auto_failed',String((cause as any)?.message||cause),{mode});}
   }),1500*(attempt+1));
   timer.unref?.();
 }
@@ -714,7 +719,7 @@ function ingestExternalMessage(owner,text,requestId,host){
     if(after!==before)owned.runtime.interrupt?.();
     if(defer&&result?.message?.id){
       const release=()=>{try{if(owned.store.releaseToManager(result.message.id))owned.runtime.wake();}catch(error){console.error('[external-intent] release',(error as any)?.message||error);}};
-      setImmediate(()=>void owned.intent.process(result.message).then(handled=>{if(!handled)release();},error=>{console.error('[external-intent]',error?.message||error);release();}));
+      setImmediate(()=>void owned.intent.process(result.message).then(handled=>{if(!handled)release();},error=>{console.error('[external-intent]',(error as any)?.message||error);release();}));
     }else setImmediate(()=>void owned.runtime.wake());
     return result.message;
   });
@@ -863,19 +868,19 @@ async function executeSafeActions(goal, actions, run = null) {
       results.push(result);
       if(receipt)durableStore.finishAction(receipt.id,result);
     } catch (error) {
-      if (type === "mac_codex" && error?.threadId) {
-        macThreadId = String(error.threadId);
+      if (type === "mac_codex" && (error as any)?.threadId) {
+        macThreadId = String((error as any).threadId);
         db.prepare(
           "UPDATE goals SET mac_thread_id=?, mac_last_route=?, updated_at=? WHERE id=?"
-        ).run(macThreadId, String(error.route || ""), now(), goal.id);
+        ).run(macThreadId, String((error as any).route || ""), now(), goal.id);
       }
       const result = {
         index: i,
         type,
         ok: false,
         reason: String(action.reason || ""),
-        detail: String(error?.message || error).slice(0, 12000),
-        ...(receipt && (error?.executionUncertain || error?.uncertain || error?.operationState === 'uncertain' || error?.timedOut || error?.killed) ? {uncertain:true} : {})
+        detail: String((error as any)?.message || error).slice(0, 12000),
+        ...(receipt && ((error as any)?.executionUncertain || (error as any)?.uncertain || (error as any)?.operationState === 'uncertain' || (error as any)?.timedOut || (error as any)?.killed) ? {uncertain:true} : {})
       };
       results.push(result);
       if(receipt)durableStore.finishAction(receipt.id,result);
@@ -974,7 +979,7 @@ async function runGoal(goalId, trigger = "scheduler") {
         else{const used=grantCoverage(goal.id,mode,result.approval_command);if(used){autoApproved=true;autoApprovalRequest={approvalId,mode:'grant',grants:used};}}
       }
       const notificationText = String(result.notification || summary || nextStep || effectiveStatus).trim().slice(0, 800);
-      const output = db.prepare(`INSERT INTO agent_outputs(goal_id,run_number,thread_id,status,raw_result,summary,notification,created_at) VALUES(?,?,?,?,?,?,?,?)`).run(goal.id, Number(getGoal(goal.id).run_count || 0)+1, threadId||null, effectiveStatus, String(turn.finalResponse||""), summary, notificationText, ts);
+      const output = db.prepare(`INSERT INTO agent_outputs(goal_id,run_number,thread_id,status,raw_result,summary,notification,created_at) VALUES(?,?,?,?,?,?,?,?)`).run(goal.id, Number(getGoal(goal.id)?.run_count || 0)+1, threadId||null, effectiveStatus, String(turn.finalResponse||""), summary, notificationText, ts);
       const outputId = Number(output.lastInsertRowid);
       db.prepare(`UPDATE goals SET status=?,thread_id=?,updated_at=?,last_run_at=?,next_wake_at=?,last_summary=?,run_count=run_count+1,failure_count=0 WHERE id=?`).run(goalStatus,threadId||null,ts,ts,nextWakeAt,summary,goal.id);
       addTimeline(goal.id,"run",summary||"(no summary)",{outputId,status:effectiveStatus,requestedStatus:status,nextStep,wakeAfter,actions:actionResults,usage:turn.usage||null});
@@ -990,19 +995,20 @@ async function runGoal(goalId, trigger = "scheduler") {
     };
     let autoApprovalRequest: { approvalId: any; mode: string; grants?: any } | null = null;
     const committed = run ? durableStore.commitRun(run, finalize) : {committed:true,value:finalize()};
-    if (committed.committed && autoApprovalRequest) scheduleAutoApproval(autoApprovalRequest!.approvalId, goal.id, autoApprovalRequest!.mode, 0, autoApprovalRequest!.grants||null);
+    const approvalReq = autoApprovalRequest as { approvalId: any; mode: string; grants?: any } | null;
+    if (committed.committed && approvalReq) scheduleAutoApproval(approvalReq.approvalId, goal.id, approvalReq.mode, 0, approvalReq.grants||null);
     if (committed.committed && committed.value.mustNotify) {
       const value = committed.value;
       if (run) {
         // The notification row is already committed. Delivery errors do not
         // turn successful work into failed work; polling can replay the row.
         try { await mcpBridge.emitNotification({id:value.notificationId,goalId:goal.id,outputId:value.outputId,level:value.level,title:goal.title,body:value.notificationText,createdAt:ts}); }
-        catch (cause) { addTimeline(goal.id,'notification_delivery_error',String(cause?.message||cause)); }
+        catch (cause) { addTimeline(goal.id,'notification_delivery_error',String((cause as any)?.message||cause)); }
       } else await addNotification(goal.id,value.level,goal.title,value.notificationText,value.outputId);
     }
   } catch (cause) {
-    goalError = String(cause?.message||cause);
-    const ts=now(),message=String(cause?.message||cause).slice(0,12000);
+    goalError = String((cause as any)?.message||cause);
+    const ts=now(),message=String((cause as any)?.message||cause).slice(0,12000);
     if (run && !durableStore.isCurrent(run)) durableStore.finishRun(run,{status:'superseded',summary:message});
     else {
       const failureState=resolveGoalRunFailure(getGoal(goal.id),{nowSec:ts,hasPendingEvents:db.prepare("SELECT id FROM events WHERE goal_id=? AND consumed_at IS NULL AND id>? LIMIT 1").get(goal.id,eventIds.at(-1)||0)!==undefined,errorMessage:message});
@@ -1102,14 +1108,14 @@ async function decideApproval(id, decision) {
     });
   }catch(cause){return {ok:false,httpStatus:(cause as any).statusCode||409,error:(cause as any).message};}
   const heartbeat=setInterval(()=>managerStore.renewRun(run.id,run.fence),10000);heartbeat.unref();
-  let output='',failure=null;
+  let output='',failure: any=null;
   try{
-    const result=ownerRegistry.currentOwner()===PRIVATE_OWNER?await execFileAsync('/bin/bash',['-lc',command],{cwd:goal.workspace,timeout:60000,maxBuffer:512*1024,env:{...process.env,DOTS_APPROVAL_ID:String(approval.id),DOTS_ACTION_ID:receipt.id}}):await execSandbox(ownerRegistry.currentOwner(),{command,cwd:'/workspace/dots/'+goal.id,timeoutMs:60000});
+    const result: any=ownerRegistry.currentOwner()===PRIVATE_OWNER?await execFileAsync('/bin/bash',['-lc',command],{cwd:goal.workspace as string,timeout:60000,maxBuffer:512*1024,env:{...process.env,DOTS_APPROVAL_ID:String(approval.id),DOTS_ACTION_ID:receipt.id} as NodeJS.ProcessEnv}):await execSandbox(ownerRegistry.currentOwner(),{command,cwd:'/workspace/dots/'+goal.id,timeoutMs:60000});
     if(result.exitCode!==undefined&&result.exitCode!==0)throw Object.assign(Error(result.stderr||'工作区命令执行失败'),{stdout:result.stdout,stderr:result.stderr});
     output=(`STDOUT:\n${result.stdout||''}\nSTDERR:\n${result.stderr||''}`).slice(-20000);
-  }catch(cause){failure=cause;output=String(cause?.stdout||cause?.stderr||cause?.message||cause).slice(-20000);}
+  }catch(cause){failure=cause;output=String((cause as any)?.stdout||(cause as any)?.stderr||(cause as any)?.message||cause).slice(-20000);}
   finally{clearInterval(heartbeat);}
-  const uncertain=Boolean(failure&&(failure.killed||failure.signal||failure.code==='ETIMEDOUT'));
+  const uncertain=Boolean(failure&&((failure as any).killed||(failure as any).signal||(failure as any).code==='ETIMEDOUT'));
   managerStore.transaction(()=>{
     managerStore.finishAction(receipt.id,{type:'host_command',ok:!failure,uncertain,detail:output,approvalId:approval.id});
     db.prepare('UPDATE approvals SET status=?,output=? WHERE id=?').run(uncertain?'unknown':failure?'failed':'executed',output,approval.id);
@@ -1119,7 +1125,7 @@ async function decideApproval(id, decision) {
     managerStore.activityEvent(uncertain?'approval_unknown':failure?'approval_failed':'approval_executed',uncertain?'审批命令结果不明，已锁定执行资源；请先核查。':failure?'审批命令失败。':'审批命令执行完成。',{approvalId:approval.id,actionId:receipt.id},goal.id);
   });
   // Notification delivery is independent of the committed command outcome.
-  await addNotification(goal.id,failure?'error':'info',goal.title,uncertain?`Approved action #${approval.id} needs reconciliation (${receipt.id}).`:`Approved action #${approval.id} ${failure?'failed':'completed'}.`).catch(cause=>addTimeline(goal.id,'notification_delivery_error',String(cause?.message||cause)));
+  await addNotification(goal.id,failure?'error':'info',goal.title,uncertain?`Approved action #${approval.id} needs reconciliation (${receipt.id}).`:`Approved action #${approval.id} ${failure?'failed':'completed'}.`).catch(cause=>addTimeline(goal.id,'notification_delivery_error',String((cause as any)?.message||cause)));
   return failure?{ok:false,httpStatus:uncertain?409:500,error:uncertain?'approved command outcome uncertain; reconcile action '+receipt.id:'approved command failed',actionId:receipt.id,output}:{ok:true,httpStatus:200,approvalId:approval.id,state:'executed',actionId:receipt.id,output};
 }
 
@@ -1149,7 +1155,7 @@ async function handle(req, res) {
   if (req.method === "GET" && url.pathname === "/health") {
     if(req.headers.authorization!==`Bearer ${TOKEN}`||ownerRegistry.currentOwner()!==PRIVATE_OWNER)return send(res,200,{ok:true,service:"dots-runtime"});
     const activeCount = Number(
-      db.prepare("SELECT COUNT(*) AS n FROM goals WHERE status='active'").get().n
+      db.prepare("SELECT COUNT(*) AS n FROM goals WHERE status='active'").get()!.n
     );
     return send(res, 200, {
       ok: true,
@@ -1211,13 +1217,13 @@ async function handle(req, res) {
       // 可能是订阅请求的消息先交给“对话订阅”识别；不是订阅请求再交还给总管。
       const owned=ownerRegistry.get?.(ownerId);
       const defer=input.taskId==null&&Boolean(owned?.intent?.candidate(String(input.message||'')));
-      const beforeRevision=db.prepare('SELECT control_revision FROM managers WHERE id=?').get(managerStore.managerId).control_revision;
+      const beforeRevision=db.prepare('SELECT control_revision FROM managers WHERE id=?').get(managerStore.managerId)?.control_revision;
       const result=managerStore.message(input,{deferManager:defer});
-      const afterRevision=db.prepare('SELECT control_revision FROM managers WHERE id=?').get(managerStore.managerId).control_revision;
+      const afterRevision=db.prepare('SELECT control_revision FROM managers WHERE id=?').get(managerStore.managerId)?.control_revision;
       if(afterRevision!==beforeRevision)managerRuntime.interrupt();
       if(defer&&result?.message?.id){
-        const release=()=>{try{if(owned.store.releaseToManager(result.message.id))owned.runtime.wake();}catch(error){console.error('[subscription-intent] release',error?.message||error);}};
-        setImmediate(()=>void owned.intent.process(result.message).then(handled=>{if(!handled)release();},error=>{console.error('[subscription-intent]',error?.message||error);release();}));
+        const release=()=>{try{if(owned.store.releaseToManager(result.message.id))owned.runtime.wake();}catch(error){console.error('[subscription-intent] release',(error as any)?.message||error);}};
+        setImmediate(()=>void owned.intent.process(result.message).then(handled=>{if(!handled)release();},error=>{console.error('[subscription-intent]',(error as any)?.message||error);release();}));
       }else setImmediate(()=>void managerRuntime.wake());
       return send(res,202,result);
     }
@@ -1227,9 +1233,9 @@ async function handle(req, res) {
         managerRuntime.interrupt();
         return send(res,200,{manager:managerStore.snapshot()});
       }
-      const beforeRevision=db.prepare('SELECT control_revision FROM managers WHERE id=?').get(managerStore.managerId).control_revision;
+      const beforeRevision=db.prepare('SELECT control_revision FROM managers WHERE id=?').get(managerStore.managerId)?.control_revision;
       const result=managerStore.control(input);
-      const afterRevision=db.prepare('SELECT control_revision FROM managers WHERE id=?').get(managerStore.managerId).control_revision;
+      const afterRevision=db.prepare('SELECT control_revision FROM managers WHERE id=?').get(managerStore.managerId)?.control_revision;
       if(afterRevision!==beforeRevision)managerRuntime.interrupt();
       setImmediate(()=>void managerRuntime.wake());
       return send(res,200,result);
@@ -1356,7 +1362,7 @@ async function handle(req, res) {
       return send(res, 404, { ok: false, error: "goal not found" });
     }
     const currentGoal = getGoal(goalId);
-    if (["done", "cancelled"].includes(currentGoal.status)) {
+    if (["done", "cancelled"].includes(String(currentGoal!.status))) {
       return send(res, 409, { ok: false, error: "Cannot enqueue external events for a terminal goal" });
     }
     scheduleGoalNow(goalId, type, body.payload ?? "");
@@ -1401,7 +1407,7 @@ async function handle(req, res) {
     const rows = status==='pending'
       ? db.prepare("SELECT * FROM approvals WHERE goal_id IN (SELECT id FROM goals WHERE manager_id=?) AND status IN ('pending','executing','unknown') ORDER BY id DESC LIMIT 200").all(managerStore.managerId)
       : db.prepare("SELECT * FROM approvals WHERE status=? AND goal_id IN (SELECT id FROM goals WHERE manager_id=?) ORDER BY id DESC LIMIT 200").all(status,managerStore.managerId);
-    return send(res, 200, { ok: true, approvals: rows.map(row=>({...row,grant_labels:row.command&&!PRIVILEGE_WORD.test(row.command)&&!catastrophicCommand(row.command)?commandSignatures(row.command).map(signatureLabel):[]})) });
+    return send(res, 200, { ok: true, approvals: rows.map(row=>({...row,grant_labels:row.command&&!PRIVILEGE_WORD.test(String(row.command))&&!catastrophicCommand(row.command)?commandSignatures(String(row.command)).map(signatureLabel):[]})) });
   }
 
   const approvalDecision = url.pathname.match(/^\/v1\/approvals\/(\d+)\/decision$/);
@@ -1431,7 +1437,7 @@ const server = http.createServer((req, res) => {
   Promise.resolve().then(()=>ownerRegistry.run(owner,()=>handle(req,res))).catch((error) => {
     console.error("[http]", error);
     if (!res.headersSent) {
-      send(res, error?.statusCode || 500, { ok: false, error: error?.message || String(error) });
+      send(res, error?.statusCode || 500, { ok: false, error: (error as any)?.message || String(error) });
     } else {
       res.end();
     }

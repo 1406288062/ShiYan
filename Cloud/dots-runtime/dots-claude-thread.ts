@@ -19,7 +19,15 @@ const joinPrompt = prompt => String(prompt ?? '').replace(DOTS_STATE_SPLIT, '\n\
 export const lastHubCall = new Map();
 
 // Dots 每轮提示词已自带最近对话、任务目录和记忆；不再让中枢按 threadKey 把前几轮的完整提示词再拼一遍（那会让同样的上下文重复好几份）。
-export function hubAwareThread({ hub, owner, consumer, threadId = null, options = {}, createInner }) {
+export interface HubAwareThreadOptions {
+  hub: any;
+  owner: any;
+  consumer: string;
+  threadId?: string | null;
+  options?: any;
+  createInner: () => any;
+}
+export function hubAwareThread({ hub, owner, consumer, threadId = null, options = {}, createInner }: HubAwareThreadOptions) {
   let inner = null;
   const getInner = () => (inner ??= createInner());
   const key = createHash('sha256').update(consumer + '\0' + owner + '\0' + String(options.workingDirectory || '')).digest('hex').slice(0, 40);

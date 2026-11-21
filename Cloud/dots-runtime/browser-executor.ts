@@ -62,7 +62,21 @@ export function executorPrompt(task, inputs = []) {
 - 完成、失败或被卡住时都必须调用 finish，summary 写清实际看到的结果和依据（不要编造）。之后用一句话结束本轮。`;
 }
 
-export function createBrowserExecutor({ runAgent, route, report = () => {}, deliver, socketPath = BROWSER_SOCKET, toolDefs = loadBrowserToolDefs, concurrency = Number(process.env.SHIYAN_BROWSER_EXECUTORS || 1), pollMs = 2000, workerId = 'dots:' + process.pid, maxRunMs = 3 * 60 * 60_000, logger = console, call = request } = {}) {
+export interface BrowserExecutorOptions {
+  runAgent: (args: any) => any;
+  route: (consumer: any) => any;
+  report?: (consumer: any, entry: any) => any;
+  deliver: (owner: any, event: any) => any;
+  socketPath?: string;
+  toolDefs?: any;
+  concurrency?: number;
+  pollMs?: number;
+  workerId?: string;
+  maxRunMs?: number;
+  logger?: Console;
+  call?: any;
+}
+export function createBrowserExecutor({ runAgent, route, report = () => {}, deliver, socketPath = BROWSER_SOCKET, toolDefs = loadBrowserToolDefs, concurrency = Number(process.env.SHIYAN_BROWSER_EXECUTORS || 1), pollMs = 2000, workerId = 'dots:' + process.pid, maxRunMs = 3 * 60 * 60_000, logger = console, call = request }: BrowserExecutorOptions) {
   const running = new Map();
   let timer = null, closed = false, ticking = false, warned = 0;
   const rpc = (route_, body, options = {}) => call(route_, body, { socketPath, ...options });

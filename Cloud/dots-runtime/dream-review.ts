@@ -56,7 +56,17 @@ ${previous || '（还没有）'}
 ${JSON.stringify(messages)}`;
 }
 
-export function createDreamReview({ store, assess, writeFile = async () => {}, now = () => Date.now(), hour = 3, windowMinutes = 180, intervalMs = 5 * 60_000, logger = console }) {
+export interface DreamReviewOptions {
+  store: any;
+  assess: (data: any, schema: any, control?: any) => Promise<any>;
+  writeFile?: (rel: string, text: string) => Promise<void>;
+  now?: () => number;
+  hour?: number;
+  windowMinutes?: number;
+  intervalMs?: number;
+  logger?: Console;
+}
+export function createDreamReview({ store, assess, writeFile = async () => {}, now = () => Date.now(), hour = 3, windowMinutes = 180, intervalMs = 5 * 60_000, logger = console }: DreamReviewOptions) {
   const { db, managerId } = store;
   db.exec("CREATE TABLE IF NOT EXISTS dots_dream(manager_id TEXT PRIMARY KEY,last_day TEXT NOT NULL DEFAULT '',last_message_id INTEGER NOT NULL DEFAULT 0,state TEXT NOT NULL DEFAULT '',synthesis TEXT NOT NULL DEFAULT '',dream TEXT NOT NULL DEFAULT '',updated_at INTEGER NOT NULL DEFAULT 0)");
   let timer = null, running = false, stopped = false;

@@ -20,7 +20,23 @@ const fault=(code,message,retryAt)=>Object.assign(new Error(message),{code,retry
 export const QUIET_START_HOUR=22,QUIET_END_HOUR=9,GLOBAL_GAP_MS=7_200_000,CALLS_PER_CYCLE=1;
 export function inQuietHours(ms){const h=new Date(ms+8*3600_000).getUTCHours();return h>=QUIET_START_HOUR||h<QUIET_END_HOUR;}
 
-export function createProactiveTrigger({store,cognition,discovery=null,epoch=()=>'',now=()=>Date.now(),score=scoreOpportunity,threshold=0.60,intervalMs=600_000,explorationMs=900_000,globalGapMs=GLOBAL_GAP_MS,callsPerCycle=CALLS_PER_CYCLE,logger=console,setIntervalImpl=setInterval,clearIntervalImpl=clearInterval}={}){
+export interface ProactiveTriggerOptions {
+  store: any;
+  cognition: any;
+  discovery?: any;
+  epoch?: () => string;
+  now?: () => number;
+  score?: any;
+  threshold?: number;
+  intervalMs?: number;
+  explorationMs?: number;
+  globalGapMs?: number;
+  callsPerCycle?: number;
+  logger?: Console;
+  setIntervalImpl?: any;
+  clearIntervalImpl?: any;
+}
+export function createProactiveTrigger({store,cognition,discovery=null,epoch=()=>'',now=()=>Date.now(),score=scoreOpportunity,threshold=0.60,intervalMs=600_000,explorationMs=900_000,globalGapMs=GLOBAL_GAP_MS,callsPerCycle=CALLS_PER_CYCLE,logger=console,setIntervalImpl=setInterval,clearIntervalImpl=clearInterval}: ProactiveTriggerOptions){
   if(!Number.isFinite(threshold)||threshold<0||threshold>1||!Number.isFinite(intervalMs)||intervalMs<1000||!Number.isFinite(explorationMs)||explorationMs<1000||!Number.isFinite(globalGapMs)||globalGapMs<60_000||!Number.isInteger(callsPerCycle)||callsPerCycle<1)throw new Error('Invalid proactive trigger configuration');
   const {db,managerId}=store,owner=randomUUID();
   db.exec(`CREATE TABLE IF NOT EXISTS dots_proactive_trigger(manager_id TEXT PRIMARY KEY,window_start INTEGER NOT NULL,calls INTEGER NOT NULL DEFAULT 0,next_allowed_at INTEGER NOT NULL DEFAULT 0,lease_owner TEXT,lease_until INTEGER NOT NULL DEFAULT 0,failures INTEGER NOT NULL DEFAULT 0,last_explore_at INTEGER NOT NULL DEFAULT -1,seen_input TEXT NOT NULL DEFAULT '',seen_context TEXT NOT NULL DEFAULT '',decisions INTEGER NOT NULL DEFAULT 0,last_score REAL NOT NULL DEFAULT 0,last_reason TEXT NOT NULL DEFAULT 'created')`);
