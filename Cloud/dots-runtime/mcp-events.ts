@@ -20,8 +20,8 @@ function rpc(id, result) {
   return { jsonrpc: "2.0", id, result };
 }
 
-function rpcError(id, code, message, data) {
-  const error = { code, message };
+function rpcError(id, code, message, data: any = undefined) {
+  const error: any = { code, message };
   if (data !== undefined) error.data = data;
   return { jsonrpc: "2.0", id: id ?? null, error };
 }
@@ -37,7 +37,7 @@ function sendJson(res, status, value) {
 }
 
 async function readJson(req, maxBytes = 1024 * 1024) {
-  const chunks = [];
+  const chunks: Buffer[] = [];
   let total = 0;
   for await (const chunk of req) {
     total += chunk.length;
@@ -119,7 +119,7 @@ async function verifyCallback(subscription) {
   const id = "msg_verify_" + randomUUID();
   const response = await signedPost(subscription, { type: "verification", challenge }, id);
   if (!response.ok) throw new Error("callback verification returned HTTP " + response.status);
-  const parsed = await response.json().catch(() => ({}));
+  const parsed: any = await response.json().catch(() => ({}));
   const got = Buffer.from(String(parsed.challenge || ""));
   const expected = Buffer.from(challenge);
   if (got.length !== expected.length || !timingSafeEqual(got, expected)) throw new Error("callback challenge mismatch");
@@ -164,7 +164,7 @@ export function createMcpBridge({ db, pathSecret, runtimeToken, runtimeBase = "h
     if(prior?.state==='sent'||(prior?.state==='sending'&&now-Number(prior.updated_at)<120000))return;
     db.prepare(`INSERT INTO dots_weixin_web_message_sync(owner,request_id,state,updated_at) VALUES(?,?,'sending',?) ON CONFLICT(owner,request_id) DO UPDATE SET state='sending',updated_at=excluded.updated_at`).run(owner,requestId,now);
     try{const bridge=weixin?.();const sent=await bridge?.send?.(text);if(sent)db.prepare(`UPDATE dots_weixin_web_message_sync SET state='sent',updated_at=? WHERE owner=? AND request_id=?`).run(Date.now(),owner,requestId);else db.prepare('DELETE FROM dots_weixin_web_message_sync WHERE owner=? AND request_id=?').run(owner,requestId);}
-    catch(error){db.prepare('DELETE FROM dots_weixin_web_message_sync WHERE owner=? AND request_id=?').run(owner,requestId);console.warn('[weixin] web message mirror failed:',error?.message||error);}
+    catch(error){db.prepare('DELETE FROM dots_weixin_web_message_sync WHERE owner=? AND request_id=?').run(owner,requestId);console.warn('[weixin] web message mirror failed:',(error as any)?.message||error);}
   }
   const ownGoal=id=>!scoped||Boolean(db.prepare('SELECT id FROM goals WHERE id=? AND manager_id=?').get(Number(id),'manager:'+currentOwner()));
   const cursorRow=id=>currentOwner()===defaultOwner?db.prepare('SELECT last_notification_id FROM mcp_notification_cursors WHERE consumer_id=?').get(id):db.prepare('SELECT last_notification_id FROM mcp_scoped_notification_cursors WHERE owner=? AND consumer_id=?').get(currentOwner(),id);
@@ -223,7 +223,7 @@ export function createMcpBridge({ db, pathSecret, runtimeToken, runtimeBase = "h
     return pathname === endpointPath;
   }
 
-  async function runtime(path, options = {}, allowRelationshipError = false, timeoutMs = 15000) {
+  async function runtime(path, options: any = {}, allowRelationshipError = false, timeoutMs = 15000) {
     const response = await fetch(runtimeBase + path, {
       ...options,
       headers: {
@@ -234,7 +234,7 @@ export function createMcpBridge({ db, pathSecret, runtimeToken, runtimeBase = "h
       },
       signal: AbortSignal.timeout(timeoutMs)
     });
-    const data = await response.json().catch(() => ({}));
+    const data: any = await response.json().catch(() => ({}));
     if (!response.ok) {
       if(allowRelationshipError&&relationshipErrors.get(data.error)===response.status) {
         throw Object.assign(new Error(data.error),{relationshipError:{status:response.status,reason:data.error}});
@@ -260,7 +260,7 @@ export function createMcpBridge({ db, pathSecret, runtimeToken, runtimeBase = "h
     if(args.goal_id){where.push('n.goal_id=?');values.push(args.goal_id);}
     if(args.client_context){where.push('c.host=? AND c.conversation_id=?');values.push(args.client_context.host,args.client_context.conversation_id);}
     const rows=db.prepare(`SELECT n.* FROM notifications n LEFT JOIN mcp_goal_context c ON c.goal_id=n.goal_id WHERE ${where.join(' AND ')} ORDER BY n.id ASC LIMIT ?`).all(...values,count+1);
-    const notifications=rows.slice(0,count).map(n=>({...n,client_context:goalContext(n.goal_id)}));
+    const notifications: any[]=rows.slice(0,count).map(n=>({...n,client_context:goalContext(n.goal_id)}));
     return{ok:true,notifications,next_cursor:notifications.at(-1)?.id??after,has_more:rows.length>count,acknowledged_cursor:acknowledged,handoff_only:true};
   }
   async function callTool(name, args) {
@@ -319,7 +319,7 @@ export function createMcpBridge({ db, pathSecret, runtimeToken, runtimeBase = "h
       const now=Math.floor(Date.now()/1000);
       if(currentOwner()===defaultOwner)db.prepare(`INSERT INTO mcp_notification_cursors(consumer_id,last_notification_id,updated_at) VALUES(?,?,?) ON CONFLICT(consumer_id) DO UPDATE SET last_notification_id=MAX(last_notification_id,excluded.last_notification_id),updated_at=excluded.updated_at`).run(args.consumer_id,args.notification_id,now);
       else db.prepare('INSERT INTO mcp_scoped_notification_cursors(owner,consumer_id,last_notification_id,updated_at) VALUES(?,?,?,?) ON CONFLICT(owner,consumer_id) DO UPDATE SET last_notification_id=MAX(last_notification_id,excluded.last_notification_id),updated_at=excluded.updated_at').run(currentOwner(),args.consumer_id,args.notification_id,now);
-      return{ok:true,consumer_id:args.consumer_id,acknowledged_cursor:Number(cursorRow(args.consumer_id).last_notification_id),handoff_only:true};
+      return{ok:true,consumer_id:args.consumer_id,acknowledged_cursor:Number(cursorRow(args.consumer_id)?.last_notification_id),handoff_only:true};
     }
     if(name==='dots_list_approvals'){
       const data=await runtime('/v1/approvals?status=pending');
@@ -334,7 +334,7 @@ export function createMcpBridge({ db, pathSecret, runtimeToken, runtimeBase = "h
     if(name==='dots_notification_status'){
       const now=Math.floor(Date.now()/1000);
       const rows=db.prepare('SELECT id,event_name,arguments_json,active,expires_at,last_delivered_at,last_status FROM mcp_subscriptions WHERE owner_id=? ORDER BY created_at DESC').all(currentOwner());
-      const subscriptions=rows.filter(s=>!args.goal_id||JSON.parse(s.arguments_json).goal_id===undefined||JSON.parse(s.arguments_json).goal_id===args.goal_id).map(s=>({id:s.id,event:s.event_name,goal_id:JSON.parse(s.arguments_json).goal_id??null,active:Boolean(s.active)&&(!s.expires_at||s.expires_at>now),expires_at:s.expires_at,last_webhook_accepted_at:s.last_delivered_at,last_http_status:s.last_status,...db.prepare("SELECT COALESCE(SUM(state='pending'),0) AS pending,COALESCE(SUM(state='failed'),0) AS failed,COALESCE(SUM(state='delivered'),0) AS delivered FROM mcp_delivery_outbox WHERE subscription_id=?").get(s.id)}));
+      const subscriptions=rows.filter(s=>!args.goal_id||JSON.parse(String(s.arguments_json)).goal_id===undefined||JSON.parse(String(s.arguments_json)).goal_id===args.goal_id).map(s=>({id:s.id,event:s.event_name,goal_id:JSON.parse(String(s.arguments_json)).goal_id??null,active:Boolean(s.active)&&(!s.expires_at||Number(s.expires_at)>now),expires_at:s.expires_at,last_webhook_accepted_at:s.last_delivered_at,last_http_status:s.last_status,...db.prepare("SELECT COALESCE(SUM(state='pending'),0) AS pending,COALESCE(SUM(state='failed'),0) AS failed,COALESCE(SUM(state='delivered'),0) AS delivered FROM mcp_delivery_outbox WHERE subscription_id=?").get(s.id)}));
       return{ok:true,subscriptions,conversation_display_confirmed:false};
     }
     if(name==='dots_get_capabilities')return{ok:true,service:'Dots Runtime',bridge_version:'0.6.0',protocol_versions:PROTOCOL_VERSIONS,tool_names:toolList().map(t=>t.name),ownership:'per-user-isolated',auth:'secret URL capability; host auth setting is noauth',conversation_context:true,idempotent_requests:true,notification_cursor:true,timeline_cursor:true,per_consumer_ack:true,durable_webhook_outbox:true,events_require_host_callback:true,manager:true,manager_activity_replay:true,manager_webhook:false,worker_concurrency:2,hard_budgets:false,recurring_schedules:false,shiyan_client_adapter_installed:process.env.DOTS_SHIYAN_ADAPTER_INSTALLED==='1',stop_semantics:'pause/cancel stops future steps; already running operations may finish'};
@@ -464,16 +464,16 @@ export function createMcpBridge({ db, pathSecret, runtimeToken, runtimeBase = "h
         let result;
         try {result=await callTool(String(msg.params?.name||""),msg.params?.arguments??{});}
         catch(e){
-          if(e.rpcCode)return sendJson(res,200,rpcError(id,e.rpcCode,e.message));
+          if((e as any).rpcCode)return sendJson(res,200,rpcError(id,(e as any).rpcCode,(e as any).message));
           if(relationshipTools.has(String(msg.params?.name||''))){
-            const error=e.relationshipError;
+            const error=(e as any).relationshipError;
             if(error&&relationshipErrors.get(error.reason)===error.status){
               const code=error.status===409?'relationship_conflict':error.status===404?'relationship_not_found':'relationship_invalid';
               return sendJson(res,200,rpc(id,{isError:true,content:[{type:'text',text:error.reason}],structuredContent:{ok:false,error:{...error,code}}}));
             }
             return sendJson(res,200,rpc(id,{isError:true,content:[{type:'text',text:'Dots 暂时无法更新交流设置，请稍后重试'}]}));
           }
-          return sendJson(res,200,rpc(id,{isError:true,content:[{type:'text',text:String(e.message||e).slice(0,500)}]}));
+          return sendJson(res,200,rpc(id,{isError:true,content:[{type:'text',text:String((e as any).message||e).slice(0,500)}]}));
         }
         return sendJson(res, 200, rpc(id, {
           content: [{ type: "text", text: JSON.stringify(result) }],
@@ -491,9 +491,9 @@ export function createMcpBridge({ db, pathSecret, runtimeToken, runtimeBase = "h
           return sendJson(res, 200, rpc(id, result));
         }
         catch (e) {
-          const reason = /callback|HTTPS|address|challenge|HTTP|timeout/i.test(String(e.message)) ? "challenge_failed" : "invalid_request";
+          const reason = /callback|HTTPS|address|challenge|HTTP|timeout/i.test(String((e as any).message)) ? "challenge_failed" : "invalid_request";
           audit("failed", reason);
-          return sendJson(res, 200, rpcError(id, -32015, "CallbackEndpointError", { reason, detail: String(e.message).slice(0, 300) }));
+          return sendJson(res, 200, rpcError(id, -32015, "CallbackEndpointError", { reason, detail: String((e as any).message).slice(0, 300) }));
         }
       }
       if (method === "events/unsubscribe") {
@@ -503,7 +503,7 @@ export function createMcpBridge({ db, pathSecret, runtimeToken, runtimeBase = "h
       }
       return sendJson(res, 200, rpcError(id, -32601, "Method not found"));
     } catch (e) {
-      return sendJson(res, 200, rpcError(id, -32000, String(e?.message || e).slice(0, 500)));
+      return sendJson(res, 200, rpcError(id, -32000, String((e as any)?.message || e).slice(0, 500)));
     }
   }
 
@@ -515,9 +515,9 @@ export function createMcpBridge({ db, pathSecret, runtimeToken, runtimeBase = "h
       const nowSec=Math.floor(Date.now()/1000);
       const rows=db.prepare(`SELECT o.*,s.callback_url,s.secret,s.active,s.expires_at FROM mcp_delivery_outbox o JOIN mcp_subscriptions s ON s.id=o.subscription_id WHERE o.state='pending' AND o.next_retry_at<=? ORDER BY o.next_retry_at,o.notification_id LIMIT 20`).all(nowSec);
       for(const row of rows){
-        if(!row.active||row.expires_at!==null&&row.expires_at<=nowSec){db.prepare("UPDATE mcp_delivery_outbox SET state='inactive' WHERE subscription_id=? AND notification_id=?").run(row.subscription_id,row.notification_id);continue;}
-        const event=JSON.parse(row.payload_json),attempts=row.attempts+1;
-        let status=null,error='',accepted=false;
+        if(!row.active||row.expires_at!==null&&Number(row.expires_at)<=nowSec){db.prepare("UPDATE mcp_delivery_outbox SET state='inactive' WHERE subscription_id=? AND notification_id=?").run(row.subscription_id,row.notification_id);continue;}
+        const event=JSON.parse(String(row.payload_json)),attempts=Number(row.attempts)+1;
+        let status: any=null,error='',accepted=false;
         try{const response=await deliver({...row,id:row.subscription_id},event,event.eventId);status=response.status;accepted=response.ok;if(!accepted)error='HTTP '+status;}
         catch{error='Webhook transport failed';}
         const state=accepted?'delivered':status===410||status===413||attempts>=8?'failed':'pending';
@@ -530,14 +530,14 @@ export function createMcpBridge({ db, pathSecret, runtimeToken, runtimeBase = "h
   }
   async function emitNotification(notification) {
     const nowSec=Math.floor(Date.now()/1000);
-    const notificationOwner=scoped?db.prepare("SELECT manager_id FROM goals WHERE id=?").get(Number(notification.goalId))?.manager_id?.slice(8):defaultOwner;
+    const notificationOwner=scoped?String(db.prepare("SELECT manager_id FROM goals WHERE id=?").get(Number(notification.goalId))?.manager_id ?? '').slice(8):defaultOwner;
     if(!notificationOwner)return;
     const subs=db.prepare("SELECT id,arguments_json FROM mcp_subscriptions WHERE owner_id=? AND active=1 AND event_name='goal.notification' AND (expires_at IS NULL OR expires_at>?)").all(notificationOwner,nowSec);
     for(const sub of subs){
-      const args=JSON.parse(sub.arguments_json||'{}');
+      const args=JSON.parse(String(sub.arguments_json||'{}'));
       if(args.goal_id!==undefined&&Number(args.goal_id)!==Number(notification.goalId))continue;
       const context=goalContext(notification.goalId);
-      const event={eventId:'evt_'+notification.id+'_'+sub.id.slice(-10),name:'goal.notification',timestamp:new Date(notification.createdAt*1000).toISOString(),data:{goal_id:Number(notification.goalId||0),notification_id:Number(notification.id),output_id:notification.outputId==null?null:Number(notification.outputId),level:String(notification.level),title:String(notification.title),message:String(notification.body),...(context?{client_context:context}:{})},cursor:String(notification.id)};
+      const event={eventId:'evt_'+notification.id+'_'+String(sub.id).slice(-10),name:'goal.notification',timestamp:new Date(notification.createdAt*1000).toISOString(),data:{goal_id:Number(notification.goalId||0),notification_id:Number(notification.id),output_id:notification.outputId==null?null:Number(notification.outputId),level:String(notification.level),title:String(notification.title),message:String(notification.body),...(context?{client_context:context}:{})},cursor:String(notification.id)};
       db.prepare(`INSERT OR IGNORE INTO mcp_delivery_outbox(subscription_id,notification_id,payload_json,next_retry_at) VALUES(?,?,?,?)`).run(sub.id,notification.id,JSON.stringify(event),nowSec);
     }
     await flushDeliveries();
