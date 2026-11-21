@@ -6,9 +6,9 @@ test('mail history and stream message projection repairs URLs for all clients wi
  const context={attachments:{message:()=>null}};
  const message={id:1,role:'assistant',content,origin:'proactive',revision:2};
  const projected=DotsAdapter.prototype.presentManagerMessage.call(context,message,'account-test');
- assert(projected.content.includes('](<https://sz.duoyi.com>)（电脑端登录），使用手机号12345678901'));
+ assert(String(projected.content).includes('](<https://sz.duoyi.com>)（电脑端登录），使用手机号12345678901'));
  assert.equal(message.content,content,'historical stored data stays unchanged');
- assert.equal(projected.revision,2);
+ assert.equal((projected as any).revision,2);
  assert.equal(DotsAdapter.prototype.presentManagerMessage.call(context,{...message,role:'user'},'account-test').content,content);
 });
 
