@@ -23,7 +23,7 @@ export function validateRegistrationEvent(value) {
 
 export function postRegistrationEvent(socketPath, event) {
   const bytes = Buffer.from(JSON.stringify(validateRegistrationEvent(event)));
-  return new Promise((resolve, reject) => {
+  return new Promise<void>((resolve, reject) => {
     const req = http.request({ socketPath, method: 'POST', path: '/registration-events',
       headers: { 'Content-Type': 'application/json', 'Content-Length': bytes.length } }, res => {
       res.resume();
@@ -37,7 +37,17 @@ export function postRegistrationEvent(socketPath, event) {
 
 // Only the persistent outbox is retried; registration/account tables are never polled.
 export class RegistrationEventSender {
-  constructor({ pending, acknowledge, socketPath = REGISTRATION_SOCKET, retryMs = 1000, maxRetryMs = 60000 }) {
+  pending: () => any;
+  acknowledge: (id: any) => any;
+  socketPath: string | false;
+  retryMs: number;
+  maxRetryMs: number;
+  backoff: number;
+  running: boolean;
+  stopped: boolean;
+  timer: any = null;
+  again = false;
+  constructor({ pending, acknowledge, socketPath = REGISTRATION_SOCKET, retryMs = 1000, maxRetryMs = 60000 }: { pending: () => any; acknowledge: (id: any) => any; socketPath?: string | false; retryMs?: number; maxRetryMs?: number }) {
     this.pending = pending; this.acknowledge = acknowledge; this.socketPath = socketPath;
     this.retryMs = retryMs; this.maxRetryMs = maxRetryMs; this.backoff = retryMs;
     this.running = false; this.stopped = false;
@@ -108,23 +118,23 @@ export async function startRegistrationReceiver({ socketPath = REGISTRATION_SOCK
     });
     if (active) throw new Error('Registration receiver is already active');
     await unlink(socketPath);
-  } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  } catch (error) { if ((error as any).code !== 'ENOENT') throw error; }
   const server = http.createServer(async (req, res) => {
     try {
       if (req.method !== 'POST' || req.url !== '/registration-events') { res.writeHead(404); res.end(); return; }
-      const chunks = []; let size = 0;
+      const chunks: Buffer[] = []; let size = 0;
       for await (const chunk of req) { size += chunk.length; if (size > 2048) throw Object.assign(new Error('Body too large'), { status: 413 }); chunks.push(chunk); }
       let event;
       try { event = validateRegistrationEvent(JSON.parse(Buffer.concat(chunks).toString())); }
       catch { throw Object.assign(new Error('Invalid event'), { status: 400 }); }
       await ingest(event);
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end('{"ok":true}');
-    } catch (error) { if (!res.headersSent) res.writeHead(error.status || 503); res.end(); }
+    } catch (error) { if (!res.headersSent) res.writeHead((error as any).status || 503); res.end(); }
   });
   server.requestTimeout = 5000; server.headersTimeout = 5000;
-  await new Promise((resolve, reject) => { server.once('error', reject); server.listen(socketPath, resolve); });
+  await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(socketPath, () => resolve()); });
   await chmod(socketPath, 0o600);
   let closing;
-  return { server, socketPath, close: () => closing ||= new Promise((resolve, reject) =>
-    server.close(error => error && error.code !== 'ERR_SERVER_NOT_RUNNING' ? reject(error) : resolve())) };
+  return { server, socketPath, close: () => closing ||= new Promise<void>((resolve, reject) =>
+    server.close(error => error && (error as any).code !== 'ERR_SERVER_NOT_RUNNING' ? reject(error) : resolve())) };
 }
