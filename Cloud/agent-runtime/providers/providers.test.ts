@@ -145,7 +145,7 @@ test('统一 MCP 描述：secretEnv 只进环境', () => {
 });
 
 test('对话记录：追加、截取、编辑分支保留', () => {
-  let t = [];
+  let t: any[] = [];
   for (let i = 1; i <= 12; i++) t = appendTranscript(t, 'q' + i, 'a' + i);
   assert.equal(t.length, 20); assert.equal(t[0].text, 'q3');
   assert.match(transcriptText(t), /用户：q12\n\n拾燕：a12$/);
@@ -164,7 +164,7 @@ test('认证配置检测与 env 文件解析', () => {
 });
 
 test('streamClaude：输入流保持到 result，并输出统一事件', async () => {
-  let closedBeforeResult = null, captured;
+  let closedBeforeResult: any = null, captured;
   const fakeSdk = async () => ({ query({ prompt, options }) {
     captured = options;
     return (async function* () {
@@ -178,7 +178,7 @@ test('streamClaude：输入流保持到 result，并输出统一事件', async (
       yield { type: 'result', subtype: 'success', is_error: false, usage: { input_tokens: 1, output_tokens: 2 } };
     })();
   } });
-  const events = [];
+  const events: any[] = [];
   for await (const e of streamClaude({ content: [{ type: 'text', text: 'hi' }], options: { model: 'm' }, sdk: fakeSdk })) events.push(e);
   assert.equal(closedBeforeResult, false);
   assert.ok(captured.abortController instanceof AbortController);
@@ -187,7 +187,7 @@ test('streamClaude：输入流保持到 result，并输出统一事件', async (
 
 test('streamClaude：会话意外结束与中止', async () => {
   const empty = async () => ({ query() { return (async function* () {})(); } });
-  const events = [];
+  const events: any[] = [];
   for await (const e of streamClaude({ content: [], options: {}, sdk: empty })) events.push(e);
   assert.equal(events.at(-1).type, 'turn.failed');
   const controller = new AbortController(); controller.abort(new Error('已停止处理'));
