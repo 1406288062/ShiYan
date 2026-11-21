@@ -9,7 +9,7 @@ import { accountRegistrationOutbox, enqueueAccountRegistration, REGISTRATION_SOC
 export const PRIVATE_OWNER = 'shiyan-private-owner';
 const ROOT = process.env.SHIYAN_ROOT || '/home/ubuntu/boss-codex-service/shiyan-v2';
 const DAY = 86400000;
-const derive = promisify(scrypt);
+const derive: any = promisify(scrypt);
 const hash = value => createHash('sha256').update(value).digest('hex');
 const failure = (message, status = 400) => Object.assign(new Error(message), { status });
 const normalized = value => typeof value === 'string' ? value.normalize('NFKC').trim().toLowerCase() : '';
@@ -40,6 +40,8 @@ export class AccountStore {
   now: () => number;
   sessionDays: number;
   db: DatabaseSync;
+  registrationEvents: any;
+  closed = false;
   constructor(root = path.join(ROOT, 'data'), { now = Date.now, sessionDays = 30,
     registrationSocketPath = path.resolve(root) === path.resolve(ROOT, 'data') ? REGISTRATION_SOCKET : false } = {}) {
     mkdirSync(root, { recursive: true, mode: 0o700 });
@@ -89,7 +91,7 @@ export class AccountStore {
       const now = this.now();
       this.db.prepare('DELETE FROM account_limits WHERE reset_at<=?').run(now);
       const opaque = hash(key), prior = this.db.prepare('SELECT count FROM account_limits WHERE key=?').get(opaque);
-      if (prior && prior.count >= limit) throw failure('尝试次数较多，请稍后再试', 429);
+      if (prior && Number(prior.count) >= limit) throw failure('尝试次数较多，请稍后再试', 429);
       this.db.prepare('INSERT INTO account_limits(key,count,reset_at) VALUES(?,1,?) ON CONFLICT(key) DO UPDATE SET count=count+1').run(opaque, now + windowMs);
     });
   }
@@ -103,7 +105,7 @@ export class AccountStore {
     this.db.prepare('INSERT INTO account_sessions VALUES(?,?,?,?,?,?)').run(randomUUID(), hash(token), row.id, now, expiresAt, now);
     return { ok: true, token, expiresAt, user: this.public(row) };
   }
-  async register(input, { bootstrap = false, trustedOwner = null, verifyEmail = null } = {}) {
+  async register(input, { bootstrap = false, trustedOwner = null, verifyEmail = null }: { bootstrap?: boolean; trustedOwner?: string | null; verifyEmail?: (() => void) | null } = {}) {
     const value = fields(input);
     if (bootstrap && trustedOwner !== PRIVATE_OWNER) throw failure('仅原管理员设备可以绑定管理账户', 403);
     const salt = randomBytes(16).toString('hex'), password = await passwordHash(value.password, salt);
@@ -123,7 +125,7 @@ export class AccountStore {
     this.registrationEvents.notify();
     return result;
   }
-  async resetPassword(input, { verifyEmail } = {}) {
+  async resetPassword(input, { verifyEmail }: { verifyEmail?: () => void } = {}) {
     const email = normalized(input?.email);
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw failure('请输入有效邮箱');
     if (!passwordValid(input?.password)) throw failure('密码须为8至128位');
@@ -151,7 +153,7 @@ export class AccountStore {
     this.consumeLimit('login:' + identifier, 12);
     const row = this.db.prepare("SELECT * FROM account_users WHERE username=? OR (email<>'' AND email=?)").get(identifier, identifier);
     const actual = Buffer.from(await passwordHash(password, row?.password_salt || dummySalt), 'hex');
-    const expected = row ? Buffer.from(row.password_hash, 'hex') : Buffer.alloc(64);
+    const expected = row ? Buffer.from(String(row.password_hash), 'hex') : Buffer.alloc(64);
     if (!timingSafeEqual(actual, expected) || !row || row.status !== 'active') throw failure('邮箱、用户名或密码不正确', 401);
     return this.transaction(() => {
       // An administrator can disable an account while the password hash is being calculated.
@@ -166,7 +168,7 @@ export class AccountStore {
     const row = this.db.prepare(`SELECT u.*,s.id AS session_id,s.expires_at,s.last_seen_at
       FROM account_sessions s JOIN account_users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND u.status='active'`).get(hash(token), this.now());
     if (!row) return null;
-    if (this.now() - row.last_seen_at > 60000) this.db.prepare('UPDATE account_sessions SET last_seen_at=? WHERE id=?').run(this.now(), row.session_id);
+    if (this.now() - Number(row.last_seen_at) > 60000) this.db.prepare('UPDATE account_sessions SET last_seen_at=? WHERE id=?').run(this.now(), row.session_id);
     return { owner: row.owner, userId: row.id, role: row.role, serverAccess: Boolean(row.server_access),
       deviceID: row.session_id, sessionId: row.session_id, expiresAt: Number(row.expires_at), user: this.public(row), accountSession: true };
   }
@@ -203,7 +205,7 @@ export class AccountStore {
       if (serverAccess && role !== 'admin') throw failure('服务器访问权限仅可授予管理员');
       if (serverAccess && !row.server_access && !actor.server_access) throw failure('需要服务器访问权限才能授予此权限', 403);
       if (row.owner === PRIVATE_OWNER && (role !== 'admin' || status !== 'active' || !serverAccess)) throw failure('不能停用或降低原管理员权限', 409);
-      if (row.role === 'admin' && row.status === 'active' && (role !== 'admin' || status !== 'active') && this.db.prepare("SELECT COUNT(*) AS count FROM account_users WHERE role='admin' AND status='active'").get().count <= 1) throw failure('至少保留一位可用管理员', 409);
+      if (row.role === 'admin' && row.status === 'active' && (role !== 'admin' || status !== 'active') && Number(this.db.prepare("SELECT COUNT(*) AS count FROM account_users WHERE role='admin' AND status='active'").get()?.count || 0) <= 1) throw failure('至少保留一位可用管理员', 409);
       const changedAccess = role !== row.role || status !== row.status || serverAccess !== Boolean(row.server_access);
       this.db.prepare('UPDATE account_users SET role=?,status=?,server_access=?,display_name=?,updated_at=?,revision=revision+1 WHERE id=?')
         .run(role, status, Number(serverAccess), input.displayName?.trim() ?? row.display_name, this.now(), id);

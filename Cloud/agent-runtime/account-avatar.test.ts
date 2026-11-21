@@ -8,9 +8,9 @@ import { spawn } from 'node:child_process';
 import { AccountStore, PRIVATE_OWNER } from './accounts.ts';
 import { createAccountAvatarHandler } from './account-avatar.ts';
 
-function python(code, input) {
-  return new Promise((resolve, reject) => {
-    const child = spawn('python3', ['-c', code]), chunks = [];
+function python(code, input?: any) {
+  return new Promise<Buffer>((resolve, reject) => {
+    const child = spawn('python3', ['-c', code]), chunks: Buffer[] = [];
     child.stdout.on('data', chunk => chunks.push(chunk)); child.stderr.on('data', () => {});
     child.on('error', reject); child.on('close', status => status === 0 ? resolve(Buffer.concat(chunks)) : reject(new Error('fixture failed')));
     child.stdin.end(input);
@@ -20,7 +20,7 @@ const fixture = async format => (await python(`from PIL import Image\nimport io,
 const jpeg = await fixture('JPEG'), png = await fixture('PNG');
 const password = 'avatar-test-password-2026';
 
-async function setup(t, options = {}) {
+async function setup(t, options: any = {}) {
   const root = mkdtempSync(path.join(os.tmpdir(), 'shiyan-avatar-test-'));
   const store = new AccountStore(root);
   const a = await store.register({ username: 'avatar-a', password });
@@ -28,27 +28,27 @@ async function setup(t, options = {}) {
   const admin = await store.register({ username: 'avatar-admin', password }, { bootstrap: true, trustedOwner: PRIVATE_OWNER });
   const handler = (options.createHandler || createAccountAvatarHandler)({ store, heartbeatMs: 25, ...options });
   const server = http.createServer(async (req, res) => { if (!await handler(req, res)) { res.writeHead(404); res.end(); } });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  const base = `http://127.0.0.1:${server.address().port}/shiyan/v1/account/avatar`;
-  const streams = [];
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', () => resolve()));
+  const base = `http://127.0.0.1:${(server.address() as any).port}/shiyan/v1/account/avatar`;
+  const streams: any[] = [];
   t.after(async () => {
     for (const stream of streams) stream.stop();
     server.closeAllConnections();
     await new Promise(resolve => server.close(resolve));
     store.close(); rmSync(root, { recursive: true, force: true });
   });
-  async function request(token, method = 'GET', input, suffix = '', headers = {}) {
+  async function request(token, method = 'GET', input: any = undefined, suffix = '', headers: any = {}) {
     const response = await fetch(base + suffix, { method, headers: {
       ...(token ? { Authorization: 'Bearer ' + token } : {}), 'Content-Type': 'application/json', ...headers
     }, ...(input === undefined ? {} : { body: typeof input === 'string' ? input : JSON.stringify(input) }) });
-    return { status: response.status, headers: response.headers, body: await response.json() };
+    return { status: response.status, headers: response.headers, body: (await response.json()) as any };
   }
   async function subscribe(token) {
-    const controller = new AbortController(), events = [], waiters = [];
+    const controller = new AbortController(), events: any[] = [], waiters: Array<() => void> = [];
     let ended = false;
     const response = await fetch(base + '/events', { headers: { Authorization: 'Bearer ' + token }, signal: controller.signal });
     assert.equal(response.status, 200);
-    const reader = response.body.getReader();
+    const reader = response.body!.getReader();
     const reading = (async () => {
       let buffer = '';
       try {
@@ -63,14 +63,14 @@ async function setup(t, options = {}) {
             if (data) { events.push(JSON.parse(data.slice(6))); for (const waiter of waiters.splice(0)) waiter(); }
           }
         }
-      } catch (error) { if (error.name !== 'AbortError') throw error; }
+      } catch (error) { if ((error as any).name !== 'AbortError') throw error; }
       finally { ended = true; for (const waiter of waiters.splice(0)) waiter(); }
     })();
     const stream = { events, get ended() { return ended; }, stop() { controller.abort(); }, async until(predicate) {
       const deadline = Date.now() + 2000;
       while (!predicate()) {
         if (Date.now() > deadline) assert.fail('Timed out waiting for avatar SSE');
-        await new Promise(resolve => { const timer = setTimeout(resolve, 20); waiters.push(() => { clearTimeout(timer); resolve(); }); });
+        await new Promise<void>(resolve => { const timer = setTimeout(resolve, 20); waiters.push(() => { clearTimeout(timer); resolve(); }); });
       }
     }, reading };
     streams.push(stream);
@@ -82,7 +82,7 @@ async function setup(t, options = {}) {
 
 test('avatar writes are account scoped, persist, and never alter permission revision or sessions', async t => {
   const { store, root, a, b, request } = await setup(t);
-  const before = store.authenticate(a.token).user.revision;
+  const before = store.authenticate(a.token)!.user.revision;
   assert.equal((await request(null)).status, 401);
   assert.equal((await request('a'.repeat(43))).status, 401);
   assert.deepEqual((await request(a.token)).body.avatar, { data: null, mimeType: 'image/jpeg', revision: 0, updatedAt: null });
@@ -91,13 +91,13 @@ test('avatar writes are account scoped, persist, and never alter permission revi
   assert.equal(saved.headers.get('cache-control'), 'no-store');
   assert(saved.body.avatar.updatedAt > 0);
   const decoded = await python("from PIL import Image\nimport sys,io,json\nim=Image.open(io.BytesIO(sys.stdin.buffer.read()))\nprint(json.dumps([im.format,im.size,dict(im.getexif())]))", Buffer.from(saved.body.avatar.data, 'base64'));
-  assert.deepEqual(JSON.parse(decoded), ['JPEG', [500, 500], {}]);
+  assert.deepEqual(JSON.parse(decoded.toString()), ['JPEG', [500, 500], {}]);
   assert.equal((await request(a.token)).body.avatar.data, saved.body.avatar.data);
   assert.equal((await request(b.token, 'GET', undefined, '?userId=' + a.user.id)).body.avatar.data, null);
-  assert.equal(store.authenticate(a.token).user.revision, before);
-  assert.equal(store.authenticate(b.token).user.revision, 1);
+  assert.equal(store.authenticate(a.token)!.user.revision, before);
+  assert.equal(store.authenticate(b.token)!.user.revision, 1);
   const reopened = new AccountStore(root);
-  try { assert.equal(reopened.db.prepare('SELECT data FROM account_avatars WHERE user_id=?').get(a.user.id).data, saved.body.avatar.data); }
+  try { assert.equal(reopened.db.prepare('SELECT data FROM account_avatars WHERE user_id=?').get(a.user.id)!.data, saved.body.avatar.data); }
   finally { reopened.close(); }
 });
 
@@ -158,7 +158,7 @@ test('a revoked login cannot commit after asynchronous image processing', async 
   const writing = request(a.token, 'PUT', { data: jpeg });
   await ready; store.logout(a.token); release(jpeg);
   assert.equal((await writing).status, 401);
-  assert.equal(store.db.prepare('SELECT COUNT(*) AS count FROM account_avatars').get().count, 0);
+  assert.equal(store.db.prepare('SELECT COUNT(*) AS count FROM account_avatars').get()!.count, 0);
 });
 
 test('existing account handler mounts avatar routes and preserves auth/me', async t => {
@@ -169,7 +169,7 @@ test('existing account handler mounts avatar routes and preserves auth/me', asyn
   const { a, request, base } = await setup(t, { createHandler: createAccountHandler });
   const response = await fetch(base.replace('/account/avatar', '/auth/me'), { headers: { Authorization: 'Bearer ' + a.token } });
   assert.equal(response.status, 200);
-  assert.equal((await response.json()).user.id, a.user.id);
+  assert.equal((await response.json() as any).user.id, a.user.id);
   assert.equal((await request(a.token, 'PUT', { data: jpeg })).status, 200);
   assert.equal((await request(a.token)).body.avatar.revision, 1);
 });
