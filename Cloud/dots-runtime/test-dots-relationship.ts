@@ -15,7 +15,7 @@ function fixture(){
   const open=()=>store=createManagerStore({db,now:()=>clock,workspaceRoot:path.join(root,'work')});open();
   return {root,get db(){return db;},get store(){return store;},advance:n=>clock+=n,now:()=>clock,reopen(){db.close();db=new DatabaseSync(file);open();},close(){db.close();rmSync(root,{recursive:true,force:true});}};
 }
-const ordinary=extra=>({reply:'我记住这个话题了。',summary:'记录共同话题',tasks:[],continuations:[],reviews:[],controls:[],instructions:[],notes:[],inspect_tasks:[],...extra});
+const ordinary=(extra: any={})=>({reply:'我记住这个话题了。',summary:'记录共同话题',tasks:[],continuations:[],reviews:[],controls:[],instructions:[],notes:[],inspect_tasks:[],...extra});
 let sequence=0;
 function seed(f,{key='garden.window',evidence='我喜欢在阳台种香草，还在想薄荷怎么搭配',summary='讨论阳台的香草搭配，希望以薄荷为基础',title='阳台的香草'}={}){
   const user=f.store.message({message:evidence,requestId:'u'+(++sequence)}).message,run=f.store.claimManager();
@@ -26,7 +26,7 @@ function seed(f,{key='garden.window',evidence='我喜欢在阳台种香草，还
 
 test('a normal conversation records authenticated shared evidence without tasks or relationship controls',()=>{
  const f=fixture();try{
-  const {user,topic}=seed(f);assert.deepEqual(topic.sourceMessageIds,[user.id]);assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM goals').get().n,0);
+  const {user,topic}=seed(f);assert.deepEqual(topic.sourceMessageIds,[user.id]);assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM goals').get()!.n,0);
   assert.deepEqual(Object.keys(f.store.relationship.snapshot()),['revision','topics']);
   for(const method of ['configure','feedback','prepare'])assert.equal(f.store.relationship[method],undefined);
   const before=f.store.relationship.snapshot();f.reopen();assert.deepEqual(f.store.relationship.snapshot(),before);
@@ -111,8 +111,8 @@ test('legacy timed inbox migration preserves genuine inputs, old partial text an
   const task=f.store.createTasks([{key:'compile',title:'检查构建',instruction:'检查已有构建结果',resourceKey:'build-project'}])[0],worker=f.store.claimGoal(task.id);assert.ok(worker);f.store.reportGoal(task.id,'active','构建已通过');
   const id='legacy-private-run',manager=f.db.prepare('SELECT * FROM managers').get();
   f.db.prepare("INSERT INTO manager_inbox(manager_id,type,payload,created_at) VALUES(?,'proactive_opportunity',?,?)").run(f.store.managerId,JSON.stringify({candidateId:'legacy-candidate',cycle:1,topicId:topic.id}),f.now());
-  const watermark=f.db.prepare('SELECT MAX(id) AS id FROM manager_inbox').get().id;
-  f.db.prepare("INSERT INTO manager_runs(id,manager_id,kind,state,worker_id,fence,control_revision,inbox_watermark,lease_expires_at,heartbeat_at,started_at) VALUES(?,?,'manager','running','old-process',1,?,?,?,?,?)").run(id,f.store.managerId,manager.control_revision,watermark,f.now()+60,f.now(),f.now());
+  const watermark=f.db.prepare('SELECT MAX(id) AS id FROM manager_inbox').get()!.id;
+  f.db.prepare("INSERT INTO manager_runs(id,manager_id,kind,state,worker_id,fence,control_revision,inbox_watermark,lease_expires_at,heartbeat_at,started_at) VALUES(?,?,'manager','running','old-process',1,?,?,?,?,?)").run(id,f.store.managerId,manager!.control_revision,watermark,f.now()+60,f.now(),f.now());
   f.db.prepare('INSERT INTO manager_resources VALUES(?,?,?)').run('manager:'+f.store.managerId,id,f.now()+60);
   f.db.prepare("INSERT INTO manager_messages(manager_id,role,content,created_at,delivery_state,revision,stream_run_id) VALUES(?,'assistant','已显示的前半句',?,'streaming',1,?)").run(f.store.managerId,f.now(),id);
   const run=f.db.prepare('SELECT * FROM manager_runs WHERE id=?').get(id),pending=f.db.prepare("SELECT * FROM manager_inbox WHERE consumed_at IS NULL AND type<>'proactive_opportunity'").all(),workerLock=f.db.prepare('SELECT * FROM manager_resources WHERE run_id=?').all(worker.id),topics=f.store.relationship.snapshot().topics;
