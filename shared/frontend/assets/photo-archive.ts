@@ -17,9 +17,9 @@
     while (names.has(result.toLocaleLowerCase())) result = stem + '_' + (++index) + suffix;
     names.add(result.toLocaleLowerCase()); return encoder.encode(result);
   }
-  async function writeZip(items, sink, {onProgress, limit = 0xffffffff} = {}) {
+  async function writeZip(items: any, sink: any, {onProgress, limit = 0xffffffff}: any = {}) {
     if (!items.length || items.length > 10) throw Error('一次最多下载 10 张增强图片');
-    let offset = 0, totalBytes = 0; const entries = [], names = new Set();
+    let offset = 0, totalBytes = 0; const entries: any[] = [], names = new Set();
     const write = async bytes => {
       if (offset + bytes.byteLength > limit) throw Error('图片总大小较大，请分别下载单张图片');
       await sink.write(bytes); offset += bytes.byteLength;
@@ -67,10 +67,10 @@
     const time = pad(date.getHours()) + pad(date.getMinutes()) + pad(date.getSeconds());
     return '拾燕_' + kind + '_' + day + '_' + time + '.zip';
   }
-  async function download(assets, {onProgress} = {}) {
+  async function download(assets: any, {onProgress}: any = {}) {
     if (!assets.length || assets.length > 10) throw Error('一次最多下载 10 张增强图片');
-    const name = archiveFilename(assets), controller = new AbortController(), chunks = [];
-    let writable = null;
+    const name = archiveFilename(assets), controller = new AbortController(), chunks: any[] = [];
+    let writable: any = null;
     if (typeof window.showSaveFilePicker === 'function') {
       const handle = await window.showSaveFilePicker({suggestedName: name, types: [{description:'ZIP 压缩包',accept:{'application/zip':['.zip']}}]});
       writable = await handle.createWritable();

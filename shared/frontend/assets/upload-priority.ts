@@ -2,7 +2,7 @@
 (() => {
   'use strict';
   let count=0;
-  const waiting=new Set();
+  const waiting = new Set<any>();
   const changed=()=>window.dispatchEvent(new CustomEvent('shiyan-upload-priority-change',{detail:{active:count>0}}));
   function begin(){
     if(count++===0)changed();
@@ -13,8 +13,8 @@
   function upload(path,body,onProgress){
     return new Promise((resolve,reject)=>{
       const xhr=new XMLHttpRequest();let settled=false,timer;
-      const finish=(error,data)=>{if(settled)return;settled=true;clearTimeout(timer);error?reject(error):resolve(data);};
-      const fail=(message,status)=>Object.assign(new Error(message),status?{status}:{});
+      const finish=(error: any, data?: any)=>{if(settled)return;settled=true;clearTimeout(timer);error?reject(error):resolve(data);};
+      const fail=(message: any, status?: any)=>Object.assign(new Error(message),status?{status}:{});
       const alive=()=>{clearTimeout(timer);timer=setTimeout(()=>{finish(fail('图片上传长时间没有进展，请检查网络后重试',408));xhr.abort();},120000);};
       const progress=value=>{try{onProgress?.(value);}catch(_){}};
       xhr.open('POST',path);xhr.withCredentials=true;xhr.setRequestHeader('X-Shiyan-Local','1');

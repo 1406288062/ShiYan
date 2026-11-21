@@ -1,7 +1,7 @@
  
 (() => {
   'use strict';
-  const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const esc = (v: any) => String(v ?? '').replace(/[&<>"']/g, (c: string): string => (({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'} as Record<string,string>)[c]));
   const limit = (v, n=4000) => String(v ?? '').slice(0,n);
   const allowed = new Set(['reasoning','command_execution','mcp_tool_call','todo_list','web_search','file_change','collab_tool_call','image_generation','error']);
   function safeURL(value, image=false) {
@@ -37,7 +37,7 @@
           block.children=block.children.flatMap(token=>{
             if(token.type!=='text')return [token];
             const parts=token.content.replace(/[ \t\u00a0\u3000]{4,}/g,'\n').split('\n');
-            const result=[];
+            const result: any[] = [];
             parts.forEach((part,index)=>{
               if(index)result.push(new state.Token('softbreak','br',0));
               const text=new state.Token('text','',0);
@@ -128,7 +128,7 @@
     let c=String(command||'').trim();
     const wrapped=c.match(/^(?:\/bin\/)?(?:ba|z)?sh\s+-l?c\s+(['"])([\s\S]*)\1$/);if(wrapped)c=wrapped[2];
     c=c.replace(/^(?:cd\s+\S+\s*&&\s*)+/,'').trim();
-    const rules=[
+    const rules: [RegExp, string][] = [
       [/^(rg|grep|ag|git\s+grep)\b/,'在代码里搜索'],[/^(ls|tree|find|fd)\b/,'查看目录和文件'],[/^(cat|head|tail|less|nl|wc|sed\s+-n)\b/,'读取文件内容'],
       [/^git\s+(status|diff|log|show|blame)\b/,'查看代码改动和历史'],[/^git\s+(add|commit)\b/,'提交改动'],[/^git\s+push\b/,'推送到远端仓库'],[/^git\s+(pull|fetch|clone|checkout|switch|merge|rebase)\b/,'同步代码'],
       [/^(npm|pnpm|yarn|bun)\s+(i|install|add|ci)\b|^pip3?\s+install\b|^brew\s+install\b/,'安装依赖'],
@@ -184,7 +184,7 @@
     if(stored&&['total','success','failed','pending'].every(k=>Number.isSafeInteger(stored[k])&&stored[k]>=0)&&stored.total===stored.success+stored.failed+stored.pending)return {total:stored.total,success:stored.success,failed:stored.failed,pending:stored.pending};
     let raw=message.rawResult;
     if(typeof raw==='string'&&raw.length<=16000000){try{raw=JSON.parse(raw);}catch{raw=null;}}
-    const projected=new Map((message.displayItems||[]).map(item=>[item.id,item]));
+    const projected = new Map<any, any>((message.displayItems||[]).map(item=>[item.id,item]));
     const source=Array.isArray(raw)?raw.map(item=>item&&typeof item==='object'?{...projected.get(item.id),...item,status:item.status||projected.get(item.id)?.status}:item):Array.isArray(message.displayItems)?message.displayItems:[];
     const byID=new Map();let anonymous=0;
     for(const item of source){if(!item||!['command_execution','mcp_tool_call','web_search','file_change','collab_tool_call','image_generation'].includes(item.type))continue;byID.set(item.id||'anonymous:'+anonymous++,item);}
@@ -265,7 +265,7 @@
   function summaryText(items){
     const thoughts=items.filter(i=>i.type==='reasoning').length,steps=items.filter(i=>i.type!=='reasoning'&&i.type!=='todo_list').length;
     const failed=items.filter(i=>status(i).key==='failed').length;
-    const parts=[];if(thoughts)parts.push('已思考');if(steps)parts.push('执行 '+steps+' 步');if(!parts.length)parts.push('处理过程');
+    const parts: string[] = [];if(thoughts)parts.push('已思考');if(steps)parts.push('执行 '+steps+' 步');if(!parts.length)parts.push('处理过程');
     return parts.join(' · ')+(failed?' · <b>'+failed+' 步失败</b>':'');
   }
   // 聊天气泡内的执行过程：进行中展开并实时显示思考，完成后收起为一行。
@@ -279,7 +279,7 @@
     return '<details class="exec"><summary class="exec-head"><span class="exec-done" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5.5 12.5l4 4 9-9"/></svg></span><span>'+summaryText(items)+'</span><svg class="exec-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></summary>'+timelineHTML(items,false)+'</details>';
   }
   document.addEventListener('click',event=>{
-    const thought=event.target.closest?.('.exec-thought:not(.is-live)');
+    const thought=(event.target as any).closest?.('.exec-thought:not(.is-live)');
     if(thought&&!String(window.getSelection?.()||''))thought.classList.toggle('is-expanded');
   });
   function details(message,busy) {

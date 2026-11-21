@@ -4,7 +4,7 @@
  const nextPoll=new Map();
  const terminalStates=new Set(['completed','failed','cancelled','interrupted']);
  function deferPoll(key,delay){nextPoll.set(key,Date.now()+delay);while(nextPoll.size>64)nextPoll.delete(nextPoll.keys().next().value);}
- const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ const esc = (v: any) => String(v ?? '').replace(/[&<>"']/g, (c: string): string => (({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'} as Record<string,string>)[c]));
  function context(){
   const s=window.shiyan?.getState(),c=s?.conversations?.find(c=>c.id===s.selectedConversationId);
   const m=c?.messages?.slice().reverse().find(m=>m.role==='assistant'&&m.remoteJobId);
@@ -36,16 +36,16 @@
   const node=document.createElement('section');node.className='user-input-card';node.setAttribute('aria-label','回答问题');
   const entry={node,request:r,context:ctx,submitting:false,error:''};
   node.innerHTML='<div class="user-input-heading">请选择</div><form>'+r.questions.map((q,i)=>'<fieldset data-question-id="'+esc(q.id)+'"><legend>'+esc(q.question)+'</legend>'+(q.options?.length?q.options.map((o,j)=>'<label class="user-input-option"><input type="radio" name="question-'+i+'" value="'+esc(o.label)+'"><span><strong>'+esc(o.label)+'</strong>'+(o.description?'<small>'+esc(o.description)+'</small>':'')+'</span></label>').join('')+'<label class="user-input-option"><input type="radio" name="question-'+i+'" data-custom="true"><span><strong>其他</strong></span></label>':'')+'<textarea aria-label="'+esc(q.options?.length?'填写自己的回答':q.question)+'" placeholder="'+(q.options?.length?'填写其他回答':'填写回答')+'" rows="2" maxlength="10000"></textarea></fieldset>').join('')+'<footer><span data-answer-status role="status" aria-live="polite"></span><button type="submit" disabled>确认</button></footer></form>';
-  node.addEventListener('input',e=>{const group=e.target.closest('fieldset');if(e.target.matches('textarea')&&group){const custom=group.querySelector('[data-custom]');if(custom)custom.checked=true;}entry.error='';refresh(entry);});
+  node.addEventListener('input',e=>{const group=(e.target as any).closest('fieldset');if((e.target as any).matches('textarea')&&group){const custom=group.querySelector('[data-custom]');if(custom)custom.checked=true;}entry.error='';refresh(entry);});
   node.addEventListener('change',()=>{entry.error='';refresh(entry);});
-  node.querySelector('form').addEventListener('submit',async e=>{
+  (node.querySelector('form') as any).addEventListener('submit',async e=>{
    e.preventDefault();if(entry.submitting||entry.request.status!=='pending')return;
    const answers=valid(entry.request.questions,e.target);if(!answers)return;
    entry.submitting=true;entry.error='';refresh(entry);
    try{
     const data=await window.shiyan.api('/api/conversations/'+encodeURIComponent(ctx.conversationId)+'/questions/'+encodeURIComponent(r.id)+'/answer','POST',{jobId:ctx.jobId,answers});
     entry.request={...r,...data.request,status:'answered',answers:data.request?.answers||answers};
-   }catch(error){entry.error=error.message||'提交失败，请重试';}
+   }catch(error){entry.error=(error as any).message||'提交失败，请重试';}
    finally{entry.submitting=false;refresh(entry);}
   });
   refresh(entry);return entry;
@@ -56,7 +56,7 @@
    const article=document.querySelector('#messages>article[data-message-id="'+CSS.escape(ctx.messageId)+'"]');
    const target=article?.querySelector('.message-content');
    if(target&&entry.node.parentNode!==target){
-    const scroller=document.getElementById('messagesScroller'),top=scroller?.scrollTop;
+    const scroller=document.getElementById('messagesScroller'),top=scroller?.scrollTop ?? 0;
     const follow=scroller&&scroller.scrollHeight-scroller.clientHeight-top<64;
     target.append(entry.node);
     if(follow)requestAnimationFrame(()=>{if(context()?.key===ctx.key&&scroller.scrollTop===top)scroller.scrollTop=scroller.scrollHeight;});
@@ -82,7 +82,7 @@
    }
    while(entries.size>40){const key=entries.keys().next().value;entries.get(key).node.remove();entries.delete(key);}
    mount(ctx);
-  }catch(error){deferPoll(ctx.key,[404,410].includes(error.status)?30000:10000);}
+  }catch(error){deferPoll(ctx.key,[404,410].includes((error as any).status)?30000:10000);}
   finally{requesting=false;}
  }
  function update(){const ctx=context();mount(ctx);if(ctx?.key!==lastContext){lastContext=ctx?.key||'';clearTimeout(timer);timer=setTimeout(poll,0);}}

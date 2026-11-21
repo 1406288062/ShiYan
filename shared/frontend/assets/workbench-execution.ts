@@ -1,7 +1,7 @@
  
 (() => {
  'use strict';
- const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ const esc = (v: any) => String(v ?? '').replace(/[&<>"']/g, (c: string): string => (({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'} as Record<string,string>)[c]));
  const working=new Set(['submitting','queued','running','reconnecting']);
  let C,lastConversation='',previous=new Map();
  const state=()=>window.shiyan?.getState();
@@ -29,7 +29,7 @@
     const text=oneLine(prompt?.text)||'（附件消息）',time=window.ShiYanSteps?.when?.(m.completedAt||m.createdAt)||'';
     return '<li><button type="button" data-round-id="'+esc(m.id)+'"><span class="xs-round-copy"><strong>'+esc(text.slice(0,400))+'</strong><small><span data-round-doing="'+esc(m.id)+'">'+(working.has(m.state)?'正在执行':'')+'</span>'+(time?'<span> · '+esc(time)+'</span>':'')+'</small></span>'+chevron+'</button></li>';
   }).join('')+'</ol>':'<p class="wb-empty">这条会话暂无执行记录。</p>')+'</div>';
-  pane.querySelector('.xs-rounds')?.addEventListener('click',e=>{const b=e.target.closest('[data-round-id]');if(!b)return;Object.assign(tab,{view:'detail',messageId:b.dataset.roundId});C.persist();pane.__executionSignature=null;renderPane(tab,pane);});
+  pane.querySelector('.xs-rounds')?.addEventListener('click',e=>{const b=(e as any).target.closest('[data-round-id]');if(!b)return;Object.assign(tab,{view:'detail',messageId:b.dataset.roundId});C.persist();pane.__executionSignature=null;renderPane(tab,pane);});
   window.ShiYanSteps?.summarizeRounds(items.slice(0,40).map(({m,prompt})=>({id:m.id,prompt:prompt?.text||'',reply:m.text||''}))).then(map=>{
     for(const node of pane.querySelectorAll('[data-round-doing]')){const doing=map['doing:'+node.dataset.roundDoing];if(doing&&!node.textContent)node.textContent=doing;}
   });
@@ -73,7 +73,7 @@
   lastConversation=c?.id||'';previous=new Map((c?.messages||[]).map(m=>[m.id,m.state]));
  }
  function install(context) {
-  C=context;setTimeout(()=>{try{for(const t of [...(C.tabs||[])])if(t.type==='execution')C.closeTab(t.id);}catch(e){}},0);document.addEventListener('pointerdown',e=>{for(const menu of document.querySelectorAll('.execution-round-menu:not([hidden])'))if(!menu.parentElement.contains(e.target)){menu.hidden=true;menu.parentElement.querySelector('[data-execution-round]').setAttribute('aria-expanded','false');}},true);document.addEventListener('click',e=>{const b=e.target.closest('[data-open-execution]');if(b)openMessage(b.dataset.openExecution);});
+  C=context;setTimeout(()=>{try{for(const t of [...(C.tabs||[])])if(t.type==='execution')C.closeTab(t.id);}catch(e){}},0);document.addEventListener('pointerdown',e=>{for(const menu of [...document.querySelectorAll('.execution-round-menu:not([hidden])')] as any[])if(!menu.parentElement.contains(e.target)){menu.hidden=true;menu.parentElement.querySelector('[data-execution-round]').setAttribute('aria-expanded','false');}},true);document.addEventListener('click',e=>{const b=(e as any).target.closest('[data-open-execution]');if(b)openMessage(b.dataset.openExecution);});
   window.addEventListener('shiyan-state',update);update();
  }
  window.ShiYanExecution={install,renderPane,openMessage,openLatest};

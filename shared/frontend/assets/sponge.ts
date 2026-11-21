@@ -31,7 +31,7 @@
   }
   async function connect() {
     const native = nativeAvailable();
-    let popup = null;
+    let popup: any = null;
     if (!native) {
       try { popup = window.open('about:blank', '_blank'); if (popup) popup.opener = null; } catch {}
     }

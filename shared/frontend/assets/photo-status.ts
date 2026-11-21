@@ -16,7 +16,7 @@
     return {...next,photoJobs:[...jobs.values()],history:[...history.values()]};
   }
   function create({request,apply,isVisible=()=>true,interval=1000,timeout=8000}){
-    let active=null,generation=0,timer=null,flight=null;
+    let active: any = null,generation=0,timer: any = null,flight: any = null;
     const later=(token,delay)=>{if(token===generation&&active)timer=setTimeout(()=>{timer=null;tick(token)},delay);};
     async function tick(token){
       if(token!==generation||!active||flight)return;

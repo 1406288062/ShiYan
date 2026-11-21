@@ -2,11 +2,11 @@
    they do not assign features or change the shared interface by themselves. */
 (() => {
   'use strict';
-  const metadata=window.__SHIYAN_PLATFORM__ || {};
+  const metadata = (window as any).__SHIYAN_PLATFORM__ || {};
   const mode=metadata.mode==='web'?'web':'desktop';
   if(typeof document!=='undefined')document.documentElement.dataset.shiyanPlatform=mode;
   // Web streams start after the initial document load, not ahead of its assets.
-  const pendingLoadCallbacks=new Set();
+  const pendingLoadCallbacks = new Set<any>();
   let loadListenerInstalled=false;
   function deferUntilLoaded(callback) {
     if(mode!=='web'||typeof document==='undefined'||document.readyState==='complete')return false;
@@ -35,12 +35,12 @@
   function registerAdapter(name,implementation,profile='shared') {
     if(typeof name!=='string' || !name.trim())throw new TypeError('Adapter name must be a non-empty string');
     if(!adapters.has(profile))throw new TypeError('Adapter profile must be shared, desktop or web');
-    adapters.get(profile).set(name,implementation);
+    adapters.get(profile)?.set(name,implementation);
     return implementation;
   }
   function adapter(name) {
-    const selected=adapters.get(mode);
-    return selected.has(name)?selected.get(name):adapters.get('shared').get(name);
+    const selected: any =adapters.get(mode);
+    return selected.has(name)?selected.get(name):adapters.get('shared')?.get(name);
   }
   const bridge=()=>window.webkit?.messageHandlers?.native;
   registerAdapter('native',{
