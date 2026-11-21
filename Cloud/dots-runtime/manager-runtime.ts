@@ -197,7 +197,7 @@ export function pendingImagePaths(store,run,resolve=p=>p){
     for(const match of content.matchAll(IMAGE_PATH)){let raw;try{raw=JSON.parse('"'+match[1]+'"');}catch{continue;}const file=resolve(raw);if(file&&existsSync(file))paths.add(file);}}}catch{}
   return [...paths].slice(0,8);
 }
-export async function runStructuredTurn(thread,prompt,schema,{signal,onThread,onReply,images=[]}={}) {
+export async function runStructuredTurn(thread: any,prompt: string,schema: any,{signal,onThread,onReply,images=[]}: {signal?: AbortSignal; onThread?: (id: string) => void; onReply?: (text: string) => void; images?: string[]} = {}) {
   if(typeof thread.runStreamed!=='function'){
     const turn=await thread.run(prompt,{outputSchema:schema,signal,images});
     if(thread.id)onThread?.(thread.id);

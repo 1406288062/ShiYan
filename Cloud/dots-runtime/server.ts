@@ -239,7 +239,7 @@ const memoryStore = new MemoryStore(process.env.SHIYAN_MEMORY_DATA||'/home/ubunt
 function createTenantThread(owner,{threadId,options}){
  if(owner===PRIVATE_OWNER)return createManagerThread({threadId,options,codexPath:CODEX_PATH});
  const id=threadId||'isolated:'+randomUUID();
- const execute=async(prompt,{outputSchema,signal,onText}={})=>{
+ const execute=async(prompt: string,{outputSchema,signal,onText}: {outputSchema?: any; signal?: AbortSignal; onText?: (text: string) => void} = {})=>{
   const {runIsolatedJob}=await import('../agent-runtime/member-sandbox.ts');
   const schemaHint=outputSchema?'\nReturn exactly one JSON object conforming to this schema, without markdown fences:\n'+JSON.stringify(outputSchema):'';
   const cwd=memberDotsWorkingDirectory(ownerRegistry.get(owner).workspaceRoot,options.workingDirectory);
@@ -275,11 +275,11 @@ function createOwnerRuntime(owner){
  repairMailPresentationLinks(store);
  // 定时提醒（到点直接推送，不调用模型）和主动推送偏好。
  const reminders=createReminders({store}),preferences=createProactivePreferences({store});
- store.reminders=reminders;store.proactivePreferences=preferences;
+ (store as any).reminders=reminders;(store as any).proactivePreferences=preferences;
  // Older member records named a mounted tool directory. Rebind metadata only;
  // their files stay at /workspace/dots/<id> and are never copied by the host.
  if(!legacy)for(const row of db.prepare('SELECT id,workspace FROM goals WHERE manager_id=?').all(store.managerId)){const control=path.join(workspaceRoot,String(row.id));if(row.workspace!==control)db.prepare('UPDATE goals SET workspace=? WHERE id=? AND manager_id=?').run(control,row.id,store.managerId);}
- const assess=async(data,schema,{signal,source='dots-proactive'}={})=>{
+ const assess=async(data: any,schema: any,{signal,source='dots-proactive'}: {signal?: AbortSignal; source?: string} = {})=>{
   if(Buffer.byteLength(data,'utf8')>128*1024)throw new Error('Proactive context exceeds bounded input size');
   const hubPlan=await dotsHub.plan(source,{data,schema,signal,account:owner});
   if(hubPlan.result!==undefined)return hubPlan.result;
@@ -321,7 +321,7 @@ function createOwnerRuntime(owner){
   // 和自己账号一致：都落在后台任务看到的 /workspace/dots/ 下。
   const target='/workspace/dots/'+rel;await workspaceOperation(owner,{operation:'mkdir',path:path.posix.dirname(target),recursive:true});
   await workspaceOperation(owner,{operation:'write',path:target,data:Buffer.from(text).toString('base64'),encoding:'base64'});}});
- store.alignment=()=>dream.synthesis();
+ (store as any).alignment=()=>dream.synthesis();
  const lifeGoals=createLifeGoals({store,assess,onAudit:(kind,summary)=>audit(owner,kind,summary)});
  // 微信发来的图片和文件：存进当前账号自己的工作区，只把路径交给 Dots。
  const saveWeixinInbound=async({data,filename})=>{
@@ -643,7 +643,7 @@ const audit=(owner,kind,summary,options: any={})=>{try{auditLog.record(managerId
 
 function ownerSettings(owner=ownerRegistry.currentOwner()){
   const out={...SETTING_DEFAULTS};
-  for(const row of db.prepare('SELECT key,value FROM dots_owner_settings WHERE owner_id=?').all(owner)){try{if(row.key in SETTING_DEFAULTS)out[row.key]=JSON.parse(String(row.value));}catch{}}
+  for(const row of db.prepare('SELECT key,value FROM dots_owner_settings WHERE owner_id=?').all(owner)){try{const key=String(row.key);if(key in SETTING_DEFAULTS)(out as any)[key]=JSON.parse(String(row.value));}catch{}}
   if(!APPROVAL_MODES.includes(out.approvalMode))out.approvalMode=SETTING_DEFAULTS.approvalMode;
   if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(out.dailyBriefTime)))out.dailyBriefTime=SETTING_DEFAULTS.dailyBriefTime;
   out.dailyBrief=out.dailyBrief!==false;
@@ -778,7 +778,7 @@ async function runSandboxCommand(workspace, command) {
 }
 
 async function executeSafeActions(goal, actions, run = null) {
-  const results = [];
+  const results: any[] = [];
   const list = Array.isArray(actions) ? actions.slice(0, 8) : [];
   let macThreadId = String(goal.mac_thread_id || "");
   const durableStore = run && typeof managerStore !== "undefined" ? managerStore : null;
@@ -897,9 +897,9 @@ async function runGoal(goalId, trigger = "scheduler") {
   let heartbeat: ReturnType<typeof setInterval> | null = null, deadline: ReturnType<typeof setTimeout> | null = null, abort: AbortController | null = null, eventIds: any[] = [], thread: any = null, agentRunUsed: any = null;
   if (run) {
     abort = new AbortController();
-    deadline = setTimeout(() => abort.abort(new Error(WORKER_MODE === 'agent' ? "Worker agent run timed out" : "Worker planner timed out")), WORKER_MODE === 'agent' ? WORKER_AGENT_TIMEOUT_MS : 300000);
+    deadline = setTimeout(() => abort!.abort(new Error(WORKER_MODE === 'agent' ? "Worker agent run timed out" : "Worker planner timed out")), WORKER_MODE === 'agent' ? WORKER_AGENT_TIMEOUT_MS : 300000);
     deadline.unref();
-    heartbeat = setInterval(() => { if (!durableStore.renewRun(run.id, run.fence)) abort.abort(new Error("Worker lease lost")); }, 10000);
+    heartbeat = setInterval(() => { if (!durableStore.renewRun(run.id, run.fence)) abort!.abort(new Error("Worker lease lost")); }, 10000);
     heartbeat.unref();
   }
   try {
@@ -911,7 +911,7 @@ async function runGoal(goalId, trigger = "scheduler") {
     let turn: any, agentRun: any = null;
     if (WORKER_MODE === 'agent' && run) {
       const owner = ownerRegistry.currentOwner();
-      agentRun = await workerAgent.run(goal, { owner, memories, timeline, events, trigger, signal: abort.signal, privateOwner: owner === PRIVATE_OWNER,
+      agentRun = await workerAgent.run(goal, { owner, memories, timeline, events, trigger, signal: abort!.signal, privateOwner: owner === PRIVATE_OWNER,
         onStep: step => { try { addTimeline(goal.id, step.ok ? 'tool_action' : 'tool_error', '执行步骤', clipStepValue(step.record || { type: step.name, input: step.input, output: step.output, status: step.ok ? 'completed' : 'failed' })); } catch {} } });
       thread = { id: agentRun.sessionRef }; agentRunUsed = agentRun;
       turn = agentRun.turn;
@@ -921,7 +921,7 @@ async function runGoal(goalId, trigger = "scheduler") {
     let prompt = buildAgentPrompt(ownerRegistry.currentOwner()===PRIVATE_OWNER?goal:{...goal,workspace:"/workspace/dots/"+goal.id}, memories, timeline, events, trigger);
     if(ownerRegistry.currentOwner()!==PRIVATE_OWNER)prompt=prompt.replace(/EXECUTION ENVIRONMENT[\s\S]*?PERMISSION RULES/,`EXECUTION ENVIRONMENT\nYou run only in this user's private /workspace. Your task directory is /workspace/dots/${goal.id}. All shell, coding and MCP operations run inside this account's isolation boundary. No host files, server addresses, private-network services or other users' devices are available. You may perform normal coding and tool work in this workspace. Structured write_file, append_file, mkdir, delete_file and run_command actions operate in your task directory; inspect_host reports only your isolated workspace.\nCONNECTED MCP PLUGINS\nUse mcp_list_servers to discover this account's connected MCP plugins, mcp_list_tools to inspect a plugin's actual tools, and mcp_call_tool to call them. This is the same account-level connector store and call path used by ordinary conversations; connecting a plugin once makes it available in both ordinary conversations and Dots. There is no separate Dots plugin permission switch. Never ask the user to provide connector tokens in chat; credentials stay in the connector service.\nA Mac device must be paired to this user before remote operations.\nPERMISSION RULES`).replace(/Routine current-host read-only checks[^\n]+/,"All work must stay inside this user's authorized workspace and devices.");
     turn = run
-      ? await runStructuredTurn(thread, prompt, AGENT_SCHEMA, {signal: abort.signal, onThread: id => durableStore.checkpointThread(run, id)})
+      ? await runStructuredTurn(thread, prompt, AGENT_SCHEMA, {signal: abort!.signal, onThread: id => durableStore.checkpointThread(run, id)})
       : await thread.run(prompt, {outputSchema: AGENT_SCHEMA});
     }
     if (deadline) { clearTimeout(deadline); deadline = null; }
