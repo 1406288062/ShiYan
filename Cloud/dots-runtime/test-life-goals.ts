@@ -11,7 +11,7 @@ assert.equal(bjDay(Date.parse('2026-10-30T17:00:00Z')), '2026-10-31');
 let clock = T0;
 const db = new DatabaseSync(':memory:');
 db.exec("CREATE TABLE manager_messages(id INTEGER PRIMARY KEY, manager_id TEXT, role TEXT, content TEXT, created_at INTEGER)");
-const published = [], audits = [];
+const published: any[] = [], audits: any[] = [];
 const store = { db, managerId: 'm1', publishProactive: m => { published.push(m); return { id: published.length }; } };
 let planCalls = 0, failPlan = false;
 const assess = async (data, schema, control) => {
@@ -24,7 +24,7 @@ const assess = async (data, schema, control) => {
   assert.match(data, /背完 N4 单词/);
   return { content: '最近单词背得怎么样？' };
 };
-const goals = createLifeGoals({ store, assess, now: () => clock, intervalMs: 1e9, onAudit: (k, s) => audits.push(s), logger: { warn() {} } });
+const goals = createLifeGoals({ store, assess, now: () => clock, intervalMs: 1e9, onAudit: (k, s) => audits.push(s), logger: { warn() {} } as any });
 
 assert.throws(() => goals.create({ title: '  ' }), /请写下目标/);
 assert.throws(() => goals.create({ title: 'x', cadence: 'hourly' }), /频率/);

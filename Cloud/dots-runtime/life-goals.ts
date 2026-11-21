@@ -42,7 +42,7 @@ export function createLifeGoals({ store, assess, now = () => Date.now(), interva
     plan_state TEXT NOT NULL DEFAULT 'planning', plan_summary TEXT NOT NULL DEFAULT '', milestones TEXT NOT NULL DEFAULT '[]', next_checkin_at INTEGER, last_checkin_at INTEGER,
     checkins INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`);
   db.exec('CREATE INDEX IF NOT EXISTS dots_life_goals_due ON dots_life_goals(manager_id, status, next_checkin_at)');
-  let timer = null, running = false, stopped = false;
+  let timer: any = null, running = false, stopped = false;
   const planning = new Set();
   const sec = () => Math.floor(now() / 1000);
   const parse = value => { try { const list = JSON.parse(value || '[]'); return Array.isArray(list) ? list : []; } catch { return []; } };
@@ -59,8 +59,8 @@ export function createLifeGoals({ store, assess, now = () => Date.now(), interva
     const keys = Object.keys(fields); if (!keys.length) return;
     db.prepare(`UPDATE dots_life_goals SET ${keys.map(k => k + '=?').join(',')},updated_at=? WHERE id=? AND manager_id=?`).run(...keys.map(k => fields[k]), sec(), Number(id), managerId);
   };
-  function validate(input, partial) {
-    const out = {};
+  function validate(input: any, partial: boolean) {
+    const out: any = {};
     if (!partial || 'title' in input) { out.title = clean(input.title, 120); if (!out.title) throw bad('请写下目标'); }
     if ('why' in input) out.why = clean(input.why, 500);
     if ('targetDate' in input) { const v = input.targetDate; if (v === null || v === '') out.target_date = null; else if (!validDay(String(v))) throw bad('目标日期格式应为 YYYY-MM-DD'); else out.target_date = String(v); }
@@ -90,7 +90,7 @@ export function createLifeGoals({ store, assess, now = () => Date.now(), interva
       store.publishProactive({ content: `🎯 我为「${current.title}」拟了一个计划：\n\n${lines}\n\n${clean(result.summary, 400)}\n\n我会${CADENCE_NAMES[current.cadence]}${current.checkin_time} 来问你进展。计划可以在「目标」里随时调整。`, reason: '目标计划' });
     } catch (error) {
       save(id, { plan_state: 'failed' });
-      logger.warn?.('[life-goals] plan ' + String(error?.message || error).slice(0, 200));
+      logger.warn?.('[life-goals] plan ' + String((error as any)?.message || error).slice(0, 200));
     } finally { planning.delete(id); }
   }
 
@@ -108,7 +108,7 @@ export function createLifeGoals({ store, assess, now = () => Date.now(), interva
 里程碑：${JSON.stringify(milestones.map(m => ({ title: m.title, due: m.due, done: !!m.done })))}
 用户上次检查之后说过的话（新的在前）：${JSON.stringify(said)}`;
       content = clean((await assess(data, CHECKIN_SCHEMA, { source: 'dots-goals', signal: AbortSignal.timeout(60_000) }))?.content, 400);
-    } catch (error) { logger.warn?.('[life-goals] checkin ' + String(error?.message || error).slice(0, 200)); }
+    } catch (error) { logger.warn?.('[life-goals] checkin ' + String((error as any)?.message || error).slice(0, 200)); }
     if (!content) content = next ? `「${row.title}」进展怎么样？下一步是：${next.title}${next.due ? `（${next.due} 前）` : ''}。最近做到哪了？` : `「${row.title}」的里程碑都完成了，要不要把它标记为达成，或者定一个新的目标？`;
     store.publishProactive({ content: '🎯 ' + content, reason: '目标检查' });
   }
@@ -123,7 +123,7 @@ export function createLifeGoals({ store, assess, now = () => Date.now(), interva
         save(row.id, { next_checkin_at: nextCheckin(now(), row.cadence, row.checkin_time), last_checkin_at: sec(), checkins: row.checkins + 1 });
         await checkin(row);
       }
-    } catch (error) { logger.warn?.('[life-goals] tick ' + String(error?.message || error).slice(0, 200)); }
+    } catch (error) { logger.warn?.('[life-goals] tick ' + String((error as any)?.message || error).slice(0, 200)); }
     finally { running = false; }
   }
 
@@ -150,7 +150,7 @@ export function createLifeGoals({ store, assess, now = () => Date.now(), interva
       if (fields.status && fields.status !== row.status) onAudit('goal', '目标「' + row.title + '」' + ({ active: '恢复进行', paused: '已暂停', done: '标记为达成', archived: '已归档' })[fields.status]);
       return { ok: true, goal: present(get(row.id)) };
     },
-    milestone(id, input = {}) {
+    milestone(id, input: any = {}) {
       const row = require(id); let milestones = parse(row.milestones);
       if (input.add !== undefined) {
         const title = clean(input.add, 120); if (!title) throw bad('请写下里程碑');
