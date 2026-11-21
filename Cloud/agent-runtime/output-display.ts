@@ -95,7 +95,7 @@ function boundItems(items) {
   return bounded;
 }
 
-export function upsertDisplayItem(existing, item, lifecycle, startOrder = []) {
+export function upsertDisplayItem(existing, item, lifecycle, startOrder: any[] = []) {
   const previous = Array.isArray(existing) ? existing : [];
   const projected = projectDisplayItem(item, lifecycle);
   if (!projected) return { displayItems: previous, displayItemOrder: startOrder };
@@ -103,13 +103,13 @@ export function upsertDisplayItem(existing, item, lifecycle, startOrder = []) {
   if (!order.includes(projected.id)) order.push(projected.id);
   const rank = new Map(order.map((id, index) => [id, index]));
   const next = previous.filter(value => value.id !== projected.id).concat(projected)
-    .sort((a, b) => rank.get(a.id) - rank.get(b.id));
+    .sort((a, b) => rank.get(a.id)! - rank.get(b.id)!);
   return { displayItems: boundItems(next), displayItemOrder: order };
 }
 
 export function displayItemsForJob(job) {
   if (Array.isArray(job.displayItems)) return boundItems(job.displayItems);
-  let items = [], order = [];
+  let items: any[] = [], order: any[] = [];
   for (const item of job.items || []) {
     const next = upsertDisplayItem(items, item, 'item.completed', order);
     items = next.displayItems; order = next.displayItemOrder;
