@@ -7,6 +7,10 @@ const encode = value => encodeURIComponent(String(value)).replace(/[!'()*]/g, c 
 const canonical = values => Object.keys(values).sort().map(key => encode(key.toLowerCase()) + '=' + encode(values[key])).join('&');
 
 export class CosStore {
+  config: any;
+  fetcher: any;
+  now: any;
+  host: any;
   constructor(config, { fetcher = fetch, now = Date.now } = {}) {
     if (!/^[a-z0-9][a-z0-9-]{0,61}-[0-9]{5,20}$/.test(config.bucket || '') ||
         !/^[a-z]{2}-[a-z0-9-]{2,32}$/.test(config.region || '') || !config.secret_id || !config.secret_key) {
@@ -18,7 +22,7 @@ export class CosStore {
   static fromFile(filename) {
     if (!filename) return null;
     const stat = lstatSync(filename);
-    if (!stat.isFile() || stat.mode & 0o077 || stat.uid !== process.getuid()) throw new Error('COS configuration must be private');
+    if (!stat.isFile() || stat.mode & 0o077 || stat.uid !== process.getuid?.()) throw new Error('COS configuration must be private');
     const values = {}; let common = false;
     for (const line of readFileSync(filename, 'utf8').split(/\r?\n/)) {
       const text = line.trim();
