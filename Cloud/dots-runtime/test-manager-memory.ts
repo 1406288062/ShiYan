@@ -4,8 +4,8 @@ import {DatabaseSync} from 'node:sqlite';
 import {mkdtempSync,rmSync} from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import {createManagerStore} from './manager-store.mjs';
-import {createManagerRuntime,buildManagerPrompt} from './manager-runtime.mjs';
+import {createManagerStore} from './manager-store.ts';
+import {createManagerRuntime,buildManagerPrompt} from './manager-runtime.ts';
 function fixture({legacy=false}={}) {
   const root=mkdtempSync(path.join(os.tmpdir(),'dots-manager-test-'));
   const database=path.join(root,'test.sqlite3');

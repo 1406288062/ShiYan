@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
-import {isAdvertisingMail,createMailPresenter} from './qq-mail-content.mjs';
-import {createMailEventStore} from './qq-mail-events.mjs';
+import {isAdvertisingMail,createMailPresenter} from './qq-mail-content.ts';
+import {createMailEventStore} from './qq-mail-events.ts';
 test('clear English and Chinese advertising is filtered; unsubscribe alone is insufficient',()=>{
  for(const mail of [{subject:'Limited time offer: 50% off'},{subject:'限时优惠，立即抢购'},{text:'Shop now for a discount. Unsubscribe here.'}])assert.equal(isAdvertisingMail(mail),true);
  for(const mail of [{text:'Your newsletter. Unsubscribe here.'},{subject:'Project update'},{text:'The sale field in your report is incorrect.'}])assert.equal(isAdvertisingMail(mail),false);

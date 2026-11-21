@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
-import {createManagerStore} from './manager-store.mjs';
-import {repairMailPresentationLinks} from './mail-link-repair.mjs';
+import {createManagerStore} from './manager-store.ts';
+import {repairMailPresentationLinks} from './mail-link-repair.ts';
 
 test('persisted mail repair advances revisions and publishes owner-scoped updates exactly once',()=>{
  const db=new DatabaseSync(':memory:');

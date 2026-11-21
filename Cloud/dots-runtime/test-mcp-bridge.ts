@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { promises as dns } from 'node:dns';
 import { DatabaseSync } from 'node:sqlite';
-import { createMcpBridge } from './mcp-events.mjs';
+import { createMcpBridge } from './mcp-events.ts';
 
 const TOKEN = 'fixture-token-never-used-in-production';
 const CLIENT = { host: 'shiyan_desktop', conversation_id: 'conversation-A' };

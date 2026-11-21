@@ -4,10 +4,10 @@ import {DatabaseSync} from 'node:sqlite';
 import {mkdtempSync,rmSync} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {createManagerStore} from './manager-store.mjs';
-import {createDotsCognition,UNDERSTANDING_SCHEMA,THINK_SCHEMA,MOMENT_SCHEMA} from './dots-cognition.mjs';
-import {createPublicDiscovery,INTEREST_SCHEMA} from './public-discovery.mjs';
-import {createManagerRuntime} from './manager-runtime.mjs';
+import {createManagerStore} from './manager-store.ts';
+import {createDotsCognition,UNDERSTANDING_SCHEMA,THINK_SCHEMA,MOMENT_SCHEMA} from './dots-cognition.ts';
+import {createPublicDiscovery,INTEREST_SCHEMA} from './public-discovery.ts';
+import {createManagerRuntime} from './manager-runtime.ts';
 
 const source='我散步时喜欢拍老房子的门框，尤其喜欢看藤蔓和光影落在旧木头上的样子。';
 const question='同一张旧门框照片里，建筑、藤蔓与光影的变化能呈现怎样不同的时间尺度？';

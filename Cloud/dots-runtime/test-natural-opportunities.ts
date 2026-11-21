@@ -4,8 +4,8 @@ import {DatabaseSync} from 'node:sqlite';
 import {mkdtempSync,rmSync} from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import {createManagerStore} from './manager-store.mjs';
-import {createManagerRuntime,buildProactivePrompt,PROACTIVE_SCHEMA} from './manager-runtime.mjs';
+import {createManagerStore} from './manager-store.ts';
+import {createManagerRuntime,buildProactivePrompt,PROACTIVE_SCHEMA} from './manager-runtime.ts';
 
 const oldText='我在阳台种薄荷和迷迭香，想观察香草气味随季节的变化';
 const newText='我拍到雨后阳台的薄荷叶上有水珠，准备试试逆光拍摄叶片的纹理';

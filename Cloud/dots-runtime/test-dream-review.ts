@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { createDreamReview, dreamPrompt } from './dream-review.mjs';
+import { createDreamReview, dreamPrompt } from './dream-review.ts';
 
 const at = (d, h, m) => Date.UTC(2026, 10, d, h - 8, m);
 function fakeStore() {

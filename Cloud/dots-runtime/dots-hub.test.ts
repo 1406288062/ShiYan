@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createDotsHub, dotsConsumer } from './dots-hub.mjs';
+import { createDotsHub, dotsConsumer } from './dots-hub.ts';
 
 const client = (route, reply = {}) => {
   const calls = [];

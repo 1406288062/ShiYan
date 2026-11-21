@@ -1,5 +1,5 @@
 import {createHash,randomUUID} from 'node:crypto';
-import {normalizedText,contentTerms,connectionAlreadyCovered} from './natural-opportunities.mjs';
+import {normalizedText,contentTerms,connectionAlreadyCovered} from './natural-opportunities.ts';
 
 const hash=value=>createHash('sha256').update(String(value)).digest('hex');
 const parse=(value,fallback={})=>{try{return JSON.parse(value);}catch{return fallback;}};

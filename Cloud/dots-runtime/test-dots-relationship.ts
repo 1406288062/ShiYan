@@ -4,8 +4,8 @@ import {DatabaseSync} from 'node:sqlite';
 import {mkdtempSync,rmSync} from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import {createManagerStore} from './manager-store.mjs';
-import {buildManagerPrompt,MANAGER_SCHEMA} from './manager-runtime.mjs';
+import {createManagerStore} from './manager-store.ts';
+import {buildManagerPrompt,MANAGER_SCHEMA} from './manager-runtime.ts';
 
 function fixture(){
   const root=mkdtempSync(path.join(os.tmpdir(),'dots-relationship-')),file=path.join(root,'db.sqlite');let clock=1792000000,db=new DatabaseSync(file),store;

@@ -1,7 +1,7 @@
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { promises as dns } from "node:dns";
 import { isIP } from "node:net";
-import { toolList, validateToolArguments, PROTOCOL_VERSIONS, protocolVersion, capabilities, CLIENT_CONTEXT_SCHEMA } from "./mcp-contract.mjs";
+import { toolList, validateToolArguments, PROTOCOL_VERSIONS, protocolVersion, capabilities, CLIENT_CONTEXT_SCHEMA } from "./mcp-contract.ts";
 
 const relationshipTools=new Set(['dots_get_relationship','dots_update_relationship_topic','dots_delete_relationship_topic']);
 const relationshipErrors=new Map([

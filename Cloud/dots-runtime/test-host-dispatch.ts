@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
-import {executeHostInspection} from './host-inspection.mjs';
-import {canApplyGoalActions} from './goal-run-state.mjs';
+import {executeHostInspection} from './host-inspection.ts';
+import {canApplyGoalActions} from './goal-run-state.ts';
 
 const source = readFileSync(new URL('./server.mjs', import.meta.url), 'utf8');
 const actionSource = source.slice(source.indexOf('async function executeSafeActions('), source.indexOf('async function runGoal('));

@@ -1,7 +1,7 @@
 import path from 'node:path';
 import {readFile,writeFile,rename,unlink,mkdir} from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
-import {mailServers} from './mail-servers.mjs';
+import {mailServers} from './mail-servers.ts';
 const providers={github:{file:'github-events.json',fields:['enabled','repository','token'],public:['repository'],secret:['token']},'google-calendar':{file:'google-calendar.json',fields:['enabled','clientId','clientSecret','refreshToken','calendarId','accountKey'],public:['calendarId','accountKey'],secret:['clientSecret','refreshToken']},email:{file:'qq-mail.json',fields:['enabled','address','authorizationCode'],public:['address'],secret:['authorizationCode']},rss:{file:'rss-feeds.json',fields:['enabled','feeds'],public:['feeds'],secret:[]}};
 const failure=message=>Object.assign(Error(message),{statusCode:400});
 export function createOwnerSubscriptions({store,dataDir,appSubscriptions,mailSubscription,now=()=>Date.now()}){

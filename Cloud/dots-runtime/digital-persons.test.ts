@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { DigitalPersonService } from './digital-persons.mjs';
-import { buildVoiceRule } from './manager-runtime.mjs';
+import { DigitalPersonService } from './digital-persons.ts';
+import { buildVoiceRule } from './manager-runtime.ts';
 
 const vector=()=>Array.from({length:1024},(_,i)=>i===0?1:0);
 function fixture(owner='account-a'){

@@ -7,8 +7,8 @@
 // runAgent(...) -> { provider, sessionId, text, usage, items, turns }
 // items are normalized tool steps for timelines: { type:'tool', name, input, ok, output }.
 import path from 'node:path';
-import { openToolServers } from './agent-tools.mjs';
-import { createManagerThread } from './manager-stream-transport.mjs';
+import { openToolServers } from './agent-tools.ts';
+import { createManagerThread } from './manager-stream-transport.ts';
 
 const clip = (value, max = 1200) => { const s = typeof value === 'string' ? value : JSON.stringify(value ?? ''); return s.length > max ? s.slice(0, max) + '…' : s; };
 const SDK_PATH = process.env.SHIYAN_CLAUDE_SDK || '/home/ubuntu/boss-codex-service/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs';

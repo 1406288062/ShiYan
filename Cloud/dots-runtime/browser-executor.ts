@@ -12,7 +12,7 @@ export const BROWSER_SOCKET = process.env.SHIYAN_BROWSER_SOCKET || path.join(ROO
 // The Dots sidecar (browser host, MCP bridges, tool definitions) is deployed in SHIYAN_ROOT.
 export const BROWSER_AGENT_DIR = process.env.SHIYAN_BROWSER_AGENT_DIR || ROOT;
 let toolDefsPromise = null;
-export const loadBrowserToolDefs = (dir = BROWSER_AGENT_DIR) => (toolDefsPromise ||= import(path.join(dir, 'browser-tool-defs.mjs')));
+export const loadBrowserToolDefs = (dir = BROWSER_AGENT_DIR) => (toolDefsPromise ||= import(path.join(dir, 'browser-tool-defs.ts')));
 export const BROWSER_DOTS_TOOLS = ['browse', 'windows', 'search', 'open', 'find'];
 
 export function request(route, body, { socketPath = BROWSER_SOCKET, timeoutMs = 30_000 } = {}) {

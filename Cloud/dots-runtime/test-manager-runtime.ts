@@ -5,9 +5,9 @@ import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import vm from 'node:vm';
-import { createManagerStore } from './manager-store.mjs';
-import { createManagerRuntime, runStructuredTurn, buildManagerPrompt, MANAGER_SCHEMA } from './manager-runtime.mjs';
-import { canApplyGoalActions, resolveGoalRunState, resolveGoalRunFailure } from './goal-run-state.mjs';
+import { createManagerStore } from './manager-store.ts';
+import { createManagerRuntime, runStructuredTurn, buildManagerPrompt, MANAGER_SCHEMA } from './manager-runtime.ts';
+import { canApplyGoalActions, resolveGoalRunState, resolveGoalRunFailure } from './goal-run-state.ts';
 
 function fixture({legacy=false}={}) {
   const root=mkdtempSync(path.join(os.tmpdir(),'dots-manager-test-'));
@@ -630,7 +630,7 @@ test('inspection cannot mutate task state, access another manager or hide a stal
 });
 
 test('images uploaded in web Dots and WeChat are handed to the model as images', async () => {
-  const { pendingImagePaths } = await import('./manager-runtime.mjs');
+  const { pendingImagePaths } = await import('./manager-runtime.ts');
   const { writeFileSync, mkdirSync } = await import('node:fs');
   const dir = mkdtempSync(path.join(os.tmpdir(), 'dots-img-'));
   try {

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Readable} from 'node:stream';
 import {DatabaseSync} from 'node:sqlite';
-import {decodeMailBody,readMailBody,mailPresentationText,createMailPresenter,normalizeMailPresentationLinks} from './qq-mail-content.mjs';
+import {decodeMailBody,readMailBody,mailPresentationText,createMailPresenter,normalizeMailPresentationLinks} from './qq-mail-content.ts';
 
 test('HTML keeps distinct same-host links after the fifth and their original text',()=>{
  const html=Array.from({length:8},(_,i)=>`<a href="https://www.example.com/go/news?item=${i}"><span>入口 ${i+1}</span></a>`).join(' ');

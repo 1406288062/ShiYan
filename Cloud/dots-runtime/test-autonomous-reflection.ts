@@ -4,8 +4,8 @@ import {DatabaseSync} from 'node:sqlite';
 import {mkdtempSync,rmSync} from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import {createManagerStore} from './manager-store.mjs';
-import {createManagerRuntime} from './manager-runtime.mjs';
+import {createManagerStore} from './manager-store.ts';
+import {createManagerRuntime} from './manager-runtime.ts';
 
 const source='我喜欢在城市散步时找那些被藤蔓包围的旧门框，会用相机记录它们每天不同的光影';
 const perspective='那些旧门框好像是一种慢镜头：建筑的年岁、藤蔓的生长和当天的光影，被你收进同一张照片。';

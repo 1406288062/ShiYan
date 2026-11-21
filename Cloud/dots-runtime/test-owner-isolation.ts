@@ -7,12 +7,12 @@ import {mkdtempSync,rmSync,existsSync,readFileSync} from 'node:fs';
 import {spawn} from 'node:child_process';
 import {EventEmitter} from 'node:events';
 import {DatabaseSync} from 'node:sqlite';
-import {createOwnerRegistry,memberDotsWorkingDirectory} from './owner-context.mjs';
-import {createMcpBridge} from './mcp-events.mjs';
-import {createManagerStore} from './manager-store.mjs';
-import {createDotsActivityReader} from '../boss-codex-service/shiyan-v2/dots-activity.mjs';
-import {workspaceOperation,execSandbox} from '../boss-codex-service/shiyan-v2/member-sandbox.mjs';
-import {createLocalDotsClient,DotsAdapter} from '../boss-codex-service/shiyan-v2/dots-adapter.mjs';
+import {createOwnerRegistry,memberDotsWorkingDirectory} from './owner-context.ts';
+import {createMcpBridge} from './mcp-events.ts';
+import {createManagerStore} from './manager-store.ts';
+import {createDotsActivityReader} from '../boss-codex-service/shiyan-v2/dots-activity.ts';
+import {workspaceOperation,execSandbox} from '../boss-codex-service/shiyan-v2/member-sandbox.ts';
+import {createLocalDotsClient,DotsAdapter} from '../boss-codex-service/shiyan-v2/dots-adapter.ts';
 const tick=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const fixtureOwner='user:owner-isolation-A',otherOwner='user:owner-isolation-B';
 

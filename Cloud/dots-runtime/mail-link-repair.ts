@@ -1,4 +1,4 @@
-import {normalizeMailPresentationLinks} from './qq-mail-content.mjs';
+import {normalizeMailPresentationLinks} from './qq-mail-content.ts';
 
 // A presentation correction is a real message revision. Otherwise native and
 // browser caches correctly reject changed content carrying the same revision.

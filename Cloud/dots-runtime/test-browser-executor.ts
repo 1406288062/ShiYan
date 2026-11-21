@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createBrowserExecutor, executorPrompt, inboxEvent, browserMcpServer, browserToolAllowlist } from './browser-executor.mjs';
+import { createBrowserExecutor, executorPrompt, inboxEvent, browserMcpServer, browserToolAllowlist } from './browser-executor.ts';
 
 const toolDefs = async () => ({ EXEC_TOOLS: [{ name: 'snapshot', description: 's', inputSchema: { type: 'object' } }, { name: 'finish', description: 'f', inputSchema: { type: 'object' } }] });
 

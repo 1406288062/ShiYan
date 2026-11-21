@@ -1,6 +1,6 @@
 import {createHash,randomUUID} from 'node:crypto';
-import {normalizedText,connectionAlreadyCovered} from './natural-opportunities.mjs';
-import {buildCognitivePrompt} from './cognition-prompt.mjs';
+import {normalizedText,connectionAlreadyCovered} from './natural-opportunities.ts';
+import {buildCognitivePrompt} from './cognition-prompt.ts';
 
 const hash=value=>createHash('sha256').update(String(value)).digest('hex');
 const parse=(value,fallback=null)=>{try{return JSON.parse(value);}catch{return fallback;}};

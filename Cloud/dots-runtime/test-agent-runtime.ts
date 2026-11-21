@@ -6,10 +6,10 @@ import { createInterface } from 'node:readline';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { openToolServers, tool, toContent } from './agent-tools.mjs';
-import { createAgentRunner, parseSessionRef } from './agent-runner.mjs';
-import { createSandboxManager, fakeProcess } from './agent-sandbox.mjs';
-import { createWorkerAgent, buildWorkerAgentPrompt } from './dots-worker-agent.mjs';
+import { openToolServers, tool, toContent } from './agent-tools.ts';
+import { createAgentRunner, parseSessionRef } from './agent-runner.ts';
+import { createSandboxManager, fakeProcess } from './agent-sandbox.ts';
+import { createWorkerAgent, buildWorkerAgentPrompt } from './dots-worker-agent.ts';
 
 const RELAY = path.join(path.dirname(fileURLToPath(import.meta.url)), 'agent-sandbox', 'mcp-relay.mjs');
 const tmp = () => mkdtempSync(path.join(os.tmpdir(), 'dots-agent-'));

@@ -11,8 +11,8 @@
 // summary, next wake, notification, memories, approval request); the agent reports it with the
 // finish_run tool. Everything else about the task lifecycle (leases, pause/cancel, approvals,
 // notifications, reports to the Dots conversation) is unchanged.
-import { tool } from './agent-tools.mjs';
-import { timeContext } from './time-context.mjs';
+import { tool } from './agent-tools.ts';
+import { timeContext } from './time-context.ts';
 
 const clip = (value, max) => String(value ?? '').slice(0, max);
 

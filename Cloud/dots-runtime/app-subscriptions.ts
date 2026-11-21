@@ -1,4 +1,4 @@
-import {formatGithubEvent,isGithubEventSupported} from './github-event-content.mjs';
+import {formatGithubEvent,isGithubEventSupported} from './github-event-content.ts';
 import {open} from 'node:fs/promises';
 import {constants} from 'node:fs';
 import {createHash} from 'node:crypto';

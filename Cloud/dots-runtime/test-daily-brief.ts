@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { createDailyBrief, briefDay } from './daily-brief.mjs';
-import { createMemoryIntent } from './memory-intent.mjs';
+import { createDailyBrief, briefDay } from './daily-brief.ts';
+import { createMemoryIntent } from './memory-intent.ts';
 
 function fakeStore() {
   const db = new DatabaseSync(':memory:');

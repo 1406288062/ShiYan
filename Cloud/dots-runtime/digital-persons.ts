@@ -61,6 +61,9 @@ const spread = (rows, limit) => {
 };
 
 export class DigitalPersonService {
+  db: DatabaseSync;
+  owner: string;
+  now: () => number;
   constructor({db,owner,assess,now=()=>Date.now(),embed=embedTexts,logger=console}={}) {
     if(!db||!owner||typeof assess!=='function')throw new Error('DigitalPersonService requires db, owner and assess');
     this.db=db;this.owner=owner;this.assess=assess;this.now=now;this.embed=embed;this.logger=logger;this.cache=new Map();this.learning=new Set();

@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
-import {createMailPresenter,mailPresentationParts,isEnglishMail,mailLiteral} from './qq-mail-content.mjs';
-import {createMailEventStore} from './qq-mail-events.mjs';
+import {createMailPresenter,mailPresentationParts,isEnglishMail,mailLiteral} from './qq-mail-content.ts';
+import {createMailEventStore} from './qq-mail-events.ts';
 const english='Billing Problem\nThere is a problem with your payment method. Please update your payment information. ChatGPT Pro 100 (1 month) $100.00/month.';
 function setup(t,options={}){const db=new DatabaseSync(':memory:');t.after(()=>db.close());const store={db,managerId:options.managerId||'alice',transaction:fn=>fn()};return {db,store,present:createMailPresenter({store,...options})};}
 test('short English mail retains original and appends Chinese translation in one notification',async t=>{

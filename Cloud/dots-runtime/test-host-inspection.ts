@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {executeHostInspection, isHostInspectionAction, HOST_INSPECTION_TIMEOUT_MS, HOST_INSPECTION_MAX_BUFFER} from './host-inspection.mjs';
+import {executeHostInspection, isHostInspectionAction, HOST_INSPECTION_TIMEOUT_MS, HOST_INSPECTION_MAX_BUFFER} from './host-inspection.ts';
 
 const action = command => ({type:'inspect_host', command, path:'', content:'', reason:'Read-only inspection'});
 function fakeExec(responses, calls = []) {

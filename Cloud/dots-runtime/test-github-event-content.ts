@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
-import {formatGithubEvent} from './github-event-content.mjs';
-import {createAppSubscriptions} from './app-subscriptions.mjs';
-import {createGithubChangeSummarizer} from './github-change-summary.mjs';
+import {formatGithubEvent} from './github-event-content.ts';
+import {createAppSubscriptions} from './app-subscriptions.ts';
+import {createGithubChangeSummarizer} from './github-change-summary.ts';
 const repository='owner/repo',before='a'.repeat(40),head='b'.repeat(40);
 const commit=(n,message='改善知识检索')=>({sha:n.toString(16).padStart(40,'0'),commit:{message}});
 const push=(payload={})=>({id:'new',type:'PushEvent',repo:{name:repository},actor:{login:'yu'},payload:{ref:'refs/heads/main',before,head,...payload}});

@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { DatabaseSync } from "node:sqlite";
 import vm from "node:vm";
-import { canApplyGoalActions, resolveGoalRunState, resolveGoalRunFailure, classifyGoalRunFailure, assertGoalActionAllowed, mayActivateGoalForEvent } from "./goal-run-state.mjs";
-import { createRuntimeRequestStore } from "./runtime-requests.mjs";
+import { canApplyGoalActions, resolveGoalRunState, resolveGoalRunFailure, classifyGoalRunFailure, assertGoalActionAllowed, mayActivateGoalForEvent } from "./goal-run-state.ts";
+import { createRuntimeRequestStore } from "./runtime-requests.ts";
 
 // Exercise the actual runtime functions with an isolated in-memory database and
 // a stub planner. These tests never start a live runtime, Codex, Mac or a goal.

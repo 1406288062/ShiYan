@@ -4,8 +4,8 @@ import {DatabaseSync} from 'node:sqlite';
 import {mkdtempSync,rmSync} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {createManagerStore} from './manager-store.mjs';
-import {createPublicDiscovery,parseNewsFeed,readPublicNews,newsUrl,INTEREST_SCHEMA} from './public-discovery.mjs';
+import {createManagerStore} from './manager-store.ts';
+import {createPublicDiscovery,parseNewsFeed,readPublicNews,newsUrl,INTEREST_SCHEMA} from './public-discovery.ts';
 
 const quote='我一直喜欢看天文学的新发现，尤其是韦布望远镜拍到的星系。';
 const ordinary={reply:'记下了你对天文学和韦布望远镜的兴趣。',summary:'交流结束',awaiting_user_input:false,tasks:[],continuations:[],reviews:[],controls:[],instructions:[],notes:[],inspect_tasks:[],relationship:{topics:[]}};

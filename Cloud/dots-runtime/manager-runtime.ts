@@ -17,8 +17,8 @@ export const MANAGER_SCHEMA = item({
   relationship:item({topics:{type:'array',maxItems:3,items:item({key:{type:'string',maxLength:100},title:{type:'string',maxLength:200},summary:{type:'string',maxLength:4000},open_question:{type:'string',maxLength:2000},source_message_ids:{type:'array',maxItems:8,items:{type:'integer'}},evidence:{type:'array',maxItems:8,items:{type:'string',maxLength:1000}}})}})
 });
 
-import {timeContext,localTime} from './time-context.mjs';
-import {DOTS_STATE_SPLIT} from './dots-claude-thread.mjs';
+import {timeContext,localTime} from './time-context.ts';
+import {DOTS_STATE_SPLIT} from './dots-claude-thread.ts';
 export {timeContext,localTime};
 const bounded = (value,limit) => String(value??'').slice(0,limit);
 

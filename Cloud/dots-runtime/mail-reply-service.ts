@@ -1,8 +1,8 @@
-import {mailServers} from './mail-servers.mjs';
+import {mailServers} from './mail-servers.ts';
 import {randomUUID} from 'node:crypto';
 import {createRequire} from 'node:module';
-import {mailAccountKey} from './qq-mail-events.mjs';
-import {mailLiteral} from './qq-mail-content.mjs';
+import {mailAccountKey} from './qq-mail-events.ts';
+import {mailLiteral} from './qq-mail-content.ts';
 const require=createRequire(new URL('./mail-transport/package.json',import.meta.url));
 const nodemailer=require('nodemailer');
 export const REPLY_BODY_SCHEMA={type:'object',additionalProperties:false,required:['body'],properties:{body:{type:'string',minLength:1,maxLength:6000}}};

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { createLifeGoals, nextCheckin, bjDay } from './life-goals.mjs';
+import { createLifeGoals, nextCheckin, bjDay } from './life-goals.ts';
 
 // 2026-10-30 10:00 北京时间
 const T0 = Date.parse('2026-10-30T02:00:00Z');

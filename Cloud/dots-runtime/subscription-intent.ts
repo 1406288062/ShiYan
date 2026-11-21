@@ -3,7 +3,7 @@
 // - 公开 GitHub 仓库直接订阅；需要凭据的来源回一张一次性填写卡片，凭据由前端直接提交到订阅接口，
 //   不进入模型输入，也不写入聊天记录。
 // - 不是订阅请求时返回 false，由调用方把消息交还给总管。
-import { mailServers } from './mail-servers.mjs';
+import { mailServers } from './mail-servers.ts';
 const LABEL = { github: 'GitHub', email: '邮箱', 'google-calendar': 'Google 日历', rss: 'RSS' };
 // 只有命中这些词才会花一次模型调用去识别。
 const PREFILTER = /订阅|退订|关注|通知我|提醒我|告诉我|推送|连接|接入|github|仓库|repo|邮箱|邮件|日历|calendar|subscribe|rss|atom|feed|博客|资讯/i;

@@ -1,6 +1,6 @@
-import {validateRegistrationEvent} from '../boss-codex-service/shiyan-v2/registration-events.mjs';
+import {validateRegistrationEvent} from '../boss-codex-service/shiyan-v2/registration-events.ts';
 import path from 'node:path';
-import {createDotsRelationship} from './dots-relationship.mjs';
+import {createDotsRelationship} from './dots-relationship.ts';
 import { mkdirSync } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 

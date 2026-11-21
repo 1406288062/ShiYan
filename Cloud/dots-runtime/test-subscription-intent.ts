@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createSubscriptionIntent} from './subscription-intent.mjs';
+import {createSubscriptionIntent} from './subscription-intent.ts';
 function fixture(decision,{repoStatus=200,isPrivate=false,configured=[]}={}){
   const replies=[],updates=[],claimed=new Set();
   const store={claimSubscriptionIntent:id=>claimed.has(id)?false:(claimed.add(id),true),postSubscriptionReply:r=>replies.push(r)};

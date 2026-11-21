@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { createReminders, createProactivePreferences, parseLocal, formatLocal, nextOccurrence } from './reminders.mjs';
-import { timeContext } from './time-context.mjs';
+import { createReminders, createProactivePreferences, parseLocal, formatLocal, nextOccurrence } from './reminders.ts';
+import { timeContext } from './time-context.ts';
 
 const fake = () => { const published = []; return { db: new DatabaseSync(':memory:'), managerId: 'm1', published, publishProactive(v) { published.push(v); return { id: published.length }; } }; };
 const bj = (d, h, m) => Date.UTC(2026, 10, d, h - 8, m);

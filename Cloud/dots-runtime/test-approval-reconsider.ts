@@ -4,7 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdtempSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { createManagerStore } from './manager-store.mjs';
+import { createManagerStore } from './manager-store.ts';
 
 // An isolated database only. This test never imports the live server, opens the
 // production database, starts a worker process or executes a host command.

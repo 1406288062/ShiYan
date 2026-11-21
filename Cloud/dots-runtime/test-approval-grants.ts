@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { commandSignatures, segmentSignature, createGrantStore } from './approval-grants.mjs';
+import { commandSignatures, segmentSignature, createGrantStore } from './approval-grants.ts';
 
 assert.equal(segmentSignature('git push origin main'), 'git push');
 assert.equal(segmentSignature('FOO=1 nohup npm install --save x'), 'npm install');

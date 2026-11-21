@@ -1,9 +1,9 @@
-import {mailServers} from './mail-servers.mjs';
+import {mailServers} from './mail-servers.ts';
 import {open,watch} from 'node:fs';
 import {promisify} from 'node:util';
 import {constants} from 'node:fs';
 import path from 'node:path';
-import {createMailEventStore,mailAccountKey} from './qq-mail-events.mjs';
+import {createMailEventStore,mailAccountKey} from './qq-mail-events.ts';
 const openFile=promisify(open);
 export async function readMailConfig(file){
  let fd;

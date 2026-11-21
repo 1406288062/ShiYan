@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { createWeixinBridge, plainText } from './weixin-bridge.mjs';
+import { createWeixinBridge, plainText } from './weixin-bridge.ts';
 
 const wait = ms => new Promise(r => setTimeout(r, ms));
 function fakeWeixin() {
@@ -100,7 +100,7 @@ test('image from WeChat is decrypted, saved and handed to Dots; typing is shown'
 });
 
 test('mail pushed to WeChat is one compact message', async () => {
-  const { weixinMailDigest } = await import('./weixin-bridge.mjs');
+  const { weixinMailDigest } = await import('./weixin-bridge.ts');
   const mail = '收到一封 QQ 邮件\n\n发件人：腾讯云 · cloud\\_noreply@tencent.com\n主题：账单提醒\n收件时间：10/31 12:58\n\n正文：\n' + '内容很长。'.repeat(400) + '\n\n邮件中的链接：\n1. [查看](<https://a.b/c>)';
   const digest = weixinMailDigest(mail);
   assert.ok(digest.length < 900);

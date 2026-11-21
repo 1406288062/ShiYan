@@ -1,6 +1,6 @@
 import {createHash, randomUUID} from 'node:crypto';
-import {matchContentOpportunity,connectionAlreadyCovered,contentTerms,normalizedText} from './natural-opportunities.mjs';
-import {createAutonomousReflection} from './autonomous-reflection.mjs';
+import {matchContentOpportunity,connectionAlreadyCovered,contentTerms,normalizedText} from './natural-opportunities.ts';
+import {createAutonomousReflection} from './autonomous-reflection.ts';
 
 const parse=(text,fallback={})=>{try{return JSON.parse(text);}catch{return fallback;}};
 const fail=(message,statusCode=400)=>Object.assign(new Error(message),{statusCode});

@@ -1,4 +1,4 @@
-import {mailPresentationParts,isAdvertisingMail} from './qq-mail-content.mjs';
+import {mailPresentationParts,isAdvertisingMail} from './qq-mail-content.ts';
 import {createHash} from 'node:crypto';
 const clean=(value,limit)=>String(value??'').replace(/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/g,' ').replace(/\s+/g,' ').trim().slice(0,limit);
 const literal=(value,limit)=>clean(value,limit).replace(/[\\`*_{}\[\]()<>!|]/g,'\\$&');

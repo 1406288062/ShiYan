@@ -4,7 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { createRuntimeRequestStore } from "./runtime-requests.mjs";
+import { createRuntimeRequestStore } from "./runtime-requests.ts";
 
 function fixture(filename = ":memory:") {
   const db = new DatabaseSync(filename);
