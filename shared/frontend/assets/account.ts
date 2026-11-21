@@ -1,26 +1,26 @@
 (() => {
   'use strict';
-  const $ = id => document.getElementById(id);
-  const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const $: any = (id: string): any => document.getElementById(id);
+  const esc = (value: any): any => String(value ?? '').replace(/[&<>"']/g, (c: string): string => (({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'} as Record<string,string>)[c]));
   const isOwner = account => account?.owner === 'shiyan-private-owner';
   const originalFetch = window.fetch.bind(window);
-  let user = null, mode = 'login', status = null, busy = false, loaded = false, expiring = false, applicationStarted = false;
+  let user: any = null, mode = 'login', status: any = null, busy = false, loaded = false, expiring = false, applicationStarted = false;
   let rememberedMode = false, trustedMode = false, hasRemembered = false;
   let confirmationChecked = false;
-  let codeSending = false, codeTimer = null;
+  let codeSending = false, codeTimer: any = null;
   const codeResendTimes = {register:0, reset:0};
   const resendAt = () => codeResendTimes[mode] || 0;
-  let statusLoad;
-  let qrMode = false, qrVersion = 0, qrTimer = null, qrId = null, qrExpiry = 0;
-  const startupTimings = window.__ShiYanAccountTimings = {};
-  let resolveReady;
+  let statusLoad: any;
+  let qrMode = false, qrVersion = 0, qrTimer: any = null, qrId: any = null, qrExpiry = 0;
+  const startupTimings: any = window.__ShiYanAccountTimings = {};
+  let resolveReady: any;
   const ready = new Promise(resolve => { resolveReady = resolve; });
   const channel = typeof BroadcastChannel === 'function' ? new BroadcastChannel('shiyan.account.session') : null;
   const appearance = matchMedia('(prefers-color-scheme: light)');
   const syncAppearance = () => document.body.classList.toggle('account-light', appearance.matches);
   syncAppearance(); appearance.addEventListener('change', syncAppearance);
 
-  async function request(path, method = 'GET', body) {
+  async function request(path: any, method: any = 'GET', body?: any) {
     if (expiring) throw new DOMException('账户会话已更改', 'AbortError');
     const response = await originalFetch('/api' + path, {
       method, credentials: 'same-origin', cache: 'no-store',
@@ -32,7 +32,7 @@
     if (!response.ok || data.ok === false) {
       const reason = data.error || data.detail;
       const error = new Error(typeof reason === 'string' ? reason : reason?.message || '连接暂时中断，请稍后重试');
-      error.status = response.status;
+      (error as any).status = response.status;
       throw error;
     }
     return data;
@@ -51,7 +51,7 @@
     location.reload();
   }
   window.fetch = async (input, options) => {
-    const url = new URL(typeof input === 'string' ? input : input.url || String(input), location.href);
+    const url = new URL(typeof input === 'string' ? input : (input as any).url || String(input), location.href);
     const accountRequest = url.origin === location.origin && url.pathname.startsWith('/api/');
     if (expiring && accountRequest) throw new DOMException('账户会话已更改', 'AbortError');
     const response = await originalFetch(input, options);
@@ -99,7 +99,7 @@
     $('accountGate').dataset.authMode = nextAuthMode;
     if (verifying && qrMode) stopQR();
     $('accountRemembered').hidden = !rememberedMode;
-    document.querySelector('.auth-switch').hidden = false;
+    (document.querySelector('.auth-switch') as any).hidden = false;
     $('accountForm').hidden = qrMode || rememberedMode;
     $('accountQRPanel').hidden = !qrMode || trustedMode;
     $('accountPasswordMode').hidden = verifying;
@@ -107,7 +107,7 @@
     $('accountForgotPassword').disabled = busy || codeSending;
     $('accountPasswordMode').textContent = rememberedMode || qrMode ? '密码登录' : '扫码登录';
     $('accountPasswordMode').disabled = busy || confirmationBlocked;
-    document.querySelector('.auth-card').setAttribute('aria-label', resetting ? '重置密码' : register ? '创建账号' : '登录');
+    (document.querySelector('.auth-card') as any).setAttribute('aria-label', resetting ? '重置密码' : register ? '创建账号' : '登录');
     $('accountConfirmPasswordField').hidden = !verifying;
     $('accountConfirmPassword').required = verifying;
     $('accountConfirmPassword').disabled = !verifying;
@@ -122,7 +122,7 @@
     $('accountPassword').autocomplete = verifying ? 'new-password' : 'current-password';
     $('accountPassword').placeholder = resetting ? '新密码（至少 8 位）' : register ? '密码（至少 8 位）' : '密码';
     $('accountPassword').setAttribute('aria-label', resetting ? '新密码' : '密码');
-    document.querySelectorAll('[data-password-target]').forEach(button => { button.disabled = busy || codeSending || confirmationBlocked; });
+    document.querySelectorAll('[data-password-target]').forEach(button => { (button as any).disabled = busy || codeSending || confirmationBlocked; });
     $('accountSubmitLabel').textContent = busy ? (applicationStarted ? '正在打开会话…' : resetting ? '正在重置密码…' : register ? '正在创建账号…' : '正在登录…') : resetting ? '重置密码' : register ? '创建账号' : '登录';
     $('accountSwitchButton').textContent = verifying ? '返回登录' : '注册账号';
     $('accountSubmit').disabled = busy || codeSending || confirmationBlocked || (register && !$('accountName').value.trim());
@@ -138,7 +138,7 @@
   // Fetch public code in parallel with authentication; execution stays gated.
   for (const placeholder of document.querySelectorAll('script[data-account-src]')) {
     const preload = document.createElement('link');
-    preload.rel = 'preload'; preload.as = 'script'; preload.href = placeholder.dataset.accountSrc;
+    preload.rel = 'preload'; preload.as = 'script'; preload.href = (placeholder as any).dataset.accountSrc;
     document.head.append(preload);
   }
 
@@ -170,7 +170,7 @@
     // Identity must be established before any script can read account-specific caches.
     const scriptLoads = [...document.querySelectorAll('script[data-account-src]')].map(placeholder => {
       const script = document.createElement('script');
-      script.src = placeholder.dataset.accountSrc;
+      script.src = (placeholder as any).dataset.accountSrc;
       script.async = false;
       return new Promise((resolve, reject) => {
         script.onload = resolve;
@@ -198,14 +198,14 @@
         let result;
         try { result = await request('/auth/me'); }
         catch (error) {
-          if (error.name === 'AbortError' || (error.status && error.status < 500)) throw error;
+          if ((error as any).name === 'AbortError' || ((error as any).status && (error as any).status < 500)) throw error;
           await new Promise(resolve => setTimeout(resolve, 200));
           result = await request('/auth/me');
         }
         await loadApplication(result.user);
         return;
       } catch (error) {
-        if (![401,403].includes(error.status)) throw error;
+        if (![401,403].includes((error as any).status)) throw error;
       }
       // Login is usable immediately after a local 401; device/bootstrap status
       // is needed only for registration and must not block the initial screen.
@@ -222,8 +222,8 @@
       } catch (_) { /* Password/QR login remains available if the remembered profile is absent. */ }
       busy = false; render();
       if (mode === 'login' && hasRemembered) showAvatarLogin();
-      loadStatus().catch(error => { if (!loaded && !applicationStarted && !busy) showError(error.message, true); });
-    } catch (error) { showError(error.message, true); }
+      loadStatus().catch(error => { if (!loaded && !applicationStarted && !busy) showError((error as any).message, true); });
+    } catch (error) { showError((error as any).message, true); }
     finally { busy = false; if (!loaded) render(); }
   }
 
@@ -264,7 +264,7 @@
       $('accountConfirmPassword').value = '';
       channel?.postMessage({type:'login',userId:result.user.id});
       await loadApplication(result.user);
-    } catch (error) { showError(error.message, !error.status); }
+    } catch (error) { showError((error as any).message, !(error as any).status); }
     finally { busy = false; if (!loaded) render(); }
   }
 
@@ -284,7 +284,7 @@
     await image.decode();
     const canvas = document.createElement('canvas');
     canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
-    const context = canvas.getContext('2d', { willReadFrequently: true });
+    const context: any = canvas.getContext('2d', { willReadFrequently: true });
     context.drawImage(image, 0, 0);
     const data = context.getImageData(0, 0, canvas.width, canvas.height), pixels = data.data;
     // The first dark run is the seven-module top edge of a finder pattern.
@@ -323,7 +323,7 @@
       $('accountQRImage').src = imageSource; $('accountQRImage').hidden = false; $('accountQRImage').style.opacity = '1';
       $('accountQRStatus').textContent = '用拾燕 iOS 扫一扫，在手机上确认登录';
       qrTimer = setTimeout(() => pollQR(version), 1500);
-    } catch (error) { if (qrMode && version === qrVersion) $('accountQRStatus').textContent = error.message; }
+    } catch (error) { if (qrMode && version === qrVersion) $('accountQRStatus').textContent = (error as any).message; }
     finally { if (version === qrVersion) $('accountQRRefresh').disabled = false; }
   }
   async function pollQR(version) {
@@ -339,14 +339,14 @@
       if (result.state === 'approved') {
         channel?.postMessage({type:'login',userId:result.user.id});
         try { await loadApplication(result.user); }
-        catch (error) { showError(error.message, true); }
+        catch (error) { showError((error as any).message, true); }
         return;
       }
       if (['denied','superseded'].includes(result.state)) { statusElement.textContent = '登录请求已取消，请重新发起'; $('accountRememberedLogin').disabled = false; $('accountQRImage').style.opacity = '0.4'; return; }
     } catch (error) {
       if (!qrMode || version !== qrVersion) return;
-      statusElement.textContent = error.message; $('accountRememberedLogin').disabled = false;
-      if (error.status && error.status < 500) { $('accountQRImage').style.opacity = '0.4'; return; }
+      statusElement.textContent = (error as any).message; $('accountRememberedLogin').disabled = false;
+      if ((error as any).status && (error as any).status < 500) { $('accountQRImage').style.opacity = '0.4'; return; }
     }
     if (qrMode && version === qrVersion) qrTimer = setTimeout(() => pollQR(version), 1500);
   }
@@ -364,7 +364,7 @@
       qrTimer = setTimeout(() => pollQR(version), 1500);
     } catch (error) {
       if (version !== qrVersion) return;
-      $('accountRememberedStatus').textContent = error.message; $('accountRememberedLogin').disabled = false;
+      $('accountRememberedStatus').textContent = (error as any).message; $('accountRememberedLogin').disabled = false;
     }
   };
   $('accountQRRefresh').onclick = startQR;
@@ -384,8 +384,8 @@
     } catch (error) {
       button.disabled = false;
       const message = $('accountSettingsError');
-      if (message) { message.textContent = error.message; message.hidden = false; }
-      window.shiyan?.toast?.(error.message);
+      if (message) { message.textContent = (error as any).message; message.hidden = false; }
+      window.shiyan?.toast?.((error as any).message);
     }
   }
 
@@ -402,7 +402,7 @@
     if (navigation && !navigation.querySelector('[data-settings-page="account"]')) {
       const category = document.createElement('button');
       category.type = 'button'; category.dataset.settingsPage = 'account';
-      category.innerHTML = entry.querySelector('.settings-entry-icon').innerHTML + '<span>' + (user.role === 'admin' ? '用户权限管理' : '账户') + '</span>';
+      category.innerHTML = (entry.querySelector('.settings-entry-icon') as any).innerHTML + '<span>' + (user.role === 'admin' ? '用户权限管理' : '账户') + '</span>';
       navigation.querySelector('.settings-category-empty')?.before(category);
     }
     const section = document.createElement('section');
@@ -442,8 +442,8 @@
       $('accountUsersStatus').textContent = result.users?.length ? '' : '暂无用户';
     } catch (error) {
       $('accountUsers').replaceChildren(); $('accountUsersStatus').textContent = '';
-      $('accountSettingsError').textContent = error.message; $('accountSettingsError').hidden = false;
-      if (error.status === 401) invalidate();
+      $('accountSettingsError').textContent = (error as any).message; $('accountSettingsError').hidden = false;
+      if ((error as any).status === 401) invalidate();
     } finally { usersLoading = false; refresh.disabled = false; }
   }
 
@@ -463,8 +463,8 @@
           note.textContent = '已保存'; note.classList.remove('is-error'); note.hidden = false;
           if (item.id === user.id) { channel?.postMessage({type:'permissions',userId:user.id}); invalidate(); }
         } catch (error) {
-          note.textContent = error.message; note.classList.add('is-error'); note.hidden = false;
-          if (error.status === 401) invalidate();
+          note.textContent = (error as any).message; note.classList.add('is-error'); note.hidden = false;
+          if ((error as any).status === 401) invalidate();
         } finally { controls.forEach(control => control.disabled = false); }
       };
     }
@@ -484,13 +484,13 @@
       clearInterval(codeTimer);
       codeTimer = setInterval(() => { if (Date.now() >= Math.max(...Object.values(codeResendTimes))) clearInterval(codeTimer); if (!loaded) render(); }, 1000);
       $('accountVerificationCode').focus();
-    } catch (error) { showError(error.message); }
+    } catch (error) { showError((error as any).message); }
     finally { codeSending = false; if (!loaded) render(); }
   };
   $('accountVerificationCode').addEventListener('input', () => { $('accountVerificationCode').value = $('accountVerificationCode').value.replace(/[^0-9]/g, '').slice(0, 6); });
   $('accountEmail').addEventListener('input', () => { $('accountVerificationCode').value = ''; $('accountCodeStatus').textContent = ''; });
   function setPasswordVisibility(button, visible) {
-    const input = $(button.dataset.passwordTarget);
+    const input = $((button as any).dataset.passwordTarget);
     input.type = visible ? 'text' : 'password';
     button.setAttribute('aria-pressed', String(visible));
     button.setAttribute('aria-label', (visible ? '隐藏' : '显示') + (input.id === 'accountPassword' ? '密码' : '密码确认'));
@@ -499,16 +499,16 @@
     document.querySelectorAll('[data-password-target]').forEach(button => setPasswordVisibility(button, false));
   }
   document.querySelectorAll('[data-password-target]').forEach(button => {
-    let pointerSelection = null;
+    let pointerSelection: any = null;
     button.addEventListener('pointerdown', event => {
-      const input = $(button.dataset.passwordTarget);
+      const input = $((button as any).dataset.passwordTarget);
       pointerSelection = [input.selectionStart, input.selectionEnd];
       event.preventDefault();
     });
     button.addEventListener('mousedown', event => event.preventDefault());
     button.addEventListener('click', () => {
-      if (button.disabled) return;
-      const input = $(button.dataset.passwordTarget);
+      if ((button as any).disabled) return;
+      const input = $((button as any).dataset.passwordTarget);
       const [start, end] = pointerSelection || [input.selectionStart, input.selectionEnd];
       pointerSelection = null;
       setPasswordVisibility(button, input.type === 'password');
@@ -546,7 +546,7 @@
     try {
       const result = await request('/auth/me');
       if (result.user?.id !== user.id || result.user?.revision !== user.revision) invalidate();
-    } catch (error) { if ([401,403].includes(error.status)) invalidate(); }
+    } catch (error) { if ([401,403].includes((error as any).status)) invalidate(); }
   });
   window.addEventListener('shiyan-native', event => { if (!user || user.status !== 'active') event.stopImmediatePropagation(); }, true);
   bootstrap();
