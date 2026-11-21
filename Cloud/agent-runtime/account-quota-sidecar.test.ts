@@ -20,7 +20,7 @@ function makeDevice() {
   return { id, privateKey, entry: { id, publicKey: raw.toString('base64'), owner: 'shiyan-private-owner', approved: true } };
 }
 const first = makeDevice(), second = makeDevice(), unapproved = makeDevice();
-const registry = { [first.id]: first.entry, [second.id]: second.entry, [unapproved.id]: { ...unapproved.entry, approved: false } };
+const registry: Record<string, any> = { [first.id]: first.entry, [second.id]: second.entry, [unapproved.id]: { ...unapproved.entry, approved: false } };
 const saveRegistry = () => writeFile(path.join(root, 'devices.json'), JSON.stringify(registry), { mode: 0o600 });
 await saveRegistry();
 const endpoint = '/shiyan/v1/account/quota';
@@ -34,10 +34,11 @@ function headers(device = first, { method = 'GET', url = endpoint, nonce = rando
     'x-shiyan-signature': sign(null, Buffer.from(message), device.privateKey).toString('base64')
   };
 }
-function request(server, { method = 'GET', url = endpoint, signed = headers(first, { method, url }), body, chunked = false } = {}) {
-  return new Promise((resolve, reject) => {
+interface QuotaRequestOptions { method?: string; url?: string; signed?: any; body?: string; chunked?: boolean; }
+function request(server, { method = 'GET', url = endpoint, signed = headers(first, { method, url }), body, chunked = false }: QuotaRequestOptions = {}): Promise<any> {
+  return new Promise<any>((resolve, reject) => {
     const req = http.request({ host: '127.0.0.1', port: server.address().port, path: url, method, headers: { ...signed, ...(chunked ? { 'Transfer-Encoding': 'chunked' } : body ? { 'Content-Length': Buffer.byteLength(body) } : {}) } }, res => {
-      const chunks = [];
+      const chunks: Buffer[] = [];
       res.on('data', chunk => chunks.push(chunk));
       res.on('end', () => {
         try { resolve({ status: res.statusCode, headers: res.headers, json: JSON.parse(Buffer.concat(chunks).toString()) }); }
@@ -51,9 +52,9 @@ function request(server, { method = 'GET', url = endpoint, signed = headers(firs
 }
 async function withServer(readQuota, callback) {
   const server = createQuotaSidecar({ readQuota });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', () => resolve()));
   try { await callback(server); }
-  finally { await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
+  finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
 }
 const upstream = {
   rateLimits: { primary: { usedPercent: 62, windowDurationMins: 10080, resetsAt: 1792500000 } },
