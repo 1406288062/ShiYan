@@ -111,7 +111,7 @@ test('workspace collector excludes control evidence and retains only successful 
     const items = [{ type: 'file_change', status: 'completed', changes: [{ path: '/Users/yu/SDK.swift', kind: 'update' }] }, { type: 'file_change', status: 'failed', changes: [{ path: '/Users/yu/Failed.swift', kind: 'update' }] }];
     const changes = await collectFileChanges(f.workspace, before, items, { jobId: f.jobId });
     assert.equal(changes.length, 3); assert.ok(changes.every(value => !value.path.includes('.shiyan')));
-    assert.equal(changes.find(value => value.path === '/Users/yu/SDK.swift').available, false);
+    assert.equal(changes.find(value => value.path === '/Users/yu/SDK.swift')!.available, false);
     assert.equal(changes.find(value => value.path === '/Users/yu/Failed.swift'), undefined);
     assert.equal((await collectFileChanges(f.workspace, before, items)).some(value => value.path === '/Users/yu/App.swift'), false);
   } finally { await f.done(); }
@@ -159,20 +159,20 @@ test('sidecar projects the same remote paths on both platforms and serves full d
   const f = await fixture(), store = new SyncStore(path.join(f.root, 'data'));
   process.env.SHIYAN_SYNC_NO_LISTEN = '1'; const { createSyncSidecar } = await import('./sync-sidecar.ts');
   const server = createSyncSidecar({ root: f.root, store, runtimeWrites: true, authenticate: req => ({ owner: req.headers['x-test-owner'] || 'owner-a', platform: req.headers['x-test-platform'] || 'mac' }) });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', () => resolve()));
   try {
     const cid = randomUUID(), mid = randomUUID(); store.putAuthoritative('owner-a', 'conversations', cid, { id: cid });
     store.putAuthoritative('owner-a', 'messages', mid, { id: mid, role: 'assistant', state: 'completed', conversationId: cid, remoteJobId: f.jobId, text: 'result', fileChanges: [{ path: 'Canonical.swift', added: 1, removed: 0, diff: 'canonical' }], assets: [] });
     store.recordJobWorkspace('owner-a', f.jobId, cid, f.workspaceKey);
     await fs.writeFile(path.join(f.root, 'data', 'state.json'), 'invalid state must not be read');
     await f.write([record(f.jobId, '/Users/yu/App.swift', 'before\n', 'long-after\n'.repeat(3000))]);
-    const base = 'http://127.0.0.1:' + server.address().port;
-    const desktop = await (await fetch(base + '/v1/sync')).json(), phone = await (await fetch(base + '/v1/sync', { headers: { 'x-test-platform': 'ios' } })).json();
+    const base = 'http://127.0.0.1:' + (server.address() as any).port;
+    const desktop: any = await (await fetch(base + '/v1/sync')).json(), phone: any = await (await fetch(base + '/v1/sync', { headers: { 'x-test-platform': 'ios' } })).json();
     const macFiles = desktop.changes.find(value => value.id === mid).data.fileChanges, iosFiles = phone.changes.find(value => value.id === mid).data.fileChanges;
     assert.deepEqual(macFiles.map(value => value.path), [path.join(f.workspace, 'Canonical.swift'), '/Users/yu/App.swift']); assert.deepEqual(iosFiles.map(value => value.path), macFiles.map(value => value.path));
     assert.equal(iosFiles[1].diffTruncated, true); assert.equal(iosFiles[1].added, 3000);
-    const details = await (await fetch(base + '/v1/sync/messages/' + mid + '/details')).json(); assert.equal(details.fileChanges[1].diff, macFiles[1].diff);
-    assert.equal((await (await fetch(base + '/v1/sync', { headers: { 'x-test-owner': 'owner-b' } })).json()).changes.length, 0);
+    const details: any = await (await fetch(base + '/v1/sync/messages/' + mid + '/details')).json(); assert.equal(details.fileChanges[1].diff, macFiles[1].diff);
+    assert.equal(((await (await fetch(base + '/v1/sync', { headers: { 'x-test-owner': 'owner-b' } })).json()) as any).changes.length, 0);
   } finally { await new Promise(resolve => server.close(resolve)); await f.done(); }
 });
 
@@ -180,9 +180,9 @@ test('supplemented pages retain parents and exact cursors without skipping messa
   const f = await fixture(), store = new SyncStore(path.join(f.root, 'data'));
   process.env.SHIYAN_SYNC_NO_LISTEN = '1'; const { createSyncSidecar } = await import('./sync-sidecar.ts');
   const server = createSyncSidecar({ root: f.root, store, runtimeWrites: true, authenticate: () => ({ owner: 'owner-a' }) });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', () => resolve()));
   try {
-    const cid = randomUUID(), ids = [];
+    const cid = randomUUID(), ids: any[] = [];
     store.putAuthoritative('owner-a', 'conversations', cid, { id: cid, title: 'parent' });
     async function addMessage(length) {
       const mid = randomUUID(), jobId = randomUUID(); ids.push(mid);
@@ -191,10 +191,10 @@ test('supplemented pages retain parents and exact cursors without skipping messa
       await fs.writeFile(remoteChangeManifestPath(f.workspace, jobId), JSON.stringify(record(jobId, '/Users/yu/' + mid + '.swift', 'before\n', 'x'.repeat(length) + '\n')) + '\n', { mode: 0o600 });
     }
     for (let index = 0; index < 3; index++) await addMessage(65000);
-    const base = 'http://127.0.0.1:' + server.address().port;
-    let after = 0, delivered = [], pages = 0;
+    const base = 'http://127.0.0.1:' + (server.address() as any).port;
+    let after = 0, delivered: any[] = [], pages = 0;
     while (true) {
-      const page = await (await fetch(base + '/v1/sync?after=' + after)).json(); pages++;
+      const page: any = await (await fetch(base + '/v1/sync?after=' + after)).json(); pages++;
       assert.equal(page.ok, true); assert.equal(Object.hasOwn(page, 'order'), false);
       assert.ok(Buffer.byteLength(JSON.stringify(page)) < 96 * 1024);
       assert.equal(page.changes[0].kind, 'conversations'); assert.equal(page.changes[0].id, cid);
@@ -205,7 +205,7 @@ test('supplemented pages retain parents and exact cursors without skipping messa
     }
     assert.deepEqual(delivered, ids); assert.equal(pages, 3);
     await addMessage(150000);
-    const large = await (await fetch(base + '/v1/sync?after=' + after)).json();
+    const large: any = await (await fetch(base + '/v1/sync?after=' + after)).json();
     assert.equal(large.changes[0].kind, 'conversations'); assert.equal(large.changes.find(value => value.kind === 'messages').id, ids.at(-1));
     assert.ok(Buffer.byteLength(JSON.stringify(large)) > 96 * 1024); assert.ok(large.cursor > after); assert.equal(large.hasMore, false);
     assert.equal(Object.hasOwn(large, 'order'), false);
@@ -216,7 +216,7 @@ test('a parent snapshot from a later sequence does not advance past undelivered 
   const f = await fixture(), store = new SyncStore(path.join(f.root, 'data'));
   process.env.SHIYAN_SYNC_NO_LISTEN = '1'; const { createSyncSidecar } = await import('./sync-sidecar.ts');
   const server = createSyncSidecar({ root: f.root, store, runtimeWrites: true, authenticate: () => ({ owner: 'owner-a' }) });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', () => resolve()));
   try {
     const cid = randomUUID(), mids = [randomUUID(), randomUUID()];
     store.putAuthoritative('owner-a', 'conversations', cid, { id: cid, title: 'initial parent' });
@@ -227,13 +227,13 @@ test('a parent snapshot from a later sequence does not advance past undelivered 
       await fs.writeFile(remoteChangeManifestPath(f.workspace, jobId), JSON.stringify(record(jobId, '/Users/yu/' + mid + '.swift', 'before\n', 'x'.repeat(index ? 65000 : 110000) + '\n')) + '\n', { mode: 0o600 });
     }
     store.putAuthoritative('owner-a', 'conversations', cid, { id: cid, title: 'latest parent' });
-    const sequence = id => Number(store.db.prepare("SELECT MAX(seq) AS seq FROM sync_changes WHERE owner='owner-a' AND id=?").get(id).seq);
+    const sequence = id => Number(store.db.prepare("SELECT MAX(seq) AS seq FROM sync_changes WHERE owner='owner-a' AND id=?").get(id)!.seq);
     const firstSequence = sequence(mids[0]), futureParentSequence = sequence(cid);
-    const base = 'http://127.0.0.1:' + server.address().port;
-    const first = await (await fetch(base + '/v1/sync')).json();
+    const base = 'http://127.0.0.1:' + (server.address() as any).port;
+    const first: any = await (await fetch(base + '/v1/sync')).json();
     assert.equal(first.changes[0].data.title, 'latest parent'); assert.equal(first.changes.find(value => value.kind === 'messages').id, mids[0]);
     assert.equal(first.cursor, firstSequence); assert.ok(first.cursor < futureParentSequence); assert.equal(first.hasMore, true);
-    const second = await (await fetch(base + '/v1/sync?after=' + first.cursor)).json();
+    const second: any = await (await fetch(base + '/v1/sync?after=' + first.cursor)).json();
     assert.equal(second.changes[0].kind, 'conversations'); assert.equal(second.changes.find(value => value.kind === 'messages').id, mids[1]);
     assert.equal(second.cursor, futureParentSequence); assert.equal(second.hasMore, false); assert.equal(Object.hasOwn(second, 'order'), false);
   } finally { await new Promise(resolve => server.close(resolve)); await f.done(); }

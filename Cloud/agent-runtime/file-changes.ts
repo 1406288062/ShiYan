@@ -23,9 +23,9 @@ export async function snapshotWorkspace(root){
  }
  await walk(root);return {files,omitted,truncated};
 }
-export async function collectFileChanges(root,before,items=[],{jobId=null}={}){
+export async function collectFileChanges(root,before,items: any[]=[],{jobId=null}: {jobId?: string | null}={}){
  const after=await snapshotWorkspace(root),names=new Set([...before.files.keys(),...after.files.keys()]);
- const changes=[];
+ const changes: any[]=[];
   for(const name of [...names].sort()){
    if(changes.length>=200)break;
    if(before.omitted.has(name)||after.omitted.has(name)||(!before.files.has(name)&&before.truncated)||(!after.files.has(name)&&after.truncated))continue;

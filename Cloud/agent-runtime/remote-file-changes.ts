@@ -78,7 +78,7 @@ export async function readRemoteFileChanges(workspace, jobId) {
     if (offset !== info.size || afterRead.size !== info.size || afterRead.mtimeMs !== info.mtimeMs) throw new Error('Remote change manifest changed during read');
     const text = bytes.toString('utf8');
     if (!Buffer.from(text).equals(bytes)) throw new Error('Remote change manifest is not UTF-8');
-    const result = [];
+    const result: any[] = [];
     const stagingPaths = new Set();
     for (const [filename, record] of recordsFor(text, jobId)) {
       for (const filename of record.stagingPaths) stagingPaths.add(filename);
@@ -88,7 +88,7 @@ export async function readRemoteFileChanges(workspace, jobId) {
     Object.defineProperty(result, 'stagingPaths', { value: [...stagingPaths] });
     return result;
   } catch (error) {
-    if (error.code === 'ENOENT') return [];
+    if ((error as any).code === 'ENOENT') return [];
     throw error;
   } finally {
     await handle?.close();
@@ -96,8 +96,8 @@ export async function readRemoteFileChanges(workspace, jobId) {
 }
 
 // Keep canonical records first, comparing full paths rather than basenames.
-export function mergeFileChanges(canonical = [], supplemental = []) {
-  const result = [], paths = new Set();
+export function mergeFileChanges(canonical: any[] = [], supplemental: any[] = []) {
+  const result: any[] = [], paths = new Set();
   for (const change of [...(Array.isArray(canonical) ? canonical : []), ...(Array.isArray(supplemental) ? supplemental : [])]) {
     if (!change || typeof change.path !== 'string' || paths.has(change.path)) continue;
     paths.add(change.path); result.push(change);
