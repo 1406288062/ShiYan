@@ -11,7 +11,7 @@ export async function conversationTitle({codex, state, key, owner, model, worksp
   if (!conversation || conversation.owner !== owner) return null;
   if (conversation.title) return conversation.title;
   if (pending.has(key)) return pending.get(key);
-  const job = Object.values(state.jobs).find(item => item.conversationKey === key && item.status === 'completed');
+  const job = (Object.values(state.jobs) as any[]).find(item => item.conversationKey === key && item.status === 'completed');
   if (!job) return null;
   const action = (async () => {
     const record = JSON.stringify({user:job.prompt.slice(0,1800),assistant:job.text.slice(0,1800)});
@@ -29,7 +29,7 @@ export async function conversationTitle({codex, state, key, owner, model, worksp
       });
       const started = Date.now(), used = {provider: 'openai', model: route?.model || model, reasoning: effort};
       try { finalResponse = (await thread.run(prompt, {outputSchema: TITLE_SCHEMA, signal: AbortSignal.timeout(45000)})).finalResponse; hub?.report?.('shiyan.title', {...used, account: owner, ok: true, ms: Date.now() - started}); }
-      catch (error) { hub?.report?.('shiyan.title', {...used, account: owner, ok: false, ms: Date.now() - started, error: String(error?.message || error)}); throw error; }
+      catch (error) { hub?.report?.('shiyan.title', {...used, account: owner, ok: false, ms: Date.now() - started, error: String((error as any)?.message || error)}); throw error; }
     }
     const title = JSON.parse(finalResponse).title;
     if (typeof title !== 'string' || !title.trim()) return null;
