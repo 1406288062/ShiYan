@@ -10,11 +10,11 @@ export function createFilePathResolver(root,store,{stateFallback=true}={}){
     try{info=statSync(file);}catch{return;}
     const next=info.mtimeMs+':'+info.size;if(next===version)return;
     const state=JSON.parse(readFileSync(file,'utf8'));
-    for(const [key,conversation] of Object.entries(state.conversations||{})){
+    for(const [key,conversation] of (Object.entries(state.conversations||{}) as [string, any][])){
       const workspace=conversation.workspaceKey||key;
       if(/^[a-f0-9]{64}$/.test(workspace))conversations.set(key,path.join(root,'workspaces',workspace));
     }
-    for(const job of Object.values(state.jobs||{})){
+    for(const job of (Object.values(state.jobs||{}) as any[])){
       const workspace=conversations.get(job.conversationKey);
       if(workspace)jobs.set(job.owner+':'+job.id,workspace);
     }
