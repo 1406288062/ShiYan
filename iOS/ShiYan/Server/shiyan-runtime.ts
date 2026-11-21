@@ -7,7 +7,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { promises as fs, watch, readFileSync, mkdirSync, writeFileSync, renameSync } from 'node:fs';
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
-import { Codex } from '@openai/codex-sdk';
+import { Codex, type ThreadOptions } from '@openai/codex-sdk';
 import { conversationTitle } from './session-title.ts';
 import { authenticateDevice as authenticate, enrollDevice, digest } from './device-auth.ts';
 
@@ -23,11 +23,11 @@ const atomic = (file, value) => { const tmp=file+'.tmp'; writeFileSync(tmp,JSON.
 const readJSON = (file, fallback) => {try {return JSON.parse(readFileSync(file,'utf8'));} catch {return fallback;}};
 const statePath = path.join(DATA,'state.json');
 const state = readJSON(statePath,{jobs:{},conversations:{},assets:{},requests:{}});
-for (const job of Object.values(state.jobs)) if (['queued','running'].includes(job.status)) {
+for (const job of Object.values(state.jobs) as any[]) if (['queued','running'].includes(job.status)) {
   job.status='interrupted'; job.error='服务重新启动，本次处理已中断，请重试';
 }
 const codex = new Codex({codexPathOverride:'/home/ubuntu/.local/bin/codex'});
-const listeners=new Map(), controls=new Map(), queue=[];
+const listeners=new Map(), controls=new Map(), queue: any[]=[];
 state.cancelledRequests ||= {};  
 let active=0;
 const save=()=>atomic(statePath,state);
@@ -60,7 +60,7 @@ function emit(job,type,values={}) {
 }
 function json(res,code,value){const body=JSON.stringify(value);res.writeHead(code,{'Content-Type':'application/json; charset=utf-8','Content-Length':Buffer.byteLength(body),'Cache-Control':'no-store'});res.end(body);}
 async function body(req,max=40*1024*1024){
-  let total=0;const chunks=[];
+  let total=0;const chunks: any[]=[];
   for await(const chunk of req){total+=chunk.length;if(total>max)throw fail('上传内容过大',413);chunks.push(chunk);}
   const data=Buffer.concat(chunks);
   if(req.headers['x-shiyan-body-sha']&&digest(data)!==req.headers['x-shiyan-body-sha'])throw fail('请求校验失败',401);
@@ -131,7 +131,7 @@ async function runJob(job){
     const dir=path.join(WORKSPACES,job.conversationKey);
     await fs.mkdir(dir,{recursive:true});
     const inputDir=path.join(dir,'inputs',job.id);await fs.mkdir(inputDir,{recursive:true});
-    const inputs=[];
+    const inputs: any[]=[];
      
     if(job.prompt.length)inputs.push({type:'text',text:job.prompt});
     for(let i=0;i<job.uploads.length;i++){
@@ -139,7 +139,7 @@ async function runJob(job){
       await fs.writeFile(file,Buffer.from(upload.data,'base64'),{mode:0o600});inputs.push({type:'local_image',path:file});
     }
     delete job.uploads;
-    const options={model:MODEL,workingDirectory:dir,skipGitRepoCheck:true,sandboxMode:'read-only',approvalPolicy:'never',networkAccessEnabled:false,webSearchMode:'disabled',modelReasoningEffort:job.reasoning};
+     const options: ThreadOptions={model:MODEL,workingDirectory:dir,skipGitRepoCheck:true,sandboxMode:'read-only',approvalPolicy:'never',networkAccessEnabled:false,webSearchMode:'disabled',modelReasoningEffort:job.reasoning};
      
     const thread=conv.threadId?codex.resumeThread(conv.threadId,options):codex.startThread(options);
     if(conv.threadId){job.threadId=conv.threadId;stopWatch=await monitorGenerated(job);}
@@ -154,10 +154,10 @@ async function runJob(job){
         emit(job,'thread',{threadId:event.thread_id,reasoning:job.reasoning});
         await stopWatch();stopWatch=await monitorGenerated(job);
       }else if(event.type==='turn.failed'||event.type==='error'){
-        throw new Error(event.error?.message||event.message||'拾燕 处理失败');
+        throw new Error((event.type==='turn.failed'?event.error.message:event.message)||'拾燕 处理失败');
       }else if(event.type==='turn.completed'){
         job.usage=event.usage;
-      }else if(event.item){
+      }else if('item' in event){
         const item=event.item;
         if(item.type==='agent_message'){
           messages.set(item.id,item.text||'');job.text=[...messages.values()].join('\n\n');
@@ -165,8 +165,8 @@ async function runJob(job){
         }else if(item.type==='reasoning'){
           emit(job,'phase',{phase:'thinking',label:'思考中'});
         }else if(['command_execution','mcp_tool_call','web_search','image_generation'].includes(item.type)){
-          const label=item.type==='web_search'?'检索中':item.type==='image_generation'?'图片生成中':item.type==='command_execution'?'执行任务中':'调用工具中';
-          emit(job,'phase',{phase:'tool',label:item.status==='completed'?'整理结果中':label});
+          const label=item.type==='web_search'?'检索中':(item as any).type==='image_generation'?'图片生成中':item.type==='command_execution'?'执行任务中':'调用工具中';
+          emit(job,'phase',{phase:'tool',label:(item as any).status==='completed'?'整理结果中':label});
           if(item.type==='mcp_tool_call'&&item.result?.content){
             for(const part of item.result.content){
               if(part.type==='image'&&part.data){
@@ -196,7 +196,7 @@ async function runJob(job){
     emit(job,'completed',{text:job.text||'',assets:job.assets,items:job.items,usage:job.usage||null,threadId:job.threadId||null,reasoning:job.reasoning});
   }catch(error){
     const alreadyCancelled=job.status==='cancelled';
-    job.status=abort.signal.aborted||job.cancelRequested?'cancelled':'failed';job.error=String(error.message||error).slice(0,2000);
+    job.status=abort.signal.aborted||job.cancelRequested?'cancelled':'failed';job.error=String((error as any).message||error).slice(0,2000);
     if(!alreadyCancelled)emit(job,job.status,{error:job.status==='cancelled'?'已停止处理':job.error});
   }finally{
     clearTimeout(deadline);await stopWatch().catch(()=>{});controls.delete(job.id);active--;save();
@@ -205,7 +205,7 @@ async function runJob(job){
 }
 function drain(){
   while(active<2&&queue.length){
-    const index=queue.findIndex(id=>{const job=state.jobs[id];return !Object.values(state.jobs).some(j=>j.id!==id&&j.conversationKey===job.conversationKey&&j.status==='running');});
+    const index=queue.findIndex(id=>{const job=state.jobs[id];return !Object.values(state.jobs).some((j: any)=>j.id!==id&&j.conversationKey===job.conversationKey&&j.status==='running');});
     if(index<0)return;const [id]=queue.splice(index,1);const job=state.jobs[id];if(job.status==='queued')void runJob(job);
   }
 }
@@ -224,9 +224,9 @@ async function makeJob(input,owner){
   if(!validID(input.conversationId)||!validID(input.requestId))throw fail('会话标识无效');
   const requestKey=owner+':'+input.requestId;
   if(state.requests[requestKey])return state.jobs[state.requests[requestKey]];
-  const recent=Object.values(state.jobs).filter(j=>j.owner===owner&&Date.now()-j.createdAt<86400000);
+  const recent=Object.values(state.jobs).filter((j: any)=>j.owner===owner&&Date.now()-j.createdAt<86400000);
   if(recent.length>=500)throw fail('今日请求较多，请稍后再试',429);
-  if(recent.filter(j=>!terminal(j.status)).length>=8)throw fail('正在处理的任务较多，请稍后再试',429);
+  if(recent.filter((j: any)=>!terminal(j.status)).length>=8)throw fail('正在处理的任务较多，请稍后再试',429);
   const caps=capabilities();const reasoning=input.reasoning||caps.defaultReasoning;
   if(!caps.reasoningEfforts.includes(reasoning))throw fail('当前模型不支持所选推理档位');
   if(typeof input.prompt!=='string'||input.prompt.length>200000)throw fail('消息过长');
@@ -255,7 +255,7 @@ export function createServer(){return http.createServer(async(req,res)=>{
   try{
     if(req.method==='POST'&&req.url==='/shiyan/v1/enroll')return json(res,200,enrollDevice(await body(req,8192)));
     const auth=authenticate(req);if(!auth)return json(res,401,{ok:false,error:'服务连接未获授权'});
-    const owner=auth.owner;const url=new URL(req.url,'http://localhost');const pathname=url.pathname.replace(/^\/shiyan/,'');
+    const owner=auth.owner;const url=new URL(req.url || '/','http://localhost');const pathname=url.pathname.replace(/^\/shiyan/,'');
     if(req.method==='GET'&&pathname==='/v1/health')return json(res,200,{ok:true,service:'shiyan-v2',active,queued:queue.length});
     if(req.method==='GET'&&pathname==='/v1/capabilities')return json(res,200,{ok:true,...capabilities()});
     if(req.method==='POST'&&pathname==='/v1/jobs'){const job=await makeJob(await body(req),owner);return json(res,202,{ok:true,jobId:job.id,status:job.status});}
@@ -270,7 +270,7 @@ export function createServer(){return http.createServer(async(req,res)=>{
       if(!validID(cancelledRequest[1]))throw fail('请求标识无效');
       await body(req,8192);
       const key=owner+':'+cancelledRequest[1];state.cancelledRequests[key]=Date.now();
-      for(const [k,t] of Object.entries(state.cancelledRequests))if(Date.now()-t>86400000)delete state.cancelledRequests[k];
+      for(const [k,t] of Object.entries(state.cancelledRequests) as any[])if(Date.now()-t>86400000)delete state.cancelledRequests[k];
       const job=state.jobs[state.requests[key]];const status=job?cancelJob(job):'cancelled';save();
       return json(res,200,{ok:true,status});
     }
@@ -282,7 +282,7 @@ export function createServer(){return http.createServer(async(req,res)=>{
         await body(req,8192);return json(res,200,{ok:true,status:cancelJob(job)});
       }
       if(req.method==='GET'&&match[2]==='events'){
-        res.shiyanInlineArtifacts=url.searchParams.get('transport')!=='metadata';
+        (res as any).shiyanInlineArtifacts=url.searchParams.get('transport')!=='metadata';
         res.socket?.setNoDelay(true);
         res.writeHead(200,{'Content-Type':'text/event-stream; charset=utf-8','Cache-Control':'no-cache, no-transform','Connection':'close','X-Accel-Buffering':'no'});res.flushHeaders();
         const after=Number(url.searchParams.get('after')||req.headers['last-event-id']||0);
@@ -314,11 +314,12 @@ export function createServer(){return http.createServer(async(req,res)=>{
       res.writeHead(200,headers);return res.end(bytes);
     }
     return json(res,404,{ok:false,error:'接口不存在'});
-  }catch(error){if(!res.headersSent)json(res,error.status||500,{ok:false,error:String(error.message||error).slice(0,1000)});else res.end();}
+  }catch(error){if(!res.headersSent)json(res,(error as any).status||500,{ok:false,error:String((error as any).message||error).slice(0,1000)});else res.end();}
 }).on('clientError',(error,socket)=>{
-  const raw=error.rawPacket?.toString('latin1')||'';
+  const e = error as any;
+  const raw=e.rawPacket?.toString('latin1')||'';
   const safe=raw.split('\r\n').filter((line,i)=>i===0||/^(content-length|transfer-encoding|connection):/i.test(line)).join(' | ');
-  console.error('[ShiyanHTTPParse]',error.code,error.reason,error.bytesParsed,safe.slice(0,600));
+  console.error('[ShiyanHTTPParse]',e.code,e.reason,e.bytesParsed,safe.slice(0,600));
   if(socket.writable)socket.end('HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
 });}
 if(process.env.SHIYAN_NO_LISTEN!=='1')createServer().listen(PORT,'127.0.0.1',()=>console.log('Shiyan v2 listening on 127.0.0.1:'+PORT));
