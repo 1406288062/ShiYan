@@ -15,7 +15,7 @@ import { createAccountHandler } from './account-http.ts';
 import { DotsAdapter, createLocalDotsClient } from './dots-adapter.ts';
 import { createDotsSidecar } from './dots-sidecar.ts';
 import { postRegistrationEvent } from './registration-events.ts';
-import { createApp as createSpongeApp } from '../../yu-remote-commander/src/server.ts';
+import { createApp as createSpongeApp } from '../../../yu-remote-commander/src/server.mjs';
 
 const password = 'isolated-system-test-password-42';
 const waitFor = async predicate => {
@@ -25,7 +25,7 @@ const waitFor = async predicate => {
 const listen = async server => { await new Promise(resolve => server.listen(0, '127.0.0.1', resolve)); return 'http://127.0.0.1:' + server.address().port; };
 const closeServer = async server => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); };
 const post = (url, input, headers = {}) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(input) });
-async function freePort() { const server = net.createServer(); await new Promise(resolve => server.listen(0, '127.0.0.1', resolve)); const port = server.address().port; await new Promise(resolve => server.close(resolve)); return port; }
+async function freePort() { const server = net.createServer(); await new Promise<void>(resolve => server.listen(0, '127.0.0.1', () => resolve())); const port = (server.address() as any).port; await new Promise(resolve => server.close(resolve)); return port; }
 
 test('concurrent notice delivery waits past an older shared activity sync before acknowledgement',async()=>{
   let release,cursor=0,inflight,syncCalls=0;const gate=new Promise(resolve=>{release=resolve;});
@@ -62,9 +62,9 @@ test('both website signup routes push one admin Dots message, reconnect replays 
     const client = createLocalDotsClient({ socketPath: runtimeSocket });
     const makeDots = async () => {
       const adapter = new DotsAdapter({ root: path.join(root, 'gateway'), client,
-        eventReader: { read: () => [], close() {} },
-        activityReader: { read: () => [], close() {} }, recoverIntervalMs: 0, subscriptionRefreshMs: 0, managerPollMs: 0, schedulePollMs: 0 });
-      const server = createDotsSidecar({ root: shiyanRoot, adapter, recover: false, registrationSocket: socketPath,
+        eventReader: { read: () => [], request(){return null;}, close() {} },
+        activityReader: { read: () => [], close() {} } as any, recoverIntervalMs: 0, subscriptionRefreshMs: 0, managerPollMs: 0, schedulePollMs: 0 });
+      const server: any = createDotsSidecar({ root: shiyanRoot, adapter, recover: false, registrationSocket: socketPath,
         authenticate: req => accounts.authenticate((req.headers.authorization || '').replace(/^Bearer /, '')) });
       const base = await listen(server); await server.registrationReady; return { server, adapter, base };
     };
@@ -79,16 +79,16 @@ test('both website signup routes push one admin Dots message, reconnect replays 
     const spongeAddress = await sponge.listen(), spongeBase = 'http://127.0.0.1:' + spongeAddress.port;
     const headers = { Authorization: 'Bearer ' + administrator.token };
     const stream = await fetch(dots.base + '/v1/dots/events?after=0', { headers });
-    assert.equal(stream.status, 200); reader = stream.body.getReader(); let streamed = '';
+    assert.equal(stream.status, 200); reader = stream.body!.getReader(); let streamed = '';
     readLoop = (async () => { try { while (true) { const item = await reader.read(); if (item.done) break; streamed += new TextDecoder().decode(item.value); } } catch {} })();
     assert.equal((await post(accountBase + '/v1/auth/register-code', { email: 'fixture@example.test' })).status, 200);
     assert.equal((await post(accountBase + '/v1/auth/register', { email: 'failed@example.test', password, code: 'bad' })).status, 400);
     const registeredEmail = 'fixture@example.test';
     const shiyanResponse = await post(accountBase + '/v1/auth/register', { email: registeredEmail, password, code: 'fixture-code', role: 'admin' });
-    assert.equal(shiyanResponse.status, 201); const alice = await shiyanResponse.json();
+    assert.equal(shiyanResponse.status, 201); const alice: any = await shiyanResponse.json();
     assert.match(alice.user.username, /^u_/);
     const spongeResponse = await post(spongeBase + '/api/auth/register', { username: 'sponge_bob', password, role: 'owner' });
-    assert.equal(spongeResponse.status, 201); assert.equal((await spongeResponse.json()).account.role, 'user');
+    assert.equal(spongeResponse.status, 201); assert.equal(((await spongeResponse.json()) as any).account.role, 'user');
     await waitFor(() => streamed.includes('用户名：' + registeredEmail) && streamed.includes('海绵宝宝 MCP 官网') && streamed.includes('用户名：sponge_bob'));
     await waitFor(() => accounts.db.prepare('SELECT COUNT(*) AS n FROM account_registration_outbox').get().n === 0 && Object.keys(sponge.auth.state.registrationEvents).length === 0);
     assert.match(streamed, /拾燕网页端/); assert.match(streamed, /海绵宝宝 MCP 官网/);
@@ -131,18 +131,18 @@ test('both website signup routes push one admin Dots message, reconnect replays 
     const stopped = once(runtime, 'exit'); runtime.kill('SIGTERM'); await stopped;
     await startRuntime(); dots = await makeDots();
     const replay = await fetch(dots.base + '/v1/dots/events?after=0', { headers });
-    reader = replay.body.getReader(); const replayed = new TextDecoder().decode((await reader.read()).value);
+    reader = replay.body!.getReader(); const replayed = new TextDecoder().decode((await reader.read()).value);
     assert(replayed.includes(registeredEmail)); assert.match(replayed, /海绵宝宝 MCP 官网/);
     for (const notice of notices) await postRegistrationEvent(socketPath, notice);
     assert.equal(messages().length, 2, 'deduplication survives sidecar and runtime restart');
-    const manager = await (await fetch(dots.base + '/v1/dots/manager', { headers })).json();
+    const manager: any = await (await fetch(dots.base + '/v1/dots/manager', { headers })).json();
     assert.equal(manager.manager.messages.filter(message => message.proactiveReason === '管理员注册提醒').length, 2);
     assert(manager.manager.messages.some(message => message.id === shiyanMessage.id && message.content.includes('用户名：' + registeredEmail)));
     assert(!JSON.stringify(messages()).includes(password)); assert(!JSON.stringify(messages()).includes('fixture-code'));
   } catch (error) {
-    error.message += '\nIsolated Dots output: ' + runtimeOutput;
-    if (accounts && !accounts.closed) error.message += '\nPending website events: ' + accounts.db.prepare('SELECT COUNT(*) AS n FROM account_registration_outbox').get().n;
-    if (sponge) error.message += '\nPending MCP website events: ' + Object.keys(sponge.auth.state.registrationEvents).length;
+    (error as any).message += '\nIsolated Dots output: ' + runtimeOutput;
+    if (accounts && !accounts.closed) (error as any).message += '\nPending website events: ' + accounts.db.prepare('SELECT COUNT(*) AS n FROM account_registration_outbox').get().n;
+    if (sponge) (error as any).message += '\nPending MCP website events: ' + Object.keys(sponge.auth.state.registrationEvents).length;
     throw error;
   } finally {
     if (reader) await reader.cancel().catch(() => {});
