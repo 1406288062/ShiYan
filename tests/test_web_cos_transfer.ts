@@ -4,14 +4,14 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 const adapterSource=fs.readFileSync(new URL('../apps/web/adapters/cos-transfer.js',import.meta.url),'utf8');
 const appSource=fs.readFileSync(new URL('../shared/frontend/app.js',import.meta.url),'utf8');
-const extract=name=>appSource.match(new RegExp('  async function '+name+'\\([^\\n]*\\) \\{[\\s\\S]*?\\n  \\}'))[0];
+const extract=name=>appSource.match(new RegExp('  async function '+name+'\\([^\\n]*\\) \\{[\\s\\S]*?\\n  \\}'))![0];
 const settle=async()=>{for(let i=0;i<16;i++)await Promise.resolve();};
 const file=(name='fixture.png',size=100)=>({name,size,type:'image/png'});
 const ticket=(id='ticket-a')=>({ticketId:id,method:'PUT',url:'https://photos-12345.cos.ap-guangzhou.myqcloud.com/private/'+id+'?q-signature=fixture',headers:{'Content-Type':'image/png','x-cos-acl':'private'},expiresAt:2000000000});
-function setup({mode='web',available=true,uploads=[ticket()],initError,completeError,deferComplete=false,unknownDimensions=false}={}){
-  const requests=[],calls=[],legacy=[],updates=[],timers=new Map(),fields=new Map(),timings=[];
+function setup({mode='web',available=true,uploads=[ticket()],initError,completeError,deferComplete=false,unknownDimensions=false}: any = {}): any {
+  const requests: any[] = [], calls: any[] = [], legacy: any[] = [], updates: any[] = [], timers = new Map(), fields = new Map(), timings: any[] = [];
   let count=0,clock=0,completeResolve;
-  class XHR {
+  class XHR { [key: string]: any;
     constructor(){this.headers={};this.upload={};requests.push(this);}
     open(method,url){this.method=method;this.url=url;}
     setRequestHeader(name,value){this.headers[name.toLowerCase()]=value;}
@@ -21,7 +21,7 @@ function setup({mode='web',available=true,uploads=[ticket()],initError,completeE
     respond(status=200){this.status=status;this.onload?.();}
     abort(){this.onabort?.();}
   }
-  const window={ShiYanPlatform:{mode},ShiYanUploadPriority:{begin(){count++;return ()=>count--;},upload:async(...args)=>{legacy.push(args);return {ok:true,assets:[{id:'legacy-asset'}]};}},ShiYanEnhancementTiming:{beginUpload(){return (...args)=>timings.push(args);}}};
+  const window: any = {ShiYanPlatform:{mode},ShiYanUploadPriority:{begin(){count++;return ()=>count--;},upload:async(...args)=>{legacy.push(args);return {ok:true,assets:[{id:'legacy-asset'}]};}},ShiYanEnhancementTiming:{beginUpload(){return (...args)=>timings.push(args);}}};
   const api=async(path,method,body)=>{
     calls.push({path,method,body});
     if(path==='/api/assets/cos/upload'){if(initError)throw initError;return {ok:true,available,uploads};}
@@ -34,8 +34,8 @@ function setup({mode='web',available=true,uploads=[ticket()],initError,completeE
     return {ok:true};
   };
   class TestURL extends URL{static createObjectURL(){return 'blob:fixture';}static revokeObjectURL(){}}
-  const context={window,URL:TestURL,XMLHttpRequest:XHR,api,FormData:class{append(){}},ui:{input:null,result:null,feature:'enhance',model:'general'},state:{settings:{}},
-    remember:asset=>asset,renderPhoto(){},console,Image:class{naturalWidth=32;naturalHeight=24;set src(v){this.onload?.();}},
+  const context: any = {window,URL:TestURL,XMLHttpRequest:XHR,api,FormData:class{append(){}},ui:{input:null,result:null,feature:'enhance',model:'general'},state:{settings:{}},
+    remember:asset=>asset,renderPhoto(){},console,Image:class{naturalWidth=32;naturalHeight=24;onload: any;set src(v){this.onload?.();}},
     $:id=>{if(!fields.has(id))fields.set(id,{value:'',disabled:false});return fields.get(id);},
     photoBusy:()=>false,toast(){},confirmAction:async()=>true,setText(){},show(){},
     setTimeout:(fn,delay)=>{timers.set(++clock,{fn,delay});return clock;},clearTimeout:id=>timers.delete(id)};
@@ -163,7 +163,7 @@ test('unknown remote original dimensions keep the decoded single-image preview s
 });
 test('single-image preview remains local and gets dimensions when decode finishes after upload',async()=>{
  const s=setup({unknownDimensions:true});let loaded;
- s.context.Image=class{naturalWidth=0;naturalHeight=0;set src(value){loaded=()=>{this.naturalWidth=88;this.naturalHeight=99;this.onload();};}};
+ s.context.Image=class{naturalWidth=0;naturalHeight=0;onload: any;set src(value){loaded=()=>{this.naturalWidth=88;this.naturalHeight=99;this.onload();};}};
  const pending=s.context.chooseWebHomeImage(file());await settle();s.requests[0].respond();await pending;
  assert.equal(s.context.ui.input.url,'blob:fixture');loaded();assert.equal(s.context.ui.input.width,88);assert.equal(s.context.ui.input.height,99);
 });
