@@ -26,14 +26,14 @@ export function createJobDeadline({ idleTimeoutMs = DEFAULT_IDLE_MS, maxRuntimeM
   onExpire, schedule = setTimeout, unschedule = clearTimeout }: JobDeadlineOptions = {}) {
   idleTimeoutMs = timeoutValue(idleTimeoutMs, DEFAULT_IDLE_MS);
   maxRuntimeMs = timeoutValue(maxRuntimeMs, DEFAULT_RUNTIME_MS);
-  let idleTimer, runtimeTimer, expiration = null, disposed = false;
+  let idleTimer, runtimeTimer, expiration: any = null, disposed = false;
   function clear() { unschedule(idleTimer); unschedule(runtimeTimer); }
   function expire(kind, limit) {
     if (expiration || disposed) return;
     const error = new Error(kind === 'idle'
       ? `任务连续 ${duration(limit)} 没有新进展，处理已超时，请重试。`
       : `任务处理超过 ${duration(limit)}，已达到本次时限，请重试继续。`);
-    error.code = kind === 'idle' ? 'SHIYAN_IDLE_TIMEOUT' : 'SHIYAN_RUNTIME_TIMEOUT';
+    (error as any).code = kind === 'idle' ? 'SHIYAN_IDLE_TIMEOUT' : 'SHIYAN_RUNTIME_TIMEOUT';
     expiration = { kind, timeoutMs: limit, error };
     clear(); onExpire?.(error);
   }
