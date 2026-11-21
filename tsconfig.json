@@ -1,0 +1,39 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "strict": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "noImplicitAny": false,
+    "types": [
+      "node"
+    ],
+    "typeRoots": [
+      "./Cloud/agent-runtime/node_modules/@types",
+      "./Cloud/dots-runtime/node_modules/@types",
+      "./shared/frontend/node_modules/@types"
+    ]
+  },
+  "include": [
+    "tests/**/*.ts",
+    "Mac/knowledge/frontend/**/*.ts",
+    "Mac/knowledge/backend/codex-bridge/**/*.ts",
+    "iOS/ShiYan/Server/**/*.ts",
+    "apps/web/adapters/**/*.ts",
+    "apps/web/tests/**/*.ts",
+    "apps/compute/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
+}
