@@ -28,7 +28,7 @@ function fixture({legacy=false}={}) {
   return {root,get db(){return db;},get store(){return store;},advance:n=>{clock+=n;},now:()=>clock,reopen:()=>{db.close();db=new DatabaseSync(database);store=createManagerStore({db,workspaceRoot:path.join(root,'workspaces'),now:()=>clock});},close:()=>{db.close();rmSync(root,{recursive:true,force:true});}};
 }
 const createTasks=(store,count=1,resourceKey='')=>store.createTasks(Array.from({length:count},(_,index)=>({key:'t'+index,title:'task '+index,instruction:'Produce result '+index,dependencies:[],acceptanceCriteria:'Result exists',resourceKey})));
-const managerResult=overrides=>({reply:'已安排任务。',summary:'拆解完成',tasks:[],reviews:[],controls:[],instructions:[],...overrides});
+const managerResult=(overrides={})=>({reply:'已安排任务。',summary:'拆解完成',tasks:[],reviews:[],controls:[],instructions:[],...overrides});
 
 test('completed manager replies persist the exact merged user inputs across replay and restart',()=>{
   const f=fixture();try{
@@ -41,7 +41,7 @@ test('completed manager replies persist the exact merged user inputs across repl
     assert.equal(committed.value.message.requestId,null);
     assert.equal(committed.value.message.taskId,null);
     const delivered=f.store.activity().activity.find(item=>item.kind==='assistant_message');
-    assert.deepEqual(delivered.data.message.respondsToMessageIds,[first.id,second.id]);
+    assert.deepEqual(delivered!.data.message.respondsToMessageIds,[first.id,second.id]);
     f.reopen();
     assert.deepEqual(f.store.snapshot().messages.at(-1).respondsToMessageIds,[first.id,second.id]);
     assert.deepEqual(f.store.messages({limit:1}).messages[0].respondsToMessageIds,[first.id,second.id]);
@@ -105,12 +105,12 @@ test('migration preserves legacy stopped states, accepted history, and due times
   const f=fixture({legacy:true});try{
     assert.equal(f.store.snapshot().name,'大内总管');
     const rows=f.db.prepare('SELECT * FROM goals ORDER BY id').all();
-    assert.equal(rows[0].status,'done');assert.equal(rows[0].acceptance_status,'accepted');
-    assert.equal(rows[1].status,'paused');assert.equal(rows[1].next_wake_at,null);
-    assert.equal(rows[2].next_wake_at,80);
+    assert.equal(rows[0]!.status,'done');assert.equal(rows[0]!.acceptance_status,'accepted');
+    assert.equal(rows[1]!.status,'paused');assert.equal(rows[1]!.next_wake_at,null);
+    assert.equal(rows[2]!.next_wake_at,80);
     assert.equal(f.store.claimGoal(1),null);assert.equal(f.store.claimGoal(2),null);
     assert.equal(f.store.claimManager(),null);assert.equal(f.store.snapshot().messages.length,0);
-    f.reopen();assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM managers').get().n,1);
+    f.reopen();assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM managers').get()!.n,1);
   }finally{f.close();}
 });
 
@@ -130,7 +130,7 @@ test('long-lived manager history and activity have durable cursor replay',()=>{
     for(let i=0;i<105;i++)f.store.message({message:'message '+i,requestId:'history-'+i});
     const latest=f.store.snapshot();assert.equal(latest.messages.length,100);assert.equal(latest.hasMoreMessages,true);
     const earlier=f.store.messages({beforeId:latest.oldestMessageId,limit:100});
-    assert.equal(earlier.messages.length,5);assert.equal(earlier.messages[0].content,'message 0');assert.equal(earlier.hasMore,false);
+    assert.equal(earlier.messages.length,5);assert.equal(earlier.messages[0]!.content,'message 0');assert.equal(earlier.hasMore,false);
     const page=f.store.activity({limit:20});assert.equal(page.activity.length,20);assert.equal(page.hasMore,true);
     f.reopen();const replay=f.store.activity({afterId:page.nextCursor,limit:200});
     assert.equal(replay.activity.length,85);assert.ok(replay.activity.every(row=>row.id>page.nextCursor));
@@ -140,23 +140,23 @@ test('long-lived manager history and activity have durable cursor replay',()=>{
 test('DAG rejects cycles atomically and waits for accepted dependencies',()=>{
   const f=fixture();try{
     assert.throws(()=>f.store.createTasks([{key:'a',title:'a',instruction:'a',dependencies:['b']},{key:'b',title:'b',instruction:'b',dependencies:['a']}]),/cycle/);
-    assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM goals').get().n,0);
+    assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM goals').get()!.n,0);
     const tasks=f.store.createTasks([{key:'a',title:'a',instruction:'a',dependencies:[]},{key:'b',title:'b',instruction:'b',dependencies:['a']}]);
-    assert.equal(f.store.taskEligibility(tasks[0].id),true);assert.equal(f.store.taskEligibility(tasks[1].id),false);
-    f.db.prepare("UPDATE goals SET status='done' WHERE id=?").run(tasks[0].id);
-    f.store.reportGoal(tasks[0].id,'done','result ready');assert.equal(f.store.taskEligibility(tasks[1].id),false);
-    f.store.acceptTask(tasks[0].id,{accepted:true,reason:'checked artifact'});assert.equal(f.store.taskEligibility(tasks[1].id),true);
+    assert.equal(f.store.taskEligibility(tasks[0]!.id),true);assert.equal(f.store.taskEligibility(tasks[1]!.id),false);
+    f.db.prepare("UPDATE goals SET status='done' WHERE id=?").run(tasks[0]!.id);
+    f.store.reportGoal(tasks[0]!.id,'done','result ready');assert.equal(f.store.taskEligibility(tasks[1]!.id),false);
+    f.store.acceptTask(tasks[0]!.id,{accepted:true,reason:'checked artifact'});assert.equal(f.store.taskEligibility(tasks[1]!.id),true);
   }finally{f.close();}
 });
 
 test('leases allow two workers, one per task and one per shared resource',()=>{
   const f=fixture();try{
-    const tasks=createTasks(f.store,3),first=f.store.claimGoal(tasks[0].id),second=f.store.claimGoal(tasks[1].id);
-    assert.ok(first);assert.ok(second);assert.equal(f.store.claimGoal(tasks[2].id),null);assert.equal(f.store.claimGoal(tasks[0].id),null);
-    f.store.finishRun(first);assert.ok(f.store.claimGoal(tasks[2].id));
+    const tasks=createTasks(f.store,3),first=f.store.claimGoal(tasks[0]!.id),second=f.store.claimGoal(tasks[1]!.id);
+    assert.ok(first);assert.ok(second);assert.equal(f.store.claimGoal(tasks[2]!.id),null);assert.equal(f.store.claimGoal(tasks[0]!.id),null);
+    f.store.finishRun(first);assert.ok(f.store.claimGoal(tasks[2]!.id));
   }finally{f.close();}
   const g=fixture();try{
-    const tasks=createTasks(g.store,2,'shared-project');assert.ok(g.store.claimGoal(tasks[0].id));assert.equal(g.store.claimGoal(tasks[1].id),null);
+    const tasks=createTasks(g.store,2,'shared-project');assert.ok(g.store.claimGoal(tasks[0]!.id));assert.equal(g.store.claimGoal(tasks[1]!.id),null);
   }finally{g.close();}
 });
 
@@ -166,19 +166,19 @@ test('pause then resume fences a stale worker without consuming input',()=>{
     const run=f.store.claimGoal(task.id);
     f.store.controlTask(task.id,'pause');f.store.controlTask(task.id,'resume');
     assert.equal(f.store.isCurrent(run),false);assert.equal(f.store.commitRun(run,()=>assert.fail('stale commit')).committed,false);
-    assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM events WHERE consumed_at IS NULL').get().n,2);
+    assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM events WHERE consumed_at IS NULL').get()!.n,2);
   }finally{f.close();}
 });
 
 test('manager pause keeps a running worker but does not implicitly resume dispatch',()=>{
   const f=fixture();try{
-    const tasks=createTasks(f.store,2),run=f.store.claimGoal(tasks[0].id);
+    const tasks=createTasks(f.store,2),run=f.store.claimGoal(tasks[0]!.id);
     f.store.control({action:'pause',requestId:'pause-manager'});assert.equal(f.store.isCurrent(run),true);
-    assert.equal(f.store.claimGoal(tasks[1].id),null);assert.throws(()=>f.store.control({action:'wake',requestId:'wake-paused'}),/explicitly/);
+    assert.equal(f.store.claimGoal(tasks[1]!.id),null);assert.throws(()=>f.store.control({action:'wake',requestId:'wake-paused'}),/explicitly/);
     f.store.message({message:'现在进度如何',requestId:'paused-message'});
     const managerRun=f.store.claimManager();assert.ok(managerRun);
     assert.equal(f.store.completeManager(managerRun,managerResult({reply:'总管调度已暂停，现有工人仍在办理。'})).committed,true);
-    assert.equal(f.store.snapshot().status,'paused');assert.equal(f.store.claimGoal(tasks[1].id),null);
+    assert.equal(f.store.snapshot().status,'paused');assert.equal(f.store.claimGoal(tasks[1]!.id),null);
   }finally{f.close();}
 });
 
@@ -186,28 +186,28 @@ test('cancel stops unfinished tasks and explicit resume never restarts cancelled
   const f=fixture({legacy:true});try{
     f.store.control({action:'cancel',requestId:'cancel-all'});
     const tasks=f.store.snapshot().tasks;
-    assert.equal(tasks.find(task=>task.id===1).status,'done');assert.equal(tasks.find(task=>task.id===1).acceptanceStatus,'accepted');
-    assert.equal(tasks.find(task=>task.id===2).status,'cancelled');assert.equal(tasks.find(task=>task.id===3).status,'cancelled');
+    assert.equal(tasks.find(task=>task.id===1)!.status,'done');assert.equal(tasks.find(task=>task.id===1)!.acceptanceStatus,'accepted');
+    assert.equal(tasks.find(task=>task.id===2)!.status,'cancelled');assert.equal(tasks.find(task=>task.id===3)!.status,'cancelled');
     f.store.control({action:'resume',requestId:'resume-manager'});assert.equal(f.store.snapshot().status,'active');assert.equal(f.store.claimGoal(3),null);
   }finally{f.close();}
 });
 
 test('expired action remains uncertain and retains the actual Mac resource until reviewed',()=>{
   const f=fixture();try{
-    const tasks=createTasks(f.store,2),run=f.store.claimGoal(tasks[0].id);
+    const tasks=createTasks(f.store,2),run=f.store.claimGoal(tasks[0]!.id);
     const action={type:'mac_codex',path:'/Users/yu/project',content:'work',command:'',reason:'work'};
     f.store.planActions(run,[action]);const receipt=f.store.beginAction(run,0,action);
     f.store.checkpointAction(receipt.id,{operationId:receipt.id,threadId:'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',route:'yu'});
     f.advance(61);assert.equal(f.store.renewRun(run.id,run.fence),false);assert.equal(f.store.recoverExpired(),1);assert.equal(f.store.recoverExpired(),0);
-    assert.equal(f.db.prepare('SELECT status FROM goals WHERE id=?').get(tasks[0].id).status,'blocked');
-    assert.throws(()=>f.store.controlTask(tasks[0].id,'resume'),/uncertain/);
-    const second=f.store.claimGoal(tasks[1].id);assert.ok(second);
+    assert.equal(f.db.prepare('SELECT status FROM goals WHERE id=?').get(tasks[0]!.id)!.status,'blocked');
+    assert.throws(()=>f.store.controlTask(tasks[0]!.id,'resume'),/uncertain/);
+    const second=f.store.claimGoal(tasks[1]!.id);assert.ok(second);
     const deferred=f.store.beginAction(second,0,action);assert.equal(deferred.deferred,true);f.store.finishRun(second);
-    assert.equal(f.store.claimGoal(tasks[1].id),null);
-    f.store.controlTask(tasks[0].id,'pause');
+    assert.equal(f.store.claimGoal(tasks[1]!.id),null);
+    f.store.controlTask(tasks[0]!.id,'pause');
     f.store.reconcileAction({actionId:receipt.id,outcome:'succeeded',note:'remote durable receipt checked',requestId:'reconcile-one',autoResume:true});
-    assert.equal(f.db.prepare('SELECT status FROM goals WHERE id=?').get(tasks[0].id).status,'paused');
-    assert.ok(f.store.claimGoal(tasks[1].id));
+    assert.equal(f.db.prepare('SELECT status FROM goals WHERE id=?').get(tasks[0]!.id)!.status,'paused');
+    assert.ok(f.store.claimGoal(tasks[1]!.id));
   }finally{f.close();}
 });
 
@@ -226,10 +226,10 @@ test('real manager lane uses the SDK turn to delegate and later accept reported 
     const codex={startThread:()=>({id:'manager-thread',run:async()=>({finalResponse:JSON.stringify(managerResult({tasks:[{key:'a',title:'report a',instruction:'write a',dependencies:[],acceptance_criteria:'a exists',resource_key:''},{key:'b',title:'report b',instruction:'write b',dependencies:[],acceptance_criteria:'b exists',resource_key:''}]}))})}),resumeThread:()=>({id:'manager-thread',run:async()=>{calls++;return {finalResponse:JSON.stringify(managerResult({reply:'两个报告均已验收。',reviews:f.store.snapshot().tasks.map(task=>({task_id:task.id,accepted:true,reason:'checked report'}))}))};}})};
     const runtime=createManagerRuntime({store:f.store,codex,workspaceRoot:f.root,logger:{error:()=>{}}});
     assert.equal(await runtime.wake(),true);const tasks=f.store.snapshot().tasks;assert.equal(tasks.length,2);
-    const first=f.store.claimGoal(tasks[0].id),second=f.store.claimGoal(tasks[1].id);assert.ok(first);assert.ok(second);
+    const first=f.store.claimGoal(tasks[0]!.id),second=f.store.claimGoal(tasks[1]!.id);assert.ok(first);assert.ok(second);
     for(const run of [first,second])f.store.commitRun(run,()=>{f.db.prepare("UPDATE goals SET status='done',last_summary='report file exists' WHERE id=?").run(run.goal_id);f.store.reportGoal(run.goal_id,'done','report file exists');return {summary:'reported'};});
     f.advance(2);assert.equal(await runtime.wake(),true);assert.equal(calls,1);assert.ok(f.store.snapshot().tasks.every(task=>task.acceptanceStatus==='accepted'));
-    assert.equal(f.store.snapshot().messages.at(-1).content,'两个报告均已验收。');
+    assert.equal(f.store.snapshot().messages.at(-1)!.content,'两个报告均已验收。');
   }finally{f.close();}
 });
 
@@ -239,12 +239,12 @@ test('new user input invalidates an old manager plan and preserves both messages
     const codex={startThread:()=>({id:'thread',run:async()=>{f.store.message({message:'改为新方案',requestId:'new-input'});return {finalResponse:JSON.stringify(managerResult({tasks:[{key:'old',title:'old',instruction:'old',dependencies:[]}]}))};}})};
     const runtime=createManagerRuntime({store:f.store,codex,workspaceRoot:f.root,logger:{error:()=>{}}});await runtime.wake();
     assert.equal(f.store.snapshot().tasks.length,0);assert.equal(f.store.snapshot().messages.length,2);
-    assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM manager_inbox WHERE consumed_at IS NULL').get().n,2);
+    assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM manager_inbox WHERE consumed_at IS NULL').get()!.n,2);
   }finally{f.close();}
 });
 
 test('streamed thread-start is checkpointed before the final message',async()=>{
-  let observed=null;
+  let observed: string | null = null;
   const thread={runStreamed:async()=>({events:(async function*(){yield {type:'thread.started',thread_id:'thread-early'};assert.equal(observed,'thread-early');yield {type:'item.completed',item:{type:'agent_message',text:'{"ok":true}'}};yield {type:'turn.completed',usage:{input_tokens:1}};})()})};
   const turn=await runStructuredTurn(thread,'prompt',{}, {onThread:id=>{observed=id;}});assert.equal(turn.finalResponse,'{"ok":true}');
 });
@@ -256,11 +256,11 @@ test('actual worker run commits input, output, report and a durable notification
     const runSource=source.slice(source.indexOf('async function runGoal('),source.indexOf('function scheduleGoalNow('));
     const ctx=vm.createContext({ownerRegistry:{currentOwner:()=> 'shiyan-private-owner'},PRIVATE_OWNER:'shiyan-private-owner',db:f.db,managerStore:f.store,process,AbortController,setTimeout,clearTimeout,setInterval,clearInterval,runStructuredTurn,canApplyGoalActions,resolveGoalRunState,resolveGoalRunFailure,now:f.now,runningGoalId:null,getGoal:id=>f.db.prepare('SELECT * FROM goals WHERE id=?').get(id),listGoalMemories:()=>[],listGoalTimeline:()=>[],listPendingEvents:(id,limit)=>f.db.prepare('SELECT * FROM events WHERE goal_id=? AND consumed_at IS NULL ORDER BY id LIMIT ?').all(id,limit),storeMemories:()=>{},getThread:()=>({id:'worker-thread',run:async()=>({finalResponse:JSON.stringify({status:'done',summary:'result complete',notify:true,notification:'result complete',memories:[],actions:[],wake_after_seconds:900})})}),AGENT_SCHEMA:{},buildAgentPrompt:()=>'',parseJson:JSON.parse,json:JSON.stringify,clampInt:(value,min,max,fallback)=>value||fallback,executeSafeActions:async()=>[],addTimeline:(goalId,kind,message,data)=>f.db.prepare('INSERT INTO timeline(goal_id,kind,message,data,created_at) VALUES(?,?,?,?,?)').run(goalId,kind,message,JSON.stringify(data||{}),f.now()),createApproval:()=>assert.fail('unexpected approval'),mcpBridge:{emitNotification:async()=>{throw new Error('delivery unavailable');}},addNotification:async()=>assert.fail('durable notification should already exist')});
     vm.runInContext(runSource,ctx);await ctx.runGoal(task.id);
-    assert.equal(f.db.prepare('SELECT status FROM goals WHERE id=?').get(task.id).status,'done');
-    assert.equal(f.db.prepare('SELECT consumed_at FROM events').get().consumed_at,100);
-    assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM agent_outputs').get().n,1);
-    assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM notifications').get().n,1);
-    assert.equal(f.db.prepare('SELECT state FROM manager_runs').get().state,'completed');
+    assert.equal(f.db.prepare('SELECT status FROM goals WHERE id=?').get(task.id)!.status,'done');
+    assert.equal(f.db.prepare('SELECT consumed_at FROM events').get()!.consumed_at,100);
+    assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM agent_outputs').get()!.n,1);
+    assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM notifications').get()!.n,1);
+    assert.equal(f.db.prepare('SELECT state FROM manager_runs').get()!.state,'completed');
     assert.ok(f.store.activity({limit:200}).activity.some(event=>event.kind==='worker_report'));
   }finally{f.close();}
 });
@@ -282,13 +282,13 @@ test('old executing approvals become uncertain receipts without rerunning comman
     const [task]=createTasks(f.store),id=f.store.bindApproval(task.id,'review','printf ok');
     f.db.prepare("UPDATE goals SET status='waiting_approval' WHERE id=?").run(task.id);
     f.db.prepare("UPDATE approvals SET status='executing' WHERE id=?").run(id);f.reopen();
-    assert.equal(f.db.prepare('SELECT status FROM approvals WHERE id=?').get(id).status,'unknown');
-    assert.equal(f.db.prepare('SELECT status FROM goals WHERE id=?').get(task.id).status,'blocked');
+    assert.equal(f.db.prepare('SELECT status FROM approvals WHERE id=?').get(id)!.status,'unknown');
+    assert.equal(f.db.prepare('SELECT status FROM goals WHERE id=?').get(task.id)!.status,'blocked');
     assert.equal(f.store.unknownActions().length,1);assert.ok(f.db.prepare("SELECT 1 FROM manager_resources WHERE resource_key='host:executor'").get());
     const actionId=f.store.unknownActions()[0].id;
     f.store.reconcileAction({actionId,outcome:'succeeded',note:'User checked the old command outcome',requestId:'legacy-reviewed'});
-    assert.equal(f.db.prepare('SELECT status FROM approvals WHERE id=?').get(id).status,'executed');
-    assert.equal(f.db.prepare('SELECT status FROM goals WHERE id=?').get(task.id).status,'blocked');
+    assert.equal(f.db.prepare('SELECT status FROM approvals WHERE id=?').get(id)!.status,'executed');
+    assert.equal(f.db.prepare('SELECT status FROM goals WHERE id=?').get(task.id)!.status,'blocked');
   }finally{f.close();}
 });
 
@@ -301,8 +301,8 @@ test('approval execution keeps a committed success when notification delivery fa
     let calls=0;
     const ctx=vm.createContext({ownerRegistry:{currentOwner:()=> 'shiyan-private-owner'},PRIVATE_OWNER:'shiyan-private-owner',db:f.db,managerStore:f.store,process,setInterval,clearInterval,now:f.now,getGoal:id=>f.db.prepare('SELECT * FROM goals WHERE id=?').get(id),catastrophicCommand:()=>false,execFileAsync:async()=>{calls++;return {stdout:'ok',stderr:''};},scheduleGoalNow:()=>{},addTimeline:()=>{},addNotification:async()=>{throw new Error('notification unavailable');}});
     vm.runInContext(approvalSource,ctx);const result=await ctx.decideApproval(id,'approve');
-    assert.equal(result.state,'executed');assert.equal(calls,1);assert.equal(f.db.prepare('SELECT status FROM approvals WHERE id=?').get(id).status,'executed');
-    assert.equal(f.db.prepare("SELECT state FROM manager_actions WHERE json_extract(payload,'$.approvalId')=?").get(id).state,'succeeded');
+    assert.equal(result.state,'executed');assert.equal(calls,1);assert.equal(f.db.prepare('SELECT status FROM approvals WHERE id=?').get(id)!.status,'executed');
+    assert.equal(f.db.prepare("SELECT state FROM manager_actions WHERE json_extract(payload,'$.approvalId')=?").get(id)!.state,'succeeded');
   }finally{f.close();}
 });
 
@@ -313,7 +313,7 @@ test('approval timeout becomes unknown and blocks replay until explicit reconcil
     const approvalSource=source.slice(source.indexOf('async function decideApproval('),source.indexOf('function detailedGoal('));
     const ctx=vm.createContext({ownerRegistry:{currentOwner:()=> 'shiyan-private-owner'},PRIVATE_OWNER:'shiyan-private-owner',db:f.db,managerStore:f.store,process,setInterval,clearInterval,now:f.now,getGoal:id=>f.db.prepare('SELECT * FROM goals WHERE id=?').get(id),catastrophicCommand:()=>false,execFileAsync:async()=>{throw Object.assign(new Error('timed out'),{killed:true});},scheduleGoalNow:()=>assert.fail('unknown command must not schedule replay'),addTimeline:()=>{},addNotification:async()=>{}});
     vm.runInContext(approvalSource,ctx);const result=await ctx.decideApproval(id,'approve');assert.equal(result.httpStatus,409);
-    assert.equal(f.db.prepare('SELECT status FROM approvals WHERE id=?').get(id).status,'unknown');assert.equal(f.db.prepare('SELECT status FROM goals WHERE id=?').get(task.id).status,'blocked');
+    assert.equal(f.db.prepare('SELECT status FROM approvals WHERE id=?').get(id)!.status,'unknown');assert.equal(f.db.prepare('SELECT status FROM goals WHERE id=?').get(task.id)!.status,'blocked');
     assert.ok(f.db.prepare("SELECT 1 FROM manager_resources WHERE resource_key='host:executor'").get());
   }finally{f.close();}
 });
@@ -322,10 +322,10 @@ test('stale manager failure preserves immediate new input and persistent user no
   const f=fixture();try{
     const first=f.store.message({message:'报告默认中文',requestId:'pref'}),run=f.store.claimManager();
     f.store.message({message:'现在开始',requestId:'newer'});f.store.failManager(run,'old turn error');
-    assert.equal(f.db.prepare('SELECT next_wake_at FROM managers').get().next_wake_at,100);
+    assert.equal(f.db.prepare('SELECT next_wake_at FROM managers').get()!.next_wake_at,100);
     const next=f.store.claimManager();assert.ok(next);
     f.store.completeManager(next,managerResult({notes:[{key:'report-language',scope:'user_preference',content:'报告使用中文',source_message_id:first.message.id}]}));
-    f.reopen();assert.equal(f.store.snapshot().notes[0].content,'报告使用中文');
+    f.reopen();assert.equal(f.store.snapshot().notes[0]!.content,'报告使用中文');
   }finally{f.close();}
 });
 
@@ -333,7 +333,7 @@ test('scheduler does not starve an eligible task behind one hundred waiting depe
   const f=fixture();try{
     const [dependency]=createTasks(f.store);f.db.prepare("UPDATE goals SET status='blocked' WHERE id=?").run(dependency.id);
     for(let batch=0;batch<13;batch++)f.store.createTasks(Array.from({length:8},(_,index)=>({key:'b'+batch+'-'+index,title:'waiting '+batch+'-'+index,instruction:'waiting',dependencies:['task:'+dependency.id]})));
-    const [ready]=f.store.createTasks([{key:'ready',title:'Independent ready issue',instruction:'Execute ready work',dependencies:[]}]),seen=[];
+    const [ready]=f.store.createTasks([{key:'ready',title:'Independent ready issue',instruction:'Execute ready work',dependencies:[]}]),seen: any[]=[];
     const source=readFileSync(new URL('./server.mjs',import.meta.url),'utf8');
     const schedulerSource=source.slice(source.indexOf('async function schedulerTickForOwner('),source.indexOf('async function schedulerTick(',source.indexOf('async function schedulerTickForOwner(')));
     const ctx=vm.createContext({ownerRegistry:{currentOwner:()=> 'shiyan-private-owner'},PRIVATE_OWNER:'shiyan-private-owner',db:f.db,managerStore:f.store,managerRuntime:{wake:async()=>{}},reconcileUnknownMacActions:async()=>{},now:f.now,runGoal:id=>{seen.push(id);return Promise.resolve();},console});
@@ -345,7 +345,7 @@ test('HTTP idempotent message and control replays do not abort a valid manager t
   const f=fixture();try{
     const source=readFileSync(new URL('./server.mjs',import.meta.url),'utf8');
     const handleSource=source.slice(source.indexOf('async function handle('),source.indexOf('let closeLocalMcpSocket'));
-    let abort=null,interrupts=0,response;
+    let abort: AbortController | null = null,interrupts=0,response;
     const ctx=vm.createContext({ownerRegistry:{currentOwner:()=> 'shiyan-private-owner'},PRIVATE_OWNER:'shiyan-private-owner',db:f.db,managerStore:f.store,managerRuntime:{interrupt:()=>{interrupts++;abort?.abort();},wake:async()=>{}},HOST:'127.0.0.1',PORT:4330,TOKEN:'test-fixture',URL,mcpBridge:{matches:()=>false},readJson:async req=>req.body,send:(_res,status,body)=>{response={status,body};},setImmediate:()=>{}});
     vm.runInContext(handleSource,ctx);
     const invoke=async(operation,body)=>{await ctx.handle({method:'POST',url:'/v1/managers/shiyan-private-owner/'+operation,headers:{authorization:'Bearer test-fixture'},body},{});return response;};
@@ -353,12 +353,12 @@ test('HTTP idempotent message and control replays do not abort a valid manager t
     const first=await invoke('messages',input);assert.equal(first.status,202);assert.equal(interrupts,1);
     const run=f.store.claimManager();assert.ok(run);abort=new AbortController();
     const duplicate=await invoke('messages',input);
-    assert.equal(duplicate.body.message.id,first.body.message.id);assert.equal(abort.signal.aborted,false);assert.equal(interrupts,1);assert.equal(f.store.isCurrent(run),true);
+    assert.equal(duplicate.body.message.id,first.body.message.id);assert.equal(abort!.signal.aborted,false);assert.equal(interrupts,1);assert.equal(f.store.isCurrent(run),true);
     await invoke('messages',{...input,requestId:'http-message-two',message:'现在查进度'});
-    assert.equal(abort.signal.aborted,true);assert.equal(interrupts,2);
+    assert.equal(abort!.signal.aborted,true);assert.equal(interrupts,2);
     await invoke('control',{action:'pause',requestId:'http-control-one'});assert.equal(interrupts,3);
     abort=new AbortController();await invoke('control',{action:'pause',requestId:'http-control-one'});
-    assert.equal(abort.signal.aborted,false);assert.equal(interrupts,3);
+    assert.equal(abort!.signal.aborted,false);assert.equal(interrupts,3);
   }finally{f.close();}
 });
 
@@ -368,20 +368,20 @@ test('one issue retains its task across blocking, repair and acceptance',()=>{
     const [original]=f.store.createTasks([{key:'issue',title:'修复执行权限',instruction:'排查并验证执行权限',dependencies:[]}]);
     f.db.prepare("UPDATE goals SET status='blocked',next_wake_at=NULL WHERE id=?").run(original.id);
     assert.throws(()=>f.store.createTasks([{key:'duplicate',title:'  修复执行权限  ',instruction:'继续修复',dependencies:[]}]),/already has a task/);
-    assert.equal(f.db.prepare('SELECT count(*) AS n FROM goals').get().n,1);
+    assert.equal(f.db.prepare('SELECT count(*) AS n FROM goals').get()!.n,1);
     f.store.controlTask(original.id,'instruct',{message:'权限已修复，在原事项验证结果'});
-    assert.equal(f.store.snapshot().tasks.find(t=>t.id===original.id).status,'active');
+    assert.equal(f.store.snapshot().tasks.find(t=>t.id===original.id)!.status,'active');
     f.db.prepare("UPDATE goals SET status='done',acceptance_status='pending' WHERE id=?").run(original.id);
     assert.throws(()=>f.store.createTasks([{key:'verify',title:'修复执行权限',instruction:'验收',dependencies:[]}]),/already has a task/);
     f.store.acceptTask(original.id,{accepted:false,reason:'需要补齐验证'});
-    assert.equal(f.store.snapshot().tasks.find(t=>t.id===original.id).status,'active');
+    assert.equal(f.store.snapshot().tasks.find(t=>t.id===original.id)!.status,'active');
   }finally{f.close();}
 });
 
 test('duplicate issues in one plan fail atomically',()=>{
   const f=fixture();try{
     assert.throws(()=>f.store.createTasks([{key:'one',title:'Repair login',instruction:'check',dependencies:[]},{key:'two',title:'repair   login',instruction:'repair',dependencies:[]}]),/already has a task/);
-    assert.equal(f.db.prepare('SELECT count(*) AS n FROM goals').get().n,0);
+    assert.equal(f.db.prepare('SELECT count(*) AS n FROM goals').get()!.n,0);
     const tasks=f.store.createTasks([{key:'one',title:'修复登录',instruction:'check',dependencies:[]},{key:'two',title:'修复图片预览',instruction:'check',dependencies:[]}]);
     assert.equal(tasks.length,2);
   }finally{f.close();}
@@ -396,19 +396,19 @@ test('semantic continuation retains task identity, worker threads, dependencies 
     f.db.prepare("UPDATE goals SET thread_id='worker-thread',mac_thread_id='mac-thread',run_count=4 WHERE id=?").run(original.id);
     f.store.message({message:'进入账号以后屏幕还是空的，接着看下回调并验证',requestId:'related-followup'});
     const user=f.store.snapshot().messages.at(-1);
-    const prompts=[];
+    const prompts: any[] = [];
     const result=managerResult({reply:'继续处理登录后空白。',continuations:[continuation(original,user,{message:user.content})]});
     const codex={startThread:()=>({id:'manager',run:async prompt=>{prompts.push(prompt);return {finalResponse:JSON.stringify(result)};}})};
     assert.equal(await createManagerRuntime({store:f.store,codex,workspaceRoot:f.root,logger:{error(){}}}).wake(),true);
     assert.equal(f.store.snapshot().tasks.length,1);
-    const row=f.db.prepare('SELECT * FROM goals WHERE id=?').get(original.id);
+    const row=f.db.prepare('SELECT * FROM goals WHERE id=?').get(original.id)!;
     assert.equal(row.id,original.id);assert.equal(row.thread_id,'worker-thread');assert.equal(row.mac_thread_id,'mac-thread');assert.equal(row.run_count,4);
     assert.equal(row.instruction,'排查登录回调');assert.equal(row.status,'active');
-    assert.equal(f.db.prepare("SELECT payload FROM events WHERE goal_id=? AND type='user_instruction'").get(original.id).payload,user.content);
+    assert.equal(f.db.prepare("SELECT payload FROM events WHERE goal_id=? AND type='user_instruction'").get(original.id)!.payload,user.content);
     assert.match(prompts[0],/Shared words or being in the same project alone are not sufficient/);
     f.reopen();assert.equal(f.store.snapshot().tasks.length,1);
     assert.deepEqual(f.store.taskContinuationContext(original.id),[user.content]);
-    assert.equal(f.store.activity().activity.find(a=>a.kind==='task_continued').taskId,original.id);
+    assert.equal(f.store.activity().activity.find(a=>a.kind==='task_continued')!.taskId,original.id);
   }finally{f.close();}
 });
 
@@ -419,11 +419,11 @@ test('new user follow-up reopens the same completed task without replacing its a
     const user=f.store.message({message:'这个问题还有一个边界情况，接着修复',requestId:'after-acceptance'}).message;
     const run=f.store.claimManager();const completed=f.store.completeManager(run,managerResult({continuations:[continuation(original,user)]}));
     assert.equal(completed.value.tasks.length,0);assert.equal(completed.value.continuedTasks[0].id,original.id);
-    const row=f.db.prepare('SELECT * FROM goals WHERE id=?').get(original.id);
+    const row=f.db.prepare('SELECT * FROM goals WHERE id=?').get(original.id)!;
     assert.equal(row.status,'active');assert.equal(row.acceptance_status,'changes_requested');assert.equal(row.thread_id,'keep-thread');assert.equal(row.last_summary,'此前验收结果');
     assert.equal(f.store.taskEligibility(original.id),true);
     assert.equal(f.store.completeManager(run,managerResult({continuations:[continuation(original,user)]})).committed,false);
-    assert.equal(f.db.prepare("SELECT count(*) AS n FROM events WHERE type='user_instruction'").get().n,1);
+    assert.equal(f.db.prepare("SELECT count(*) AS n FROM events WHERE type='user_instruction'").get()!.n,1);
   }finally{f.close();}
 });
 
@@ -447,13 +447,13 @@ test('continuations reevaluate pending proposals while preserving paused and unc
       const after=f.store.snapshot().tasks[0];
       if(blockedBy==='pending'){
         assert.equal(after.status,'active');assert.equal(after.controlRevision,before.controlRevision+1);assert.equal(after.nextWakeAt,f.now());
-        assert.equal(f.db.prepare('SELECT status FROM approvals WHERE goal_id=?').get(original.id).status,'superseded');
+        assert.equal(f.db.prepare('SELECT status FROM approvals WHERE goal_id=?').get(original.id)!.status,'superseded');
         assert.equal(f.store.taskEligibility(original.id),true);
-        assert.equal(f.store.activity({limit:200}).activity.find(a=>a.kind==='task_continued').data.deferred,false);
+        assert.equal(f.store.activity({limit:200}).activity.find(a=>a.kind==='task_continued')!.data.deferred,false);
       }else{
         assert.equal(after.status,before.status);assert.equal(after.controlRevision,before.controlRevision);assert.equal(after.nextWakeAt,before.nextWakeAt);
         assert.equal(f.store.taskEligibility(original.id),false);
-        assert.equal(f.store.activity({limit:200}).activity.find(a=>a.kind==='task_continued').data.deferred,true);
+        assert.equal(f.store.activity({limit:200}).activity.find(a=>a.kind==='task_continued')!.data.deferred,true);
       }
       assert.equal(f.store.taskContinuationContext(original.id).length,1);
     }finally{f.close();}
@@ -475,7 +475,7 @@ test('continuation rejects foreign or stale sources, mismatched projects, cancel
       if(invalid==='missing-project')command.resource_key='';
       const run=f.store.claimManager();
       assert.throws(()=>f.store.completeManager(run,managerResult({continuations:invalid==='duplicate'?[command,command]:[command]})));
-      assert.equal(f.db.prepare("SELECT count(*) AS n FROM events WHERE type='user_instruction'").get().n,0);
+      assert.equal(f.db.prepare("SELECT count(*) AS n FROM events WHERE type='user_instruction'").get()!.n,0);
       assert.equal(f.store.snapshot().tasks.length,1);
       assert.equal(f.store.snapshot().messages.filter(m=>m.role==='assistant').length,1);
     }finally{f.close();}
@@ -490,7 +490,7 @@ test('background reports cannot reopen completed tasks without new user authoriz
     f.db.prepare("UPDATE goals SET status='done',acceptance_status='accepted',next_wake_at=NULL WHERE id=?").run(original.id);
     f.store.reportGoal(original.id,'done','Worker report');f.advance(2);
     assert.throws(()=>f.store.completeManager(f.store.claimManager(),managerResult({continuations:[continuation(original,user)]})),/current user/);
-    assert.equal(f.store.snapshot().tasks[0].status,'done');
+    assert.equal(f.store.snapshot().tasks[0]!.status,'done');
   }finally{f.close();}
 });
 
@@ -512,7 +512,7 @@ test('routing prompt includes older active issues beyond the UI snapshot and dis
 test('same title in distinct projects does not force unrelated work onto the same task',()=>{
   const f=fixture();try{
     const tasks=f.store.createTasks([{key:'a',title:'修复登录',instruction:'Project A',resource_key:'project:A',dependencies:[]},{key:'b',title:'修复登录',instruction:'Project B',resource_key:'project:B',dependencies:[]}]);
-    assert.equal(tasks.length,2);assert.notEqual(tasks[0].id,tasks[1].id);
+    assert.equal(tasks.length,2);assert.notEqual(tasks[0]!.id,tasks[1]!.id);
     assert.throws(()=>f.store.createTasks([{key:'again',title:'修复登录',instruction:'Continue A',resource_key:'project:A',dependencies:[]}]),/already has a task/);
   }finally{f.close();}
 });
@@ -523,7 +523,7 @@ test('Mac execution preserves stable project identity for duplicate protection a
     const [original]=f.store.createTasks([{key:'one',title:'修复登录',instruction:'Repair A',dependencies:[],resource_key:'mac:/Users/yu/A'}]);
     const worker=f.store.claimGoal(original.id);
     f.store.beginAction(worker,0,{type:'mac_codex',path:'/Users/yu/A',prompt:'Repair login'});
-    assert.equal(f.db.prepare('SELECT resource_key FROM goals WHERE id=?').get(original.id).resource_key,'mac:/Users/yu/A');
+    assert.equal(f.db.prepare('SELECT resource_key FROM goals WHERE id=?').get(original.id)!.resource_key,'mac:/Users/yu/A');
     assert.ok(f.db.prepare("SELECT 1 FROM manager_resources WHERE resource_key='mac:executor'").get());
     f.store.finishAction(worker.id+':0',{type:'mac_codex',ok:true});f.store.finishRun(worker);
     assert.throws(()=>f.store.createTasks([{key:'dup',title:'修复登录',instruction:'Continue A',dependencies:[],resource_key:'mac:/Users/yu/A/'}]),/already has a task/);
@@ -544,7 +544,7 @@ test('legacy executor-only keys recover the recorded Mac project and never behav
     f.store.finishAction(worker.id+':0',{type:'mac_codex',ok:true});f.store.finishRun(worker);
     f.db.prepare("UPDATE goals SET resource_key='mac:executor' WHERE id=?").run(original.id);
     f.reopen();
-    assert.equal(f.store.snapshot().tasks[0].resourceKey,'mac:/Users/yu/A');
+    assert.equal(f.store.snapshot().tasks[0]!.resourceKey,'mac:/Users/yu/A');
     assert.equal(f.store.routingTasks()[0].resourceKey,'mac:/Users/yu/A');
     assert.throws(()=>f.store.createTasks([{key:'dup',title:'修复登录',instruction:'Continue A',dependencies:[],resource_key:'mac:/Users/yu/A'}]),/already has a task/);
     const user=f.store.message({message:'Continue',requestId:'legacy-project'}).message;
@@ -577,7 +577,7 @@ test('large task history stays within a strict prompt budget while retaining old
     f.store.message({message:'继续事项 '+target+'，沿用原来的验收条件',requestId:'large-history'});
     const run=f.store.claimManager();
     const prompt=buildManagerPrompt(f.store,run);
-    assert.ok(prompt.length<180000,prompt.length);assert.ok(Buffer.byteLength(prompt)<480000,Buffer.byteLength(prompt));
+    assert.ok(prompt.length<180000,String(prompt.length));assert.ok(Buffer.byteLength(prompt)<480000,String(Buffer.byteLength(prompt)));
     assert.match(prompt,/早期仍在处理的事项/);
     const context=JSON.parse(prompt.split('TASKS AND REPORTS\n')[1].split('\nNEW INPUT')[0]);
     assert.ok(context.directory.some(task=>task.id===active.id));assert.ok(context.directory.some(task=>task.id===target));
@@ -606,8 +606,8 @@ test('manager uses one model call with server-prepared task context to continue 
     assert.equal(await createManagerRuntime({store:f.store,codex:{startThread:()=>thread},workspaceRoot:f.root,logger:{error(){}}}).wake(),true);
     assert.equal(turns,1);assert.equal(f.store.snapshot().tasks.length,1);
     assert.equal(f.store.snapshot().messages.filter(m=>m.role==='assistant').length,1);
-    assert.equal(f.db.prepare('SELECT thread_id FROM goals WHERE id=?').get(task.id).thread_id,'preserved-worker');
-    assert.equal(f.store.snapshot().tasks[0].status,'active');
+    assert.equal(f.db.prepare('SELECT thread_id FROM goals WHERE id=?').get(task.id)!.thread_id,'preserved-worker');
+    assert.equal(f.store.snapshot().tasks[0]!.status,'active');
   }finally{f.close();}
 });
 
@@ -623,7 +623,7 @@ test('inspection cannot mutate task state, access another manager or hide a stal
       return {finalResponse:JSON.stringify(managerResult({inspect_tasks:[{task_id:task.id,query:''}]}))};
     }};
     assert.equal(await createManagerRuntime({store:f.store,codex:{startThread:()=>thread},workspaceRoot:f.root,logger:{error(){}}}).wake(),false);
-    assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM manager_runs WHERE state='running'").get().n,0);
+    assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM manager_runs WHERE state='running'").get()!.n,0);
     assert.equal(f.store.snapshot().messages.filter(m=>m.role==='assistant').length,0);
     assert.ok(f.store.claimManager());
   }finally{f.close();}
