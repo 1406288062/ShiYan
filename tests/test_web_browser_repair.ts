@@ -5,8 +5,8 @@ import vm from 'node:vm';
 const platformSource=fs.readFileSync(new URL('../shared/frontend/assets/platform.js',import.meta.url),'utf8');
 const questionSource=fs.readFileSync(new URL('../shared/frontend/assets/user-input.js',import.meta.url),'utf8');
 test('Web marks its platform and coalesces subscriptions until after window load',()=>{
- const listeners={},tasks=[];const document={readyState:'interactive',documentElement:{dataset:{}}};
- const window={__SHIYAN_PLATFORM__:{mode:'web'},addEventListener:(name,fn)=>listeners[name]=fn};
+ const listeners: any={},tasks: any[]=[];const document: any={readyState:'interactive',documentElement:{dataset:{}}};
+ const window: any={__SHIYAN_PLATFORM__:{mode:'web'},addEventListener:(name,fn)=>listeners[name]=fn};
  vm.runInNewContext(platformSource,{window,document,setTimeout:fn=>tasks.push(fn)});
  assert.equal(document.documentElement.dataset.shiyanPlatform,'web');
  let calls=0;const subscribe=()=>calls++;
@@ -17,12 +17,12 @@ test('Web marks its platform and coalesces subscriptions until after window load
  assert.equal(window.ShiYanPlatform.deferUntilLoaded(subscribe),false);
 });
 test('Desktop never defers its existing subscriptions',()=>{
- const document={readyState:'loading',documentElement:{dataset:{}}};const window={__SHIYAN_PLATFORM__:{mode:'desktop'}};
+ const document: any={readyState:'loading',documentElement:{dataset:{}}};const window: any={__SHIYAN_PLATFORM__:{mode:'desktop'}};
  vm.runInNewContext(platformSource,{window,document});assert.equal(window.ShiYanPlatform.deferUntilLoaded(()=>{}),false);
  assert.equal(document.documentElement.dataset.shiyanPlatform,'desktop');
 });
 function questions(mode='web',state='running'){
- const listeners={},calls=[];let tick,now=100000,result={pendingQuestions:[]},failure=null;
+ const listeners: any={},calls: any[]=[];let tick,now=100000,result={pendingQuestions:[]},failure=null;
  const message={id:'m1',role:'assistant',remoteJobId:'j1',state};
  const snapshot={selectedConversationId:'c1',conversations:[{id:'c1',messages:[message]}]};
  const window={ShiYanPlatform:{mode},addEventListener:(name,fn)=>listeners[name]=fn,
