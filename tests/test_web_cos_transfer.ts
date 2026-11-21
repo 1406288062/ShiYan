@@ -40,7 +40,7 @@ function setup({mode='web',available=true,uploads=[ticket()],initError,completeE
     photoBusy:()=>false,toast(){},confirmAction:async()=>true,setText(){},show(){},
     setTimeout:(fn,delay)=>{timers.set(++clock,{fn,delay});return clock;},clearTimeout:id=>timers.delete(id)};
   vm.createContext(context);vm.runInContext(adapterSource,context);
-  vm.runInContext('let workspaceSaveQueue=Promise.resolve();\n'+['upload','saveWorkspace','chooseWebHomeImage'].map(extract).join('\n'),context);
+  vm.runInContext('let workspaceSaveQueue=Promise.resolve();\n'+['upload','saveWorkspace','chooseHomeImage','choosePreviewHomeImage'].map(extract).join('\n'),context);
   return {window,context,requests,calls,legacy,updates,timers,fields,timings,get active(){return count>0;},finishComplete:()=>completeResolve?.(),
     run:(items=[file()],kind='input')=>context.upload(items,kind),
     direct:(items=[file()],kind='input')=>window.ShiYanCosTransfer.upload(items,kind,api,p=>updates.push(p),'enhance')};
@@ -128,7 +128,7 @@ test('browser controls Content-Length and aggregate progress increases across se
 });
 
 test('real image chooser keeps the local original available after a failed COS upload',async()=>{
-  const s=setup(),original=file();const pending=s.context.chooseWebHomeImage(original);
+  const s=setup(),original=file();const pending=s.context.chooseHomeImage(original);
   assert.equal(s.context.ui.input.url,'blob:fixture');assert.equal(s.context.ui.photoUploading,true);await settle();
   s.requests[0].onerror();await pending;
   assert.equal(s.context.ui.input.url,'blob:fixture');assert.equal(s.context.ui.photoUploadFile,original);
@@ -137,7 +137,7 @@ test('real image chooser keeps the local original available after a failed COS u
 });
 
 test('real image chooser preserves decoded local preview after COS completion',async()=>{
-  const s=setup(),original=file();const pending=s.context.chooseWebHomeImage(original);await settle();
+  const s=setup(),original=file();const pending=s.context.chooseHomeImage(original);await settle();
   s.requests[0].respond();await pending;
   assert.equal(s.context.ui.input.id,'asset-0');assert.equal(s.context.ui.input.url,'blob:fixture');
   assert.equal(s.context.ui.photoUploadFile,null);assert.equal(s.context.ui.photoUploading,false);
@@ -157,13 +157,13 @@ test('non-enhancement input never starts COS and the image batch limit is checke
 });
 
 test('unknown remote original dimensions keep the decoded single-image preview size without metadata upload',async()=>{
- const s=setup({unknownDimensions:true}),pending=s.context.chooseWebHomeImage(file());await settle();s.requests[0].respond();await pending;
+ const s=setup({unknownDimensions:true}),pending=s.context.chooseHomeImage(file());await settle();s.requests[0].respond();await pending;
  assert.equal(s.context.ui.input.width,32);assert.equal(s.context.ui.input.height,24);assert.equal(s.context.ui.input.url,'blob:fixture');
  assert(!('width' in s.calls[0].body.files[0]));assert(!('height' in s.calls[0].body.files[0]));
 });
 test('single-image preview remains local and gets dimensions when decode finishes after upload',async()=>{
  const s=setup({unknownDimensions:true});let loaded;
  s.context.Image=class{naturalWidth=0;naturalHeight=0;onload: any;set src(value){loaded=()=>{this.naturalWidth=88;this.naturalHeight=99;this.onload();};}};
- const pending=s.context.chooseWebHomeImage(file());await settle();s.requests[0].respond();await pending;
+ const pending=s.context.chooseHomeImage(file());await settle();s.requests[0].respond();await pending;
  assert.equal(s.context.ui.input.url,'blob:fixture');loaded();assert.equal(s.context.ui.input.width,88);assert.equal(s.context.ui.input.height,99);
 });

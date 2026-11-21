@@ -106,18 +106,18 @@ function appSetup(): any {
   Object.assign(s.context,{EventSource,ui:{input:null,result:null,photoUploadFile:null,photoLocalURL:null,feature:'enhance',model:'general',photoUploading:false},state:{settings:{}},
     URL:{createObjectURL:()=> 'blob:fixture',revokeObjectURL(){}},Image:class{naturalWidth=32;naturalHeight=24;onload: any;set src(value){this.onload?.();}},
     $:id=>{if(!fields.has(id))fields.set(id,{disabled:false,value:''});return fields.get(id);},renderPhoto(){},renderConnection(){},setText(){},show(){},
-    remember:asset=>asset,applyState(){},humanError:value=>String(value),toast:value=>toasts.push(value),confirmAction:async()=>true,
+    remember:asset=>asset,photoBusy:()=>false,applyState(){},humanError:value=>String(value),toast:value=>toasts.push(value),confirmAction:async()=>true,
     fetch:async(path,options)=>{fetches.push({path,options});if(path==='/api/settings?compact=1')return new Promise(resolve=>{releaseSettings=()=>resolve({ok:true,json:async()=>({ok:true})});});return {ok:true,json:async()=>({ok:true})};}
   });
   s.context.FormData=class {append(){}};s.window.ShiYanPlatform={mode:'web'};
-  const listener=appSource.slice(appSource.indexOf("  window.addEventListener('shiyan-upload-priority-change'"),appSource.indexOf('  async function start()'));
-  vm.runInContext('let workspaceSaveQueue=Promise.resolve(),eventSource=null;\n'+['api','upload','saveWorkspace','chooseWebHomeImage','connectStateEvents'].map(extract).join('\n')+'\n'+listener,s.context);
+  const listener=appSource.slice(appSource.indexOf('  window.addEventListener("shiyan-upload-priority-change"'),appSource.indexOf('  async function start()'));
+  vm.runInContext('let workspaceSaveQueue=Promise.resolve(),eventSource=null;\n'+['api','upload','saveWorkspace','chooseHomeImage','choosePreviewHomeImage','connectStateEvents','isApplicationStateSnapshot'].map(extract).join('\n')+'\n'+listener,s.context);
   return {...s,fetches,fields,streams,toasts,releaseSettings:()=>releaseSettings?.()};
 }
 
 test('actual app pauses state SSE and background fetches during upload, then resumes before settings reply',async()=>{
   const s=appSetup();s.context.connectStateEvents();assert.equal(s.streams.length,1);
-  const pending=s.context.chooseWebHomeImage({name:'fixture.png',size:128,type:'image/png'});
+  const pending=s.context.chooseHomeImage({name:'fixture.png',size:128,type:'image/png'});
   assert.equal(s.priority.active,true);assert.equal(s.streams[0].closed,true);
   const background=s.context.api('/api/dots/local-state','PATCH',{state:{cursor:1}});
   const manager=s.context.api('/api/dots/manager');const state=s.context.api('/api/state');
@@ -132,7 +132,7 @@ test('actual app pauses state SSE and background fetches during upload, then res
 
 test('actual app releases background fetches and restores SSE after upload failure while retaining retry preview',async()=>{
   const s=appSetup();s.context.connectStateEvents();const file={name:'fixture.png',size:128,type:'image/png'};
-  const pending=s.context.chooseWebHomeImage(file);const background=s.context.api('/api/dots/local-state','PATCH',{state:{cursor:1}});
+  const pending=s.context.chooseHomeImage(file);const background=s.context.api('/api/dots/local-state','PATCH',{state:{cursor:1}});
   await settle();assert.equal(s.fetches.length,0);s.requests[0].emit('error');await pending;await background;
   assert.equal(s.priority.active,false);assert.equal(s.streams.length,2);assert.equal(s.streams[1].closed,false);
   assert.equal(s.context.ui.photoUploading,false);assert.equal(s.context.ui.photoUploadFile,file);assert.equal(s.context.ui.input.url,'blob:fixture');

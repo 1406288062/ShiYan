@@ -27,6 +27,6 @@ test('a complete application snapshot with conversations is accepted', () => {
 });
 
 test('the shared API applies only complete application snapshots', () => {
-  assert.match(source, /if\(isApplicationStateSnapshot\(data\.state\)\) applyState\(data\.state\);/);
+  assert.match(source, /if \(isApplicationStateSnapshot\(data\.state\)\) applyState\(data\.state\);/);
   assert.doesNotMatch(source, /if\(data\.state\) applyState\(data\.state\);/);
 });

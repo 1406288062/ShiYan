@@ -12,7 +12,7 @@ function storage(): any {
 let serial = 0
 async function fixture() {
  globalThis.localStorage = storage()
- return import('../src/composables/knowledgeCache.js?test=' + serial++)
+ return import('../src/composables/knowledgeCache.ts?test=' + serial++)
 }
 test('cache persists reading data and isolates accounts without persisting credentials', async () => {
  const c = await fixture(); c.setKnowledgeCacheOwner('alice')

@@ -182,7 +182,7 @@ test('web adapter uses bounded document sandboxing and no global cleanup/fetch/l
   assert.equal(source.includes('setInterval'), false);
   assert.equal(source.includes('message-reference'), false);
   assert.equal(source.includes('allow-same-origin'), false);
-  assert.match(source, /setAttribute\('sandbox', 'allow-scripts'\)/);
+  assert.match(source, /setAttribute\(\"sandbox\", \"allow-scripts\"\)/);
   const {window} = loadAdapter();
   assert.deepEqual([...window.ShiYanWebWorkspace.remoteFileRoutes].sort(), [
     '/directory-details', '/files/changes', '/files/read', '/files/save-text', '/files/search'
