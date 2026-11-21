@@ -19,19 +19,19 @@ function tunnel(socket, host, port, ready, initial) {
   send({type:'connect',id,host,port});if(initial?.length)send({type:'data',id,data:initial.toString('base64')});
 }
 const proxy=http.createServer((req,res)=>{
-  let target;try{target=new URL(req.url);}catch{res.writeHead(400).end();return;}
+  let target;try{target=new URL(req.url || '/');}catch{res.writeHead(400).end();return;}
   if(target.protocol!=='http:'||target.username||target.password){res.writeHead(403).end();return;}
   // The HTTP response itself is relayed, so take ownership of the socket.
   const socket=req.socket;req.pause();
   const headers={...req.headers,host:target.host,connection:'close'};delete headers['proxy-connection'];delete headers['proxy-authorization'];
   const head=`${req.method} ${target.pathname}${target.search} HTTP/1.1\r\n`+Object.entries(headers).map(([k,v])=>`${k}: ${v}`).join('\r\n')+'\r\n\r\n';
-  const chunks=[];req.on('data',d=>chunks.push(d));req.on('end',()=>tunnel(socket,target.hostname,Number(target.port||80),null,Buffer.concat([Buffer.from(head),...chunks])));req.resume();
+  const chunks: any[]=[];req.on('data',d=>chunks.push(d));req.on('end',()=>tunnel(socket,target.hostname,Number(target.port||80),null,Buffer.concat([Buffer.from(head),...chunks])));req.resume();
 });
 proxy.on('connect',(req,socket,head)=>{let url;try{url=new URL('https://'+req.url);}catch{socket.destroy();return;}
   tunnel(socket,url.hostname,Number(url.port||443),()=>socket.write('HTTP/1.1 200 Connection Established\r\n\r\n'),head);
 });
 proxy.listen(0,'127.0.0.1',()=>{
-  const address='http://127.0.0.1:'+proxy.address().port;
+  const address='http://127.0.0.1:'+(proxy.address() as any).port;
   const command=JSON.parse(process.argv[2]);
   const env={...process.env,HTTP_PROXY:address,HTTPS_PROXY:address,ALL_PROXY:address,http_proxy:address,https_proxy:address,all_proxy:address,NO_PROXY:'localhost,127.0.0.1',no_proxy:'localhost,127.0.0.1'};
   const interactive=command[0].endsWith('bash')&&command.includes('-i');
@@ -77,7 +77,7 @@ except ChildProcessError: pass
   // Bound persistent storage even for shell writes bypassing the file API.
   // This is an execution watchdog; filesystem hard quotas are separate.
   let scanning=false;
-  async function storageUsage(){let size=0,count=0;async function visit(dir){let entries;try{entries=await fs.promises.opendir(dir);}catch{return;}for await(const entry of entries){const file=dir+'/'+entry.name;try{const st=await fs.promises.lstat(file);if(st.isSymbolicLink())continue;count++;size+=st.size;if(size>2147483648||count>100000)throw new Error('quota');if(st.isDirectory())await visit(file);}catch(error){if(error.message==='quota')throw error;}}}await visit('/workspace');await visit('/home/member');}
+  async function storageUsage(){let size=0,count=0;async function visit(dir){let entries;try{entries=await fs.promises.opendir(dir);}catch{return;}for await(const entry of entries){const file=dir+'/'+entry.name;try{const st=await fs.promises.lstat(file);if(st.isSymbolicLink())continue;count++;size+=st.size;if(size>2147483648||count>100000)throw new Error('quota');if(st.isDirectory())await visit(file);}catch(error){if((error as any).message==='quota')throw error;}}}await visit('/workspace');await visit('/home/member');}
   const quota=setInterval(async()=>{if(scanning)return;scanning=true;try{await storageUsage();}catch{process.stderr.write('隔离工作区超过存储配额，请清理文件后重试。\n');child.kill('SIGKILL');process.exit(122);}finally{scanning=false;}},500);quota.unref();
   child.on('error',()=>process.exit(126));child.on('exit',(code,signal)=>{send({type:'exit'});process.exit(code??(signal?128:1));});
   process.on('SIGTERM',()=>{child.kill('SIGTERM');setTimeout(()=>process.exit(143),1000).unref();});
