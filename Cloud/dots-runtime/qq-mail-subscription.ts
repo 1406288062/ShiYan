@@ -7,13 +7,13 @@ import {createMailEventStore,mailAccountKey} from './qq-mail-events.ts';
 const openFile=promisify(open);
 export async function readMailConfig(file){
  let fd;
- try{fd=await openFile(file,constants.O_RDONLY|constants.O_NOFOLLOW);}catch(error){if(error.code==='ENOENT')return null;throw Error('mail_config_unreadable');}
+ try{fd=await openFile(file,constants.O_RDONLY|constants.O_NOFOLLOW);}catch(error){if((error as any).code==='ENOENT')return null;throw Error('mail_config_unreadable');}
  // Numeric fd API avoids following a swapped symlink after the permission check.
  const fs=await import('node:fs');
  try{
   const stat=await promisify(fs.fstat)(fd);
-  if(!stat.isFile()||(stat.mode&0o077)!==0||stat.uid!==process.getuid()||stat.size>16384)throw Error('mail_config_permissions');
-  const raw=await new Promise((resolve,reject)=>fs.readFile(fd,'utf8',(error,data)=>error?reject(error):resolve(data)));
+  if(!stat.isFile()||(stat.mode&0o077)!==0||stat.uid!==process.getuid!()||stat.size>16384)throw Error('mail_config_permissions');
+  const raw=await new Promise<string>((resolve,reject)=>fs.readFile(fd,'utf8',(error,data)=>error?reject(error):resolve(data as string)));
   let value;try{value=JSON.parse(raw);}catch{throw Error('mail_config_invalid');}
   if(value.enabled===false)return null;
   if(value.enabled!==true||typeof value.address!=='string'||! /^[A-Za-z0-9._%+-]+@(?:qq\.com|vip\.qq\.com|foxmail\.com)$/i.test(value.address)||typeof value.authorizationCode!=='string'||! /^[A-Za-z0-9]{16,64}$/.test(value.authorizationCode))throw Error('mail_config_invalid');
@@ -31,8 +31,8 @@ export interface QQMailSubscriptionOptions {
   clearTimer?: any;
 }
 export function createQQMailSubscription({store,configPath,clientFactory,prepareMail=null,loadConfig=readMailConfig,logger=console,setTimer=setTimeout,clearTimer=clearTimeout}: QQMailSubscriptionOptions){
- let stopped=false,started=false,client=null,retry=null,watchdog=null,watcher=null,reloadTimer=null,generation=0,failures=0,status='waiting_configuration';
- let config=null,events=null,syncOwner=null,pending=false,connectionAbort=null;
+ let stopped=false,started=false,client: any=null,retry: any=null,watchdog: any=null,watcher: any=null,reloadTimer: any=null,generation=0,failures=0,status='waiting_configuration';
+ let config: any=null,events: any=null,syncOwner: any=null,pending=false,connectionAbort: AbortController | null=null;
  const publishStatus=(code)=>{status=code;logger.info?.('[qq-mail]',code);};
  const dispatch=promise=>{void promise.catch(()=>publishStatus('mail_subscription_failed'));};
  const clearRetry=()=>{if(retry)clearTimer(retry);retry=null;};
@@ -45,8 +45,8 @@ export function createQQMailSubscription({store,configPath,clientFactory,prepare
    const cursor=events.state();const validity=String(current.mailbox?.uidValidity||'');
    if(!cursor||cursor.uid_validity!==validity)throw Error('mail_uidvalidity_changed');
    const found=await current.search({uid:`${cursor.last_uid+1}:*`},{uid:true});
-   const ids=[...new Set((found||[]).map(Number).filter(uid=>Number.isInteger(uid)&&uid>cursor.last_uid&&uid<=0xffffffff))].sort((a,b)=>a-b);
-   const batch=ids.slice(0,50),selected=new Set(batch),mails=[];
+   const ids: number[]=[...new Set<number>((found||[]).map(Number).filter(uid=>Number.isInteger(uid)&&uid>cursor.last_uid&&uid<=0xffffffff))].sort((a,b)=>a-b);
+   const batch=ids.slice(0,50),selected=new Set(batch),mails: any[]=[];
    if(batch.length)for await(const mail of current.fetch(batch.join(','),{uid:true,envelope:true,internalDate:true,bodyStructure:true},{uid:true})){
     if(stopped||version!==generation||current!==client)return;
     if(!selected.has(Number(mail.uid)))continue;
@@ -58,7 +58,7 @@ export function createQQMailSubscription({store,configPath,clientFactory,prepare
    // IMAP command from inside its generator can deadlock the connection.
    for(const mail of mails){
     if(stopped||version!==generation||current!==client)return;
-    const presentation=prepareMail?await prepareMail(current,mail,{signal:connectionAbort.signal}):undefined;
+    const presentation=prepareMail?await prepareMail(current,mail,{signal:connectionAbort?.signal}):undefined;
     if(stopped||version!==generation||current!==client)return;
     events.receive({uid:mail.uid,uidValidity:validity,envelope:mail.envelope,internalDate:mail.internalDate,presentation});
    }
@@ -95,13 +95,13 @@ export function createQQMailSubscription({store,configPath,clientFactory,prepare
    const keepAlive=()=>{if(stopped||version!==generation||current!==client)return;watchdog=setTimer(async()=>{watchdog=null;if(stopped||version!==generation||current!==client)return;try{await current.noop();await synchronize(current,version);}catch{try{current.close();}catch{};scheduleReconnect(version);}finally{keepAlive();}},30_000);watchdog?.unref?.();};keepAlive();
   }catch(error){
    if(stopped||version!==generation||current!==client)return;
-   if(error.authenticationFailed||error.message==='idle_unsupported'){clearRetry();client=null;try{current.close();}catch{};const code=error.authenticationFailed?'authentication_failed':'idle_unsupported';publishStatus(code);events?.status(code,code);}
+   if((error as any).authenticationFailed||(error as any).message==='idle_unsupported'){clearRetry();client=null;try{current.close();}catch{};const code=(error as any).authenticationFailed?'authentication_failed':'idle_unsupported';publishStatus(code);events?.status(code,code);}
    else{try{current.close();}catch{};scheduleReconnect(version);}
   }
  }
  async function reload(){
   const version=++generation;disconnect();pending=false;syncOwner=null;config=null;
-  let next;try{next=await loadConfig(configPath);}catch(error){if(version===generation&&!stopped)publishStatus(['mail_config_permissions','mail_config_invalid','mail_config_unreadable'].includes(error.message)?error.message:'mail_config_invalid');return;}
+  let next;try{next=await loadConfig(configPath);}catch(error){if(version===generation&&!stopped)publishStatus(['mail_config_permissions','mail_config_invalid','mail_config_unreadable'].includes((error as any).message)?(error as any).message:'mail_config_invalid');return;}
   if(stopped||version!==generation)return;
   if(!next){publishStatus('waiting_configuration');return;}
   config=next;events=createMailEventStore({store,accountKey:mailAccountKey(config.address)});failures=0;await connect(version);
