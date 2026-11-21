@@ -13,10 +13,30 @@
     "allowImportingTsExtensions": true,
     "outDir": "dist",
     "rootDir": "..",
-    "noImplicitAny": false,
+    "noImplicitAny": true,
     "types": [
       "node"
-    ]
+    ],
+    "paths": {
+      "/home/ubuntu/dots-runtime/manager-store.mjs": [
+        "../../types-external/manager-store.d.ts"
+      ],
+      "/home/ubuntu/dots-runtime/mcp-events.mjs": [
+        "../../types-external/mcp-events.d.ts"
+      ],
+      "/home/ubuntu/dots-runtime/local-mcp-socket.mjs": [
+        "../../types-external/local-mcp-socket.d.ts"
+      ],
+      "/home/ubuntu/model-hub/client.mjs": [
+        "../../types-external/model-hub-client.d.ts"
+      ],
+      "/home/ubuntu/boss-codex-service/shiyan-v2/sponge-client.mjs": [
+        "../../types-external/sponge-client.d.ts"
+      ],
+      "/home/ubuntu/yu-remote-commander/src/server.mjs": [
+        "../../types-external/yu-remote-server.d.ts"
+      ]
+    }
   },
   "include": [
     "**/*.ts"
