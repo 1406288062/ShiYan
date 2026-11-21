@@ -5,8 +5,8 @@ import vm from 'node:vm';
 const source=fs.readFileSync(new URL('../shared/frontend/assets/workbench-v2.js',import.meta.url),'utf8');
 const helper=source.slice(source.indexOf('  function renderCompareImage('),source.indexOf('  function renderCompare(){'));
 function setup(){
- const context={window:{ShiYanPlatform:{mode:'web'}},assetURL:a=>a.url};vm.createContext(context);vm.runInContext(helper,context);
- const img={dataset:{},naturalWidth:0,naturalHeight:0,getAttribute(name){return this[name]||null;},removeAttribute(name){delete this[name];}},dimensions={textContent:''},empty={hidden:false};
+ const context: any={window:{ShiYanPlatform:{mode:'web'}},assetURL:a=>a.url};vm.createContext(context);vm.runInContext(helper,context);
+ const img: any={dataset:{},naturalWidth:0,naturalHeight:0,getAttribute(name){return this[name]||null;},removeAttribute(name){delete this[name];}},dimensions={textContent:''},empty={hidden:false};
  const card={querySelector:selector=>selector==='img'?img:selector==='.v2-compare-dimensions'?dimensions:empty};
  return {img,dimensions,empty,render:asset=>context.renderCompareImage(card,asset)};
 }
