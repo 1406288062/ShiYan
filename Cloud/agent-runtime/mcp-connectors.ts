@@ -49,7 +49,7 @@ async function safeFetch(url, init = {}, timeout = 20_000) {
   await resolveSandboxDestination(u.hostname); // 只允许公网地址
   return fetch(u, { ...init, redirect: 'manual', signal: AbortSignal.timeout(timeout) });
 }
-async function getJSON(url) {
+async function getJSON(url): Promise<any> {
   try { const r = await safeFetch(url, { headers: { accept: 'application/json' } }, 12_000); return r.ok ? await r.json() : null; } catch { return null; }
 }
 
@@ -62,7 +62,7 @@ function parseBody(text, type) {
   }
   try { return JSON.parse(text); } catch { return null; }
 }
-async function rpc(url, headers, message, session) {
+async function rpc(url, headers, message, session = '') {
   const h = { 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18', ...headers };
   if (session) h['mcp-session-id'] = session;
   const r = await safeFetch(url, { method: 'POST', headers: h, body: JSON.stringify(message) }, 45_000);
@@ -78,7 +78,7 @@ async function openSseSession(url, headers) {
     checkURL(target.toString());
     await resolveSandboxDestination(target.hostname);
     // 抖音文档将 token 放在 SSE URL 查询参数中；消息 POST 端点也必须携带同一 Token。
-    if (target.origin === base.origin && base.searchParams.has('token') && !target.searchParams.has('token')) target.searchParams.set('token', base.searchParams.get('token'));
+    if (target.origin === base.origin && base.searchParams.has('token') && !target.searchParams.has('token')) target.searchParams.set('token', base.searchParams.get('token')!);
     return fetch(target, { ...init, redirect: 'manual' });
   };
   const transport = new SSEClientTransport(base, { requestInit: { headers }, fetch: safeFetchImpl, eventSourceInit: { fetch: safeFetchImpl } });
@@ -103,7 +103,7 @@ async function openSession(url, headers, transportType = 'streamable') {
   await rpc(url, headers, { jsonrpc: '2.0', method: 'notifications/initialized' }, init.session).catch(() => {});
   return { session: init.session };
 }
-export async function mcpCall(url, headers, method, params = {}, transportType = 'streamable') {
+export async function mcpCall(url, headers, method, params: any = {}, transportType = 'streamable') {
   if (transportType === 'sse') {
     const opened = await openSseSession(url, headers);
     try {
@@ -134,14 +134,14 @@ async function discover(url, www) {
   return { resource: prm?.resource || url, issuer: meta.issuer || issuer, meta, scope };
 }
 async function tokenRequest(endpoint, client, form) {
-  const headers = { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' };
+  const headers: Record<string, string> = { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' };
   const body = { ...form, client_id: client.client_id };
   if (client.client_secret) {
     if (client.token_endpoint_auth_method === 'client_secret_post') body.client_secret = client.client_secret;
     else headers.authorization = 'Basic ' + Buffer.from(encodeURIComponent(client.client_id) + ':' + encodeURIComponent(client.client_secret)).toString('base64');
   }
   const r = await safeFetch(endpoint, { method: 'POST', headers, body: new URLSearchParams(body) });
-  const text = await r.text(); let data = null;
+  const text = await r.text(); let data: any = null;
   try { data = JSON.parse(text); } catch { data = Object.fromEntries(new URLSearchParams(text)); }
   if (!r.ok || !data?.access_token) throw fail('授权没有完成：' + String(data?.error_description || data?.error || ('HTTP ' + r.status)).slice(0, 200), 502);
   return { access_token: data.access_token, refresh_token: data.refresh_token || form.refresh_token || null, expires_at: data.expires_in ? now() + Number(data.expires_in) * 1000 : null };
@@ -151,7 +151,7 @@ const html = (title, text, ok) => `<!doctype html><html lang="zh-CN"><head><meta
 <style>body{font:16px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;background:#f7f7f8;color:#1d1d1f}main{max-width:360px;padding:32px;text-align:center}
 .i{width:56px;height:56px;border-radius:50%;display:grid;place-items:center;margin:0 auto 16px;color:#fff;font-size:28px;background:${ok ? '#34c759' : '#ff9f0a'}}h1{font-size:20px;margin:0 0 8px}p{color:#6e6e73;margin:0}</style></head>
 <body><main><div class="i">${ok ? '✓' : '!'}</div><h1>${title}</h1><p>${text}</p></main></body></html>`;
-const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' } as Record<string, string>)[c]);
 const slug = v => String(v || '').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
 
 export function createMcpConnectors({ file = process.env.SHIYAN_MCP_DB || path.join(ROOT, 'data', 'mcp-connectors.sqlite3') } = {}) {
@@ -186,16 +186,16 @@ export function createMcpConnectors({ file = process.env.SHIYAN_MCP_DB || path.j
     try {
       const result = await mcpCall(endpointFor(c), await headersFor(owner, c), 'tools/list', {}, c.transport || 'streamable');
       c.tools = (result?.tools || []).slice(0, 200).map(t => String(t.name || '')).filter(Boolean); c.state = 'connected'; c.error = '';
-    } catch (error) { c.state = 'error'; c.error = String(error.message || error).slice(0, 200); }
+    } catch (error) { c.state = 'error'; c.error = String((error as any).message || error).slice(0, 200); }
     save(owner, c); return c;
   }
   async function client(d) {
     const key = d.issuer + '|' + REDIRECT_URI, existing = db.prepare('SELECT data FROM oauth_clients WHERE key=?').get(key);
-    if (existing) return JSON.parse(existing.data);
+    if (existing) return JSON.parse(String(existing.data));
     if (!d.meta.registration_endpoint) throw fail('这个服务不支持自动连接，请填写访问令牌');
     const r = await safeFetch(d.meta.registration_endpoint, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' },
       body: JSON.stringify({ client_name: '拾燕', redirect_uris: [REDIRECT_URI], grant_types: ['authorization_code', 'refresh_token'], response_types: ['code'], token_endpoint_auth_method: 'none', ...(d.scope ? { scope: d.scope } : {}) }) });
-    const data = await r.json().catch(() => null);
+    const data: any = await r.json().catch(() => null);
     if (!r.ok || !data?.client_id) throw fail('这个服务暂不允许自动连接：' + String(data?.error_description || data?.error || ('HTTP ' + r.status)).slice(0, 160), 502);
     const value = { client_id: data.client_id, client_secret: data.client_secret || null, token_endpoint_auth_method: data.token_endpoint_auth_method || (data.client_secret ? 'client_secret_basic' : 'none') };
     db.prepare('INSERT OR REPLACE INTO oauth_clients(key,data,created_at) VALUES(?,?,?)').run(key, JSON.stringify(value), now());
@@ -211,14 +211,14 @@ export function createMcpConnectors({ file = process.env.SHIYAN_MCP_DB || path.j
         custom: own.filter(c => !c.catalogId || !catalogEntry(c.catalogId)).map(present),
       };
     },
-    async connect(owner, input = {}) {
+    async connect(owner, input: any = {}) {
       const entry = input.catalogId ? catalogEntry(String(input.catalogId)) : null;
       if (input.catalogId && !entry) throw fail('不支持的插件');
       const url = checkURL(entry ? entry.url : input.url).toString();
       const id = entry ? entry.id : 'mcp-' + (slug(input.name) || crypto.createHash('sha256').update(url).digest('hex').slice(0, 8));
       const name = entry ? entry.name : String(input.name || '').trim().slice(0, 40) || new URL(url).hostname;
       const existing = row(owner, id) ? decode(row(owner, id)) : null;
-      if (!existing && db.prepare('SELECT COUNT(*) n FROM connectors WHERE owner=?').get(owner).n >= MAX_PER_OWNER) throw fail('连接数量已达上限');
+      if (!existing && Number(db.prepare('SELECT COUNT(*) n FROM connectors WHERE owner=?').get(owner)?.n || 0) >= MAX_PER_OWNER) throw fail('连接数量已达上限');
       if (!entry && existing && existing.url !== url) throw fail('已有同名的 MCP，请换个名称');
       const token = String(input.token || '').trim();
       if (token && (token.length > 4096 || /[\r\n]/.test(token))) throw fail('令牌格式无效');
@@ -227,9 +227,9 @@ export function createMcpConnectors({ file = process.env.SHIYAN_MCP_DB || path.j
       const auth = token ? (entry?.tokenParam ? { type: 'query', param: entry.tokenParam, token } : { type: 'bearer', token }) : { type: 'none' };
       let opened;
       try { opened = await openSession(endpointFor({ url, auth }), auth.type === 'bearer' ? { authorization: 'Bearer ' + token } : {}, entry?.transport || 'streamable'); }
-      catch (error) { if (token) throw fail('令牌无效或权限不足：' + String(error.message || error).replace(/^无法连接这个 MCP 服务/, '').slice(0, 120)); throw error; }
+      catch (error) { if (token) throw fail('令牌无效或权限不足：' + String((error as any).message || error).replace(/^无法连接这个 MCP 服务/, '').slice(0, 120)); throw error; }
       if (!opened.unauthorized) {
-        const c = { ...base, auth, state: 'connected' };
+        const c = { ...base, auth, state: 'connected', error: '' };
         await refreshTools(owner, c);
         if (token && c.state !== 'connected') { if (existing) save(owner, existing); else db.prepare('DELETE FROM connectors WHERE owner=? AND id=?').run(owner, id); throw fail('令牌无效或权限不足：' + c.error); }
         return { ok: true, state: c.state, connector: present(c) };
@@ -248,9 +248,9 @@ export function createMcpConnectors({ file = process.env.SHIYAN_MCP_DB || path.j
     // 浏览器从授权页跳回：用授权码换令牌，保存后返回一个提示页面。
     async callback(params) {
       const state = String(params.get('state') || ''), pending = state && db.prepare('SELECT * FROM oauth_pending WHERE state=?').get(state);
-      if (!pending || now() - pending.created_at > PENDING_TTL) return { status: 400, html: html('授权已过期', '请回到拾燕的连接器里重新连接。', false) };
+      if (!pending || now() - Number(pending.created_at) > PENDING_TTL) return { status: 400, html: html('授权已过期', '请回到拾燕的连接器里重新连接。', false) };
       db.prepare('DELETE FROM oauth_pending WHERE state=?').run(state);
-      const data = JSON.parse(pending.data), owner = pending.owner, existing = row(owner, data.base.id);
+      const data = JSON.parse(String(pending.data)), owner = pending.owner, existing = row(owner, data.base.id);
       if (params.get('error')) {
         if (existing && decode(existing).state === 'authorizing') db.prepare('DELETE FROM connectors WHERE owner=? AND id=?').run(owner, data.base.id);
         return { status: 400, html: html('没有完成授权', esc(params.get('error_description') || '已取消授权。') + ' 可以回到拾燕重新连接。', false) };
@@ -261,8 +261,8 @@ export function createMcpConnectors({ file = process.env.SHIYAN_MCP_DB || path.j
         save(owner, c); await refreshTools(owner, c);
         return { status: 200, html: html('已连接 ' + esc(c.name), '现在可以回到拾燕，让 Dots 使用它了。这个页面可以关闭。', true) };
       } catch (error) {
-        if (existing) save(owner, { ...decode(existing), state: 'error', error: String(error.message || error).slice(0, 200) });
-        return { status: 502, html: html('没有完成授权', esc(error.message || '请稍后重试。'), false) };
+        if (existing) save(owner, { ...decode(existing), state: 'error', error: String((error as any).message || error).slice(0, 200) });
+        return { status: 502, html: html('没有完成授权', esc((error as any).message || '请稍后重试。'), false) };
       }
     },
     async refresh(owner, id) { const r = row(owner, String(id)); if (!r) throw fail('连接不存在', 404); return { ok: true, connector: present(await refreshTools(owner, decode(r))) }; },
@@ -282,5 +282,5 @@ export function createMcpConnectors({ file = process.env.SHIYAN_MCP_DB || path.j
     has(owner, id) { return Boolean(row(owner, String(id))); },
   };
 }
-let shared = null;
+let shared: any = null;
 export const mcpConnectors = () => (shared ||= createMcpConnectors());
