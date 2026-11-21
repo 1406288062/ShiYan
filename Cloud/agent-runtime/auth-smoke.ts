@@ -10,7 +10,7 @@ const raw=publicKey.export({format:'der',type:'spki'}).subarray(-32);
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const id=hash(raw);
 const devices=load();devices[id]={id,publicKey:raw.toString('base64'),approved:true,owner:'qa-'+randomUUID()};save(devices);
-function request(method,route,payload){
+function request(method,route,payload?: any){
  const data=payload===undefined?'':JSON.stringify(payload);
  const time=String(Date.now()),nonce=randomUUID(),bodyHash=hash(data);
  const headers={'Content-Type':'application/json','X-Shiyan-Device':id,'X-Shiyan-Time':time,'X-Shiyan-Nonce':nonce,'X-Shiyan-Body-Sha':bodyHash,'X-Shiyan-Signature':sign(null,Buffer.from([method,route,time,nonce,bodyHash].join('\n')),privateKey).toString('base64')};
@@ -20,7 +20,7 @@ const url='http://127.0.0.1:4323';
 try{
  let response=await fetch(url+'/shiyan/v1/capabilities');assert.equal(response.status,401);console.log('PASS anonymous denied');
  const route='/shiyan/v1/capabilities',signed=request('GET',route);
- response=await fetch(url+route,signed);assert.equal(response.status,200);const caps=await response.json();assert(caps.reasoningEfforts.includes('low'));console.log('PASS approved signed request');
+ response=await fetch(url+route,signed);assert.equal(response.status,200);const caps=(await response.json()) as any;assert(caps.reasoningEfforts.includes('low'));console.log('PASS approved signed request');
  response=await fetch(url+route,signed);assert.equal(response.status,401);console.log('PASS replay denied');
  const bad=request('GET',route);bad.headers['X-Shiyan-Signature']='AAAA';response=await fetch(url+route,bad);assert.equal(response.status,401);console.log('PASS invalid signature denied');
  const p='/shiyan/v1/jobs';const invalid={conversationId:randomUUID(),requestId:randomUUID(),prompt:'Do not execute this test',reasoning:'unsupported',images:[]};
