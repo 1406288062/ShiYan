@@ -31,13 +31,13 @@ function fixture() {
   const user = store.message({ message: '目标是当前 Ubuntu 主机，不要使用占位 SSH；重新评估并继续原事项', requestId: 'clarify-host', host: 'shiyan_desktop' }).message;
   const run = store.claimManager();
   const directive = { task_id: task.id, source_message_ids: [user.id], message: user.content, reason: '新目标澄清使旧远程主机提案失效', resource_key: 'ubuntu:current-host' };
-  const result = overrides => ({ reply: '按新要求重新评估原事项。', summary: '已处理目标澄清', tasks: [], reviews: [], controls: [], instructions: [], continuations: [directive], ...overrides });
-  const goal = () => db.prepare('SELECT * FROM goals WHERE id=?').get(task.id);
-  const approval = () => db.prepare('SELECT * FROM approvals WHERE id=?').get(approvalId);
-  const commit = overrides => store.completeManager(run, result(overrides));
+  const result = (overrides = {}) => ({ reply: '按新要求重新评估原事项。', summary: '已处理目标澄清', tasks: [], reviews: [], controls: [], instructions: [], continuations: [directive], ...overrides });
+  const goal = () => db.prepare('SELECT * FROM goals WHERE id=?').get(task.id)!;
+  const approval = () => db.prepare('SELECT * FROM approvals WHERE id=?').get(approvalId)!;
+  const commit = (overrides = {}) => store.completeManager(run, result(overrides));
   const assertOtherUntouched = () => {
-    assert.equal(db.prepare('SELECT status FROM goals WHERE id=?').get(other.id).status, 'waiting_approval');
-    assert.equal(db.prepare('SELECT status FROM approvals WHERE id=?').get(otherApprovalId).status, 'pending');
+    assert.equal(db.prepare('SELECT status FROM goals WHERE id=?').get(other.id)!.status, 'waiting_approval');
+    assert.equal(db.prepare('SELECT status FROM approvals WHERE id=?').get(otherApprovalId)!.status, 'pending');
   };
   return { db, store, task, other, approvalId, otherApprovalId, oldApproval, originalEvent, user, run, directive, result, goal, approval, commit, assertOtherUntouched, close() { db.close(); rmSync(root, { recursive: true, force: true }); } };
 }
@@ -48,13 +48,13 @@ test('authenticated concrete continuation supersedes only an unexecuted proposal
     assert.equal(f.commit().committed, true);
     assert.equal(f.approval().status, 'superseded');
     assert.equal(f.goal().status, 'active');
-    assert.equal(f.goal().control_revision, before.control_revision + 1);
+    assert.equal(f.goal().control_revision, Number(before.control_revision) + 1);
     assert.equal(f.goal().thread_id, before.thread_id);
     assert.equal(f.goal().workspace, before.workspace);
     assert.equal(f.goal().next_wake_at, 100);
-    assert.equal(f.db.prepare('SELECT consumed_at FROM events WHERE id=?').get(f.originalEvent).consumed_at, null);
-    assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM manager_actions').get().n, 0);
-    assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM manager_runs WHERE kind='approval'").get().n, 0);
+    assert.equal(f.db.prepare('SELECT consumed_at FROM events WHERE id=?').get(f.originalEvent)!.consumed_at, null);
+    assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM manager_actions').get()!.n, 0);
+    assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM manager_runs WHERE kind='approval'").get()!.n, 0);
     const worker = f.store.claimGoal(f.task.id);
     assert.ok(worker);
     assert.equal(worker.thread_id, 'retained-thread');
@@ -66,10 +66,10 @@ test('replaying the completed manager run does not increment revision or repeat 
   const f = fixture(); try {
     f.commit();
     const revision = f.goal().control_revision;
-    const activityCount = f.db.prepare('SELECT COUNT(*) AS n FROM manager_activity').get().n;
+    const activityCount = f.db.prepare('SELECT COUNT(*) AS n FROM manager_activity').get()!.n;
     assert.equal(f.commit().committed, false);
     assert.equal(f.goal().control_revision, revision);
-    assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM manager_activity').get().n, activityCount);
+    assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM manager_activity').get()!.n, activityCount);
   } finally { f.close(); }
 });
 
@@ -78,8 +78,8 @@ test('all unexecuted proposals for this task are withdrawn together and no unrel
     const extra = Number(f.db.prepare("INSERT INTO approvals(goal_id,reason,command,status,created_at,control_revision,payload_hash) VALUES(?,'second old proposal','different-old-command','pending',98,0,'old-fingerprint')").run(f.task.id).lastInsertRowid);
     assert.equal(f.commit().committed, true);
     assert.equal(f.approval().status, 'superseded');
-    assert.equal(f.db.prepare('SELECT status FROM approvals WHERE id=?').get(extra).status, 'superseded');
-    assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM approvals WHERE goal_id=? AND status IN ('pending','executing','unknown')").get(f.task.id).n, 0);
+    assert.equal(f.db.prepare('SELECT status FROM approvals WHERE id=?').get(extra)!.status, 'superseded');
+    assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM approvals WHERE goal_id=? AND status IN ('pending','executing','unknown')").get(f.task.id)!.n, 0);
     assert.equal(f.goal().status, 'active');
     f.assertOtherUntouched();
   } finally { f.close(); }
@@ -187,12 +187,12 @@ test('reconsideration does not approve the old command and a later dangerous pro
     f.db.prepare("UPDATE goals SET status='waiting_approval',next_wake_at=NULL WHERE id=?").run(f.task.id);
     const newId = f.store.bindApproval(f.task.id, 'A distinct dangerous action requires approval', 'example-dangerous-operation');
     assert.notEqual(newId, f.approvalId);
-    const next = f.db.prepare('SELECT * FROM approvals WHERE id=?').get(newId);
+    const next = f.db.prepare('SELECT * FROM approvals WHERE id=?').get(newId)!;
     assert.equal(next.status, 'pending');
     assert.equal(next.control_revision, f.goal().control_revision);
     assert.doesNotThrow(() => f.store.validateApproval(next));
-    assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM manager_runs WHERE kind='approval'").get().n, 0);
-    assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM manager_actions').get().n, 0);
+    assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM manager_runs WHERE kind='approval'").get()!.n, 0);
+    assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM manager_actions').get()!.n, 0);
     f.assertOtherUntouched();
   } finally { f.close(); }
 });
