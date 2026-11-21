@@ -10,7 +10,7 @@ const raw=publicKey.export({format:'der',type:'spki'}).subarray(-32);
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const id=hash(raw);
 const devices=load();devices[id]={id,publicKey:raw.toString('base64'),approved:true,owner:'qa-'+randomUUID()};save(devices);
-function request(method,route,payload){
+function request(method,route,payload?){
  const data=payload===undefined?'':JSON.stringify(payload);
  const time=String(Date.now()),nonce=randomUUID(),bodyHash=hash(data);
  const headers={'Content-Type':'application/json','X-Shiyan-Device':id,'X-Shiyan-Time':time,'X-Shiyan-Nonce':nonce,'X-Shiyan-Body-Sha':bodyHash,'X-Shiyan-Signature':sign(null,Buffer.from([method,route,time,nonce,bodyHash].join('\n')),privateKey).toString('base64')};
