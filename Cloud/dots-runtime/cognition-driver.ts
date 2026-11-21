@@ -13,7 +13,7 @@ export function createCognitionDriver({cognition,logger=console,maxPasses=12}){
         if(!ok||after.stamp===before.stamp){if(requested)continue;break;}
         if(!requested&&!after.active&&!after.pending)break;
       }
-    }catch(error){logger.warn?.('[cognition-driver]',error?.message||error);}
+    }catch(error){logger.warn?.('[cognition-driver]',(error as any)?.message||error);}
     finally{running=false;}
   }
   return {signal(){if(closed)return;requested=true;void drain();},close(){closed=true;cognition.close();},get busy(){return running;}};

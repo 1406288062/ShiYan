@@ -10,7 +10,7 @@ export async function startLocalMcpSocket({ root, bridge }) {
   chmodSync(dir, 0o700);
   const socketPath = path.join(dir, 'mcp.sock');
   let old;
-  try { old = lstatSync(socketPath); } catch (e) { if (e.code !== 'ENOENT') throw e; }
+  try { old = lstatSync(socketPath); } catch (e) { if ((e as any).code !== 'ENOENT') throw e; }
   if (old) {
     if (!old.isSocket()) throw new Error('Refusing to replace a non-socket IPC path');
     const active = await new Promise((resolve) => {
@@ -33,7 +33,7 @@ export async function startLocalMcpSocket({ root, bridge }) {
   });
   server.headersTimeout = 10000;
   server.requestTimeout = 60000;
-  await new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
     server.listen(socketPath, () => {
       server.removeListener('error', reject);

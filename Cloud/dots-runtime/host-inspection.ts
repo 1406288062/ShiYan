@@ -58,10 +58,10 @@ export async function executeHostInspection(action, {execFile = nodeExecFile} = 
   const specification = validate(action);
   const startedAt = new Date().toISOString();
   const attempts = [await inspect(specification, execFile)];
-  if (specification.fallback && attempts[0].errorCode === 'ENOENT') attempts.push(await inspect(specification.fallback, execFile));
+  if (specification.fallback && (attempts[0] as any).errorCode === 'ENOENT') attempts.push(await inspect(specification.fallback, execFile));
   const result = attempts.at(-1);
   return {
-    ...result, command:action.command, scope:'runtime_host',
+    ...(result as any), command:action.command, scope:'runtime_host',
     host:{hostname:hostname(), platform:process.platform, uid:process.getuid?.() ?? null, namespace:'same_as_runtime_process'},
     attempts, startedAt, finishedAt:new Date().toISOString()
   };

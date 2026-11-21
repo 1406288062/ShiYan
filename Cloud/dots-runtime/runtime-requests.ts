@@ -8,7 +8,7 @@ function stableJson(value) {
 
 function requestError(message, statusCode) {
   const error = new Error(message);
-  error.statusCode = statusCode;
+  (error as any).statusCode = statusCode;
   return error;
 }
 

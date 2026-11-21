@@ -1,7 +1,7 @@
 import http from "node:http";
 import net from "node:net";
 
-let proxyPromise = null;
+let proxyPromise: Promise<{server: any; port: number}> | null = null;
 
 function parseAuthority(authority) {
   const raw = String(authority || "").trim();
@@ -53,7 +53,7 @@ export function ensureHttpConnectProxy() {
         return;
       }
 
-      const upstream = net.connect(target.port, target.host);
+      const upstream = net.connect(target!.port, target!.host);
 
       const closeBoth = () => {
         try { upstream.destroy(); } catch {}

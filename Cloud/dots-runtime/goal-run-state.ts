@@ -9,7 +9,7 @@ export function assertGoalActionAllowed(goal, action, { hasPendingApproval = fal
   const status = goal?.status;
   if (!goal) {
     const error = new Error("goal not found");
-    error.statusCode = 404;
+    (error as any).statusCode = 404;
     throw error;
   }
   if (status === "cancelled" && action === "cancel") return;
@@ -24,7 +24,7 @@ export function assertGoalActionAllowed(goal, action, { hasPendingApproval = fal
       ? "Resolve the pending approval before continuing."
       : "The current goal state does not allow this action.";
     const error = new Error(`Cannot ${action} a ${status} goal. ${detail}`);
-    error.statusCode = 409;
+    (error as any).statusCode = 409;
     throw error;
   }
 }
