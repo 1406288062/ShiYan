@@ -5,7 +5,7 @@ import vm from 'node:vm';
 
 const source = fs.readFileSync(new URL('../shared/frontend/assets/workbench-changes.js', import.meta.url), 'utf8');
 function changeCards() {
-  const window = {};
+  const window: any = {};
   vm.runInNewContext(source, { window, TextEncoder });
   return window.ShiYanChanges;
 }
@@ -70,7 +70,7 @@ test('file changes after display item 80 are counted while incomplete records st
     change([file(85)], 'failed'),
     { type: 'command_execution', changes: [file(86)] },
   ] });
-  assert.deepEqual(Array.from(files, value => value.path), ['/project/file-81.swift', '/project/file-82.swift', '/project/file-83.swift']);
+  assert.deepEqual(Array.from(files, (value: any) => value.path), ['/project/file-81.swift', '/project/file-82.swift', '/project/file-83.swift']);
 });
 
 test('legacy raw arrays and item envelopes retain late file records and completed-status filtering', () => {
@@ -128,7 +128,7 @@ test('mixed image output and source edits count only the source edit and its rea
   const cards = changeCards();
   const message = { id: 'mixed', assets: [image()], fileChanges: [outputFile(), { ...file(0), diff: '+code\n-old' }] };
   const files = cards.filesFor(message);
-  assert.deepEqual(Array.from(files, f => f.path), ['/project/file-0.swift']);
+  assert.deepEqual(Array.from(files, (f: any) => f.path), ['/project/file-0.swift']);
   const html = cards.summary(message);
   assert.match(html, /已编辑 1 个文件/);
   assert.match(html, /class="v24-added">\+1<\/span>/);
@@ -141,7 +141,7 @@ test('completed SDK records and historical raw records use the same image-output
   const items = [change([outputFile('C:\\workspace\\portrait_photo.jpg', { kind: 'create' }), file(1)])];
   for (const history of [{ displayItems: items }, { rawResult: JSON.stringify(items) }, { rawResult: JSON.stringify({ items }) }]) {
     const files = cards.filesFor({ assets: [image()], ...history });
-    assert.deepEqual(Array.from(files, f => f.path), ['/project/file-1.swift']);
+    assert.deepEqual(Array.from(files, (f: any) => f.path), ['/project/file-1.swift']);
   }
 });
 
@@ -175,7 +175,7 @@ test('missing attachments and ambiguous legacy text edits are not silently disca
 
 test('a completed reply is reclassified when its image attachment arrives', () => {
   const cards = changeCards();
-  const message = { id: 'late-image', fileChanges: [outputFile()], assets: [] };
+  const message = { id: 'late-image', fileChanges: [outputFile()], assets: [] as any[] };
   assert.match(cards.summary(message), /已编辑 1 个文件/);
   message.assets.push(image());
   assert.equal(cards.summary(message), '');
