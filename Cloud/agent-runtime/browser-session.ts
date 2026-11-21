@@ -8,6 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EventEmitter } from 'node:events';
 import type { Socket } from 'node:net';
+import type { Duplex } from 'node:stream';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BROWSER_CONTAINER = process.env.SHIYAN_BROWSER_CONTAINER || 'shiyan-browser-test';
@@ -30,7 +31,7 @@ const MAX_VIEW_PIXELS = Number(process.env.SHIYAN_BROWSER_MAX_PIXELS) || 1;
 const MAX_CLIENT_MESSAGE = 64 * 1024;
 const ALLOWED_ORIGINS = new Set(['https://yandot.ai', 'https://www.yandot.ai', 'https://129.226.81.110']);
 
-const fail = (message, status = 400, code = undefined) => Object.assign(new Error(message), { status }, code ? { code } : {});
+const fail = (message, status = 400, code: any = undefined) => Object.assign(new Error(message), { status }, code ? { code } : {});
 const IDENTITY_ROOT = '/home/browser/identities';
 export const BROWSER_CONTAINER_NAME = BROWSER_CONTAINER;
 // A browser identity is a persistent Chrome profile. Every window of an account shares the
@@ -47,11 +48,11 @@ export function identityProfilePath(owner, identity = 'default') {
 }
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-function runLxc(args, { timeoutMs = 15_000, allowFailure = false } = {}) {
+function runLxc(args: string[], { timeoutMs = 15_000, allowFailure = false }: { timeoutMs?: number; allowFailure?: boolean } = {}): Promise<{ stdout: string; stderr: string; code: number | null }> {
   return new Promise((resolve, reject) => {
     const child = spawn('lxc', args, { stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '', stderr = '', settled = false;
-    const finish = (error, result) => { if (settled) return; settled = true; clearTimeout(timer); error ? reject(error) : resolve(result); };
+    const finish = (error: any, result: { stdout: string; stderr: string; code: number | null } | null = null) => { if (settled) return; settled = true; clearTimeout(timer); error ? reject(error) : resolve(result!); };
     const timer = setTimeout(() => { child.kill('SIGTERM'); finish(fail('浏览器隔离环境操作超时', 503)); }, timeoutMs);
     child.stdout.on('data', chunk => { stdout = (stdout + chunk.toString()).slice(-64_000); });
     child.stderr.on('data', chunk => { stderr = (stderr + chunk.toString()).slice(-12_000); });
@@ -149,22 +150,22 @@ function rejectProxyClient(client, status = 403) {
 
 // Listeners owned by the most recent startup. Measured 14:19: a session closed while still
 // starting left its transport listener open on 18181 and every later start failed (EADDRINUSE).
-let liveTransportServer = null, liveProxy = null;
+let liveTransportServer: any = null, liveProxy: any = null;
 async function closeServer(server) {
   if (!server) return;
   try { server.closeAllConnections?.(); } catch {}
-  await new Promise(resolve => { try { server.close(() => resolve()); } catch { resolve(); } setTimeout(resolve, 1500).unref?.(); });
+  await new Promise<void>(resolve => { try { server.close(() => resolve()); } catch { resolve(); } setTimeout(resolve, 1500).unref?.(); });
 }
 
 export function createRestrictedProxy() {
-  const sockets = new Set();
+  const sockets: Set<Duplex> = new Set();
   let connectionSeq = 0;
   const log = (event, fields = {}) => process.stderr.write(`[browser-proxy] ${new Date().toISOString()} ${event} ${JSON.stringify(fields)}\n`);
   const server = createHttpServer(async (req, res) => {
     const id = ++connectionSeq;
     let target;
     try {
-      target = new URL(req.url, `http://${req.headers.host || ''}`);
+      target = new URL(req.url || '/', `http://${req.headers.host || ''}`);
       log('http-in', { id, method: req.method, host: target.hostname, activeSockets: sockets.size });
       if (target.protocol !== 'http:' || (target.port && target.port !== '80') || target.username || target.password) {
         log('http-block', { id, host: target.hostname, reason: 'unsupported-target' });
@@ -179,25 +180,25 @@ export function createRestrictedProxy() {
         const responseHeaders = { ...response.headers };
         delete responseHeaders.connection; delete responseHeaders['proxy-connection'];
         res.writeHead(response.statusCode || 502, responseHeaders);
-        response.on('error', error => { log('http-response-error', { id, host: target.hostname, code: error.code, message: error.message }); res.destroy(); });
+        response.on('error', error => { log('http-response-error', { id, host: target.hostname, code: (error as any).code, message: (error as any).message }); res.destroy(); });
         response.pipe(res);
       });
       upstream.on('error', error => {
-        log('http-upstream-error', { id, host: target.hostname, code: error.code, message: error.message });
+        log('http-upstream-error', { id, host: target.hostname, code: (error as any).code, message: (error as any).message });
         if (!res.headersSent) res.writeHead(502).end(); else res.destroy();
       });
       req.on('aborted', () => log('http-client-aborted', { id, host: target.hostname }));
       req.pipe(upstream);
     } catch (error) {
-      log('http-failed', { id, host: target?.hostname || null, code: error.code || null, status: error.status || null, message: error.message });
-      if (!res.headersSent) res.writeHead(error.status || 403, { 'Content-Length':'0', 'Cache-Control':'no-store' }).end();
+      log('http-failed', { id, host: target?.hostname || null, code: (error as any).code || null, status: (error as any).status || null, message: (error as any).message });
+      if (!res.headersSent) res.writeHead((error as any).status || 403, { 'Content-Length':'0', 'Cache-Control':'no-store' }).end();
     }
   });
   server.on('connection', socket => {
     sockets.add(socket);
     log('socket-open', { remote: socket.remoteAddress, activeSockets: sockets.size });
     socket.once('close', hadError => { sockets.delete(socket); log('socket-close', { hadError, activeSockets: sockets.size }); });
-    socket.on('error', error => log('socket-error', { code: error.code, message: error.message }));
+    socket.on('error', error => log('socket-error', { code: (error as any).code, message: (error as any).message }));
   });
   server.on('connect', async (req, client, head) => {
     const id = ++connectionSeq;
@@ -206,7 +207,7 @@ export function createRestrictedProxy() {
     log('connect-in', { id, host, port: match?.[2] || null, activeSockets: sockets.size });
     sockets.add(client); client.once('close', hadError => { sockets.delete(client); log('connect-client-close', { id, host, hadError, activeSockets: sockets.size }); });
     // Record resets on either side without allowing an unhandled socket error to crash sidecar.
-    client.on('error', error => { log('connect-client-error', { id, host, code: error.code, message: error.message }); client.destroy(); });
+    client.on('error', error => { log('connect-client-error', { id, host, code: (error as any).code, message: (error as any).message }); client.destroy(); });
     if (!match || Number(match[2]) !== 443) { log('connect-block', { id, host, reason: 'unsupported-port' }); return rejectProxyClient(client); }
     try {
       const ip = await resolvePublicIPv4(match[1]);
@@ -226,12 +227,12 @@ export function createRestrictedProxy() {
         client.pipe(upstream); upstream.pipe(client);
       });
       upstream.on('error', error => {
-        log('connect-upstream-error', { id, host, ip, code: error.code, message: error.message, tunnelOpen });
+        log('connect-upstream-error', { id, host, ip, code: (error as any).code, message: (error as any).message, tunnelOpen });
         if (tunnelOpen) client.destroy(); else rejectProxyClient(client, 502);
         upstream.destroy();
       });
     } catch (error) {
-      log('connect-failed', { id, host, code: error.code || null, status: error.status || null, message: error.message });
+      log('connect-failed', { id, host, code: (error as any).code || null, status: (error as any).status || null, message: (error as any).message });
       rejectProxyClient(client);
     }
   });
@@ -240,7 +241,7 @@ export function createRestrictedProxy() {
     client.on('error', () => { client.destroy(); });
     let target;
     try {
-      target = new URL(req.url);
+      target = new URL(req.url || '/');
       if (target.protocol !== 'ws:' || (target.port && target.port !== '80')) return rejectProxyClient(client);
       const ip = await resolvePublicIPv4(target.hostname);
       const headers = { ...req.headers, host: target.host, connection: 'Upgrade' };
@@ -263,7 +264,7 @@ export function createRestrictedProxy() {
   // Modern sites (ChatGPT, video sites) open dozens of parallel tunnels; 24 caused ERR_SOCKET_NOT_CONNECTED.
   server.maxConnections = 256;
   server.on('listening', () => log('listening', { address: server.address(), maxConnections: server.maxConnections }));
-  server.on('error', error => log('server-error', { code: error.code, message: error.message }));
+  server.on('error', error => log('server-error', { code: (error as any).code, message: (error as any).message }));
   server.headersTimeout = 15_000;
   server.requestTimeout = 60_000;
   server.keepAliveTimeout = 5_000;
@@ -312,9 +313,9 @@ class CDPConnection extends EventEmitter {
     this.pending.clear();
     this.emit('exit', code);
   }
-  send(method, params = {}, sessionId = null, timeoutMs = 8000) {
+  send(method: string, params: any = {}, sessionId: string | null = null, timeoutMs = 8000): Promise<any> {
     if (this.closed || this.webSocket.readyState !== 1) return Promise.reject(fail('服务器 Chrome 未连接', 503));
-    const id = ++this.nextId, message = { id, method, params };
+    const id = ++this.nextId, message: any = { id, method, params };
     if (sessionId) message.sessionId = sessionId;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { this.pending.delete(id); if (process.env.SHIYAN_BROWSER_DEBUG === '1') process.stderr.write(`[browser-cdp] timeout ${method}\n`); reject(fail(`Chrome 响应超时：${method}`, 504)); }, timeoutMs);
@@ -333,12 +334,12 @@ async function connectChromeCDP(child) {
     try {
       const response = await fetch(`http://127.0.0.1:${BROWSER_CDP_PORT}/json/version`, { signal: AbortSignal.timeout(1200) });
       if (!response.ok) throw new Error(`CDP HTTP ${response.status}`);
-      const info = await response.json();
+      const info: any = await response.json();
       const endpoint = new URL(info.webSocketDebuggerUrl);
       endpoint.hostname = '127.0.0.1';
       endpoint.port = String(BROWSER_CDP_PORT);
       const webSocket = new WebSocket(endpoint.toString());
-      await new Promise((resolve, reject) => {
+      await new Promise<void>((resolve, reject) => {
         const timer = setTimeout(() => reject(new Error('CDP WebSocket 连接超时')), 2500);
         webSocket.addEventListener('open', () => { clearTimeout(timer); resolve(); }, { once: true });
         webSocket.addEventListener('error', () => { clearTimeout(timer); reject(new Error('CDP WebSocket 连接失败')); }, { once: true });
@@ -431,10 +432,10 @@ async function startChromeRuntime(session, { debug = process.env.SHIYAN_BROWSER_
   liveProxy = proxy;
   session.proxy = proxy;
   try { unlinkSync(BROWSER_PROXY_SOCKET); } catch {}
-  await new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     proxy.server.once('error', reject);
     proxy.server.listen(BROWSER_PROXY_SOCKET, () => {
-      try { chmodSync(BROWSER_PROXY_SOCKET, 0o600); } catch (error) { process.stderr.write(`[browser-lifecycle] proxy socket chmod failed: ${error.message}\n`); }
+      try { chmodSync(BROWSER_PROXY_SOCKET, 0o600); } catch (error) { process.stderr.write(`[browser-lifecycle] proxy socket chmod failed: ${(error as any).message}\n`); }
       process.stderr.write(`[browser-lifecycle] proxy socket ready path=${BROWSER_PROXY_SOCKET} mode=0600\n`);
       resolve();
     });
@@ -456,9 +457,9 @@ async function startChromeRuntime(session, { debug = process.env.SHIYAN_BROWSER_
   session.transportServer = transportServer;
   if (session.closing) throw fail('服务器浏览器启动已取消', 409);
   if (liveTransportServer) { await closeServer(liveTransportServer); liveTransportServer = null; }
-  await new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     transportServer.once('error', reject);
-    transportServer.listen(BROWSER_TRANSPORT_HOST_PORT, '127.0.0.1', resolve);
+    transportServer.listen(BROWSER_TRANSPORT_HOST_PORT, '127.0.0.1', () => resolve());
   });
   liveTransportServer = transportServer;
 
@@ -526,7 +527,7 @@ async function startChromeRuntime(session, { debug = process.env.SHIYAN_BROWSER_
   try {
     const { windowId } = await cdp.send('Browser.getWindowForTarget', { targetId: transportTarget.targetId });
     await cdp.send('Browser.setWindowBounds', { windowId, bounds: { left: 1700, top: 0, width: 400, height: 300 } });
-  } catch (error) { if (debug) process.stderr.write('[browser] transport window move failed: ' + error.message + '\n'); }
+  } catch (error) { if (debug) process.stderr.write('[browser] transport window move failed: ' + (error as any).message + '\n'); }
   try {
     const { windowId } = await cdp.send('Browser.getWindowForTarget', { targetId: target.targetId });
     await cdp.send('Browser.setWindowBounds', { windowId, bounds: { left: 0, top: 0, width: 1400, height: 1000 } });
@@ -537,7 +538,7 @@ async function startChromeRuntime(session, { debug = process.env.SHIYAN_BROWSER_
   await cdp.send('Page.enable', {}, session.transportSessionId);
   await cdp.send('Runtime.enable', {}, session.transportSessionId);
   await cdp.send('Browser.grantPermissions', { origin: `http://localhost:${BROWSER_TRANSPORT_PORT}`, permissions: ['audioCapture'] });
-  let ready = null;
+  let ready: any = null;
   for (let attempt = 0; attempt < 25 && !ready?.result?.value; attempt++) {
     if (attempt) await delay(200);
     ready = await cdp.send('Runtime.evaluate', { expression: 'typeof window.__shiyanStart === "function"', returnByValue: true }, session.transportSessionId).catch(() => null);
@@ -545,7 +546,7 @@ async function startChromeRuntime(session, { debug = process.env.SHIYAN_BROWSER_
   if (!ready?.result?.value) throw fail('浏览器音视频传输页没有正确加载', 503);
 
   let loadTimer;
-  const pageLoaded = new Promise(resolve => {
+  const pageLoaded = new Promise<void>(resolve => {
     const onLoad = message => {
       if (message.sessionId !== sid || message.method !== 'Page.loadEventFired') return;
       clearTimeout(loadTimer); cdp.off('event', onLoad); resolve();
@@ -579,10 +580,10 @@ export class BrowserSessionManager {
   maxSessionMs: number;
   active: any;
   ticket: { value: string; owner: string; accountToken: string | null; attach: any; expiresAt: number } | null;
-  ticketTimer: ReturnType<typeof setTimeout>;
-  lastExchange: { value: any; promise: Promise<any>; expiresAt: number } | null;
-  agentHook: { onViewerDetached?: (session: any) => void } | null;
-  startTail: Promise<void> | null;
+  ticketTimer!: ReturnType<typeof setTimeout>;
+  lastExchange!: { value: any; promise: Promise<any>; expiresAt: number } | null;
+  agentHook!: { onViewerAttached?: (session: any) => void; onViewerDetached?: (session: any) => void; onSessionDestroyed?: (session: any) => void; claimTarget?: (session: any, info: any, method: any) => any; cdpEvent?: (session: any, message: any) => any } | null;
+  startTail!: Promise<void> | null;
   constructor({ launch = startChromeRuntime, allowOrigins = ALLOWED_ORIGINS, validateAccountToken = null, idleMs = IDLE_TTL_MS, maxSessionMs = MAX_SESSION_MS } = {}) {
     this.launch = launch; this.allowOrigins = allowOrigins; this.validateAccountToken = validateAccountToken;
     this.idleMs = idleMs; this.maxSessionMs = maxSessionMs; this.active = null; this.ticket = null;
@@ -697,14 +698,14 @@ export class BrowserSessionManager {
     // A fresh transport page drops the previous viewer's WebRTC peer.
     if (session.transportSessionId) {
       await session.cdp.send('Page.reload', {}, session.transportSessionId, 5000).catch(() => {});
-      let ready = null;
+      let ready: any = null;
       for (let attempt = 0; attempt < 25 && !ready?.result?.value; attempt++) {
         await delay(200);
         ready = await session.cdp.send('Runtime.evaluate', { expression: 'typeof window.__shiyanStart === "function"', returnByValue: true }, session.transportSessionId).catch(() => null);
       }
     }
     process.stderr.write(`[browser-session] session=${session.id} viewer attached to running agent browser\n`);
-    try { await this.agentHook?.onViewerAttached?.(session); } catch (error) { process.stderr.write(`[browser-session] viewer attach hook failed: ${error?.message || error}\n`); }
+    try { await this.agentHook?.onViewerAttached?.(session); } catch (error) { process.stderr.write(`[browser-session] viewer attach hook failed: ${(error as any)?.message || error}\n`); }
     return { sessionToken: session.token, width: 1120, height: 720, iceServers: session.turn.clientIceServers };
   }
   #detachViewer(session, { notify = true } = {}) {
@@ -726,8 +727,8 @@ export class BrowserSessionManager {
     if (session?.agentHolds > 0 && !session.closing) { process.stderr.write(`[browser-session] session=${session.id} viewer closed; agent tasks keep the browser\n`); this.#detachViewer(session); return Promise.resolve(); }
     return this.#destroy(session);
   }
-  async #startSession({ owner, accountToken = null, identity = 'default', agent = false }) {
-    const session = {
+  async #startSession({ owner, accountToken = null, identity = 'default', agent = false }: { owner: string; accountToken?: string | null; identity?: string; agent?: boolean }) {
+    const session: any = {
       id: randomBytes(8).toString('hex'), owner,
       token: randomBytes(32).toString('base64url'), accountToken,
       createdAt: Date.now(), lastActivity: Date.now(), ws: null, pendingMessages: [], statusSent: false, closing: false,
@@ -760,7 +761,7 @@ export class BrowserSessionManager {
       this.#registerTab(session, session.mainTargetId, session.targetSessionId);
       if (session.accountToken && this.validateAccountToken) {
         session.authTimer = setInterval(() => {
-          if (session.viewer && !this.validateAccountToken(session.accountToken)) void this.#endViewer(session);
+          if (session.viewer && !this.validateAccountToken!(session.accountToken)) void this.#endViewer(session);
         }, 5000);
         session.authTimer.unref?.();
       }
@@ -790,9 +791,9 @@ export class BrowserSessionManager {
       resolveStarted();
       await this.#destroy(session).catch(() => {});
       releaseStart();
-      if (process.env.SHIYAN_BROWSER_DEBUG === '1') process.stderr.write('[browser] startup failed: ' + (error?.stack || error) + '\n');
-      process.stderr.write('[browser] session start failed: ' + (error?.message || error) + '\n');
-      throw error.status ? error : fail('服务器浏览器启动失败，请稍后重试', 503);
+      if (process.env.SHIYAN_BROWSER_DEBUG === '1') process.stderr.write('[browser] startup failed: ' + ((error as any)?.stack || error) + '\n');
+      process.stderr.write('[browser] session start failed: ' + ((error as any)?.message || error) + '\n');
+      throw (error as any).status ? error : fail('服务器浏览器启动失败，请稍后重试', 503);
     }
   }
   acceptWebSocket(req, socket, head) {
@@ -848,7 +849,7 @@ export class BrowserSessionManager {
       if (session.proxySocket) { try { unlinkSync(session.proxySocket); } catch {} }
       if (session.transportServer) {
         try { session.transportServer.closeAllConnections?.(); } catch {}
-        await new Promise(resolve => { try { session.transportServer.close(resolve); } catch { resolve(); } });
+        await new Promise<void>(resolve => { try { session.transportServer.close(resolve); } catch { resolve(); } });
       }
       if (this.active === session) this.active = null;
       try { this.agentHook?.onSessionDestroyed?.(session); } catch {}
@@ -890,9 +891,9 @@ export class BrowserSessionManager {
       if (!session.fallbackFrames) { session.fallbackFrames = true; process.stderr.write(`[browser-frame] session=${session.id || 'active'} fallback-poll-start target=${session.targetSessionId || 'none'}\n`); this.#startFrameCapture(session); this.#startScreenshotFallback(session); }
       // Long-poll: answer as soon as a new frame or message exists instead of fixed client sleeps.
       if (!session.pendingMessages?.length && (!session.latestFrame || (session.frameSeq || 0) === seq)) {
-        await new Promise(resolve => {
-          let timer = null;
-          const done = () => { clearTimeout(timer); resolve(); };
+        await new Promise<void>(resolve => {
+          let timer: ReturnType<typeof setTimeout> | null = null;
+          const done = () => { clearTimeout(timer!); resolve(); };
           timer = setTimeout(done, 1000);
           session.frameWaiters ||= [];
           if (session.frameWaiters.length > 50) session.frameWaiters.splice(0, session.frameWaiters.length - 50);
@@ -900,7 +901,7 @@ export class BrowserSessionManager {
         });
       }
     }
-    const out = { ok: true, messages: (session.pendingMessages || []).splice(0, 100) };
+    const out: any = { ok: true, messages: (session.pendingMessages || []).splice(0, 100) };
     if (wantFrames === true && session.latestFrame && (session.frameSeq || 0) !== seq) { out.frame = session.latestFrame; out.frameSeq = session.frameSeq; }
     return out;
   }
@@ -915,12 +916,12 @@ export class BrowserSessionManager {
         const started = Date.now();
         void this.#clientMessage(session, message, true).then(() => {
           const ms = Date.now() - started; if (ms > 1500) process.stderr.write(`[browser-slow] session=${session.id} ${message.type} took ${ms}ms\n`);
-        }).catch(error => this.#sendJSON(session, { type:'error', message:error?.message || '浏览器操作失败' }));
+        }).catch(error => this.#sendJSON(session, { type:'error', message:(error as any)?.message || '浏览器操作失败' }));
       } else if (message?.type === 'navigate') {
         // Navigation can take longer than the HTTP proxy timeout. Acknowledge immediately;
         // #clientMessage reports Chrome failures over the already-authenticated browser socket.
         void this.#clientMessage(session, message).catch(error => {
-          this.#sendJSON(session, { type:'error', message:error?.message || '网页导航失败' });
+          this.#sendJSON(session, { type:'error', message:(error as any)?.message || '网页导航失败' });
         });
       } else {
         await this.#clientMessage(session, message, true);
@@ -1048,12 +1049,12 @@ export class BrowserSessionManager {
     })();
     session.adopting.set(targetId, work);
     try { return await work; }
-    catch (error) { process.stderr.write(`[browser-tab] session=${session.id} adopt failed: ${error?.message || error}\n`); return null; }
+    catch (error) { process.stderr.write(`[browser-tab] session=${session.id} adopt failed: ${(error as any)?.message || error}\n`); return null; }
     finally { session.adopting.delete(targetId); }
   }
   #shotParams(session, quality = 72) {
     const view = session.view || { width: VIEW_WIDTH, height: VIEW_HEIGHT, scale: 1 };
-    const params = { format: 'jpeg', quality, fromSurface: true, captureBeyondViewport: false };
+    const params: any = { format: 'jpeg', quality, fromSurface: true, captureBeyondViewport: false };
     // Chrome hands screenshots/screencast back at CSS size; clip.scale yields true device pixels.
     if (view.scale > 1) params.clip = { x: 0, y: 0, width: view.width, height: view.height, scale: session.clipScale?.view === view ? session.clipScale.value : view.scale };
     return params;
@@ -1149,7 +1150,7 @@ export class BrowserSessionManager {
   }
   #cdpEvent(session, message) {
     if (session.closing || !session.targetSessionId) return;
-    try { if (this.agentHook?.cdpEvent?.(session, message)) return; } catch (error) { process.stderr.write(`[browser-agent] event hook failed: ${error?.message || error}\n`); }
+    try { if (this.agentHook?.cdpEvent?.(session, message)) return; } catch (error) { process.stderr.write(`[browser-agent] event hook failed: ${(error as any)?.message || error}\n`); }
     if (!message.sessionId && (message.method === 'Target.targetCreated' || message.method === 'Target.targetInfoChanged')) {
       this.#handlePopup(session, message.params?.targetInfo, message.method);
       return;
@@ -1226,7 +1227,7 @@ export class BrowserSessionManager {
             session.lastFrameAt = Date.now();
           }
         } catch (error) {
-          if (process.env.SHIYAN_BROWSER_DEBUG === '1') process.stderr.write('[browser] post-navigation screenshot failed: ' + (error?.message || error) + '\n');
+          if (process.env.SHIYAN_BROWSER_DEBUG === '1') process.stderr.write('[browser] post-navigation screenshot failed: ' + ((error as any)?.message || error) + '\n');
         }
       })();
     }
@@ -1266,7 +1267,7 @@ export class BrowserSessionManager {
         session.lastFrameAt = Date.now();
         if (!session.fallbackCaptureLogged) { session.fallbackCaptureLogged = true; process.stderr.write(`[browser-frame] screenshot-success bytes=${image.length} seq=${session.frameSeq || 0} target=${session.targetSessionId || 'none'}\n`); }
       } catch (error) {
-        process.stderr.write('[browser-frame] screenshot-error target=' + (session.targetSessionId || 'none') + ' ' + (error?.message || error) + '\n');
+        process.stderr.write('[browser-frame] screenshot-error target=' + (session.targetSessionId || 'none') + ' ' + ((error as any)?.message || error) + '\n');
       } finally { session.frameCaptureBusy = false; }
     };
     session.frameTimer = setInterval(() => void capture(), (session.view?.scale || 1) > 1 ? 60 : 125);
@@ -1310,7 +1311,7 @@ export class BrowserSessionManager {
           }, session.transportSessionId, 5000);
           if (result.exceptionDetails) throw fail(result.exceptionDetails.text || '视频帧解码失败', 502);
           if (process.env.SHIYAN_BROWSER_DEBUG === '1') process.stderr.write('[browser] video frame decode ' + JSON.stringify(result.result?.value || {}) + '\n');
-        } catch (error) { if (process.env.SHIYAN_BROWSER_DEBUG === '1') process.stderr.write('[browser] frame push failed: ' + (error?.message || error) + '\n'); break; }
+        } catch (error) { if (process.env.SHIYAN_BROWSER_DEBUG === '1') process.stderr.write('[browser] frame push failed: ' + ((error as any)?.message || error) + '\n'); break; }
         next = session.pendingFrame;
         session.pendingFrame = null;
       }
@@ -1457,7 +1458,7 @@ export class BrowserSessionManager {
         case 'activity': break;
         default: break;
       }
-    } catch (error) { this.#sendJSON(session, { type:'error', message: error.message || '浏览器操作失败' }); if (throwErrors) throw error; }
+    } catch (error) { this.#sendJSON(session, { type:'error', message: (error as any).message || '浏览器操作失败' }); if (throwErrors) throw error; }
   }
 }
 
