@@ -6,7 +6,7 @@ import { authenticateDevice, digest } from './device-auth.ts';
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
 const MAX_BODY = 60 * 1024 * 1024;
 const ID = '[A-Za-z0-9_-]{1,120}';
-const routes = [
+const routes: [string, RegExp][] = [
   ['GET|POST', /^spaces$/],
   ['GET|POST', new RegExp(`^spaces/${ID}/knowledge-bases$`)],
   ['GET|PATCH|DELETE', new RegExp(`^knowledge-bases/${ID}$`)],
@@ -33,7 +33,7 @@ async function readBody(req) {
   if (!Number.isSafeInteger(length) || length < 0) throw fail('请求长度无效');
   if (length > MAX_BODY) throw fail('PDF 文件过大，请选择小于 50 MB 的文件', 413);
   let size = 0;
-  const parts = [];
+  const parts: Buffer[] = [];
   for await (const part of req) {
     size += part.length;
     if (size > MAX_BODY) throw fail('PDF 文件过大，请选择小于 50 MB 的文件', 413);
@@ -48,7 +48,8 @@ function json(res, status, value) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Length': Buffer.byteLength(body) });
   res.end(body);
 }
-export function createKnowledgeSidecar({ authenticate = authenticateDevice, upstream = 'http://127.0.0.1:18770', secret, timeout = 240000 } = {}) {
+interface KnowledgeSidecarOptions { authenticate?: (req: any) => any; upstream?: string; secret: string; timeout?: number; }
+export function createKnowledgeSidecar({ authenticate = authenticateDevice, upstream = 'http://127.0.0.1:18770', secret, timeout = 240000 }: KnowledgeSidecarOptions) {
   if (!secret || typeof secret !== 'string' || secret.length < 32) throw new Error('Knowledge bridge secret missing');
   const target = new URL(upstream);
   if (target.protocol !== 'http:' || target.hostname !== '127.0.0.1' || target.pathname !== '/' || target.search || target.username || target.password)
@@ -84,14 +85,14 @@ export function createKnowledgeSidecar({ authenticate = authenticateDevice, upst
       if (bytes.length > 32 * 1024 * 1024) throw fail('知识库结果过大，请缩小查询范围', 502);
       if (!response.ok) {
         let detail;
-        try { const value = JSON.parse(bytes); detail = value.error || value.detail; } catch {}
+        try { const value = JSON.parse(bytes.toString()); detail = value.error || value.detail; } catch {}
         const message = typeof detail === 'string' ? detail : response.status === 422 ? '请检查知识库名称、问题或 PDF 文件' : '知识库操作失败，请重试';
         return json(res, response.status, { ok: false, error: message, detail: message });
       }
       res.writeHead(response.status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Length': bytes.length });
       res.end(bytes);
     } catch (error) {
-      if (!res.destroyed && !res.headersSent) json(res, error.status || 503, { ok: false, error: error.status ? error.message : '知识库服务暂时无法连接，请稍后重试' });
+      if (!res.destroyed && !res.headersSent) json(res, (error as any).status || 503, { ok: false, error: (error as any).status ? (error as any).message : '知识库服务暂时无法连接，请稍后重试' });
     } finally { clearTimeout(timer); res.off('close', disconnected); }
   });
 }

@@ -11,9 +11,9 @@ async function serve(t, server) {
   return 'http://127.0.0.1:' + server.address().port;
 }
 test('authenticated ownership and exact multipart bytes reach the private bridge', async t => {
-  const received = [];
+  const received: any[] = [];
   const bridge = await serve(t, http.createServer(async (req, res) => {
-    const parts = []; for await (const part of req) parts.push(part);
+    const parts: Buffer[] = []; for await (const part of req) parts.push(part);
     received.push({ headers: req.headers, path: req.url, body: Buffer.concat(parts) });
     res.setHeader('Content-Type', 'application/json'); res.end('{"task_id":"task-1","status":"queued"}');
   }));
@@ -24,7 +24,7 @@ test('authenticated ownership and exact multipart bytes reach the private bridge
   const bytes = Buffer.concat([Buffer.from('--' + boundary + '\r\nContent-Disposition: form-data; name="file"; filename="资料.pdf"\r\nContent-Type: application/pdf\r\n\r\n%PDF-1.7\n'), Buffer.from([0, 255, 1]), Buffer.from('\r\n--' + boundary + '--\r\n')]);
   const response = await fetch(api + '/shiyan/v1/knowledge/knowledge-bases/kb-1/documents', { method: 'POST', body: bytes,
     headers: { authorization: 'Bearer valid-user', 'x-shiyan-owner': 'attacker', 'x-shiyan-body-sha': digest(bytes), 'content-type': 'multipart/form-data; boundary=' + boundary } });
-  assert.equal(response.status, 200); assert.equal((await response.json()).task_id, 'task-1');
+  assert.equal(response.status, 200); assert.equal(((await response.json()) as any).task_id, 'task-1');
   assert.equal(received.length, 1); assert.deepEqual(received[0].body, bytes);
   assert.equal(received[0].headers['x-shiyan-owner'], 'account:A');
   assert.equal(received[0].headers.authorization, 'Bearer ' + secret);
@@ -62,8 +62,8 @@ test('upstream validation and connection failures produce usable errors', async 
   const bridge = await serve(t, http.createServer((req, res) => { res.writeHead(422); res.end('{"detail":[{"loc":["body","name"]}]}'); }));
   const api = await serve(t, createKnowledgeSidecar({ secret: 's'.repeat(48), upstream: bridge, authenticate: () => ({ owner: 'account:A' }) }));
   const response = await fetch(api + '/shiyan/v1/knowledge/spaces', { headers: { 'x-shiyan-body-sha': digest(Buffer.alloc(0)) } });
-  assert.equal(response.status, 422); assert.match((await response.json()).error, /检查/);
+  assert.equal(response.status, 422); assert.match(((await response.json()) as any).error, /检查/);
   const unavailable = await serve(t, createKnowledgeSidecar({ secret: 's'.repeat(48), upstream: 'http://127.0.0.1:1', authenticate: () => ({ owner: 'account:A' }) }));
   const offline = await fetch(unavailable + '/shiyan/v1/knowledge/spaces', { headers: { 'x-shiyan-body-sha': digest(Buffer.alloc(0)) } });
-  assert.equal(offline.status, 503); const message=(await offline.json()).error; assert.match(message, /知识库服务/); assert.doesNotMatch(message, /Mac/);
+  assert.equal(offline.status, 503); const message=((await offline.json()) as any).error; assert.match(message, /知识库服务/); assert.doesNotMatch(message, /Mac/);
 });
