@@ -10,15 +10,15 @@ function deferred() { let resolve, reject; const promise = new Promise((yes, no)
 function response({ok = true, type = 'audio/mpeg', size = 10} = {}) {
   return {ok, headers: {get: () => type}, arrayBuffer: async () => new ArrayBuffer(size)};
 }
-function browser({mode = 'web', recognition = true, webkit = false, withAudio = true, autoFetch = true, delayDecode = false} = {}) {
-  const events = [], requests = [], sources = [], contexts = [], recognitions = [], listeners = {};
-  class Context {
+function browser({mode = 'web', recognition = true, webkit = false, withAudio = true, autoFetch = true, delayDecode = false}: any = {}): any {
+  const events: any[] = [], requests: any[] = [], sources: any[] = [], contexts: any[] = [], recognitions: any[] = [], listeners: any = {};
+  class Context { [key: string]: any;
     constructor() { this.state = 'suspended'; this.destination = {}; this.resumes = 0; this.decodes = []; contexts.push(this); }
     resume() { this.resumes++; this.state = 'running'; return Promise.resolve(); }
     close() { this.state = 'closed'; return Promise.resolve(); }
     decodeAudioData(bytes) { const job = deferred(); this.decodes.push({bytes, ...job}); if (!delayDecode) job.resolve({duration: 1}); return job.promise; }
     createBufferSource() {
-      const item = {started: false, stopped: false, disconnected: false,
+      const item = {started: false, stopped: false, disconnected: false, onended: () => {},
         connect: () => {}, disconnect() { this.disconnected = true; },
         start() { this.started = true; }, stop() { this.stopped = true; this.onended?.(); },
         end() { this.onended?.(); }};
@@ -26,7 +26,7 @@ function browser({mode = 'web', recognition = true, webkit = false, withAudio = 
     }
   }
   let adapter;
-  const window = {ShiYanPlatform: {mode, registerAdapter: (name, value) => { assert.equal(name, 'voice'); adapter = value; }},
+  const window: any = {ShiYanPlatform: {mode, registerAdapter: (name, value) => { assert.equal(name, 'voice'); adapter = value; }},
     addEventListener: (name, fn) => { listeners[name] = fn; }, dispatchEvent: event => { events.push(event.detail); }};
   if (withAudio) window[webkit ? 'webkitAudioContext' : 'AudioContext'] = Context;
   if (recognition) window.SpeechRecognition = class { constructor() { recognitions.push(this); } start() {} abort() {} };
@@ -35,7 +35,7 @@ function browser({mode = 'web', recognition = true, webkit = false, withAudio = 
     if (autoFetch) job.resolve(response());
     return job.promise;
   };
-  vm.runInNewContext(source, {window, fetch, AbortController, ArrayBuffer, CustomEvent: class {constructor(type, {detail}) {this.type = type; this.detail = detail;}}, setTimeout, clearTimeout, queueMicrotask});
+  vm.runInNewContext(source, {window, fetch, AbortController, ArrayBuffer, CustomEvent: class {type: any; detail: any; constructor(type, {detail}) {this.type = type; this.detail = detail;}}, setTimeout, clearTimeout, queueMicrotask});
   return {adapter, events, requests, sources, contexts, recognitions, listeners, window};
 }
 const states = b => b.events.filter(event => event.type === 'voicePlaybackState').map(event => [event.sessionId, event.state]);
@@ -154,8 +154,8 @@ test('Empty and oversized messages do not synthesize audio', async () => {
   }
 });
 
-function panel(mode) {
-  const calls = [], native = [], errors = [];
+function panel(mode: any): any {
+  const calls: any[] = [], native: any[] = [], errors: any[] = [];
   const context = {readSession: null, readingIndex: -1, readUtterance: null, currentConversation: {messages: [{role: 'assistant', content: '这条消息需要朗读。'}]},
     conversationDialog: null, C: {showError: error => errors.push(error.message)}, crypto: {randomUUID: () => 'read-session'},
     $: () => null, syncReadButtons: () => {},
