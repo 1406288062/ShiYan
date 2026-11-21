@@ -23,7 +23,7 @@ export {timeContext,localTime};
 const bounded = (value,limit) => String(value??'').slice(0,limit);
 
 function boundedRows(rows,budget) {
-  const result=[];let used=2;
+  const result: any[]=[];let used=2;
   for(const row of rows){const size=JSON.stringify(row).length+1;if(used+size>budget)continue;result.push(row);used+=size;}
   return {items:result,omitted:rows.length-result.length};
 }
@@ -41,7 +41,7 @@ export function buildTaskRoutingContext(store,state,inbox) {
   rows.sort((a,b)=>Number(references.has(b.id))-Number(references.has(a.id))||Number(a.status==='done'&&a.acceptanceStatus==='accepted')-Number(b.status==='done'&&b.acceptanceStatus==='accepted')||Number(b.updatedAt||0)-Number(a.updatedAt||0));
   const recentDetails=new Set(rows.slice(0,6).map(task=>task.id));
   const compact=task=>{
-    const row={id:task.id,title:bounded(task.title,160),status:task.status,acceptanceStatus:task.acceptanceStatus,resourceKey:bounded(task.resourceKey,180)};
+    const row: any={id:task.id,title:bounded(task.title,160),status:task.status,acceptanceStatus:task.acceptanceStatus,resourceKey:bounded(task.resourceKey,180)};
     if(references.has(task.id)||recentDetails.has(task.id)){
       row.instruction=bounded(task.instruction,240);
       row.lastSummary=bounded(task.lastSummary,200);
@@ -192,7 +192,7 @@ export function extractManagerReply(source) {
 // resolve 把消息里的路径（宿主路径或账号工作区里的 /workspace/...）换成宿主上可读的文件路径。
 const IMAGE_PATH=/"path":"((?:[^"\\]|\\.)+?\.(?:jpe?g|png|gif|webp))"/gi;
 export function pendingImagePaths(store,run,resolve=p=>p){
-  const paths=new Set();
+  const paths=new Set<string>();
   try{for(const event of store.pendingManagerInbox(run)){if(event.type!=='user_message')continue;const content=String(JSON.parse(event.payload)?.content||'');
     for(const match of content.matchAll(IMAGE_PATH)){let raw;try{raw=JSON.parse('"'+match[1]+'"');}catch{continue;}const file=resolve(raw);if(file&&existsSync(file))paths.add(file);}}}catch{}
   return [...paths].slice(0,8);
@@ -204,7 +204,7 @@ export async function runStructuredTurn(thread: any,prompt: string,schema: any,{
     return turn;
   }
   const {events}=await thread.runStreamed(prompt,{outputSchema:schema,signal,images});
-  let finalResponse='',usage=null;const items=[];
+  let finalResponse='',usage=null;const items: any[]=[];
   for await(const event of events){
     if(event.type==='thread.started')onThread?.(event.thread_id);
     // 工具调用、命令、搜索等步骤一并带回，供执行过程页面展示。
@@ -267,7 +267,7 @@ export interface ManagerRuntimeOptions {
   resolveImagePath?: (file: string) => string;
   threadOptions?: any;
   timeoutMs?: number;
-  onComplete?: () => void;
+  onComplete?: (value: any) => void | Promise<void>;
   threadFactory?: ((params: { threadId: string | null; options: any }) => Promise<any>) | null;
   contentReviewEnabled?: boolean;
   logger?: any;
@@ -278,9 +278,9 @@ export interface ManagerRuntimeOptions {
 export function createManagerRuntime({store,codex,workspaceRoot,memory,resolveImagePath,threadOptions={},timeoutMs=120000,onComplete=()=>{},threadFactory=null,contentReviewEnabled=true,logger=console,onModelCall=()=>{},voice=null,afterCommit=null}: ManagerRuntimeOptions) {
   const workspace=path.join(workspaceRoot,'.manager');mkdirSync(workspace,{recursive:true});
   // 读取用户启用的“学习对象”说话方式；失败时按普通 Dots 回复，不影响对话。
-  const voiceFor=async text=>{if(typeof voice!=='function')return '';try{return String(await voice(String(text||''))||'');}catch(cause){logger.warn?.('[voice]',cause?.message||cause);return '';}};
+  const voiceFor=async text=>{if(typeof voice!=='function')return '';try{return String(await voice(String(text||''))||'');}catch(cause){logger.warn?.('[voice]',(cause as any)?.message||cause);return '';}};
   let busy=false,closed=false,pendingContent=false,contentScheduled=false;
-  let currentAbort=null,currentProactive=false;
+  let currentAbort: AbortController | null=null,currentProactive=false;
   const scheduleContent=()=>{
     if(closed)return;pendingContent=true;
     if(contentScheduled)return;contentScheduled=true;
@@ -293,7 +293,7 @@ export function createManagerRuntime({store,codex,workspaceRoot,memory,resolveIm
   try {
     if(memory?.settings)store.relationship.memoryChanged(memory.settings(store.ownerId));
     if(contentReviewEnabled)store.initializeReflection?.();
-  } catch (cause) { store.relationship.invalidate('共同材料暂不可用');logger.warn?.('[reflection-initialization]',cause?.message||'Shared material unavailable'); }
+  } catch (cause) { store.relationship.invalidate('共同材料暂不可用');logger.warn?.('[reflection-initialization]',(cause as any)?.message||'Shared material unavailable'); }
   // Only actual pending content/thought work is recovered here. The scheduler's
   // ordinary wake path never constructs a reflection from elapsed time.
   if(contentReviewEnabled&&store.relationship.hasPending())scheduleContent();
@@ -331,12 +331,12 @@ export function createManagerRuntime({store,codex,workspaceRoot,memory,resolveIm
         const fresh=memory?.settings?.(store.ownerId);
         if(memoryState&&(!fresh||fresh.generation!==memoryState.generation||fresh.revision!==memoryState.revision||fresh.enabled!==memoryState.enabled))store.relationship.invalidate('生成期间记忆已变化');
         const committed=store.completeManager(run,JSON.parse(turn.finalResponse));
-        if(committed.committed&&committed.value.message)try{await onComplete(committed.value);}catch(cause){logger.error?.('[manager-delivery]',cause?.message||cause);}
+        if(committed.committed&&committed.value.message)try{await onComplete(committed.value);}catch(cause){logger.error?.('[manager-delivery]',(cause as any)?.message||cause);}
         return true;
       }
       const relationshipRevision=store.relationship?.snapshot().revision,ordinaryMemoryState=memory?.settings?.(store.ownerId);
-      let sources=[];
-      let remembered=null;
+      let sources: any[]=[];
+      let remembered: any = null;
       if(memory){
         remembered='';
         const userSource=store.db.prepare("SELECT id,content,created_at FROM manager_messages WHERE manager_id=? AND id=? AND role='user'");
@@ -365,15 +365,15 @@ export function createManagerRuntime({store,codex,workspaceRoot,memory,resolveIm
       const freshMemory=memory?.settings?.(store.ownerId);if(freshMemory)store.relationship.memoryChanged(freshMemory);
       if(ordinaryMemoryState&&(!freshMemory||freshMemory.generation!==ordinaryMemoryState.generation||freshMemory.enabled!==ordinaryMemoryState.enabled))result.relationship=null;
       const committed=store.completeManager(run,{...result,relationship_revision:relationshipRevision});
-      if(committed.committed)try{afterCommit?.(result);}catch(cause){logger.warn?.('[manager-extras]',cause?.message||cause);}
+      if(committed.committed)try{afterCommit?.(result);}catch(cause){logger.warn?.('[manager-extras]',(cause as any)?.message||cause);}
       if(committed.committed&&memory)for(const message of sources){
         try{memory.enqueue({owner:store.ownerId,sourceId:'dots:'+message.id,source:'dots',userText:message.content||'',
           assistantText:String(result.reply||result.summary||''),sourceAt:Math.round(message.createdAt*1000),conversationId:'dots-manager'});}catch{logger.warn?.('[memory] Could not queue Dots memory');}
       }
       callOk=true;
-      if(committed.committed)try{await onComplete(committed.value);}catch(cause){logger.error?.('[manager-delivery]',cause?.message||cause);}
+      if(committed.committed)try{await onComplete(committed.value);}catch(cause){logger.error?.('[manager-delivery]',(cause as any)?.message||cause);}
       return true;
-    }catch(cause){callError=String(cause?.message||cause);store.failManager(run,cause?.message||cause);logger.error?.('[manager]',cause?.message||cause);return false;}
+    }catch(cause){callError=String((cause as any)?.message||cause);store.failManager(run,(cause as any)?.message||cause);logger.error?.('[manager]',(cause as any)?.message||cause);return false;}
     finally{if(!contentReview&&(callOk||callError))try{onModelCall({model:threadOptions.model||'',reasoning:threadOptions.modelReasoningEffort||'',ok:callOk,ms:Date.now()-callStarted,error:callError});}catch{}
       clearTimeout(deadline);clearInterval(heartbeat);busy=false;currentAbort=null;currentProactive=false;if(pendingContent&&!closed)scheduleContent();}
   }
