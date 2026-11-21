@@ -22,8 +22,8 @@ const ROOT=process.env.SHIYAN_ROOT||'/home/ubuntu/boss-codex-service/shiyan-v2';
 const json=(res,status,value)=>{const data=JSON.stringify(value);res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Content-Length':Buffer.byteLength(data)});res.end(data);};
 const failure=(message,status=400)=>Object.assign(new Error(message),{status});
 const download=(res,file)=>{res.writeHead(200,{'Content-Type':file.mimeType||'application/octet-stream','Content-Disposition':"attachment; filename*=UTF-8''"+encodeURIComponent(file.filename),'X-Content-SHA256':file.sha256,'Cache-Control':'no-store','Content-Length':file.data.length});res.end(file.data);};
-async function bytes(req,max=256*1024){let size=0;const chunks=[];for await(const chunk of req){size+=chunk.length;if(size>max)throw failure('请求内容过大',413);chunks.push(chunk);}return Buffer.concat(chunks);}
-async function body(req,max){const raw=await bytes(req,max);if(digest(raw)!==req.headers['x-shiyan-body-sha'])throw failure('请求校验失败',401);try{return JSON.parse(raw.toString()||'{}');}catch{throw failure('请求格式无效');}}
+async function bytes(req,max=256*1024){let size=0;const chunks: Buffer[]=[];for await(const chunk of req){size+=chunk.length;if(size>max)throw failure('请求内容过大',413);chunks.push(chunk);}return Buffer.concat(chunks);}
+async function body(req,max=256*1024){const raw=await bytes(req,max);if(digest(raw)!==req.headers['x-shiyan-body-sha'])throw failure('请求校验失败',401);try{return JSON.parse(raw.toString()||'{}');}catch{throw failure('请求格式无效');}}
 
 export function createDotsSidecar({root=ROOT,authenticate=authenticateDevice,adapter=new DotsAdapter({root:path.join(root,'data'),allowedOwner:process.env.SHIYAN_DOTS_OWNER||'shiyan-private-owner',callbackURL:process.env.SHIYAN_DOTS_CALLBACK_URL||'',importPrivateGoals:process.env.SHIYAN_DOTS_IMPORT_PRIVATE_GOALS==='1'}),recover=true,registrationSocket=recover?(process.env.DOTS_REGISTRATION_SOCKET||path.join(root,'data','registration-events.sock')):null,browser=new BrowserSessionManager({validateAccountToken:token=>Boolean(getAccountStore().authenticate(token))}),browserStore=null,browserSocket=recover?(process.env.SHIYAN_BROWSER_SOCKET||defaultBrowserSocket(root)):null}={}) {
   const profile=createDotsProfile(adapter,root);
@@ -34,7 +34,7 @@ export function createDotsSidecar({root=ROOT,authenticate=authenticateDevice,ada
   const browserRoutes=async(req,res,pathname,owner,auth)=>{
     const m=pathname.match(/^\/v1\/dots\/browser\/(tasks|questions|permissions|site-rules|identities|vault)(?:\/([A-Za-z0-9_-]{1,64}))?(?:\/(answer|secure|takeover|handback|close))?$/);
     if(!m)return false;const [,kind,id,action]=m;
-    if(kind==='tasks'&&!id&&req.method==='GET'){json(res,200,{ok:true,tasks:browserTasks.listTasks(owner,{limit:40}).map(task=>browserAgent.publicTask(task)),takeover:browserAgent.takeover?.owner===owner?browserAgent.takeover.taskId:null});return true;}
+    if(kind==='tasks'&&!id&&req.method==='GET'){json(res,200,{ok:true,tasks:browserTasks.listTasks(owner,{limit:40}).map(task=>browserAgent.publicTask(task)),takeover:browserAgent.takeover?.owner===owner?browserAgent.takeover!.taskId:null});return true;}
     if(kind==='tasks'&&id&&!action&&req.method==='GET'){json(res,200,{ok:true,task:browserAgent.publicTask(browserTasks.task(owner,id))});return true;}
     if(kind==='tasks'&&id&&action==='takeover'&&req.method==='POST'){await body(req,1024);const accountToken=auth.accountSession?requestBearer(req):null;json(res,201,await browserAgent.startTakeover(owner,id,{accountToken}));return true;}
     if(kind==='tasks'&&id&&action==='handback'&&req.method==='POST'){const input=await body(req,4096);json(res,200,await browserAgent.handback(owner,id,{note:typeof input.note==='string'?input.note:''}));return true;}
@@ -101,12 +101,12 @@ export function createDotsSidecar({root=ROOT,authenticate=authenticateDevice,ada
         if(sub==='milestones'&&req.method==='POST')return json(res,200,await adapter.lifeGoals(owner,'milestone',goalId,await body(req)));
         if(sub==='replan'&&req.method==='POST')return json(res,200,await adapter.lifeGoals(owner,'replan',goalId));
       }
-      if(req.method==='GET'&&pathname==='/v1/dots/audit'){const q=new URL(req.url,'http://localhost').searchParams;return json(res,200,await adapter.audit(owner,{limit:q.get('limit'),before:q.get('before'),category:q.get('category')}));}
+      if(req.method==='GET'&&pathname==='/v1/dots/audit'){const q=new URL(req.url||'/','http://localhost').searchParams;return json(res,200,await adapter.audit(owner,{limit:q.get('limit'),before:q.get('before'),category:q.get('category')}));}
       if(req.method==='GET'&&pathname==='/v1/dots/approval-grants')return json(res,200,await adapter.approvalGrants(owner));
       const grantRoute=pathname.match(/^\/v1\/dots\/approval-grants\/(\d+)$/);if(req.method==='DELETE'&&grantRoute)return json(res,200,await adapter.revokeApprovalGrant(owner,grantRoute[1]));
       if(req.method==='PATCH'&&pathname==='/v1/dots/settings')return json(res,200,await adapter.updateSettings(owner,await body(req)));
       const subscription=pathname.match(/^\/v1\/dots\/subscriptions\/(github|google-calendar|email|rss)$/);
-      if(subscription&&['PATCH','PUT','POST'].includes(req.method))return json(res,200,await adapter.updateSubscription(owner,subscription[1],await body(req)));
+      if(subscription&&['PATCH','PUT','POST'].includes(req.method||''))return json(res,200,await adapter.updateSubscription(owner,subscription[1]!,await body(req)));
       if(subscription&&req.method==='DELETE')return json(res,200,await adapter.deleteSubscription(owner,subscription[1]));
       if(req.method==='GET'&&pathname==='/v1/dots/capabilities')return json(res,200,await adapter.capabilities(owner));
       if(req.method==='GET'&&pathname==='/v1/dots/profile')return json(res,200,profile.get(owner));
@@ -119,7 +119,7 @@ export function createDotsSidecar({root=ROOT,authenticate=authenticateDevice,ada
         const file=path.join(root,'data','dots-pets','previews-bundle.tar.gz');let size;try{size=statSync(file).size;}catch{throw failure('桌宠预览尚未准备好',404);}if(size>40*1024*1024)throw failure('桌宠预览文件过大',413);
         const data=readFileSync(file);return download(res,{filename:'dots-pets-previews.tar.gz',mimeType:'application/gzip',data,sha256:createHash('sha256').update(data).digest('hex')});
       }
-      if(req.method==='GET'&&pathname==='/v1/dots/activity')return json(res,200,await adapter.activity(owner,{limit:url.searchParams.get('limit')||100}));
+      if(req.method==='GET'&&pathname==='/v1/dots/activity')return json(res,200,await adapter.activity(owner,{limit:Number(url.searchParams.get('limit')||100)}));
       if(req.method==='GET'&&pathname==='/v1/dots/schedules')return json(res,200,adapter.schedules.list(owner));
       if(req.method==='POST'&&pathname==='/v1/dots/schedules')return json(res,200,await adapter.schedules.create(owner,await body(req)));
       const schedule=pathname.match(/^\/v1\/dots\/schedules\/([0-9a-f-]{36})(?:\/(control))?$/i);
@@ -149,19 +149,19 @@ export function createDotsSidecar({root=ROOT,authenticate=authenticateDevice,ada
         if(operation==='memories'&&childId&&req.method==='DELETE')return json(res,200,await adapter.deleteDigitalPersonMemory(owner,personId,childId));
       }
       if(req.method==='GET'&&pathname==='/v1/dots/manager')return json(res,200,await adapter.manager(owner));
-      if(req.method==='GET'&&pathname==='/v1/dots/manager/messages')return json(res,200,await adapter.managerMessages(owner,{before:url.searchParams.get('before')||0,limit:url.searchParams.get('limit')||100}));
+      if(req.method==='GET'&&pathname==='/v1/dots/manager/messages')return json(res,200,await adapter.managerMessages(owner,{before:Number(url.searchParams.get('before')||0),limit:Number(url.searchParams.get('limit')||100)}));
       const feedbackRoute=pathname.match(/^\/v1\/dots\/manager\/messages\/(\d{1,12})\/feedback$/);
       if(feedbackRoute&&req.method==='POST')return json(res,200,await adapter.messageFeedback(owner,feedbackRoute[1],(await body(req)).value));
       if(req.method==='POST'&&pathname==='/v1/dots/manager/messages')return json(res,200,await adapter.messageManager(owner,await body(req)));
       if(req.method==='POST'&&pathname==='/v1/dots/manager/control')return json(res,200,await adapter.controlManager(owner,await body(req)));
-      if(req.method==='GET'&&pathname==='/v1/dots/manager/activity')return json(res,200,await adapter.managerActivity(owner,{after:url.searchParams.get('after')||0,limit:url.searchParams.get('limit')||50}));
-      if(req.method==='GET'&&pathname==='/v1/dots/goals')return json(res,200,await adapter.list(owner,{after:url.searchParams.get('after')||0,limit:url.searchParams.get('limit')||50,status:url.searchParams.get('status')||undefined}));
+      if(req.method==='GET'&&pathname==='/v1/dots/manager/activity')return json(res,200,await adapter.managerActivity(owner,{after:Number(url.searchParams.get('after')||0),limit:Number(url.searchParams.get('limit')||50)}));
+      if(req.method==='GET'&&pathname==='/v1/dots/goals')return json(res,200,await adapter.list(owner,{after:Number(url.searchParams.get('after')||0),limit:Number(url.searchParams.get('limit')||50),status:url.searchParams.get('status')||undefined}));
       if(req.method==='POST'&&pathname==='/v1/dots/goals')return json(res,200,await adapter.create(owner,await body(req)));
-      if(req.method==='GET'&&pathname==='/v1/dots/notifications')return json(res,200,adapter.events(owner,{after:url.searchParams.get('after')||0,limit:url.searchParams.get('limit')||100}));
+      if(req.method==='GET'&&pathname==='/v1/dots/notifications')return json(res,200,adapter.events(owner,{after:Number(url.searchParams.get('after')||0),limit:Number(url.searchParams.get('limit')||100)}));
       if(req.method==='POST'&&pathname==='/v1/dots/notifications/ack')return json(res,200,adapter.acknowledge(owner,await body(req)));
       if(req.method==='GET'&&pathname==='/v1/dots/events'){
         if(auth.accountSession){const timer=setInterval(()=>{if(!getAccountStore().authenticate(requestBearer(req)))res.end();},2000);timer.unref();res.on('close',()=>clearInterval(timer));}
-        adapter.stream(owner,res,url.searchParams.get('after')||req.headers['last-event-id']||0);return;
+        adapter.stream(owner,res,Number(url.searchParams.get('after')||req.headers['last-event-id']||0));return;
       }
       const output=pathname.match(/^\/v1\/dots\/outputs\/(\d+)$/);if(req.method==='GET'&&output)return json(res,200,await adapter.output(owner,output[1]));
       const approval=pathname.match(/^\/v1\/dots\/goals\/(\d+)\/approvals\/(\d+)\/decision$/);if(req.method==='POST'&&approval)return json(res,200,await adapter.decide(owner,approval[1],approval[2],await body(req)));
@@ -170,23 +170,23 @@ export function createDotsSidecar({root=ROOT,authenticate=authenticateDevice,ada
         if(req.method==='GET'&&!action)return json(res,200,await adapter.goal(owner,id));
         if(req.method==='POST'&&action==='instruct')return json(res,200,await adapter.instruct(owner,id,await body(req)));
         if(req.method==='POST'&&action==='control')return json(res,200,await adapter.control(owner,id,await body(req)));
-        if(req.method==='GET'&&action==='timeline')return json(res,200,await adapter.timeline(owner,id,{after:url.searchParams.get('after')||0,limit:url.searchParams.get('limit')||50}));
-        if(req.method==='GET'&&action==='outputs')return json(res,200,await adapter.outputs(owner,id,{limit:url.searchParams.get('limit')||50}));
+        if(req.method==='GET'&&action==='timeline')return json(res,200,await adapter.timeline(owner,id,{after:Number(url.searchParams.get('after')||0),limit:Number(url.searchParams.get('limit')||50)}));
+        if(req.method==='GET'&&action==='outputs')return json(res,200,await adapter.outputs(owner,id,{limit:Number(url.searchParams.get('limit')||50)}));
         if(req.method==='GET'&&action==='approvals')return json(res,200,await adapter.approvals(owner,id));
       }
       return json(res,404,{ok:false,error:'接口不存在',code:'not_found'});
-    }catch(error){if(!res.headersSent)json(res,error.status||500,{ok:false,error:error.status?error.message:'Dots 操作未完成，请刷新后重试',code:error.code||'request_failed'});else res.end();}
+    }catch(error){if(!res.headersSent)json(res,(error as any).status||500,{ok:false,error:(error as any).status?(error as any).message:'Dots 操作未完成，请刷新后重试',code:(error as any).code||'request_failed'});else res.end();}
   });
   let registrationReceiver;
-  server.registrationReady=Promise.resolve();
+  (server as any).registrationReady=Promise.resolve();
   if(registrationSocket)server.on('listening',()=>{
-    server.registrationReady=startRegistrationReceiver({socketPath:registrationSocket,ingest:event=>adapter.registrationNotice(event)}).then(async receiver=>{if(!server.listening){await receiver.close();return null;}registrationReceiver=receiver;return receiver;});
-    server.registrationReady.catch(()=>console.error('[registration-notices] private receiver unavailable; durable outboxes retain events'));
+    (server as any).registrationReady=startRegistrationReceiver({socketPath:registrationSocket,ingest:event=>adapter.registrationNotice(event)}).then(async receiver=>{if(!server.listening){await receiver.close();return null;}registrationReceiver=receiver;return receiver;});
+    (server as any).registrationReady.catch(()=>console.error('[registration-notices] private receiver unavailable; durable outboxes retain events'));
   });
   server.on('upgrade',(req,socket,head)=>{let pathname='';try{pathname=new URL(req.url||'/', 'http://localhost').pathname.replace(/^\/shiyan/,'');}catch{}if(pathname==='/v1/dots/browser/stream')return browser.acceptWebSocket(req,socket,head);socket.destroy();});
-  let agentSocket=null;
-  if(browserSocket)server.on('listening',()=>{startBrowserAgentSocket(browserAgent,browserSocket).then(value=>{if(!server.listening){value.close();return;}agentSocket=value;}).catch(error=>console.error('[browser-agent] private socket unavailable:',error?.message||error));});
-  server.browserAgent=browserAgent;
+  let agentSocket: any=null;
+  if(browserSocket)server.on('listening',()=>{startBrowserAgentSocket(browserAgent,browserSocket).then((value: any)=>{if(!server.listening){value.close();return;}agentSocket=value;}).catch(error=>console.error('[browser-agent] private socket unavailable:',error?.message||error));});
+  (server as any).browserAgent=browserAgent;
   server.on('close',()=>{void registrationReceiver?.close();agentSocket?.close();browserAgent.close();void browser.close();browserTasks.close();adapter.close();});
 
   if(recover)server.on('listening',()=>void adapter.recover().catch(()=>{}));

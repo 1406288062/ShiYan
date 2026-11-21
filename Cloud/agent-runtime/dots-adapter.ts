@@ -294,7 +294,7 @@ export class DotsAdapter {
   async weixin(owner,action='status',input: any={}){this.authorize(owner);if(!['status','login','verify','unbind','push'].includes(action))throw fail('操作无效',400);const params=action==='verify'?{code:String(input.code||'')}:action==='push'?{enabled:input.enabled===true}:{};return this.clientFor(owner).rpc('dots/weixin/'+action,params);}
   async settings(owner){this.authorize(owner);return this.clientFor(owner).rpc('dots/settings/get');}
   async audit(owner,query: any={}){this.authorize(owner);const params: {limit: number; before?: number; category?: string}={limit:Math.max(1,Math.min(200,Number(query.limit)||50))};if(query.before!==undefined&&query.before!==null&&query.before!==''){const before=Number(query.before);if(!Number.isSafeInteger(before)||before<1)throw fail('分页参数无效');params.before=before;}if(query.category){if(!['action','message','change'].includes(query.category))throw fail('类别无效');params.category=query.category;}return this.clientFor(owner).rpc('dots/audit/list',params);}
-  async lifeGoals(owner,action='list',id=null,input={}){
+  async lifeGoals(owner,action='list',id: string | null=null,input: any={}){
     this.authorize(owner);
     if(!['list','create','update','milestone','replan','remove'].includes(action))throw fail('操作无效',400);
     const params: {id?: number; goal?: any; change?: any}={};

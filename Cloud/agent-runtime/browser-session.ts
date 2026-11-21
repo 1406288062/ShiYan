@@ -572,6 +572,7 @@ export async function sweepStaleBrowser() {
   if (count) process.stderr.write(`[browser-lifecycle] startup sweep closed ${count} leftover chrome processes\n`);
   return count > 0;
 }
+interface BrowserSessionManagerOptions { launch?: typeof startChromeRuntime; allowOrigins?: Set<string>; validateAccountToken?: ((token: string) => boolean | Promise<boolean>) | null; idleMs?: number; maxSessionMs?: number; }
 export class BrowserSessionManager {
   launch: typeof startChromeRuntime;
   allowOrigins: Set<string>;
@@ -584,11 +585,11 @@ export class BrowserSessionManager {
   lastExchange!: { value: any; promise: Promise<any>; expiresAt: number } | null;
   agentHook!: { onViewerAttached?: (session: any) => void; onViewerDetached?: (session: any) => void; onSessionDestroyed?: (session: any) => void; claimTarget?: (session: any, info: any, method: any) => any; cdpEvent?: (session: any, message: any) => any } | null;
   startTail!: Promise<void> | null;
-  constructor({ launch = startChromeRuntime, allowOrigins = ALLOWED_ORIGINS, validateAccountToken = null, idleMs = IDLE_TTL_MS, maxSessionMs = MAX_SESSION_MS } = {}) {
+  constructor({ launch = startChromeRuntime, allowOrigins = ALLOWED_ORIGINS, validateAccountToken = null, idleMs = IDLE_TTL_MS, maxSessionMs = MAX_SESSION_MS }: BrowserSessionManagerOptions = {}) {
     this.launch = launch; this.allowOrigins = allowOrigins; this.validateAccountToken = validateAccountToken;
     this.idleMs = idleMs; this.maxSessionMs = maxSessionMs; this.active = null; this.ticket = null;
   }
-  async createTicket(owner, { accountToken = null } = {}) {
+  async createTicket(owner, { accountToken = null }: { accountToken?: string | null } = {}) {
     if (!owner) throw fail('账号身份无效', 401);
     // The same account reopening (page refresh, closed tab without cleanup) takes over:
     // the stale session is closed instead of locking the user out until the idle timeout.

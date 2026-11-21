@@ -953,7 +953,7 @@ export class BrowserAgentHost {
     if (!answer.entered) throw fail(answer.error || '没有填入页面', 409);
     return { ok: true };
   }
-  async startTakeover(owner, taskId, { accountToken = null } = {}) {
+  async startTakeover(owner, taskId, { accountToken = null }: { accountToken?: string | null } = {}) {
     const task = this.store.task(owner, taskId);
     if (task.origin !== 'chat') throw fail('定时任务、主动推送和网页应用发起的浏览器任务不提供接管', 403);
     if (this.takeover && this.takeover.taskId !== task.id && this.takeover.owner === owner) await this.handback(owner, this.takeover.taskId, { note: '用户转去接管另一个窗口。' }).catch(() => {});
