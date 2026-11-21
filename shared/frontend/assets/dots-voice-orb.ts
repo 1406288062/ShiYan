@@ -12,6 +12,21 @@
   const duration = 3600;
 
   class ShiYanDotsVoiceOrb {
+    options: any;
+    state: { active: boolean; phase: string; level: number; visible: boolean };
+    mode: string;
+    progress: number;
+    time: number;
+    level: number;
+    floatOffset: number;
+    drag: { id: number; startX: number; startY: number; distance: number; began: number; started: boolean } | null;
+    handle: HTMLDivElement;
+    view: any;
+    surface: any;
+    animation: any;
+    riseOrigin: { x: number; y: number } | null;
+    geometry: { width: number; height: number; cx: number; cy: number; radius: number; sink: any; surfaceWidth: number; surfaceHeight: number; dpr: number };
+    releaseProgress: number;
     constructor(options = {}) {
       this.options = options;
       this.state = {active:false, phase:'idle', level:0, visible:true};
