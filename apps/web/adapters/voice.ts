@@ -1,20 +1,20 @@
 /* Browser voice is a web-only adapter; desktop keeps its native audio path. */
 (() => {
   'use strict';
-  const platform = window.ShiYanPlatform;
+  const platform = (window as any).ShiYanPlatform;
   if (platform?.mode !== 'web') return;
-  const AudioContext = window.AudioContext || window.webkitAudioContext;
-  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  let callId = null, playback = null, capture = null, audio = null;
+  const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+  const Recognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+  let callId: any = null, playback: any = null, capture: any = null, audio: any = null;
   const emit = detail => window.dispatchEvent(new CustomEvent('shiyan-native', {detail}));
-  const state = (record, value, message) => emit({type: 'voicePlaybackState', sessionId: record.id,
+  const state = (record: any, value: any, message?: any) => emit({type: 'voicePlaybackState', sessionId: record.id,
     state: value, ...(message ? {message} : {}), provider: 'xiaoxiao-neural'});
   const available = () => !!(AudioContext && Recognition);
   function unavailableReason() {
     if (!AudioContext) return '当前浏览器不支持语音播放，请更换浏览器后重试。';
     return '当前浏览器不支持语音输入，请使用支持浏览器语音输入的浏览器。';
   }
-  function cancelPlayback(id) {
+  function cancelPlayback(id?: any) {
     const record = playback;
     if (!record || (id && record.id !== id)) return;
     playback = null;
@@ -28,7 +28,7 @@
     emit({type: 'voicePlaybackLevel', sessionId: record.id, level: 0});
     state(record, 'cancelled');
   }
-  function cancelCapture(id) {
+  function cancelCapture(id?: any) {
     const record = capture;
     if (!record || (id && record.id !== id)) return;
     capture = null;
@@ -58,7 +58,7 @@
   function startCapture(detail) {
     cancelCapture();
     const recognition = new Recognition();
-    const record = {id: detail.sessionId, detail, recognition, text: '', timer: 0, speech: false, events: 0, startedAt: Date.now(), heardAt: 0};
+    const record: any = {id: detail.sessionId, detail, recognition, text: '', timer: 0, speech: false, events: 0, startedAt: Date.now(), heardAt: 0};
     capture = record;
     recognition.lang = 'zh-CN';
     recognition.continuous = true;
@@ -72,7 +72,7 @@
       if (capture !== record) return;
       if (!record.heardAt) record.heardAt = Date.now();
       record.events++;
-      record.text = normalizeTranscript(Array.from(event.results, result => result[0]?.transcript || '').join(''));
+      record.text = normalizeTranscript(Array.from(event.results, (result: any) => result[0]?.transcript || '').join(''));
       emit({type: 'speech', sessionId: record.id, text: record.text, isFinal: false});
       schedule();
     };
@@ -106,7 +106,7 @@
   // 播放当前段时预取下一段。音频约 6KB/秒，下载比播放快时就不会断。
   const partLimit = index => index === 0 ? 60 : index === 1 ? 120 : 320;
   function speechParts(text) {
-    const parts = [];
+    const parts: any[] = [];
     let pending = '';
     const append = value => {
       if (pending && (parts.length === 0 || Array.from(pending + value).length > partLimit(parts.length))) {
@@ -142,7 +142,7 @@
     const context = await ready;
     if (playback !== record) return;
     const parts = speechParts(text);
-    let pending = fetchAudio(record, parts[0]);
+    let pending: any = fetchAudio(record, parts[0]);
     for (let index = 0; index < parts.length; index++) {
       const bytes = await pending;
       if (playback !== record) return;
@@ -151,7 +151,7 @@
       pending?.catch(() => {}); // A prefetch failure is handled on its next turn.
       const buffer = await context.decodeAudioData(bytes);
       if (playback !== record) return;
-      await new Promise((resolve, reject) => {
+      await new Promise<void>((resolve, reject) => {
         const source = context.createBufferSource();
         record.source = source; record.finishPart = resolve;
         source.buffer = buffer;
@@ -190,7 +190,7 @@
       state(record, 'failed', '自然语音暂时不可用，请稍后重试。');
     });
   }
-  function post(action, detail = {}) {
+  function post(action: any, detail: any = {}) {
     if (action === 'prepareVoicePlayback') {
       cancelCapture(); cancelPlayback(); callId = detail.callId;
       if (AudioContext) { try { prepareAudio().catch(() => {}); } catch {} }
