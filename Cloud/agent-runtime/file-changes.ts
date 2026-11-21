@@ -33,10 +33,10 @@ export async function collectFileChanges(root,before,items: any[]=[],{jobId=null
    if(change)changes.push(change);
   }
   // SDK records outside the snapshot are listed without invented before/after content.
-  let supplemental=[];
+  let supplemental: any[]=[];
   if(jobId)try{supplemental=await readRemoteFileChanges(root,jobId);}catch{/* Invalid evidence never replaces genuine workspace changes. */}
   const merged=mergeFileChanges(changes,supplemental);
-  const stagingPaths=new Set(supplemental.stagingPaths||supplemental.flatMap(file=>file.stagingPaths||[]));
+  const stagingPaths=new Set((supplemental as any).stagingPaths||supplemental.flatMap(file=>file.stagingPaths||[]));
   for(const item of items)if(item.type==='file_change'&&item.status==='completed')for(const c of item.changes||[]){
    if(typeof c.path!=='string'||/[\x00-\x1f\x7f]/.test(c.path)||!['add','delete','update'].includes(c.kind))continue;const absolute=path.resolve(root,c.path),relative=path.relative(root,absolute);
    if(stagingPaths.has(absolute))continue;
