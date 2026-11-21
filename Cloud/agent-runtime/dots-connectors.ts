@@ -49,7 +49,8 @@ function subscriptionAccount(sub) {
   return '';
 }
 
-export function buildConnectors({ subscriptions = [], sponge = null, spongeError = false, weixin = null } = {}) {
+interface BuildConnectorsOptions { subscriptions?: any[]; sponge?: any; spongeError?: boolean; weixin?: any; }
+export function buildConnectors({ subscriptions = [], sponge = null, spongeError = false, weixin = null }: BuildConnectorsOptions = {}) {
   const subs = new Map(subscriptions.map(s => [s.provider, s]));
   const connectors = CATALOG.map(entry => {
     const base = { ...entry };
