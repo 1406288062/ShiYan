@@ -6,7 +6,7 @@ export async function conversationTitle({codex, state, key, owner, model, worksp
   if (!conversation || conversation.owner !== owner) return null;
   if (conversation.title) return conversation.title;
   if (pending.has(key)) return pending.get(key);
-  const job = Object.values(state.jobs).find(item => item.conversationKey === key && item.status === 'completed');
+  const job: any = Object.values(state.jobs).find((item: any) => item.conversationKey === key && item.status === 'completed');
   if (!job) return null;
   const action = (async () => {
     const thread = codex.startThread({
