@@ -47,11 +47,11 @@ const approvalKeys=['id','goal_id','kind','command','reason','status','created_a
 const GRANT_SCOPES=['task','hour','day','always'];
 const timelineKeys=['id','goal_id','kind','message','data','created_at'];
 
-export function createLocalDotsClient({socketPath='/home/ubuntu/dots-runtime/local-ipc/mcp.sock',timeoutMs=25000,owner}={}) {
-  const rpc=(method,params={},callTimeout=timeoutMs)=>new Promise((resolve,reject)=>{
+export function createLocalDotsClient({socketPath='/home/ubuntu/dots-runtime/local-ipc/mcp.sock',timeoutMs=25000,owner}: {socketPath?: string; timeoutMs?: number; owner?: string}={}) {
+  const rpc=(method: string,params: any={},callTimeout: number=timeoutMs)=>new Promise<any>((resolve,reject)=>{
     const body=JSON.stringify({jsonrpc:'2.0',id:randomUUID(),method,params});
     const req=http.request({socketPath,path:'/mcp',method:'POST',headers:{'Content-Type':'application/json','Content-Length':Buffer.byteLength(body),...(owner?{'X-Dots-Owner':owner}:{})}},res=>{
-      let size=0;const chunks=[];
+      let size=0;const chunks: Buffer[]=[];
       res.on('data',chunk=>{size+=chunk.length;if(size>16*1024*1024)req.destroy(fail('目标结果过大',502,'runtime_unavailable'));else chunks.push(chunk);});
       res.on('end',()=>{
         try {
@@ -69,11 +69,11 @@ export function createLocalDotsClient({socketPath='/home/ubuntu/dots-runtime/loc
           }
           if(res.statusCode!==200||parsed.error||parsed.result?.isError)throw fail('Dots 未能完成操作，请刷新目标状态后重试',502,'runtime_rejected');
           resolve(parsed.result);
-        }catch(error){reject(error.status?error:fail('Dots 返回内容无效',502,'runtime_unavailable'));}
+        }catch(error){reject((error as any)?.status?error:fail('Dots 返回内容无效',502,'runtime_unavailable')); }
       });
     });
     req.setTimeout(callTimeout,()=>req.destroy(fail('Dots 连接超时，请保留请求并重试',504,'runtime_unavailable')));
-    req.on('error',error=>reject(error.status?error:fail('Dots 服务暂时无法连接',503,'runtime_unavailable')));
+    req.on('error',error=>reject((error as any)?.status?error:fail('Dots 服务暂时无法连接',503,'runtime_unavailable')));
     req.end(body);
   });
   return {rpc,forOwner(value){return createLocalDotsClient({socketPath,timeoutMs,owner:value});},async tool(name,args={}){const result=await rpc('tools/call',{name,arguments:args});if(result?.structuredContent)return result.structuredContent;try{return JSON.parse(result.content.find(c=>c.type==='text').text);}catch{throw fail('Dots 返回内容无效',502,'runtime_unavailable');}}};
@@ -86,7 +86,7 @@ export function createDotsEventReader({databasePath='/home/ubuntu/dots-runtime/d
   return {read(goalId){db??=new DatabaseSync(databasePath,{readOnly:true});return db.prepare('SELECT id,goal_id,type,payload,created_at,consumed_at FROM events WHERE goal_id=? ORDER BY id DESC LIMIT 100').all(goalId).reverse();},request(requestId,owner){db??=new DatabaseSync(databasePath,{readOnly:true});return owner&&owner!==(process.env.SHIYAN_DOTS_OWNER||'shiyan-private-owner')?db.prepare('SELECT operation,goal_id,response_json FROM runtime_scoped_requests WHERE owner=? AND request_id=?').get(owner,requestId):db.prepare('SELECT operation,goal_id,response_json FROM runtime_requests WHERE request_id=?').get(requestId);},close(){db?.close();}};
 }
 
-export function groupIssueTasks(tasks, memberships) {
+export function groupIssueTasks(tasks: any[], memberships: any[]) {
   const membership=new Map(memberships.map(row=>[Number(row.goal_id),row])), groups=new Map();
   for(const task of tasks){
     const issue=membership.get(Number(task.id)),key=issue?'issue:'+issue.issue_key:'conversation:'+task.id;
@@ -103,6 +103,7 @@ export function groupIssueTasks(tasks, memberships) {
 
 export class DotsStore {
   db: DatabaseSync;
+  webhookSecret: string;
   constructor(root,{databasePath=path.join(root,'dots-adapter.sqlite3')}={}) {
     mkdirSync(root,{recursive:true,mode:0o700});this.db=new DatabaseSync(databasePath);
     try{chmodSync(databasePath,0o600);}catch{}
@@ -125,13 +126,13 @@ export class DotsStore {
     if(!this.db.prepare('PRAGMA table_info(dots_goals)').all().some(c=>c.name==='create_request_id'))this.db.exec('ALTER TABLE dots_goals ADD COLUMN create_request_id TEXT');
     let secret=this.db.prepare("SELECT value FROM dots_settings WHERE key='webhook_secret'").get()?.value;
     if(!secret){secret='whsec_'+randomBytes(32).toString('base64');this.db.prepare('INSERT INTO dots_settings(key,value) VALUES(?,?)').run('webhook_secret',secret);}
-    this.webhookSecret=secret;
+    this.webhookSecret=String(secret);
   }
   close(){this.db.close();}
   transaction(fn){this.db.exec('BEGIN IMMEDIATE');try{const value=fn();this.db.exec('COMMIT');return value;}catch(error){this.db.exec('ROLLBACK');throw error;}}
   mapping(owner,id){return this.db.prepare('SELECT * FROM dots_goals WHERE owner=? AND goal_id=?').get(owner,id);}
   mappedGoal(id){return this.db.prepare('SELECT * FROM dots_goals WHERE goal_id=?').get(id);}
-  mappings(owner){return owner===undefined?this.db.prepare('SELECT * FROM dots_goals ORDER BY goal_id DESC').all():this.db.prepare('SELECT * FROM dots_goals WHERE owner=? ORDER BY goal_id DESC').all(owner);}
+  mappings(owner=undefined){return owner===undefined?this.db.prepare('SELECT * FROM dots_goals ORDER BY goal_id DESC').all():this.db.prepare('SELECT * FROM dots_goals WHERE owner=? ORDER BY goal_id DESC').all(owner);}
   manager(owner){return this.db.prepare('SELECT * FROM dots_managers WHERE owner=?').get(owner);}
   managerSnapshot(owner,manager){this.db.prepare('INSERT INTO dots_managers(owner,manager_id,snapshot,updated_at) VALUES(?,?,?,?) ON CONFLICT(owner) DO UPDATE SET snapshot=excluded.snapshot,updated_at=excluded.updated_at').run(owner,manager.id,encoded(manager),Date.now());}
   latestCursor(owner){return Number(this.db.prepare('SELECT MAX(seq) AS cursor FROM dots_events WHERE owner=?').get(owner)?.cursor||0);}
@@ -160,7 +161,7 @@ export class DotsStore {
   ack(owner,consumerId,cursor){
     if(cursor>0&&!this.db.prepare('SELECT seq FROM dots_events WHERE owner=? AND seq=?').get(owner,cursor))throw fail('通知游标不属于当前用户',400,'invalid_cursor');
     this.db.prepare('INSERT INTO dots_consumers(owner,consumer_id,cursor,updated_at) VALUES(?,?,?,?) ON CONFLICT(owner,consumer_id) DO UPDATE SET cursor=MAX(cursor,excluded.cursor),updated_at=excluded.updated_at').run(owner,consumerId,cursor,Date.now());
-    return {ok:true,consumerId,cursor:this.db.prepare('SELECT cursor FROM dots_consumers WHERE owner=? AND consumer_id=?').get(owner,consumerId).cursor,handoffOnly:true};
+    return {ok:true,consumerId,cursor:this.db.prepare('SELECT cursor FROM dots_consumers WHERE owner=? AND consumer_id=?').get(owner,consumerId)!.cursor,handoffOnly:true};
   }
 }
 
@@ -168,7 +169,7 @@ export class DotsStore {
 const WEIXIN_INPUTS=path.resolve(process.env.DOTS_WEIXIN_INPUTS||'/home/ubuntu/dots-runtime/workspaces/.manager/inputs/weixin')+path.sep;
 // 微信图片登记为这条消息的附件，界面可直接显示。只收私人账号工作区 inputs/weixin 下的真实文件（不跟随符号链接）。
 export function weixinImageAttachments(attachments,owner,message){
-  const out=[];
+  const out: any[] = [];
   for(const match of String(message.content).matchAll(/"type":"image","filename":"([^"]+)","path":"([^"]+)"/g)){
     try{
       const file=path.resolve(match[2]);if(!file.startsWith(WEIXIN_INPUTS)||realpathSync(file)!==file)continue;
@@ -183,7 +184,7 @@ export function weixinImageAttachments(attachments,owner,message){
   }
   return out.slice(0,8);
 }
-export function weixinDisplay(message,shownImages=[]){
+export function weixinDisplay(message,shownImages: any[]=[]){
   if(message?.role!=='user'||typeof message.content!=='string')return message;
   const at=message.content.indexOf('[用户从微信发来的附件]');if(at<0)return message;
   const head=message.content.slice(0,at).trim().replace(/^（我从微信发来了[^）]*）$/,''),rest=message.content.slice(at);
@@ -201,9 +202,9 @@ const SCRIPT_EXTENSIONS=new Set(['.py','.sh','.bash','.zsh','.js','.mjs','.cjs',
 const PRIVATE_TASK_ROOT=path.resolve(process.env.DOTS_TASK_WORKSPACES||'/home/ubuntu/dots-runtime/workspaces');
 const MEMBER_TASK_ROOT=path.resolve(process.env.SHIYAN_MEMBER_SANDBOX_ROOT||path.join(process.env.SHIYAN_ROOT||'/home/ubuntu/boss-codex-service/shiyan-v2','data','member-workspaces'));
 export function taskArtifactFiles(dir,{maxDepth=3,limit=20}={}){
-  const found=[];
+  const found: Array<{file: string; relative: string; size: number; mtimeMs: number}> = [];
   const walk=(current,depth)=>{
-    let entries=[];try{entries=readdirSync(current,{withFileTypes:true});}catch{return;}
+    let entries: import('node:fs').Dirent[] = [];try{entries=readdirSync(current,{withFileTypes:true});}catch{return;}
     for(const entry of entries){
       if(entry.name.startsWith('.')||['node_modules','__pycache__','venv','.venv'].includes(entry.name)||entry.isSymbolicLink())continue;
       const full=path.join(current,entry.name);
@@ -218,7 +219,7 @@ export function taskArtifactFiles(dir,{maxDepth=3,limit=20}={}){
 }
 export function taskArtifactOutputs(attachments,owner,taskIds,{privateOwner=false,limit=40}={}){
   const roots=privateOwner?[PRIVATE_TASK_ROOT]:[path.join(MEMBER_TASK_ROOT,createHash('sha256').update(owner).digest('hex'),'workspace','dots')];
-  const out=[];
+  const out: Array<{id: string; attachmentId: any; type: string; taskId: number; filename: any; title: any; summary: any; mimeType: any; bytes: any; downloadPath: string; createdAt: number; updatedAt: number}> = [];
   for(const taskId of taskIds){
     if(!Number.isSafeInteger(Number(taskId))||Number(taskId)<1)continue;
     for(const root of roots){
@@ -240,8 +241,27 @@ export function taskArtifactOutputs(attachments,owner,taskIds,{privateOwner=fals
 }
 export class DotsAdapter {
   store: DotsStore;
+  attachments: DotsAttachments;
+  client: ReturnType<typeof createLocalDotsClient>;
+  eventReader: ReturnType<typeof createDotsEventReader>;
+  activityReader: ReturnType<typeof createDotsActivityReader>;
+  allowedOwner: string;
+  callbackURL: string;
+  importPrivateGoals: boolean;
+  listeners: Map<string, Set<any>>;
+  inflight: Map<string, any>;
+  subscriptionInflight: Map<string, any>;
+  managerSyncInflight: Map<string, any>;
+  recovering: boolean;
+  managerPollMs: number;
+  schedules: DotsSchedules;
+  timer: NodeJS.Timeout | null;
+  refreshTimer: NodeJS.Timeout | null;
+  managerTimer: NodeJS.Timeout | null;
+  requestIdMaps?: Map<string, Map<string, any>>;
+  importSourceTruncated?: boolean;
   weixinView(owner,message){if(message?.role!=='user'||typeof message.content!=='string'||!message.content.includes('[用户从微信发来的附件]'))return message;return weixinDisplay(message,owner===this.allowedOwner?weixinImageAttachments(this.attachments,owner,message):[]);}
-  constructor({root,store=new DotsStore(root),client=createLocalDotsClient(),eventReader=createDotsEventReader(),activityReader=createDotsActivityReader(),allowedOwner='shiyan-private-owner',callbackURL='',importPrivateGoals=false,recoverIntervalMs=30000,subscriptionRefreshMs=4*3600000,managerPollMs=1000,schedulePollMs=15000}={}) {
+  constructor({root,store=new DotsStore(root),client=createLocalDotsClient(),eventReader=createDotsEventReader(),activityReader=createDotsActivityReader(),allowedOwner='shiyan-private-owner',callbackURL='',importPrivateGoals=false,recoverIntervalMs=30000,subscriptionRefreshMs=4*3600000,managerPollMs=1000,schedulePollMs=15000}: {root?: string; store?: DotsStore; client?: ReturnType<typeof createLocalDotsClient>; eventReader?: ReturnType<typeof createDotsEventReader>; activityReader?: ReturnType<typeof createDotsActivityReader>; allowedOwner?: string; callbackURL?: string; importPrivateGoals?: boolean; recoverIntervalMs?: number; subscriptionRefreshMs?: number; managerPollMs?: number; schedulePollMs?: number}={}) {
     this.store=store;this.attachments=new DotsAttachments(root,store.db);this.client=client;this.eventReader=eventReader;this.allowedOwner=allowedOwner;this.callbackURL=callbackURL;this.importPrivateGoals=importPrivateGoals;this.listeners=new Map();this.inflight=new Map();this.subscriptionInflight=new Map();this.managerSyncInflight=new Map();this.recovering=false;this.managerPollMs=managerPollMs;
     this.activityReader=activityReader;this.schedules=new DotsSchedules(this,{pollMs:schedulePollMs});
     this.timer=recoverIntervalMs>0?setInterval(()=>void this.recover().catch(()=>{}),recoverIntervalMs):null;this.timer?.unref();
@@ -251,7 +271,7 @@ export class DotsAdapter {
     // recovery timer still catches up after process or device disconnection.
     this.managerTimer=managerPollMs>0?setInterval(()=>{for(const [owner,listeners] of this.listeners)if(listeners.size&&this.store.manager(owner))void this.syncManagerActivity(owner).catch(()=>{});},managerPollMs):null;this.managerTimer?.unref();
   }
-  close(){clearInterval(this.timer);clearInterval(this.refreshTimer);clearInterval(this.managerTimer);this.schedules.close();for(const listeners of this.listeners.values())for(const listener of listeners)listener.end();this.activityReader?.close();this.eventReader?.close();this.store.close();}
+  close(){if(this.timer!==null)clearInterval(this.timer);if(this.refreshTimer!==null)clearInterval(this.refreshTimer);if(this.managerTimer!==null)clearInterval(this.managerTimer);this.schedules.close();for(const listeners of this.listeners.values())for(const listener of listeners)listener.end();this.activityReader?.close();this.eventReader?.close();this.store.close();}
   authorize(owner){if(typeof owner!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(owner))throw fail('用户身份无效',401,'unauthorized');}
   clientFor(owner){this.authorize(owner);return this.client.forOwner?.(owner)||this.client;}
   async registrationNotice(event){
@@ -271,13 +291,13 @@ export class DotsAdapter {
   }
   async subscriptions(owner){this.authorize(owner);return this.clientFor(owner).rpc('dots/subscriptions/list');}
   async messageFeedback(owner,messageId,value){this.authorize(owner);if(!Number.isSafeInteger(Number(messageId))||Number(messageId)<1||!['useful','not_useful','clear'].includes(value))throw fail('反馈无效',400);return this.clientFor(owner).rpc('dots/messages/feedback',{messageId:Number(messageId),value});}
-  async weixin(owner,action='status',input={}){this.authorize(owner);if(!['status','login','verify','unbind','push'].includes(action))throw fail('操作无效',400);const params=action==='verify'?{code:String(input.code||'')}:action==='push'?{enabled:input.enabled===true}:{};return this.clientFor(owner).rpc('dots/weixin/'+action,params);}
+  async weixin(owner,action='status',input: any={}){this.authorize(owner);if(!['status','login','verify','unbind','push'].includes(action))throw fail('操作无效',400);const params=action==='verify'?{code:String(input.code||'')}:action==='push'?{enabled:input.enabled===true}:{};return this.clientFor(owner).rpc('dots/weixin/'+action,params);}
   async settings(owner){this.authorize(owner);return this.clientFor(owner).rpc('dots/settings/get');}
-  async audit(owner,query={}){this.authorize(owner);const params={limit:Math.max(1,Math.min(200,Number(query.limit)||50))};if(query.before!==undefined&&query.before!==null&&query.before!==''){const before=Number(query.before);if(!Number.isSafeInteger(before)||before<1)throw fail('分页参数无效');params.before=before;}if(query.category){if(!['action','message','change'].includes(query.category))throw fail('类别无效');params.category=query.category;}return this.clientFor(owner).rpc('dots/audit/list',params);}
+  async audit(owner,query: any={}){this.authorize(owner);const params: {limit: number; before?: number; category?: string}={limit:Math.max(1,Math.min(200,Number(query.limit)||50))};if(query.before!==undefined&&query.before!==null&&query.before!==''){const before=Number(query.before);if(!Number.isSafeInteger(before)||before<1)throw fail('分页参数无效');params.before=before;}if(query.category){if(!['action','message','change'].includes(query.category))throw fail('类别无效');params.category=query.category;}return this.clientFor(owner).rpc('dots/audit/list',params);}
   async lifeGoals(owner,action='list',id=null,input={}){
     this.authorize(owner);
     if(!['list','create','update','milestone','replan','remove'].includes(action))throw fail('操作无效',400);
-    const params={};
+    const params: {id?: number; goal?: any; change?: any}={};
     if(action!=='list'&&action!=='create')params.id=integer(id,1);
     if(input!==null&&(typeof input!=='object'||Array.isArray(input)))throw fail('内容无效',400);
     const pick=(keys)=>Object.fromEntries(keys.filter(k=>k in (input||{})).map(k=>[k,input[k]]));
@@ -293,10 +313,10 @@ export class DotsAdapter {
   async digitalPeople(owner){this.authorize(owner);return this.clientFor(owner).rpc('dots/people/list',{});}
   async createDigitalPerson(owner,input){this.authorize(owner);return this.clientFor(owner).rpc('dots/people/create',{name:text(input.name,80,'人物称呼'),relationship:String(input.relationship||'').slice(0,80)});}
   async digitalPerson(owner,id){this.authorize(owner);return this.clientFor(owner).rpc('dots/people/get',{person_id:identifier(id,'人物标识')});}
-  async updateDigitalPerson(owner,id,input){this.authorize(owner);const value={person_id:identifier(id,'人物标识')};for(const key of ['name','relationship','summary'])if(input[key]!==undefined)value[key]=input[key];if(typeof input.active==='boolean')value.active=input.active;if(input.relearn===true)value.relearn=true;return this.clientFor(owner).rpc('dots/people/update',value,input.relearn===true?210000:undefined);}
+  async updateDigitalPerson(owner,id,input){this.authorize(owner);const value: {person_id: string; [key: string]: any}={person_id:identifier(id,'人物标识')};for(const key of ['name','relationship','summary'])if(input[key]!==undefined)value[key]=input[key];if(typeof input.active==='boolean')value.active=input.active;if(input.relearn===true)value.relearn=true;return this.clientFor(owner).rpc('dots/people/update',value,input.relearn===true?210000:undefined);}
   async deleteDigitalPerson(owner,id){this.authorize(owner);return this.clientFor(owner).rpc('dots/people/delete',{person_id:identifier(id,'人物标识')});}
   async importDigitalPerson(owner,id,input){this.authorize(owner);if(!Array.isArray(input.messages)||input.messages.length<1||input.messages.length>40)throw fail('每批导入消息数量无效');return this.clientFor(owner).rpc('dots/people/import',{person_id:identifier(id,'人物标识'),import_id:identifier(input.importId,'导入标识'),format:text(input.format||'unknown',20,'文件格式'),messages:input.messages,final:input.final===true},210000);}
-  async digitalPersonMessages(owner,id,query={}){this.authorize(owner);return this.clientFor(owner).rpc('dots/people/messages/list',{person_id:identifier(id,'人物标识'),before:integer(Number(query.before)||0),limit:integer(Number(query.limit)||100,1,200)});}
+  async digitalPersonMessages(owner,id,query: any={}){this.authorize(owner);return this.clientFor(owner).rpc('dots/people/messages/list',{person_id:identifier(id,'人物标识'),before:integer(Number(query.before)||0),limit:integer(Number(query.limit)||100,1,200)});}
   async sendDigitalPersonMessage(owner,id,input){this.authorize(owner);return this.clientFor(owner).rpc('dots/people/messages/send',{person_id:identifier(id,'人物标识'),request_id:identifier(input.requestId,'请求标识'),message:text(input.message,8000,'消息内容')},210000);}
   async digitalPersonMemories(owner,id){this.authorize(owner);return this.clientFor(owner).rpc('dots/people/memories/list',{person_id:identifier(id,'人物标识')});}
   async updateDigitalPersonMemory(owner,id,memoryId,input){this.authorize(owner);return this.clientFor(owner).rpc('dots/people/memories/update',{person_id:identifier(id,'人物标识'),memory_id:identifier(memoryId,'记忆标识'),content:text(input.content,500,'记忆内容')});}
@@ -306,7 +326,7 @@ export class DotsAdapter {
     this.authorize(owner);if(typeof topicId!=='string'||!/^[A-Za-z0-9_-]{1,128}$/.test(topicId))throw fail('共同话题标识无效');
     only(input,['title','summary','openQuestion','revision']);
     if(input.title!==undefined)text(input.title,200,'话题名称');
-    for(const [key,max] of [['summary',4000],['openQuestion',2000]])if(input[key]!==undefined&&(typeof input[key]!=='string'||input[key].length>max))throw fail('话题内容无效');
+    for(const [key,max] of [['summary',4000],['openQuestion',2000]] as [string, number][])if(input[key]!==undefined&&(typeof input[key]!=='string'||input[key].length>max))throw fail('话题内容无效');
     if(input.revision!==undefined)integer(input.revision);
     return relationshipResponse(await this.clientFor(owner).tool('dots_update_relationship_topic',{owner_id:owner,topicId,...input}));
   }
@@ -315,7 +335,7 @@ export class DotsAdapter {
     return relationshipResponse(await this.clientFor(owner).tool('dots_delete_relationship_topic',{owner_id:owner,topicId}));
   }
   requireGoal(owner,id){this.authorize(owner);const row=this.store.mapping(owner,integer(id,1));if(!row)throw fail('目标不存在',404,'not_found');return row;}
-  presentGoal(goal,row){return {...fields(goal,goalKeys),conversationId:row.conversation_id,originHost:row.origin_host,...(goal.client_context?{originContext:fields(goal.client_context,['host','conversation_id'])}:{}),...(goal.timeline?{timeline:goal.timeline.map(t=>fields(t,timelineKeys))}:{}),...(goal.outputs?{outputs:goal.outputs.map(o=>fields(o,outputKeys))}:{}),...(goal.approvals?{approvals:goal.approvals.map(a=>fields(a,approvalKeys))}:{})};}
+  presentGoal(goal,row): {[key: string]: any}{return {...fields(goal,goalKeys),conversationId:row.conversation_id,originHost:row.origin_host,...(goal.client_context?{originContext:fields(goal.client_context,['host','conversation_id'])}:{}),...(goal.timeline?{timeline:goal.timeline.map(t=>fields(t,timelineKeys))}:{}),...(goal.outputs?{outputs:goal.outputs.map(o=>fields(o,outputKeys))}:{}),...(goal.approvals?{approvals:goal.approvals.map(a=>fields(a,approvalKeys))}:{})};}
   presentEvent(owner,event){
     const activity=event?.payload?.activity;
     // Older durable notifications stored the runtime attachment instruction.
@@ -324,9 +344,9 @@ export class DotsAdapter {
     if(event?.type!=='manager_activity'||!['user_message','assistant_delta','assistant_message','proactive_message'].includes(activity?.kind))return event;
     return {...event,payload:{...event.payload,activity:this.presentManagerActivity(owner,activity)}};
   }
-  publish(event,owner){if(!event)return;const target=owner||this.store.mappedGoal(event.goalId)?.owner,visible=this.presentEvent(target,event);for(const listener of this.listeners.get(target)||[])if(!listener.destroyed)listener.write(`id: ${visible.seq}\nevent: update\ndata: ${JSON.stringify(visible)}\n\n`);}
+  publish(event,owner: any=null){if(!event)return;const target=owner||this.store.mappedGoal(event.goalId)?.owner,visible=this.presentEvent(target,event);for(const listener of this.listeners.get(target)||[])if(!listener.destroyed)listener.write(`id: ${visible.seq}\nevent: update\ndata: ${JSON.stringify(visible)}\n\n`);}
   async goal(owner,id){const row=this.requireGoal(owner,id);const result=await this.clientFor(owner).tool('dots_get_goal',{goal_id:Number(row.goal_id)});if(!result.goal)throw fail('目标不存在',404,'not_found');const goal=this.presentGoal(result.goal,row);try{goal.events=this.eventReader?.read(Number(row.goal_id))||[];}catch{goal.events=[];goal.eventsUnavailable=true;}this.store.snapshot(row.goal_id,goal);return {ok:true,goal,timeline:goal.timeline||[],outputs:goal.outputs||[],approvals:goal.approvals||[],events:goal.events};}
-  async capabilities(owner){this.authorize(owner);let available=true;try{await this.client.rpc('ping');}catch{available=false;}const mapped=this.store.mappings(owner);const subs=this.store.db.prepare('SELECT * FROM dots_subscriptions').all();const configured=Boolean(this.callbackURL);const subscriptionsActive=mapped.length?mapped.every(g=>subs.some(s=>s.goal_id===g.goal_id&&s.subscription_id&&(!s.expires_at||s.expires_at>Date.now()))):false;return {ok:true,available,service:'Dots',adapterInstalled:true,sharedGoals:true,events:true,webhookConfigured:configured,realtimeAvailable:configured&&available&&subscriptionsActive,notificationTransport:configured?'signed-webhook-with-durable-replay':'durable-replay',subscriptionsActive,singleManager:true,managerTransport:'durable-activity-polling-with-SSE-replay',managerWebhook:false,managerPollIntervalMs:this.managerPollMs,managerRealtimeAvailable:available&&this.managerPollMs>0&&Boolean(this.store.manager(owner)),apns:false,modelsSelectable:false,budgetsSupported:false,stopSemantics:'暂停或取消会阻止后续步骤；已开始的命令可能仍会完成'};}
+  async capabilities(owner){this.authorize(owner);let available=true;try{await this.client.rpc('ping');}catch{available=false;}const mapped=this.store.mappings(owner);const subs=this.store.db.prepare('SELECT * FROM dots_subscriptions').all();const configured=Boolean(this.callbackURL);const subscriptionsActive=mapped.length?mapped.every(g=>subs.some(s=>s.goal_id===g.goal_id&&s.subscription_id&&(!s.expires_at||Number(s.expires_at)>Date.now()))):false;return {ok:true,available,service:'Dots',adapterInstalled:true,sharedGoals:true,events:true,webhookConfigured:configured,realtimeAvailable:configured&&available&&subscriptionsActive,notificationTransport:configured?'signed-webhook-with-durable-replay':'durable-replay',subscriptionsActive,singleManager:true,managerTransport:'durable-activity-polling-with-SSE-replay',managerWebhook:false,managerPollIntervalMs:this.managerPollMs,managerRealtimeAvailable:available&&this.managerPollMs>0&&Boolean(this.store.manager(owner)),apns:false,modelsSelectable:false,budgetsSupported:false,stopSemantics:'暂停或取消会阻止后续步骤；已开始的命令可能仍会完成'};}
   presentManager(owner,source){
     const expected='manager:'+owner;
     if(!source||source.id!==expected||source.ownerId!==owner)throw fail('总管归属不一致',502,'runtime_rejected');
@@ -334,7 +354,7 @@ export class DotsAdapter {
     // Replaying one must not replace a newer manager/task cache with old state.
     const prior=this.store.manager(owner);
     if(prior&&source.activityCursor!==undefined){
-      const cached=JSON.parse(prior.snapshot);
+      const cached=JSON.parse(String(prior.snapshot));
       if(cached.activityCursor!==undefined&&integer(source.activityCursor)<integer(cached.activityCursor))return cached;
     }
     const manager=fields(source,managerKeys);
@@ -384,8 +404,8 @@ export class DotsAdapter {
     let manager;
     try{manager=await this.managerSnapshot(owner);}catch(error){
       const cached=this.store.manager(owner);
-      if(!cached||!['runtime_unavailable','runtime_rejected'].includes(error.code))throw error;
-      return this.managerResponse(owner,JSON.parse(cached.snapshot),{stale:true,realtimeUnavailable:true});
+      if(!cached||!['runtime_unavailable','runtime_rejected'].includes((error as any).code))throw error;
+      return this.managerResponse(owner,JSON.parse(String(cached.snapshot)),{stale:true,realtimeUnavailable:true});
     }
     // HTTP acceptance and SSE replay share the same durable event projection.
     // A failed activity read does not invent a successful webhook connection.
@@ -450,12 +470,12 @@ export class DotsAdapter {
     if(this.managerSyncInflight.has(owner))return this.managerSyncInflight.get(owner);
     const promise=(async()=>{
       if(!this.store.manager(owner))return;
-      let after=Number(this.store.manager(owner).runtime_cursor);
+      let after=Number(this.store.manager(owner)!.runtime_cursor);
       for(let page=0;page<10;page++){
         const result=await this.managerActivity(owner,{after,limit:200});
         if(result.activity.some(a=>a.taskId&&!this.store.mapping(owner,a.taskId)))await this.managerSnapshot(owner);
         if(result.activity.some(a=>a.taskId&&!this.store.mapping(owner,a.taskId)))throw fail('总管活动子任务不存在',502,'runtime_rejected');
-        const events=[];
+        const events: any[]=[];
         this.store.transaction(()=>{
           let previous=after;
           for(const activity of result.activity){
@@ -475,14 +495,14 @@ export class DotsAdapter {
     })();this.managerSyncInflight.set(owner,promise);
     try{return await promise;}finally{this.managerSyncInflight.delete(owner);}
   }
-  async list(owner,{after=0,limit=50,status}={}){
+  async list(owner,{after=0,limit=50,status}: {after?: number; limit?: number; status?: string}={}){
     this.authorize(owner);after=integer(after);limit=integer(limit,1,200);
     if(status&&!['active','paused','done','blocked','waiting_approval','cancelled'].includes(status))throw fail('目标状态无效');
     let source=new Map(),stale=false;
     try{const result=await this.clientFor(owner).tool('dots_list_goals',{limit:200});source=new Map((result.goals||[]).map(g=>[g.id,g]));}catch{stale=true;}
-    const rows=this.store.mappings(owner).filter(row=>(!after||row.goal_id<after)&&(!status||(source.get(row.goal_id)||JSON.parse(row.snapshot)).status===status));
-    const selected=rows.slice(0,limit+1),goals=[];
-    for(const row of selected.slice(0,limit)){const fresh=source.get(row.goal_id);const goal=fresh?this.presentGoal(fresh,row):JSON.parse(row.snapshot);if(fresh)this.store.snapshot(row.goal_id,goal);goals.push({...fields(goal,[...goalKeys,'conversationId','originHost','originContext']),...(stale?{stale:true}:{})});}
+    const rows=this.store.mappings(owner).filter(row=>(!after||Number(row.goal_id)<after)&&(!status||(source.get(row.goal_id)||JSON.parse(String(row.snapshot))).status===status));
+    const selected=rows.slice(0,limit+1),goals: any[]=[];
+    for(const row of selected.slice(0,limit)){const fresh=source.get(row.goal_id);const goal=fresh?this.presentGoal(fresh,row):JSON.parse(String(row.snapshot));if(fresh)this.store.snapshot(row.goal_id,goal);goals.push({...fields(goal,[...goalKeys,'conversationId','originHost','originContext']),...(stale?{stale:true}:{})});}
     return {ok:true,goals,cursor:selected.slice(0,limit).at(-1)?.goal_id??after,hasMore:selected.length>limit,sourceTruncated:Boolean(this.importSourceTruncated)};
   }
   remoteRequestId(owner,requestId){return 'shiyan:'+hash(owner+':'+requestId);}
@@ -492,10 +512,10 @@ export class DotsAdapter {
     if(!map?.has(remote)){map=new Map(this.store.recentManagerRequestIds(owner).map(id=>[this.remoteRequestId(owner,id),id]));(this.requestIdMaps??=new Map()).set(owner,map);}
     return map.get(remote)??null;
   }
-  async mutation(owner,requestId,operation,payload,execute,{replaySafe=false,reconcile}={}) {
+  async mutation(owner,requestId,operation,payload,execute,{replaySafe=false,reconcile}: {replaySafe?: boolean; reconcile?: () => any}={}) {
     this.authorize(owner);identifier(requestId);const key=owner+':'+requestId;
     const hadReceipt=Boolean(this.store.receipt(owner,requestId));const receipt=this.store.reserve(owner,requestId,operation,payload);
-    if(receipt.state==='completed')return JSON.parse(receipt.response);
+    if(receipt?.state==='completed')return JSON.parse(String(receipt.response));
     if(this.inflight.has(key))return this.inflight.get(key);
     // A receipt created before this invocation means the previous connection or
     // process may have lost its reply. Only runtime-deduplicated writes retry.
@@ -518,7 +538,7 @@ export class DotsAdapter {
       // with different request IDs must not create two goals for one session.
       this.store.db.prepare('INSERT OR IGNORE INTO dots_conversation_claims(owner,conversation_id,create_request_id) VALUES(?,?,?)').run(owner,payload.conversationId,input.requestId);
       const claim=this.store.db.prepare('SELECT create_request_id FROM dots_conversation_claims WHERE owner=? AND conversation_id=?').get(owner,payload.conversationId);
-      if(claim.create_request_id!==input.requestId)throw fail('此会话正在创建或已有目标，请刷新后追加指令',409,'conversation_conflict');
+      if(claim?.create_request_id!==input.requestId)throw fail('此会话正在创建或已有目标，请刷新后追加指令',409,'conversation_conflict');
       const existing=this.store.db.prepare('SELECT * FROM dots_goals WHERE owner=? AND conversation_id=?').get(owner,payload.conversationId);
       if(existing){if(existing.create_request_id===input.requestId)return this.goal(owner,existing.goal_id);throw fail('此会话已有目标，请追加指令',409,'conversation_conflict');}
       const result=await this.clientFor(owner).tool('dots_create_goal',{title:payload.title,instruction:payload.instruction,run_now:payload.runNow,request_id:this.remoteRequestId(owner,input.requestId),client_context:{host:payload.host,conversation_id:payload.conversationId}});
@@ -554,11 +574,11 @@ export class DotsAdapter {
     const memberships=this.store.db.prepare('SELECT goal_id,issue_key,issue_title FROM dots_issue_members WHERE owner=?').all(owner);
     const conversations=groupIssueTasks(tasks,memberships).map(group=>({id:group.key,type:'conversation',taskId:group.task.id,title:group.title,status:group.task.status,createdAt:millis(group.createdAt),updatedAt:millis(group.updatedAt),lastSummary:group.task.lastSummary||'',runCount:group.tasks.reduce((n,t)=>n+Number(t.runCount||0),0),relatedTaskIds:group.tasks.map(t=>t.id),unread:false,isNew:false}));
     const scheduled=schedules.schedules.map(schedule=>({id:'schedule:'+schedule.id,type:'schedule',scheduleId:schedule.id,taskId:schedule.lastTaskId,title:schedule.title,status:schedule.status,createdAt:schedule.createdAt,updatedAt:schedule.updatedAt,lastSummary:'',schedule,unread:false,isNew:false}));
-    let outputs=[];try{outputs=await this.activityReader?.outputs(tasks.map(t=>t.id),owner,{limit})||[];}catch{}
+    let outputs: any[]=[];try{outputs=await this.activityReader?.outputs(tasks.map(t=>t.id),owner,{limit})||[];}catch{}
     try{const files=taskArtifactOutputs(this.attachments,owner,tasks.map(t=>t.id),{privateOwner:owner===this.allowedOwner});if(files.length){const seen=new Set(files.map(f=>f.taskId+'\0'+f.filename+'\0'+f.bytes));outputs=[...files,...outputs.filter(o=>!(o.kind==='file'&&seen.has(o.taskId+'\0'+o.filename+'\0'+o.bytes)))];}if(files.length)outputs=outputs.sort((a,b)=>(Number(b.createdAt)||0)-(Number(a.createdAt)||0)).slice(0,limit);}catch{}
     const reads=new Map(this.store.db.prepare('SELECT activity_id,seen_at FROM dots_activity_reads WHERE owner=?').all(owner).map(row=>[row.activity_id,row.seen_at]));
-    const activities=[...conversations,...scheduled].sort((a,b)=>b.updatedAt-a.updatedAt).slice(0,limit).map(item=>({...item,unread:!reads.has(item.id)||item.updatedAt>reads.get(item.id),isNew:!reads.has(item.id)}));
-    return {ok:true,activities,outputs,cursor:current.cursor,scheduler:schedules.scheduler,...(current.stale?{stale:true}:{}),hasMore:conversations.length+scheduled.length>limit};
+    const activities=[...conversations,...scheduled].sort((a,b)=>b.updatedAt-a.updatedAt).slice(0,limit).map(item=>({...item,unread:!reads.has(item.id)||item.updatedAt>Number(reads.get(item.id)),isNew:!reads.has(item.id)}));
+    return {ok:true,activities,outputs,cursor:current.cursor,scheduler:schedules.scheduler,...((current as any).stale?{stale:true}:{}),hasMore:conversations.length+scheduled.length>limit};
   }
   markActivityRead(owner,id){this.authorize(owner);this.store.db.prepare('INSERT INTO dots_activity_reads(owner,activity_id,seen_at) VALUES(?,?,?) ON CONFLICT(owner,activity_id) DO UPDATE SET seen_at=excluded.seen_at').run(owner,id,Date.now());}
   async conversation(owner,id,{ungrouped=false}={}){
@@ -573,9 +593,9 @@ export class DotsAdapter {
     }
     if(!this.store.mapping(owner,id))await this.managerSnapshot(owner);
     const result=await this.goal(owner,id);let projection;
-    try{projection=this.activityReader?.conversation(id,owner);}catch(error){if(error.status===404)throw error;}
+    try{projection=this.activityReader?.conversation(id,owner);}catch(error){if((error as any).status===404)throw error;}
     if(!projection){
-      const messages=[{id:'instruction:'+id,role:'user',content:result.goal.instruction||'',createdAt:millis(result.goal.created_at),source:'task_instruction'}];
+      const messages: Array<{id: string; role: string; content: any; createdAt: number; source: string; runNumber?: any}>=[{id:'instruction:'+id,role:'user',content:result.goal.instruction||'',createdAt:millis(result.goal.created_at),source:'task_instruction'}];
       for(const event of result.events||[]){if(!['user_instruction','user_message'].includes(event.type))continue;let content=event.payload;try{const parsed=JSON.parse(content);content=typeof parsed==='string'?parsed:parsed.message||parsed.content||content;}catch{}if(content)messages.push({id:'input:'+event.id,role:'user',content,createdAt:millis(event.created_at),source:'user_instruction'});}
       for(const output of result.outputs||[]){const content=readableResult(output.raw_result)||output.notification||output.summary;if(content)messages.push({id:'output:'+output.id,role:'assistant',content,createdAt:millis(output.created_at),source:'worker_summary',runNumber:output.run_number});}
       projection={messages:messages.filter(m=>m.content).sort((a,b)=>a.createdAt-b.createdAt),outputs:result.outputs||[],transcriptAvailable:false};
@@ -600,7 +620,7 @@ export class DotsAdapter {
       if(input.decision==='approve'&&(typeof input.confirmedCommand!=='string'||input.confirmedCommand!==approval.command))throw fail('请确认当前显示的完整命令，命令必须完全一致',409,'approval_changed');
       await this.clientFor(owner).tool('dots_decide_approval',{approval_id:approvalId,decision:input.decision,...(input.decision==='approve'?{confirmed_command:input.confirmedCommand}:{})});
       let grant=null,grantError=null;
-      if(scope){try{grant=(await this.clientFor(owner).rpc('dots/grants/create',{approvalId,scope})).grant||null;}catch(cause){grantError=cause?.message||'授权未能保存';}}
+      if(scope){try{grant=(await this.clientFor(owner).rpc('dots/grants/create',{approvalId,scope})).grant||null;}catch(cause){grantError=(cause as any)?.message||'授权未能保存';}}
       const result={...(await this.goal(owner,id)),...(grant?{grant}:{}),...(grantError?{grantError}:{})};this.publish(this.store.append(owner,Number(id),'goal',{goal:result.goal},'goal-approval:'+owner+':'+input.requestId));return result;
     },{reconcile:async()=>{const result=await this.goal(owner,id);const approval=result.approvals.find(a=>a.id===approvalId);return approval&&(input.decision==='reject'?approval.status==='rejected':['approved','executed','failed'].includes(approval.status))?result:null;}});
   }
@@ -609,7 +629,7 @@ export class DotsAdapter {
     if(this.subscriptionInflight.has(id))return this.subscriptionInflight.get(id);
     const owner=this.store.mappedGoal(id)?.owner;if(!owner)throw fail('目标不存在',404,'not_found');
     const row=this.store.db.prepare('SELECT * FROM dots_subscriptions WHERE goal_id=?').get(id);
-    if(row?.subscription_id&&row.callback_url===this.callbackURL&&(!row.expires_at||row.expires_at>Date.now()+86400000))return true;
+    if(row?.subscription_id&&row.callback_url===this.callbackURL&&(!row.expires_at||Number(row.expires_at)>Date.now()+86400000))return true;
     const promise=(async()=>{
       try{const result=await this.clientFor(owner).rpc('events/subscribe',{name:'goal.notification',arguments:{goal_id:Number(id)},delivery:{mode:'webhook',url:this.callbackURL,secret:this.store.webhookSecret},ttlMs:7*86400000});
         if(!result.id)throw fail('Dots 通知订阅未确认',503);
@@ -668,10 +688,10 @@ export class DotsAdapter {
     try{for(const row of this.store.db.prepare('SELECT owner FROM dots_managers').all())try{await this.syncManagerActivity(row.owner);}catch{}await this.importGoals();for(const row of this.store.mappings()){
       const owner=row.owner;
       await this.ensureSubscription(row.goal_id);
-      let after=this.store.db.prepare('SELECT cursor FROM dots_runtime_cursors WHERE goal_id=?').get(row.goal_id)?.cursor||0;
+      let after=Number(this.store.db.prepare('SELECT cursor FROM dots_runtime_cursors WHERE goal_id=?').get(row.goal_id)?.cursor||0);
       const consumer='shiyan:'+hash(row.owner)+':goal:'+row.goal_id;
       for(let page=0;page<10;page++){
-        const result=await this.clientFor(owner).tool('dots_list_notifications',{goal_id:Number(row.goal_id),after_id:after,limit:200,consumer_id:consumer});const events=[];
+        const result=await this.clientFor(owner).tool('dots_list_notifications',{goal_id:Number(row.goal_id),after_id:after,limit:200,consumer_id:consumer});const events: any[]=[];
         this.store.transaction(()=>{
           for(const n of result.notifications||[]){if(n.goal_id!==row.goal_id)throw fail('Dots 通知归属不一致',502);const event=this.notification(row.owner,row.goal_id,{goal_id:n.goal_id,notification_id:n.id,output_id:n.output_id??null,level:n.level,title:n.title,message:n.body});if(event)events.push(event);}
           after=integer(result.next_cursor??after);this.store.db.prepare('INSERT INTO dots_runtime_cursors(goal_id,cursor) VALUES(?,?) ON CONFLICT(goal_id) DO UPDATE SET cursor=MAX(cursor,excluded.cursor)').run(row.goal_id,after);
@@ -688,7 +708,7 @@ export class DotsAdapter {
     this.authorize(owner);after=integer(after);res.socket?.setNoDelay(true);res.writeHead(200,{'Content-Type':'text/event-stream; charset=utf-8','Cache-Control':'no-cache, no-transform','Connection':'close','X-Accel-Buffering':'no'});res.flushHeaders();
     // Registration and replay run synchronously, so callbacks cannot land in a
     // gap between reading the durable cursor and attaching the live listener.
-    if(!this.listeners.has(owner))this.listeners.set(owner,new Set());this.listeners.get(owner).add(res);
+    if(!this.listeners.has(owner))this.listeners.set(owner,new Set());this.listeners.get(owner)!.add(res);
     let cursor=after;do{const batch=this.events(owner,{after:cursor,limit:500});for(const event of batch.events)res.write(`id: ${event.seq}\nevent: update\ndata: ${JSON.stringify(event)}\n\n`);cursor=batch.cursor;if(!batch.hasMore)break;}while(!res.destroyed);
     const ping=setInterval(()=>{if(!res.destroyed)res.write(': keepalive\n\n');},15000);ping.unref();res.on('close',()=>{clearInterval(ping);this.listeners.get(owner)?.delete(res);});
   }
