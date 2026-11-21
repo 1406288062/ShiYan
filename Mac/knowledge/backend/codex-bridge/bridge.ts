@@ -8,7 +8,7 @@ async function readStdin() {
 }
 
 function buildInput(payload) {
-  const items = [];
+  const items: any[] = [];
   const prompt = String(payload.prompt || "").trim();
   if (prompt) items.push({ type: "text", text: prompt });
   for (const imagePath of payload.images || []) {
@@ -18,7 +18,7 @@ function buildInput(payload) {
 }
 async function main() {
   const payload = await readStdin();
-  const codexOptions = {};
+  const codexOptions: any = {};
   if (payload.codexPath) codexOptions.codexPathOverride = payload.codexPath;
   if (process.env.CODEX_API_KEY) codexOptions.apiKey = process.env.CODEX_API_KEY;
   const codex = new Codex(codexOptions);
