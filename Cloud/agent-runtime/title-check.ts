@@ -1,7 +1,7 @@
 import {readFileSync,writeFileSync,renameSync} from 'node:fs';
 import {generateKeyPairSync,createHash,sign,randomUUID} from 'node:crypto';
 const state=JSON.parse(readFileSync('data/state.json','utf8'));
-const job=Object.values(state.jobs).find(j=>j.prompt.startsWith('Reply exactly')&&j.status==='completed');
+const job=(Object.values(state.jobs) as any[]).find(j=>j.prompt.startsWith('Reply exactly')&&j.status==='completed');
 if(!job)throw new Error('No QA text conversation');
 const conversation=state.conversations[job.conversationKey];
 const file='devices.json',load=()=>JSON.parse(readFileSync(file,'utf8'));
