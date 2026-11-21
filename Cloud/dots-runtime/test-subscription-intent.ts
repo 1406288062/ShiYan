@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createSubscriptionIntent} from './subscription-intent.ts';
-function fixture(decision,{repoStatus=200,isPrivate=false,configured=[]}={}){
-  const replies=[],updates=[],claimed=new Set();
+function fixture(decision,{repoStatus=200,isPrivate=false,configured=[]}: any={}){
+  const replies: any[]=[],updates: any[]=[],claimed=new Set();
   const store={claimSubscriptionIntent:id=>claimed.has(id)?false:(claimed.add(id),true),postSubscriptionReply:r=>replies.push(r)};
   const subscriptions={list:async()=>configured,update:async(p,i)=>updates.push([p,i])};
   const assess=async()=>decision;
-  const fetchImpl=async()=>({status:repoStatus,ok:repoStatus===200,json:async()=>({private:isPrivate})});
-  return {intent:createSubscriptionIntent({store,subscriptions,assess,fetchImpl,logger:{warn(){}}}),replies,updates};
+  const fetchImpl: any=async()=>({status:repoStatus,ok:repoStatus===200,json:async()=>({private:isPrivate})});
+  return {intent:createSubscriptionIntent({store,subscriptions,assess,fetchImpl,logger:{warn(){}} as any}),replies,updates};
 }
 const msg=(id,content)=>({id,content});
 test('prefilter only triggers on subscription-ish words',()=>{
@@ -49,5 +49,5 @@ test('a repeated request is never processed twice',async()=>{
 });
 test('classifier failure hands the message back',async()=>{
   const {intent}=createSubscriptionIntent.length?fixture(null):fixture(null);
-  const f=fixture(null);f.intent;assert.equal(await createSubscriptionIntent({store:{claimSubscriptionIntent:()=>true,postSubscriptionReply(){}},subscriptions:{list:async()=>[]},assess:async()=>{throw new Error('hub down')},logger:{warn(){}}}).process(msg(7,'订阅')),false);
+  const f=fixture(null);f.intent;assert.equal(await createSubscriptionIntent({store:{claimSubscriptionIntent:()=>true,postSubscriptionReply(){}},subscriptions:{list:async()=>[]},assess:async()=>{throw new Error('hub down')},logger:{warn(){}} as any}).process(msg(7,'订阅')),false);
 });
