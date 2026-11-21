@@ -15,7 +15,7 @@ const DEFAULT_ROOT=process.env.SHIYAN_MEMBER_SANDBOX_ROOT||path.join(ROOT,'data'
 const fail=(message,status=400)=>Object.assign(new Error(message),{status});
 const activeByOwner=new Map(),ownerLimits=new Map();
 const execFileAsync=promisify(execFile);
-const resourceEnvironment={PATH:'/usr/bin:/bin',LANG:'C.UTF-8',XDG_RUNTIME_DIR:'/run/user/'+process.getuid(),DBUS_SESSION_BUS_ADDRESS:'unix:path=/run/user/'+process.getuid()+'/bus'};
+const resourceEnvironment={PATH:'/usr/bin:/bin',LANG:'C.UTF-8',XDG_RUNTIME_DIR:'/run/user/'+(process.getuid?.() ?? 0),DBUS_SESSION_BUS_ADDRESS:'unix:path=/run/user/'+(process.getuid?.() ?? 0)+'/bus'};
 async function ownerResourceSlice(owner){
  const slice='shiyan-member-'+crypto.createHash('sha256').update(owner).digest('hex').slice(0,24)+'.slice';
  if(!ownerLimits.has(slice))ownerLimits.set(slice,execFileAsync('/usr/bin/systemctl',['--user','set-property','--runtime',slice,'MemoryMax=1073741824','TasksMax=128','CPUQuota=100%'],{env:resourceEnvironment,timeout:10000,maxBuffer:8192}).catch(()=>{ownerLimits.delete(slice);throw fail('隔离资源控制暂不可用',503);}));
@@ -36,7 +36,7 @@ export async function ensureOwnerSandbox(owner,options={}){
  for(const dir of [base,workspace,home])await fs.chmod(dir,0o700);
  return{workspace,home};
 }
-const blockedPublic=new Set(['129.226.81.110',...Object.values(os.networkInterfaces()).flat().filter(Boolean).map(a=>a.address)]);
+const blockedPublic=new Set(['129.226.81.110',...Object.values(os.networkInterfaces()).flatMap(v=>v??[]).map(a=>a.address)]);
 export function isPublicSandboxAddress(address){
  address=String(address).replace(/^\[|\]$/g,'').toLowerCase();
  if(address.startsWith('::ffff:'))return isPublicSandboxAddress(address.slice(7));
@@ -61,7 +61,7 @@ function networkBroker(child){
   if(typeof m.id!=='string'||m.id.length>32)return;
   if(m.type==='connect'){
    if(sockets.size>=32||sockets.has(m.id)||!Number.isInteger(m.port)||![22,80,443,9418,8080,8443].includes(m.port)){send({type:'close',id:m.id});return;}
-   const state={socket:null,pending:[],bytes:0};sockets.set(m.id,state);
+   const state: {socket: net.Socket | null; pending: Buffer[]; bytes: number}={socket:null,pending:[],bytes:0};sockets.set(m.id,state);
    try{const address=await resolveSandboxDestination(m.host);if(closed||sockets.get(m.id)!==state)return;const socket=net.connect({host:address.address,family:address.family,port:m.port});state.socket=socket;socket.setTimeout(30000);
     socket.on('connect',()=>{send({type:'open',id:m.id});for(const data of state.pending)socket.write(data);state.pending=[];});
     socket.on('data',data=>{total+=data.length;if(total>128*1024*1024){socket.destroy();return;}send({type:'data',id:m.id,data:data.toString('base64')});});
@@ -77,7 +77,7 @@ function networkBroker(child){
 }
 // The returned ChildProcess has normal stdin/stdout/stderr for persistent terminals.
 // No host environment, secrets, sockets, network namespace, /home or /proc is inherited.
-export async function spawnSandbox(owner,{command=['/bin/bash','--noprofile','--norc'],cwd='/workspace',signal,root,timeoutMs=120000,maxProcesses=16}={}){
+export async function spawnSandbox(owner,{command=['/bin/bash','--noprofile','--norc'],cwd='/workspace',signal,root,timeoutMs=120000,maxProcesses=16}: {command?: string | string[]; cwd?: string; signal?: AbortSignal; root?: string; timeoutMs?: number; maxProcesses?: number}={}){
  cwd=virtualWorkspacePath(cwd);if(typeof command==='string')command=['/bin/bash','--noprofile','--norc','-c',command];
  if(!Array.isArray(command)||!command.length||command.some(v=>typeof v!=='string'||v.includes('\0')))throw fail('执行参数无效');
  const active=activeByOwner.get(owner)||0;if(active>=maxProcesses)throw fail('当前工作区执行较多，请稍后重试',429);
@@ -101,16 +101,16 @@ export async function spawnSandbox(owner,{command=['/bin/bash','--noprofile','--
  child.once('close',()=>{clearTimeout(timer);signal?.removeEventListener('abort',abort);activeByOwner.set(owner,Math.max(0,(activeByOwner.get(owner)||1)-1));});
  return child;
 }
-export async function execSandbox(owner,{command,cwd,timeoutMs=120000,signal,input='',root,maxOutput=2*1024*1024,onStdout,onStderr}={}){
+export async function execSandbox(owner,{command,cwd,timeoutMs=120000,signal,input='',root,maxOutput=2*1024*1024,onStdout,onStderr}: {command?: string | string[]; cwd?: string; timeoutMs?: number; signal?: AbortSignal; input?: string; root?: string; maxOutput?: number; onStdout?: (text: string) => void; onStderr?: (text: string) => void}={}){
  const child=await spawnSandbox(owner,{command,cwd,timeoutMs,signal,root});let stdout='',stderr='',count=0;const decoders={stdout:new StringDecoder('utf8'),stderr:new StringDecoder('utf8')};
- return await new Promise((resolve,reject)=>{
+ return await new Promise<{stdout: string; stderr: string; exitCode: number; signal: string | null; truncated: boolean}>((resolve,reject)=>{
   child.on('error',()=>reject(fail('隔离执行环境不可用',503)));
   for(const[key,stream,callback]of[['stdout',child.stdout,onStdout],['stderr',child.stderr,onStderr]])stream.on('data',data=>{count+=data.length;if(count>maxOutput){child.kill('SIGKILL');return;}const text=decoders[key].write(data);if(key==='stdout')stdout+=text;else stderr+=text;callback?.(text);});
   child.on('close',(exitCode,exitSignal)=>{stdout+=decoders.stdout.end();stderr+=decoders.stderr.end();if(signal?.aborted)return reject(signal.reason||fail('执行已停止'));resolve({stdout,stderr,exitCode:exitCode??1,signal:exitSignal||null,truncated:count>maxOutput});});
   child.stdin.on('error',()=>{});child.stdin.end(input);
  });
 }
-export async function workspaceOperation(owner,input,{signal,root}={}){
+export async function workspaceOperation(owner,input,{signal,root}: {signal?: AbortSignal; root?: string}={}){
  virtualWorkspacePath(input?.path);const result=await execSandbox(owner,{command:['/usr/bin/node','/opt/shiyan/workspace-ops.ts'],input:JSON.stringify(input),signal,root,maxOutput:24*1024*1024});
  let value;try{value=JSON.parse(result.stdout);}catch{throw fail('隔离工作区暂不可用',503);}
  if(result.exitCode!==0||value.error)throw fail(value.error||'工作区操作失败',value.error==='文件或目录不存在'?404:400);return value;

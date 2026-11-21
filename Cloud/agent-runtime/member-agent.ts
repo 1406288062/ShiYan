@@ -9,7 +9,7 @@ import { textFileChange } from './text-file-diff.ts';
 import { createSpongeMcpAdapter } from './sponge-client.ts';
 import { mcpConnectors } from './mcp-connectors.ts';
 const unavailable=()=>Object.assign(new Error('AI服务暂不可用，请稍后重试'),{status:503});
-const fn=(name,description,properties,required=[])=>({type:'function',name,description,parameters:{type:'object',properties,required,additionalProperties:false},strict:false});
+const fn=(name,description,properties,required: string[]=[])=>({type:'function',name,description,parameters:{type:'object',properties,required,additionalProperties:false},strict:false});
 const str={type:'string'},obj={type:'object',additionalProperties:true};
 export const MEMBER_AGENT_TOOLS=[
  fn('exec_command','在当前用户的隔离工作区运行真实终端命令。支持代码、git、文件和公开网络；无法访问宿主、其他账号或内网。网络工具使用HTTP_PROXY/HTTPS_PROXY。',{command:str,cwd:str,timeout_ms:{type:'integer',minimum:1000,maximum:120000}},['command']),
@@ -20,7 +20,7 @@ export const MEMBER_AGENT_TOOLS=[
  fn('mcp_list_tools','获取当前账号MCP服务器公布的实际工具及参数。海绵宝宝使用 server=sponge，可发现当前账号绑定设备的文件、终端等工具。',{server:str},['server']),
  fn('mcp_call_tool','调用当前账号的MCP工具。海绵宝宝可按用户授权访问该账号绑定的远程设备；设备路径使用远程工具处理。先查询工具schema再传参。',{server:str,name:str,arguments:obj},['server','name','arguments']),
 ];
-export async function mcpSandboxOperation(owner,input,{signal,root}={}){
+export async function mcpSandboxOperation(owner,input,{signal,root}: {signal?: AbortSignal; root?: string}={}){
  const result=await execSandbox(owner,{command:['/usr/bin/node','/opt/shiyan/mcp.mjs'],input:JSON.stringify(input),signal,root,timeoutMs:60000,maxOutput:8*1024*1024});
  let value;try{value=JSON.parse(result.stdout);}catch{throw new Error('MCP服务返回无效结果');}if(value.error)throw new Error(value.error);return value;
 }
@@ -42,7 +42,7 @@ async function memberMcpOperation(owner, input, options = {}) {
 async function responseStream(request,{signal,fetchImpl,getProvider,refreshProvider,onText,onActivity}){
  const send=async()=>{const target=await getProvider();return await fetchImpl(target.url,{method:'POST',headers:target.headers,body:JSON.stringify(request),signal});};
  let response=await send();if(response.status===401&&!signal?.aborted){await response.body?.cancel();await refreshProvider();response=await send();}
- if(!response.ok||!response.body)throw unavailable();const reader=response.body.getReader();const decoder=new TextDecoder();let buffer='',text='',completed,output=[],size=0;
+ if(!response.ok||!response.body)throw unavailable();const reader=response.body.getReader();const decoder=new TextDecoder();let buffer='',text='',completed,output: any[]=[],size=0;
  function consume(line){if(!line.startsWith('data:')||line.slice(5).trim()==='[DONE]')return;let event;try{event=JSON.parse(line.slice(5));}catch{throw unavailable();}onActivity?.();
   if(['error','response.failed','response.incomplete'].includes(event.type))throw unavailable();
   if(event.type==='response.output_text.delta'){text+=event.delta||'';if(text.length>1024*1024)throw unavailable();onText?.(text);}
@@ -54,10 +54,10 @@ async function responseStream(request,{signal,fetchImpl,getProvider,refreshProvi
   return{text,output,usage:completed.usage||null};
  }finally{await reader.cancel().catch(()=>{});}
 }
-export async function collectSandboxArtifacts(owner,{text='',paths=[],signal,root}={}){
+export async function collectSandboxArtifacts(owner,{text='',paths=[],signal,root}: {text?: string; paths?: string[]; signal?: AbortSignal; root?: string}={}){
  const candidates=new Set(paths);
  for(const match of text.matchAll(/\]\((?:sandbox:)?(\/workspace\/[^\s)]+)\)/g))candidates.add(match[1]);
- const artifacts=[];let total=0;
+ const artifacts: Array<{path: string; filename: string; mimeType: string; bytes: number; sha256: string; data: any}> = [];let total=0;
  const mimeFor=ext=>({'.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.gif':'image/gif','.pdf':'application/pdf','.txt':'text/plain','.md':'text/markdown','.csv':'text/csv','.json':'application/json','.html':'text/html','.zip':'application/zip','.mp3':'audio/mpeg','.wav':'audio/wav','.mp4':'video/mp4'}[ext]||'application/octet-stream');
  for(const candidate of candidates){if(artifacts.length>=10)break;let file;try{file=virtualWorkspacePath(decodeURIComponent(candidate));}catch{continue;}
   const relative=file.slice('/workspace/'.length),base=path.posix.basename(file),ext=path.posix.extname(base).toLowerCase();
@@ -66,8 +66,9 @@ export async function collectSandboxArtifacts(owner,{text='',paths=[],signal,roo
  }
  return artifacts;
 }
+interface FileChange { path: string; kind: string; available: boolean; diff: string; added: number | null; removed: number | null; additions: number | null; deletions: number | null; beforeSha256: string | null; afterSha256: string | null; source?: string; diffTruncated?: boolean; }
 export async function changedFiles(before,after,{maxFiles=200,maxDiffBytes=1024*1024}={}){
- const a=new Map((before.files||[]).map(f=>[f.path,f])),b=new Map((after.files||[]).map(f=>[f.path,f])),changes=[];let diffBytes=0;
+ const a=new Map<string, any>((before.files||[]).map(f=>[f.path,f])),b=new Map<string, any>((after.files||[]).map(f=>[f.path,f])),changes: FileChange[]=[];let diffBytes=0;
  const reasons={'too-large':'文件超过文本快照大小上限','snapshot-budget':'文本快照总量达到上限','binary':'二进制文件不生成文本差异','invalid-utf8':'文件不是有效的 UTF-8 文本'};
  for(const file of [...new Set([...a.keys(),...b.keys()])].sort()){
   if(changes.length>=Math.min(200,maxFiles))break;
@@ -76,7 +77,7 @@ export async function changedFiles(before,after,{maxFiles=200,maxDiffBytes=1024*
   // A partial snapshot does not establish that an unobserved file is absent.
   if((!old&&before.truncated)||(!next&&after.truncated))continue;
   if(old&&next&&(old.sha256&&next.sha256?old.sha256===next.sha256:old.size===next.size&&old.modifiedAt===next.modifiedAt))continue;
-  const change={path:file,kind:!old?'add':!next?'delete':'update',available:false,diff:'',added:null,removed:null,additions:null,deletions:null,beforeSha256:old?.sha256||null,afterSha256:next?.sha256||null};
+  const change: FileChange={path:file,kind:!old?'add':!next?'delete':'update',available:false,diff:'',added:null,removed:null,additions:null,deletions:null,beforeSha256:old?.sha256||null,afterSha256:next?.sha256||null};
   const unavailableRecord=[old,next].find(f=>f&&typeof f.text!=='string');
   if(unavailableRecord){change.source=reasons[unavailableRecord.textUnavailableReason]||'没有完整的修改前后文本，无法生成差异';changes.push(change);continue;}
   if(diffBytes>=maxDiffBytes){change.diffTruncated=true;change.source='本轮差异展示总量达到 1 MiB 上限';changes.push(change);continue;}
@@ -105,16 +106,16 @@ export function memberInstructions(cwd){
   "仅询问访问能力时使用只读操作验证。对用户已明确授权的必要操作继续执行，不反复索要已有授权。能力和连接状态以实际工具结果为准。",
  ].join('\n\n');
 }
-export async function prepareIsolatedJob(job,{signal,root}={}){
+export async function prepareIsolatedJob(job,{signal,root}: {signal?: AbortSignal; root?: string}={}){
  const owner=job.owner;if(typeof owner!=='string'||!owner)throw new Error('隔离执行缺少账号身份');let cwd=virtualWorkspacePath(job.cwd||'/workspace');
  if(job.projectId){let config;try{const stored=await workspaceOperation(owner,{operation:'read',path:'/workspace/.shiyan/workspace.json'},{signal,root});config=JSON.parse(stored.text||Buffer.from(stored.data,'base64').toString());}catch{throw new Error('当前账号的项目不存在');}const project=config.projects?.find(p=>p.id===job.projectId);if(!project)throw new Error('当前账号的项目不存在');cwd=virtualWorkspacePath(project.path);}
  await workspaceOperation(owner,{operation:'mkdir',path:cwd,recursive:true},{signal,root});
  const before=await workspaceOperation(owner,{operation:'snapshot'},{signal,root});
- const attachments=[];const uploads=[...(job.uploads||[]).map((f,i)=>({...f,filename:`image-${i+1}${f.suffix||'.png'}`,image:true})),...(job.files||[])];
- if(uploads.length){const inputDir='/workspace/inputs/'+crypto.randomUUID();await workspaceOperation(owner,{operation:'mkdir',path:inputDir,recursive:true},{signal,root});for(const file of uploads){const filename=path.posix.basename(String(file.filename||file.name||'attachment')).replace(/[\0\r\n]/g,'_'),filePath=inputDir+'/'+filename;await workspaceOperation(owner,{operation:'write',path:filePath,data:file.data},{signal,root});const attachment={path:filePath};if(file.image){const mime={'.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp'}[file.suffix];if(mime)attachment.image={mime,data:file.data};}attachments.push(attachment);}}
+ const attachments: Array<{path: string; image?: {mime: string; data: any}}> = [];const uploads=[...(job.uploads||[]).map((f,i)=>({...f,filename:`image-${i+1}${f.suffix||'.png'}`,image:true})),...(job.files||[])];
+ if(uploads.length){const inputDir='/workspace/inputs/'+crypto.randomUUID();await workspaceOperation(owner,{operation:'mkdir',path:inputDir,recursive:true},{signal,root});for(const file of uploads){const filename=path.posix.basename(String(file.filename||file.name||'attachment')).replace(/[\0\r\n]/g,'_'),filePath=inputDir+'/'+filename;await workspaceOperation(owner,{operation:'write',path:filePath,data:file.data},{signal,root});const attachment: {path: string; image?: {mime: string; data: any}} = {path:filePath};if(file.image){const mime={'.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp'}[file.suffix];if(mime)attachment.image={mime,data:file.data};}attachments.push(attachment);}}
  return {owner,cwd,before,attachments};
 }
-export async function executeMemberTool(owner,name,args,{cwd,signal,root}={}){
+export async function executeMemberTool(owner,name,args,{cwd,signal,root}: {cwd?: string; signal?: AbortSignal; root?: string}={}){
  if(name==='exec_command')return await execSandbox(owner,{command:args.command,cwd:args.cwd||cwd,timeoutMs:Math.min(Number(args.timeout_ms)||120000,120000),signal,root});
  if(name==='read_file')return await workspaceOperation(owner,{operation:'read',path:args.path},{signal,root});
  if(name==='write_file')return await workspaceOperation(owner,{operation:'write',path:args.path,content:args.content},{signal,root});
@@ -124,29 +125,29 @@ export async function executeMemberTool(owner,name,args,{cwd,signal,root}={}){
  if(name==='mcp_call_tool')return await memberMcpOperation(owner,{operation:'call_tool',server:args.server,name:args.name,arguments:args.arguments},{signal,root});
  throw new Error('工具不可用');
 }
-export async function finishIsolatedJob(owner,{before,text='',signal,root}={}){
+export async function finishIsolatedJob(owner,{before,text='',signal,root}: {before?: any; text?: string; signal?: AbortSignal; root?: string}={}){
  const after=await workspaceOperation(owner,{operation:'snapshot'},{signal,root});const fileChanges=await changedFiles(before,after);const artifacts=await collectSandboxArtifacts(owner,{text,signal,root});return{fileChanges,artifacts};
 }
-export async function runIsolatedJob(job,{conversation,history=[],memory='',signal,onEvent=()=>{},onText=()=>{},onActivity=()=>{},outputSchema,schema,fetchImpl=fetch,getProvider=memberProvider,refreshProvider=refreshMemberProvider,root,maxRounds=48,allowTools=true}={}){
+export async function runIsolatedJob(job,{conversation,history=[],memory='',signal,onEvent=()=>{},onText=()=>{},onActivity=()=>{},outputSchema,schema,fetchImpl=fetch,getProvider=memberProvider,refreshProvider=refreshMemberProvider,root,maxRounds=48,allowTools=true}: {conversation?: any; history?: any[]; memory?: string; signal?: AbortSignal; onEvent?: (event: any) => void; onText?: (text: string) => void; onActivity?: () => void; outputSchema?: any; schema?: any; fetchImpl?: (...args: any[]) => any; getProvider?: (...args: any[]) => any; refreshProvider?: (...args: any[]) => any; root?: string; maxRounds?: number; allowTools?: boolean}={}){
  const {owner,cwd,before,attachments}=await prepareIsolatedJob(job,{signal,root});
- const input=[];if(memory)input.push({role:'user',content:[{type:'input_text',text:memory}]});
+ const input: any[]=[];if(memory)input.push({role:'user',content:[{type:'input_text',text:memory}]});
  for(const item of history.slice(-40))if(['user','assistant'].includes(item.role)&&typeof item.text==='string')input.push({role:item.role,content:[{type:item.role==='assistant'?'output_text':'input_text',text:item.text.slice(0,40000)}]});
- const content=[{type:'input_text',text:job.prompt||'请查看附件。'}];
+ const content: any[]=[{type:'input_text',text:job.prompt||'请查看附件。'}];
  for(const attachment of attachments){content.push({type:'input_text',text:'用户上传的附件：'+attachment.path});if(attachment.image)content.push({type:'input_image',image_url:`data:${attachment.image.mime};base64,${attachment.image.data}`});}
- input.push({role:'user',content});const displayItems=[];const threadId=conversation?.threadId||job.threadId||'isolated_'+crypto.randomUUID();let allText='',usage=null;
+ input.push({role:'user',content});const displayItems: any[]=[];const threadId=conversation?.threadId||job.threadId||'isolated_'+crypto.randomUUID();let allText='',usage: any=null;
  onEvent({type:'thread.started',thread_id:threadId});
  const instructions=memberInstructions(cwd);
  for(let round=0;round<maxRounds;round++){
-  if(signal?.aborted)throw signal.reason||new Error('执行已停止');const request={model:job.model,reasoning:{effort:job.reasoning||'low'},instructions,input,tools:allowTools?MEMBER_AGENT_TOOLS:[],tool_choice:allowTools?'auto':'none',parallel_tool_calls:false,store:false,stream:true};
+  if(signal?.aborted)throw signal.reason||new Error('执行已停止');const request: {model: any; reasoning: {effort: any}; instructions: string; input: any[]; tools: any[]; tool_choice: string; parallel_tool_calls: boolean; store: boolean; stream: boolean; text?: any}={model:job.model,reasoning:{effort:job.reasoning||'low'},instructions,input,tools:allowTools?MEMBER_AGENT_TOOLS:[],tool_choice:allowTools?'auto':'none',parallel_tool_calls:false,store:false,stream:true};
   const format=outputSchema||schema;if(format)request.text={format:{type:'json_schema',name:'shiyan_result',strict:true,schema:format}};
   const result=await responseStream(request,{signal,fetchImpl,getProvider,refreshProvider,onActivity,onText:text=>onText(allText+(allText?'\n\n':'')+text)});if(result.usage){usage||={};for(const[key,value]of Object.entries(result.usage)){if(typeof value==='number')usage[key]=(usage[key]||0)+value;else if(value&&typeof value==='object'){usage[key]||={};for(const[k,n]of Object.entries(value))if(typeof n==='number')usage[key][k]=(usage[key][k]||0)+n;}}}
   if(result.text)allText+=(allText?'\n\n':'')+result.text;
   const calls=result.output.filter(i=>i.type==='function_call');if(!allowTools&&calls.length)throw unavailable();for(const item of result.output)if(['reasoning','message','function_call'].includes(item.type))input.push(item);
   if(!calls.length){if(!allText.trim())throw unavailable();const{fileChanges,artifacts}=await finishIsolatedJob(owner,{before,text:allText,signal,root});return{text:allText,usage,threadId,displayItems,fileChanges,artifacts};}
-  for(const call of calls){const id=call.call_id||call.id||crypto.randomUUID(),item={id,type:call.name==='exec_command'?'command_execution':'mcp_tool_call',status:'in_progress',...(call.name==='exec_command'?{command:''}:{server:'workspace',tool:call.name})};let args;try{args=JSON.parse(call.arguments||'{}');}catch{args={};}
+  for(const call of calls){const id=call.call_id||call.id||crypto.randomUUID(),item: {id: string; type: string; status: string; command?: string; server?: string; tool?: string; aggregated_output?: string; exit_code?: number; result?: any}={id,type:call.name==='exec_command'?'command_execution':'mcp_tool_call',status:'in_progress',...(call.name==='exec_command'?{command:''}:{server:'workspace',tool:call.name})};let args;try{args=JSON.parse(call.arguments||'{}');}catch{args={};}
    if(call.name==='exec_command')item.command=String(args.command||'');if(call.name.startsWith('mcp_')&&args.server)item.server=String(args.server);if(call.name==='mcp_call_tool')item.tool=String(args.name||call.name);displayItems.push(item);onEvent({type:'item.started',item:{...item}});let output;
    try{output=await executeMemberTool(owner,call.name,args,{cwd,signal,root});item.status='completed';}
-   catch(error){if(signal?.aborted)throw error;output={error:error.message};item.status='failed';}
+   catch(error){if(signal?.aborted)throw error;output={error: error instanceof Error?error.message:String(error)};item.status='failed';}
    const text=JSON.stringify(output);item.aggregated_output=(call.name==='exec_command'?String(output.stdout||'')+String(output.stderr||''):text).slice(0,128000);item.exit_code=output.exitCode??(output.error?1:0);item.result={content:[{type:'text',text:text.slice(0,128000)}]};onEvent({type:'item.completed',item:{...item}});onActivity();
    input.push({type:'function_call_output',call_id:id,output:text.slice(0,256000)});
   }

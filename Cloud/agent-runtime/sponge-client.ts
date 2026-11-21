@@ -15,15 +15,15 @@ const validOwner = owner => typeof owner === 'string' && owner.length > 0 && own
 
 export function createSpongeClient({ socketPath = process.env.SHIYAN_SPONGE_SOCKET || path.join(ROOT, 'data', 'sponge', 'connector.sock'), timeoutMs = 60000 } = {}) {
   if (typeof socketPath !== 'string' || !path.isAbsolute(socketPath) || socketPath.includes('\0')) throw failure('海绵宝宝连接配置无效', 500);
-  async function request(route, input, { signal } = {}) {
+  async function request(route, input, { signal }: {signal?: AbortSignal} = {}) {
     if (signal?.aborted) throw abortReason(signal);
     const uncertain = route === '/rpc' && input.method === 'tools/call';
     let body;
     try { body = Buffer.from(JSON.stringify(input)); } catch { throw failure('海绵宝宝请求格式无效', 400); }
     if (body.length > MAX_REQUEST_BYTES) throw failure('海绵宝宝请求过大', 413);
-    return new Promise((resolve, reject) => {
+    return new Promise<any>((resolve, reject) => {
       let req, timer, response, done = false;
-      const finish = (error, value) => {
+      const finish = (error: any, value?: any) => {
         if (done) return;
         done = true;
         clearTimeout(timer);
@@ -37,7 +37,7 @@ export function createSpongeClient({ socketPath = process.env.SHIYAN_SPONGE_SOCK
           headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'Content-Length': body.length } }, res => {
           response = res;
           let size = 0;
-          const chunks = [];
+          const chunks: Buffer[] = [];
           const declared = Number(res.headers['content-length']);
           if (Number.isFinite(declared) && declared > MAX_RESPONSE_BYTES) return finish(failure('海绵宝宝返回内容过大', 502, { uncertain }));
           res.on('data', chunk => {
@@ -53,8 +53,9 @@ export function createSpongeClient({ socketPath = process.env.SHIYAN_SPONGE_SOCK
             try { value = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
             catch { return finish(failure('海绵宝宝服务返回无效结果', 502, { uncertain })); }
             if (!object(value)) return finish(failure('海绵宝宝服务返回无效结果', 502, { uncertain }));
-            if (res.statusCode < 200 || res.statusCode >= 300 || value.ok !== true) {
-              const status = res.statusCode >= 400 && res.statusCode <= 599 ? res.statusCode : 502;
+            const statusCode = res.statusCode ?? 0;
+            if (statusCode < 200 || statusCode >= 300 || value.ok !== true) {
+              const status = statusCode >= 400 && statusCode <= 599 ? statusCode : 502;
               const message = typeof value.error === 'string' ? value.error.replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, 500) : '海绵宝宝调用失败';
               return finish(failure(message, status));
             }
@@ -88,9 +89,9 @@ export function createSpongeClient({ socketPath = process.env.SHIYAN_SPONGE_SOCK
 
 // A reserved managed server is dispatched outside the member namespace, using
 // only its server-derived owner. User-configured MCP servers retain their path.
-export function createSpongeMcpAdapter({ sandboxOperation, client = createSpongeClient() } = {}) {
+export function createSpongeMcpAdapter({ sandboxOperation, client = createSpongeClient() }: {sandboxOperation?: (owner: any, input: any, options?: any) => Promise<any>; client?: ReturnType<typeof createSpongeClient>} = {}) {
   if (typeof sandboxOperation !== 'function') throw new TypeError('sandboxOperation is required');
-  return async function memberMcpOperation(owner, input, options = {}) {
+  return async function memberMcpOperation(owner, input, options: {signal?: AbortSignal} = {}) {
     if (input.operation === 'list_servers') {
       const [configured, connection] = await Promise.all([
         sandboxOperation(owner, input, options),
