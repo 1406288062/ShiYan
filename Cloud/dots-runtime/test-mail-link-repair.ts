@@ -18,13 +18,13 @@ test('persisted mail repair advances revisions and publishes owner-scoped update
    db.prepare("INSERT INTO dots_mail_events VALUES(?,?,'sent',?)").run('mail-'+id,manager,id);
   }
   assert.equal(repairMailPresentationLinks(a),1);
-  const first=db.prepare('SELECT * FROM manager_messages WHERE id=1').get(),other=db.prepare('SELECT * FROM manager_messages WHERE id=2').get();
-  assert.equal(first.revision,2);assert(first.content.includes('](<https://sz.duoyi.com>)（电脑端登录）'));
+  const first=db.prepare('SELECT * FROM manager_messages WHERE id=1').get()!,other=db.prepare('SELECT * FROM manager_messages WHERE id=2').get()!;
+  assert.equal(first.revision,2);assert(String(first.content).includes('](<https://sz.duoyi.com>)（电脑端登录）'));
   assert.equal(other.content,broken);assert.equal(other.revision,1);
-  const event=db.prepare('SELECT * FROM manager_activity WHERE manager_id=?').get(a.managerId);
-  assert.equal(event.kind,'assistant_delta');assert.equal(JSON.parse(event.data).message.revision,2);
-  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM manager_activity WHERE manager_id=?').get(b.managerId).n,0);
-  assert.equal(repairMailPresentationLinks(a),0);assert.equal(db.prepare('SELECT COUNT(*) AS n FROM manager_activity').get().n,1);
-  assert.equal(db.prepare('SELECT state,message_id FROM dots_mail_events WHERE id=?').get('mail-1').state,'sent');
+  const event=db.prepare('SELECT * FROM manager_activity WHERE manager_id=?').get(a.managerId)!;
+  assert.equal(event.kind,'assistant_delta');assert.equal(JSON.parse(String(event.data)).message.revision,2);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM manager_activity WHERE manager_id=?').get(b.managerId)!.n,0);
+  assert.equal(repairMailPresentationLinks(a),0);assert.equal(db.prepare('SELECT COUNT(*) AS n FROM manager_activity').get()!.n,1);
+  assert.equal(db.prepare('SELECT state,message_id FROM dots_mail_events WHERE id=?').get('mail-1')!.state,'sent');
  }finally{db.close();}
 });

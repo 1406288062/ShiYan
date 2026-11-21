@@ -21,7 +21,7 @@ export function createMailReplyService({store,loadConfig,clientFactory,readBody,
  CREATE TABLE IF NOT EXISTS dots_mail_reply_drafts(id TEXT PRIMARY KEY,manager_id TEXT NOT NULL,mail_event_id TEXT NOT NULL,account_key TEXT NOT NULL,recipient TEXT NOT NULL,subject TEXT NOT NULL,in_reply_to TEXT NOT NULL,references_json TEXT NOT NULL,body TEXT NOT NULL,state TEXT NOT NULL DEFAULT 'draft',created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);
  CREATE INDEX IF NOT EXISTS idx_mail_reply_queue ON dots_mail_reply_jobs(manager_id,state,created_at);
  CREATE INDEX IF NOT EXISTS idx_mail_reply_drafts ON dots_mail_reply_drafts(manager_id,updated_at DESC);`);
- let busy=false,closed=false,queued=false,currentAbort=null;
+ let busy=false,closed=false,queued=false,currentAbort: AbortController | null=null;
  const getJob=id=>db.prepare('SELECT * FROM dots_mail_reply_jobs WHERE id=? AND manager_id=?').get(id,managerId);
  const getDraft=id=>db.prepare('SELECT * FROM dots_mail_reply_drafts WHERE id=? AND manager_id=?').get(id,managerId);
  const inputCurrent=job=>{
@@ -43,7 +43,7 @@ export function createMailReplyService({store,loadConfig,clientFactory,readBody,
   const ids=[...new Set(a.source_message_ids)];const rows=ids.map(id=>db.prepare("SELECT content FROM manager_messages WHERE id=? AND manager_id=? AND role='user'").get(id,managerId));if(rows.some(row=>!row))throw Error('mail_reply_requires_current_user_input');
   const instruction=rows.map(row=>row.content).join('\n');
   if(a.action==='send'&&(!isExplicitSend(instruction)||!a.authorization_quote||!rows.some(row=>row.content.includes(a.authorization_quote))||!isExplicitSend(a.authorization_quote)))throw Error('mail_send_not_explicitly_requested');
-  let draft=null;if(a.draft_id){draft=getDraft(a.draft_id);if(!draft||draft.mail_event_id!==mail.id||draft.state!=='draft')throw Error('mail_reply_draft_not_current');}
+  let draft: any=null;if(a.draft_id){draft=getDraft(a.draft_id);if(!draft||draft.mail_event_id!==mail.id||draft.state!=='draft')throw Error('mail_reply_draft_not_current');}
   const id=randomUUID();db.prepare('INSERT INTO dots_mail_reply_jobs(id,manager_id,run_id,mail_message_id,mode,draft_id,instruction,source_ids,authorization_quote,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(id,managerId,run.id,a.mail_message_id,a.action,draft?.id||null,instruction.slice(0,20000),encode(ids),String(a.authorization_quote||'').slice(0,1000),now(),now());return [id];
  }
  async function model(data,schema,signal){return assess(encode(data),schema,{signal:AbortSignal.any([signal,AbortSignal.timeout(45000)])});}
@@ -62,7 +62,7 @@ export function createMailReplyService({store,loadConfig,clientFactory,readBody,
   });
  }
  async function execute(job,signal){
-  let draft=getDraft(job.draft_id),transport=null,smtpStarted=false;
+  let draft=getDraft(job.draft_id),transport: any=null,smtpStarted=false;
   try{
    if(!inputCurrent(job))throw Error('mail_request_superseded');
    let config=await loadConfig();if(!config)throw Error('mail_not_configured');
@@ -96,9 +96,9 @@ export function createMailReplyService({store,loadConfig,clientFactory,readBody,
    store.transaction(()=>{db.prepare("UPDATE dots_mail_reply_drafts SET state='sent',updated_at=? WHERE id=? AND manager_id=?").run(now(),draft.id,managerId);result(job,'sent',`邮件回复已发送\n\n收件人：${mailLiteral(draft.recipient)}\n主题：${mailLiteral(draft.subject)}\n\n${mailLiteral(draft.body)}`);});
   }catch(error){
    if(closed)return;
-   const uncertain=smtpStarted&&!['EAUTH','EENVELOPE','EMESSAGE'].includes(error.code)&&error.message!=='mail_send_not_accepted';
+   const uncertain=smtpStarted&&!['EAUTH','EENVELOPE','EMESSAGE'].includes((error as any).code)&&(error as any).message!=='mail_send_not_accepted';
    if(draft)db.prepare('UPDATE dots_mail_reply_drafts SET state=?,updated_at=? WHERE id=? AND manager_id=?').run(uncertain?'uncertain':'draft',now(),draft.id,managerId);
-   const code=/^mail_[a-z_]+$/.test(error.message)?error.message:'mail_reply_execution_failed';
+   const code=/^mail_[a-z_]+$/.test((error as any).message)?(error as any).message:'mail_reply_execution_failed';
    result(job,uncertain?'uncertain':'failed',uncertain?'邮件发送结果尚未确认，我没有自动重发，以免重复发送。请先核对已发送邮件。':code==='mail_send_not_explicitly_requested'?'回复草稿已保留，尚未发送；需要明确的发送指令。':code==='mail_request_superseded'?'邮件回复处理期间收到新消息，本次未发送。':'邮件回复未完成，尚未确认发送。请检查原邮件、邮箱连接或回复要求后继续。',code);
    logger.warn?.('[mail-reply]',code);
   }finally{try{transport?.close?.();}catch{}}
@@ -111,7 +111,7 @@ export function createMailReplyService({store,loadConfig,clientFactory,readBody,
    db.prepare("UPDATE dots_mail_reply_jobs SET state='queued',lease_owner=NULL,lease_until=0 WHERE manager_id=? AND state='running' AND lease_until<=?").run(managerId,now());
    for(const stale of db.prepare("SELECT * FROM dots_mail_reply_jobs WHERE manager_id=? AND state='uncertain' AND result_message_id IS NULL LIMIT 10").all(managerId))result(stale,'uncertain','上次邮件发送过程已中断，结果尚未确认；没有自动重发。','mail_send_interrupted');
    const job=store.transaction(()=>{const j=db.prepare("SELECT * FROM dots_mail_reply_jobs WHERE manager_id=? AND state='queued' ORDER BY created_at,id LIMIT 1").get(managerId);if(!j)return null;const claimed=db.prepare("UPDATE dots_mail_reply_jobs SET state='running',lease_owner=?,lease_until=?,updated_at=? WHERE id=? AND state='queued'").run(owner,now()+300000,now(),j.id).changes;return claimed?getJob(j.id):null;});
-   if(!job)return false;await execute(job,currentAbort.signal);return true;
+   if(!job)return false;await execute(job,currentAbort!.signal);return true;
   }finally{busy=false;currentAbort=null;}
  }
  const kick=()=>{if(closed||queued)return;queued=true;queueMicrotask(()=>{queued=false;void wake().catch(()=>logger.warn?.('[mail-reply]','mail_reply_dispatch_failed'));});};
