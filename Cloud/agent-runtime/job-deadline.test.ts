@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createJobDeadline, jobFailure, jobTimeouts } from './job-deadline.ts';
 
-function clock() {
+function clock(): any {
   let now = 0, nextID = 0;
   const pending = new Map();
   return { schedule(callback, delay) { const id = ++nextID; pending.set(id, { at: now + delay, callback }); return id; },
@@ -27,7 +27,7 @@ test('defaults retain 15-minute inactivity without a total runtime limit', () =>
 });
 
 test('default deadline schedules only inactivity and continuous progress survives eight hours', () => {
-  const time = clock(), errors = [];
+  const time = clock(), errors: any[] = [];
   const deadline = createJobDeadline({ schedule: time.schedule, unschedule: time.unschedule, onExpire: error => errors.push(error) });
   assert.equal(time.count, 1);
   for (let minute = 0; minute < 480; minute++) {
@@ -39,13 +39,13 @@ test('default deadline schedules only inactivity and continuous progress survive
 });
 
 test('explicit positive runtime limit still expires despite continuous progress', () => {
-  const time = clock(), errors = [];
+  const time = clock(), errors: any[] = [];
   const deadline = createJobDeadline({ ...jobTimeouts({ SHIYAN_JOB_MAX_RUNTIME_MS: '7200000' }), schedule: time.schedule, unschedule: time.unschedule, onExpire: error => errors.push(error) });
   assert.equal(time.count, 2);
   for (let minute = 0; minute < 119; minute++) { time.advance(60000); assert.equal(deadline.touch(), true); }
   assert.equal(deadline.expiration, null); assert.equal(errors.length, 0);
   time.advance(60000);
-  assert.equal(deadline.expiration.kind, 'runtime'); assert.equal(errors.length, 1);
+  assert.equal((deadline.expiration as any).kind, 'runtime'); assert.equal(errors.length, 1);
   assert.match(errors[0].message, /2 小时/); assert.equal(time.count, 0);
   assert.equal(deadline.touch(), false);
   const abort = Object.assign(new Error('The operation was aborted.'), { name: 'AbortError' });
@@ -54,18 +54,18 @@ test('explicit positive runtime limit still expires despite continuous progress'
 });
 
 test('inactivity resets on progress and expires only after the renewed full interval', () => {
-  const time = clock(), errors = [];
+  const time = clock(), errors: any[] = [];
   const deadline = createJobDeadline({ idleTimeoutMs: 1000, maxRuntimeMs: 0, schedule: time.schedule, unschedule: time.unschedule, onExpire: error => errors.push(error) });
   time.advance(900); deadline.touch(); time.advance(999);
   assert.equal(deadline.expiration, null); time.advance(1);
-  assert.equal(deadline.expiration.kind, 'idle'); assert.equal(errors[0].code, 'SHIYAN_IDLE_TIMEOUT');
+  assert.equal((deadline.expiration as any).kind, 'idle'); assert.equal(errors[0].code, 'SHIYAN_IDLE_TIMEOUT');
   assert.match(errors[0].message, /没有新进展/); time.advance(20000); assert.equal(errors.length, 1);
   assert.equal(time.count, 0); assert.equal(deadline.touch(), false);
 });
 
 test('finished or manually cancelled jobs dispose every timer with or without a runtime limit', () => {
   for (const maxRuntimeMs of [0, 5000]) {
-    const time = clock(), errors = [];
+    const time = clock(), errors: any[] = [];
     const deadline = createJobDeadline({ idleTimeoutMs: 1000, maxRuntimeMs, schedule: time.schedule, unschedule: time.unschedule, onExpire: error => errors.push(error) });
     assert.equal(time.count, maxRuntimeMs > 0 ? 2 : 1);
     time.advance(800); deadline.dispose(); time.advance(10000);
