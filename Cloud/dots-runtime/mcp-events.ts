@@ -1,4 +1,5 @@
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { promises as dns } from "node:dns";
 import { isIP } from "node:net";
 import { toolList, validateToolArguments, PROTOCOL_VERSIONS, protocolVersion, capabilities, CLIENT_CONTEXT_SCHEMA } from "./mcp-contract.ts";
@@ -153,7 +154,7 @@ function eventDefinition() {
   };
 }
 
-export function createMcpBridge({ db, pathSecret, runtimeToken, runtimeBase = "http://127.0.0.1:4330", deliver = signedPost, verify = verifyCallback, retryIntervalMs = 5000,defaultOwner='shiyan-private-owner',getOwner=null,subscriptions=null,registrationNotice=null,settings=null,feedback=null,weixin=null,grants=null,audit:auditView=null,lifeGoals=null }) {
+export function createMcpBridge({ db, pathSecret, runtimeToken, runtimeBase = "http://127.0.0.1:4330", deliver = signedPost, verify = verifyCallback, retryIntervalMs = 5000,defaultOwner='shiyan-private-owner',getOwner=null,subscriptions=null,registrationNotice=null,settings=null,feedback=null,weixin=null,grants=null,audit:auditView=null,lifeGoals=null }: {db: DatabaseSync; pathSecret?: string; runtimeToken?: string; runtimeBase?: string; deliver?: typeof signedPost; verify?: typeof verifyCallback; retryIntervalMs?: number; defaultOwner?: string; getOwner?: (() => string) | null; subscriptions?: (() => any) | null; registrationNotice?: ((params: any) => any) | null; settings?: (() => any) | null; feedback?: (() => any) | null; weixin?: (() => any) | null; grants?: (() => any) | null; audit?: (() => any) | null; lifeGoals?: (() => any) | null}) {
   const currentOwner=()=>getOwner?.()||defaultOwner;
   const scoped=getOwner!==null;
   db.exec(`CREATE TABLE IF NOT EXISTS dots_weixin_web_message_sync(owner TEXT NOT NULL,request_id TEXT NOT NULL,state TEXT NOT NULL,updated_at INTEGER NOT NULL,PRIMARY KEY(owner,request_id))`);

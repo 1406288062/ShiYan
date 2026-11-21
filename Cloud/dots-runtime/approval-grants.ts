@@ -46,7 +46,7 @@ export function createGrantStore(db, { now = () => Math.floor(Date.now() / 1000)
   const present = row => ({ id: row.id, signatures: JSON.parse(row.signatures), labels: JSON.parse(row.signatures).map(signatureLabel), scope: row.scope, goalId: row.goal_id, expiresAt: row.expires_at, sampleCommand: row.sample_command, createdAt: row.created_at, uses: row.uses, lastUsedAt: row.last_used_at });
   const active = owner => db.prepare('SELECT * FROM dots_approval_grants WHERE owner_id=? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at>?) ORDER BY id DESC').all(owner, now());
 
-  function create({ owner, goalId = null, command, scope }) {
+  function create({ owner, goalId = null, command, scope }: {owner?: string; goalId?: any; command?: string; scope: string}) {
     if (!GRANT_SCOPES.includes(scope)) throw Object.assign(new Error('授权范围无效'), { statusCode: 400 });
     const signatures = commandSignatures(command);
     if (!signatures.length) throw Object.assign(new Error('这条命令无法生成授权'), { statusCode: 400 });
@@ -58,7 +58,7 @@ export function createGrantStore(db, { now = () => Math.floor(Date.now() / 1000)
   }
 
   // 每个命令片段要么被授权覆盖，要么本身在当前审批方式下可以自动放行；至少要有一个片段用到授权。
-  function covers({ owner, goalId, command, autoOk = () => false }) {
+  function covers({ owner, goalId, command, autoOk = () => false }: {owner?: string; goalId?: any; command?: string; autoOk?: (segment: string) => boolean}) {
     const segments = commandSegments(command);
     if (!segments.length) return null;
     const grants = active(owner).filter(row => row.scope !== 'task' || row.goal_id === goalId);

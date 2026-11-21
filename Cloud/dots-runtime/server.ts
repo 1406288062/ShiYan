@@ -10,7 +10,7 @@ import {createOwnerSubscriptions} from './owner-subscriptions.ts';
 import {createSubscriptionIntent} from './subscription-intent.ts';
 import {hubAwareThread,recentlyViaHub} from './dots-claude-thread.ts';
 import {randomUUID,createHash} from 'node:crypto';
-import {workspaceOperation,execSandbox} from '../boss-codex-service/shiyan-v2/member-sandbox.ts';
+import {workspaceOperation,execSandbox} from '../agent-runtime/member-sandbox.ts';
 import {createGithubChangeSummarizer} from './github-change-summary.ts';
 import {createAppSubscriptions,readSubscriptionConfig} from './app-subscriptions.ts';
 import { createManagerThread } from './manager-stream-transport.ts';
@@ -19,7 +19,7 @@ import { createSandboxManager } from './agent-sandbox.ts';
 import { createAgentRunner } from './agent-runner.ts';
 import { tool as agentTool, hostMcpTools } from './agent-tools.ts';
 import { createWorkerAgent } from './dots-worker-agent.ts';
-import { memberWorkspaceHostPath } from '../boss-codex-service/shiyan-v2/member-sandbox.ts';
+import { memberWorkspaceHostPath } from '../agent-runtime/member-sandbox.ts';
 import http from "node:http";
 import path from "node:path";
 import { mkdirSync, promises as fs } from "node:fs";
@@ -27,7 +27,7 @@ import { DatabaseSync } from "node:sqlite";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { Codex } from "@openai/codex-sdk";
-import { mcpConnectors } from "../boss-codex-service/shiyan-v2/mcp-connectors.ts";
+import { mcpConnectors } from "../agent-runtime/mcp-connectors.ts";
 import { createMcpBridge } from "./mcp-events.ts";
 // 2026-10-29：Mac 本机 Codex 执行（mac_codex）已停用，只在云端执行。
 import { startLocalMcpSocket } from "./local-mcp-socket.ts";
@@ -39,7 +39,7 @@ import {createPublicDiscovery} from "./public-discovery.ts";
 import {createMailPresenter,readMailBody} from "./qq-mail-content.ts";
 import {createMailReplyService} from "./mail-reply-service.ts";
 import {readMailConfig,createQQMailSubscription} from "./qq-mail-subscription.ts";
-import {ImapFlow} from "./mail-transport/node_modules/imapflow/dist/esm/imap-flow.ts";
+import {ImapFlow} from "./mail-transport/node_modules/imapflow/dist/esm/imap-flow.js";
 import {createProactiveTrigger} from "./proactive-trigger.ts";
 import { createManagerRuntime, runStructuredTurn } from "./manager-runtime.ts";
 import { createDotsHub, dotsConsumer } from "./dots-hub.ts";
@@ -48,7 +48,7 @@ import { createGrantStore, commandSignatures, signatureLabel } from "./approval-
 import { createAuditLog } from "./audit-log.ts";
 import { createLifeGoals } from "./life-goals.ts";
 import { smtpReplyTransport } from "./mail-reply-service.ts";
-import { MemoryStore } from "../boss-codex-service/shiyan-v2/memory-store.ts";
+import { MemoryStore } from "../agent-runtime/memory-store.ts";
 import { DigitalPersonService } from './digital-persons.ts';
 
 const execFileAsync = promisify(execFile);
@@ -240,7 +240,7 @@ function createTenantThread(owner,{threadId,options}){
  if(owner===PRIVATE_OWNER)return createManagerThread({threadId,options,codexPath:CODEX_PATH});
  const id=threadId||'isolated:'+randomUUID();
  const execute=async(prompt,{outputSchema,signal,onText}={})=>{
-  const {runIsolatedJob}=await import('../boss-codex-service/shiyan-v2/member-sandbox.ts');
+  const {runIsolatedJob}=await import('../agent-runtime/member-sandbox.ts');
   const schemaHint=outputSchema?'\nReturn exactly one JSON object conforming to this schema, without markdown fences:\n'+JSON.stringify(outputSchema):'';
   const cwd=memberDotsWorkingDirectory(ownerRegistry.get(owner).workspaceRoot,options.workingDirectory);
   await workspaceOperation(owner,{operation:'mkdir',path:cwd,recursive:true});
@@ -444,7 +444,7 @@ function recordTurnSteps(goalId, items) {
   }
 }
 
-function addTimeline(goalId, kind, message, data = "") {
+function addTimeline(goalId, kind, message, data: any = "") {
   db.prepare(
     "INSERT INTO timeline(goal_id,kind,message,data,created_at) VALUES(?,?,?,?,?)"
   ).run(goalId ?? null, kind, String(message), typeof data === "string" ? data : json(data), now());
@@ -639,19 +639,19 @@ const grantStore=createGrantStore(db);
 const SETTING_DEFAULTS={approvalMode:'smart',dailyBrief:true,dailyBriefTime:'09:00'};
 const auditLog=createAuditLog(db);
 const managerIdOf=owner=>db.prepare('SELECT id FROM managers WHERE owner_id=?').get(owner)?.id||null;
-const audit=(owner,kind,summary,options)=>{try{auditLog.record(managerIdOf(owner),kind,summary,options);}catch{}};
+const audit=(owner,kind,summary,options: any={})=>{try{auditLog.record(managerIdOf(owner),kind,summary,options);}catch{}};
 
 function ownerSettings(owner=ownerRegistry.currentOwner()){
   const out={...SETTING_DEFAULTS};
-  for(const row of db.prepare('SELECT key,value FROM dots_owner_settings WHERE owner_id=?').all(owner)){try{if(row.key in SETTING_DEFAULTS)out[row.key]=JSON.parse(row.value);}catch{}}
+  for(const row of db.prepare('SELECT key,value FROM dots_owner_settings WHERE owner_id=?').all(owner)){try{if(row.key in SETTING_DEFAULTS)out[row.key]=JSON.parse(String(row.value));}catch{}}
   if(!APPROVAL_MODES.includes(out.approvalMode))out.approvalMode=SETTING_DEFAULTS.approvalMode;
   if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(out.dailyBriefTime)))out.dailyBriefTime=SETTING_DEFAULTS.dailyBriefTime;
   out.dailyBrief=out.dailyBrief!==false;
   return out;
 }
-function updateOwnerSettings(input={},owner=ownerRegistry.currentOwner()){
+function updateOwnerSettings(input: any={},owner=ownerRegistry.currentOwner()){
   const bad=message=>Object.assign(new Error(message),{statusCode:400});
-  const changes={};
+  const changes: {approvalMode?: any; dailyBrief?: boolean; dailyBriefTime?: string}={};
   if('approvalMode' in input){if(!APPROVAL_MODES.includes(input.approvalMode))throw bad('审批方式无效');changes.approvalMode=input.approvalMode;}
   if('dailyBrief' in input)changes.dailyBrief=input.dailyBrief===true;
   if('dailyBriefTime' in input){if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(input.dailyBriefTime)))throw bad('时间格式应为 HH:mm');changes.dailyBriefTime=String(input.dailyBriefTime);}
@@ -677,10 +677,10 @@ function grantCoverage(goalId,mode,command){
   if(!text||PRIVILEGE_WORD.test(text)||catastrophicCommand(text))return null;
   return grantStore.covers({owner:ownerRegistry.currentOwner(),goalId,command:text,autoOk:segment=>autoApprovable(mode,segment)});
 }
-function createApprovalGrant({approvalId,scope}={}){
+function createApprovalGrant({approvalId,scope}: {approvalId?: any; scope?: any}={}){
   const approval=db.prepare('SELECT * FROM approvals WHERE id=?').get(Number(approvalId));
   if(!approval||!getGoal(approval.goal_id))throw Object.assign(new Error('审批不存在'),{statusCode:404});
-  if(!['approved','executing','executed','failed'].includes(approval.status))throw Object.assign(new Error('只有已批准的命令才能设置授权'),{statusCode:409});
+  if(!['approved','executing','executed','failed'].includes(String(approval.status)))throw Object.assign(new Error('只有已批准的命令才能设置授权'),{statusCode:409});
   const command=String(approval.command||'').trim();
   if(!command)throw Object.assign(new Error('这项审批没有命令'),{statusCode:400});
   if(PRIVILEGE_WORD.test(command)||catastrophicCommand(command))throw Object.assign(new Error('提权或高危命令每次都需要你确认'),{statusCode:400});
@@ -713,7 +713,7 @@ function ingestExternalMessage(owner,text,requestId,host){
     const after=db.prepare('SELECT control_revision FROM managers WHERE id=?').get(managerId)?.control_revision;
     if(after!==before)owned.runtime.interrupt?.();
     if(defer&&result?.message?.id){
-      const release=()=>{try{if(owned.store.releaseToManager(result.message.id))owned.runtime.wake();}catch(error){console.error('[external-intent] release',error?.message||error);}};
+      const release=()=>{try{if(owned.store.releaseToManager(result.message.id))owned.runtime.wake();}catch(error){console.error('[external-intent] release',(error as any)?.message||error);}};
       setImmediate(()=>void owned.intent.process(result.message).then(handled=>{if(!handled)release();},error=>{console.error('[external-intent]',error?.message||error);release();}));
     }else setImmediate(()=>void owned.runtime.wake());
     return result.message;
