@@ -4,28 +4,28 @@ import http from 'node:http';
 import { createSpongeHTTPHandler } from './sponge-http.ts';
 
 async function fixture(t, overrides = {}) {
-  const calls = [];
+  const calls: any[] = [];
   const client = {
     status: async owner => { calls.push(['status', owner]); return { ok: true, connected: true, accountName: 'own-account', devices: [{ deviceId: 'own-device', name: 'Mac', ready: true, token: 'private-device-token' }], needsPairing: false, access_token: 'private-oauth' }; },
     start: async auth => { calls.push(['start', auth]); return { authorizeUrl: 'https://mcp.yandot.ai/oauth/authorize?state=test', refresh_token: 'private-refresh' }; },
-    disconnect: async owner => { calls.push(['disconnect', owner]); return {}; }, ...overrides,
+    disconnect: async owner => { calls.push(['disconnect', owner]); return {}; }, rpc: async () => ({}), ...overrides,
   };
   const handler = createSpongeHTTPHandler({ client });
   const server = http.createServer(async (req, res) => {
     const auth = req.headers['x-fixture-owner'] ? { owner: req.headers['x-fixture-owner'], userId: 'user-A', sessionId: 'session-A', accountSession: true } : null;
     const readBody = async (req, limit) => {
-      const chunks = []; let bytes = 0;
+      const chunks: Buffer[] = []; let bytes = 0;
       for await (const chunk of req) { bytes += chunk.length; if (bytes > limit) throw Object.assign(Error('too large'), { status: 413 }); chunks.push(chunk); }
       return JSON.parse(Buffer.concat(chunks).toString() || '{}');
     };
     if (!await handler(req, res, auth, readBody)) res.writeHead(404).end();
   });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', () => resolve()));
   t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); });
-  const request = async (route, method = 'GET', body, owner = 'A') => {
-    const response = await fetch(`http://127.0.0.1:${server.address().port}${route}`, { method,
+  const request = async (route, method = 'GET', body?: any, owner: any = 'A') => {
+    const response = await fetch(`http://127.0.0.1:${(server.address() as any).port}${route}`, { method,
       headers: { ...(owner ? { 'X-Fixture-Owner': owner } : {}), 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
-    return { status: response.status, value: response.status === 404 ? null : await response.json(), headers: response.headers };
+    return { status: response.status, value: (response.status === 404 ? null : await response.json()) as any, headers: response.headers };
   };
   return { calls, request };
 }
