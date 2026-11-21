@@ -10,7 +10,7 @@ import { browserAgentRequest, defaultBrowserSocket } from './browser-agent.ts';
 import { BROWSER_TOOLS } from './browser-tool-defs.ts';
 
 const owner = String(process.env.SHIYAN_MCP_OWNER || '');
-const origin = ['chat', 'scheduled', 'push', 'webapp'].includes(process.env.SHIYAN_BROWSER_ORIGIN) ? process.env.SHIYAN_BROWSER_ORIGIN : 'chat';
+const origin = ['chat', 'scheduled', 'push', 'webapp'].includes(process.env.SHIYAN_BROWSER_ORIGIN || '') ? process.env.SHIYAN_BROWSER_ORIGIN : 'chat';
 const socketPath = process.env.SHIYAN_BROWSER_SOCKET || defaultBrowserSocket(process.env.SHIYAN_ROOT || path.resolve(path.dirname(fileURLToPath(import.meta.url))));
 if (!owner || owner.length > 512) { process.stderr.write('Missing or invalid browser bridge owner\n'); process.exit(2); }
 
@@ -25,7 +25,7 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
     const data = await browserAgentRequest(socketPath, '/dots/call', { owner, origin, tool: name, args }, { timeoutMs: name === 'search' || name === 'open' ? 90_000 : 120_000 });
     return { content: [{ type: 'text', text: JSON.stringify(data.result).slice(0, 60_000) }], structuredContent: data.result };
   } catch (error) {
-    return { isError: true, content: [{ type: 'text', text: String(error?.message || error).slice(0, 2000) }] };
+    return { isError: true, content: [{ type: 'text', text: String((error as any)?.message || error).slice(0, 2000) }] };
   }
 });
 await server.connect(new StdioServerTransport());
