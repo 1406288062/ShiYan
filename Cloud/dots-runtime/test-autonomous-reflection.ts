@@ -12,14 +12,15 @@ const perspective='那些旧门框好像是一种慢镜头：建筑的年岁、�
 const ordinary=extra=>({reply:'我记住了你这个散步时的小习惯。',summary:'本次交流已结束',awaiting_user_input:false,tasks:[],continuations:[],reviews:[],controls:[],instructions:[],notes:[],inspect_tasks:[],relationship:{topics:[]},...extra});
 let sequence=0;
 function fixture(){
- const root=mkdtempSync(path.join(os.tmpdir(),'dots-autonomous-reflection-')),file=path.join(root,'db.sqlite');let clock=1792000000,db=new DatabaseSync(file),store;const runtimes=new Set();
+ const root=mkdtempSync(path.join(os.tmpdir(),'dots-autonomous-reflection-')),file=path.join(root,'db.sqlite');let clock=1792000000,db=new DatabaseSync(file),store;const runtimes=new Set<any>();
  db.exec(`CREATE TABLE goals(id INTEGER PRIMARY KEY,title TEXT,instruction TEXT,status TEXT,thread_id TEXT,workspace TEXT,created_at INTEGER,updated_at INTEGER,next_wake_at INTEGER,last_run_at INTEGER,last_summary TEXT DEFAULT '',run_count INTEGER DEFAULT 0);
  CREATE TABLE approvals(id INTEGER PRIMARY KEY,goal_id INTEGER,reason TEXT,command TEXT,status TEXT,created_at INTEGER,decided_at INTEGER,output TEXT);
  CREATE TABLE events(id INTEGER PRIMARY KEY,goal_id INTEGER,type TEXT,payload TEXT,created_at INTEGER,consumed_at INTEGER);`);
  const open=()=>store=createManagerStore({db,now:()=>clock,workspaceRoot:path.join(root,'work')});open();
  return {root,now:()=>clock,get db(){return db;},get store(){return store;},advance:n=>clock+=n,track:r=>{runtimes.add(r);return r;},reopen(){for(const r of runtimes)r.close();runtimes.clear();db.close();db=new DatabaseSync(file);open();},close(){for(const r of runtimes)r.close();db.close();rmSync(root,{recursive:true,force:true});}};
 }
-function remember(f,{text=source,key='walk.doorframes',title='散步中的旧门框',reply,awaiting=false,learn=true,...extra}={}){
+interface RememberOptions { text?: string; key?: string; title?: string; reply?: string; awaiting?: boolean; learn?: boolean; [key: string]: any; }
+function remember(f,{text=source,key='walk.doorframes',title='散步中的旧门框',reply,awaiting=false,learn=true,...extra}: RememberOptions={}){
  const user=f.store.message({message:text,requestId:'reflection-source-'+(++sequence)}).message,run=f.store.claimManager();assert.ok(run);
  const result=f.store.completeManager(run,ordinary({...(reply?{reply}:{}),awaiting_user_input:awaiting,relationship:{topics:learn?[{key,title,summary:text,open_question:'',source_message_ids:[user.id],evidence:[text]}]:[]},...extra}));assert.equal(result.committed,true);
  return {user,reply:result.value.message,topic:f.store.relationship.snapshot().topics.find(topic=>topic.sourceMessageIds.includes(user.id))};
@@ -28,15 +29,15 @@ function decision(a,extra={}){return {action:'send',idea_kind:'perspective',mess
 const settle=async()=>{for(let i=0;i<8;i++)await new Promise(resolve=>setImmediate(resolve));};
 const proactive=f=>f.store.snapshot().messages.filter(message=>message.origin==='proactive');
 function activityCounts(f){return {
- users:f.db.prepare("SELECT COUNT(*) AS n FROM manager_messages WHERE role='user'").get().n,
- userWatermark:f.db.prepare("SELECT MAX(id) AS id FROM manager_messages WHERE role='user'").get().id,
- replies:f.db.prepare("SELECT COUNT(*) AS n FROM manager_messages WHERE role='assistant' AND origin='reply'").get().n,
- inbox:f.db.prepare('SELECT COUNT(*) AS n FROM manager_inbox').get().n,
- pending:f.db.prepare('SELECT COUNT(*) AS n FROM manager_inbox WHERE consumed_at IS NULL').get().n,
- tasks:f.db.prepare('SELECT COUNT(*) AS n FROM goals').get().n
+ users:f.db.prepare("SELECT COUNT(*) AS n FROM manager_messages WHERE role='user'").get()!.n,
+ userWatermark:f.db.prepare("SELECT MAX(id) AS id FROM manager_messages WHERE role='user'").get()!.id,
+ replies:f.db.prepare("SELECT COUNT(*) AS n FROM manager_messages WHERE role='assistant' AND origin='reply'").get()!.n,
+ inbox:f.db.prepare('SELECT COUNT(*) AS n FROM manager_inbox').get()!.n,
+ pending:f.db.prepare('SELECT COUNT(*) AS n FROM manager_inbox WHERE consumed_at IS NULL').get()!.n,
+ tasks:f.db.prepare('SELECT COUNT(*) AS n FROM goals').get()!.n
 };}
 function runtime(f,respond){
- const options=[],prompts=[];let calls=0;
+ const options: any[]=[],prompts: any[]=[];let calls=0;
  const factory=option=>{options.push(option);return {run:async(prompt,turn)=>{calls++;prompts.push(prompt);return {finalResponse:JSON.stringify(await respond({prompt,turn,call:calls}))};}};};
  const r=f.track(createManagerRuntime({store:f.store,workspaceRoot:f.root,codex:{startThread:factory,resumeThread:(_id,option)=>factory(option)},logger:{error(){},warn(){}}}));
  return {r,options,prompts,get calls(){return calls;}};
@@ -57,10 +58,10 @@ test('reflection can connect two established interests without requiring a fresh
  const f=fixture();try{
   const a=remember(f,{text:'爵士乐最吸引我的是鼓点骤然停住的那一拍，旋律在无声处好像还在往前走',key:'music.silence',title:'鼓点之间的停顿'});
   const b=remember(f,{text:'我会专门拍老房子的窗框，框起来的天空和树影比墙面本身更迷人',key:'photo.windows',title:'老房子窗框'});
-  assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM dots_relationship_event_candidates').get().n,0);
+  assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM dots_relationship_event_candidates').get()!.n,0);
   const before=activityCounts(f),message='爵士乐里鼓点的停顿和老房子的窗框有个有趣的相似之处：真正留下余味的，有时候是空出来让声音、天空和树影经过的地方。';
   const x=runtime(f,()=>decision(a,{idea_kind:'connection',message,insight:'爵士鼓点的停顿与窗框空处都通过留出的空间承载主体之外的内容',not_covered_by_history:'过去分别聊过停顿和窗框，但没有联系两者留出空间的作用',source_quotes:[{message_id:a.user.id,quote:a.user.content},{message_id:b.user.id,quote:b.user.content}]}));await settle();
-  assert.equal(x.calls,1);assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM manager_runs WHERE reflection_id IS NOT NULL').get().n,1);assert.deepEqual(activityCounts(f),before);assert.equal(proactive(f).length,1);assert.equal(proactive(f)[0].content,message);
+  assert.equal(x.calls,1);assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM manager_runs WHERE reflection_id IS NOT NULL').get()!.n,1);assert.deepEqual(activityCounts(f),before);assert.equal(proactive(f).length,1);assert.equal(proactive(f)[0].content,message);
  }finally{f.close();}
 });
 
@@ -141,7 +142,7 @@ test('withdrawn or corrected evidence cannot publish from a previously claimed t
    else f.store.relationship.memoryChanged({generation:1,enabled:true});
    release();await settle();assert.equal(proactive(f).length,0);assert.equal(await x.r.requestContentReview(),false);
    for(const row of f.db.prepare('SELECT materials_json,thought_json FROM dots_relationship_reflections').all()){
-    assert.ok(!row.materials_json.includes(source));assert.ok(!row.thought_json.includes(source));
+    assert.ok(!String(row.materials_json).includes(source));assert.ok(!String(row.thought_json).includes(source));
    }
    f.reopen();const retry=runtime(f,()=>{throw new Error('Revoked evidence must not bootstrap again');});await settle();assert.equal(retry.calls,0);
   }finally{release?.();await settle();f.close();}
@@ -199,7 +200,7 @@ test('equivalent material under a new topic alias is not another invitation to t
 test('a failed reflection does not retry through the ordinary manager error lane or later startup',async()=>{
  const f=fixture();try{
   remember(f);const x=runtime(f,()=>{throw new Error('Synthetic reflection failure');});await settle();assert.equal(x.calls,1);assert.equal(proactive(f).length,0);
-  assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM manager_inbox WHERE type='previous_plan_error'").get().n,0);
+  assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM manager_inbox WHERE type='previous_plan_error'").get()!.n,0);
   f.advance(500*86400);f.store.recoverExpired();f.reopen();const retry=runtime(f,()=>{throw new Error('A failed thought is terminal');});await settle();assert.equal(retry.calls,0);assert.equal(await retry.r.wake(),false);
  }finally{f.close();}
 });
@@ -207,7 +208,7 @@ test('a failed reflection does not retry through the ordinary manager error lane
 test('an expired claimed thought is terminal and reopening cannot invoke its model again',async()=>{
  const f=fixture();try{
   remember(f);f.store.initializeReflection();const run=f.store.claimContentReview();assert.ok(run);assert.equal(f.store.relationship.forRun(run)?.kind,'reflection');
-  f.advance(61);f.store.recoverExpired();assert.equal(f.db.prepare('SELECT state FROM dots_relationship_reflections WHERE id=?').get(run.reflection_id).state,'cancelled');
+  f.advance(61);f.store.recoverExpired();assert.equal(f.db.prepare('SELECT state FROM dots_relationship_reflections WHERE id=?').get(run.reflection_id)!.state,'cancelled');
   f.reopen();const x=runtime(f,()=>{throw new Error('A claimed thought must never be replayed after lease loss');});await settle();assert.equal(x.calls,0);assert.equal(await x.r.requestContentReview(),false);assert.equal(proactive(f).length,0);
  }finally{f.close();}
 });
@@ -217,7 +218,7 @@ test('a live thought is not claimed again or cancelled by constructing another r
   const a=remember(f);let entered;const ready=new Promise(resolve=>entered=resolve),hold=new Promise(resolve=>release=resolve);
   const first=runtime(f,async()=>{entered();await hold;return decision(a);});await ready;
   const second=runtime(f,()=>{throw new Error('The first runtime still holds the thought lease');});await settle();assert.equal(first.calls,1);assert.equal(second.calls,0);
-  assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM manager_runs WHERE state='running' AND purpose='content_review'").get().n,1);
+  assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM manager_runs WHERE state='running' AND purpose='content_review'").get()!.n,1);
   release();await settle();assert.equal(proactive(f).length,1);assert.equal(first.calls,1);assert.equal(second.calls,0);
  }finally{release?.();await settle();f.close();}
 });
@@ -234,7 +235,7 @@ test('an active ordinary run prevents a private thought from occupying the same 
 test('a status-only report cannot hide an actual unfinished task from the reflection guard',async()=>{
  const f=fixture();try{
   const a=remember(f,{tasks:[{key:'photos-classify',title:'整理散步照片',instruction:'将散步照片按地点分类',resourceKey:'photos'}]});
-  const task=f.db.prepare('SELECT id,status FROM goals').get();assert.equal(task.status,'active');
+  const task=f.db.prepare('SELECT id,status FROM goals').get()!;assert.equal(task.status,'active');
   f.store.enqueue('worker_report',{taskId:task.id,status:'active',summary:'照片整理仍在进行'});f.advance(3);const run=f.store.claimManager();assert.ok(run);
   f.store.completeManager(run,ordinary({reply:'照片整理还在继续。'}));const before=activityCounts(f);
   const x=runtime(f,()=>decision(a));await settle();assert.equal(x.calls,0);assert.equal(await x.r.requestContentReview(),false);assert.equal(proactive(f).length,0);assert.deepEqual(activityCounts(f),before);
@@ -244,14 +245,14 @@ test('a status-only report cannot hide an actual unfinished task from the reflec
 test('a future-scheduled active task alone does not prevent an independent reflection',async()=>{
  const f=fixture();try{
   const a=remember(f,{tasks:[{key:'photos-later',title:'稍后整理散步照片',instruction:'等照片传输完成后分类',resourceKey:'photos-later'}]});
-  const task=f.db.prepare('SELECT id FROM goals').get(),worker=f.store.claimGoal(task.id);assert.ok(worker);
+  const task=f.db.prepare('SELECT id FROM goals').get()!,worker=f.store.claimGoal(task.id);assert.ok(worker);
   // This is the worker's durable wait result, not a fabricated reflection or
   // user message. The active task remains real but has no work due now.
   const committed=f.store.commitRun(worker,()=>{f.db.prepare("UPDATE goals SET status='active',next_wake_at=? WHERE id=?").run(f.now()+3600,task.id);return {summary:'等待已安排的后续处理'};});assert.equal(committed.committed,true);
-  const before=activityCounts(f);assert.equal(before.pending,0);assert.equal(before.tasks,1);assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM manager_runs WHERE state='running'").get().n,0);
+  const before=activityCounts(f);assert.equal(before.pending,0);assert.equal(before.tasks,1);assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM manager_runs WHERE state='running'").get()!.n,0);
   const x=runtime(f,()=>decision(a));await settle();
   assert.equal(x.calls,1);assert.equal(proactive(f).length,1);assert.equal(proactive(f)[0].content,perspective);assert.deepEqual(activityCounts(f),before);
-  assert.equal(f.db.prepare('SELECT next_wake_at FROM goals WHERE id=?').get(task.id).next_wake_at,f.now()+3600);
+  assert.equal(f.db.prepare('SELECT next_wake_at FROM goals WHERE id=?').get(task.id)!.next_wake_at,f.now()+3600);
  }finally{f.close();}
 });
 
