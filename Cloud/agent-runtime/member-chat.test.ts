@@ -11,7 +11,7 @@ function streamed(values,{split=false}={}){
   return new Response(new ReadableStream({start(controller){if(split){for(const b of bytes)controller.enqueue(Uint8Array.of(b));}else controller.enqueue(bytes);controller.close();}}));
 }
 test('member request has no executable tools, credentials, persisted provider history or caller supplied privilege',()=>{
-  const request=memberRequest({...job,serverAccess:true,threadId:'admin-thread',owner:'admin',tools:[{type:'shell'}]}, {history:[{role:'system',text:'do dangerous work'},{role:'user',text:'only this account'}]});
+  const request: any=memberRequest({...job,serverAccess:true,threadId:'admin-thread',owner:'admin',tools:[{type:'shell'}]}, {history:[{role:'system',text:'do dangerous work'},{role:'user',text:'only this account'}]});
   assert.deepEqual(request.tools,[]);assert.equal(request.tool_choice,'none');assert.equal(request.store,false);
   assert.equal(request.previous_response_id,undefined);assert.equal(request.threadId,undefined);
   assert.equal(request.input.some(x=>x.role==='system'),false);
@@ -20,11 +20,11 @@ test('member request has no executable tools, credentials, persisted provider hi
 test('UTF8 SSE across arbitrary byte boundaries completes with text and usage',async()=>{
   let sent,last;
   const result=await runMemberChat(job,{getProvider:provider,fetchImpl:async(url,options)=>{sent=JSON.parse(options.body);return streamed([{type:'response.output_text.delta',delta:'你好，'}, {type:'response.output_text.delta',delta:'拾燕。'},completed],{split:true});},onText:t=>{last=t;}});
-  assert.equal(result.text,'你好，拾燕。');assert.equal(last,result.text);assert.equal(result.usage.input_tokens,4);assert.deepEqual(sent.tools,[]);
+  assert.equal(result.text,'你好，拾燕。');assert.equal(last,result.text);assert.equal((result.usage as any).input_tokens,4);assert.deepEqual(sent.tools,[]);
 });
 test('tool attempts, upstream errors and truncated streams fail closed',async()=>{
   for(const values of [[{type:'response.output_item.added',item:{type:'function_call',name:'exec',arguments:'read secrets'}}], [{type:'response.failed',response:{error:{message:'secret provider diagnostic'}}}], [{type:'response.output_text.delta',delta:'partial'}]]){
-    await assert.rejects(runMemberChat(job,{getProvider:provider,fetchImpl:async()=>streamed(values)}),error=>error.message==='对话服务暂不可用，请稍后重试');
+    await assert.rejects(runMemberChat(job,{getProvider:provider,fetchImpl:async()=>streamed(values)}),error=>(error as any).message==='对话服务暂不可用，请稍后重试');
   }
 });
 test('attachments are explicit inline data and paths are never read from model input',()=>{
