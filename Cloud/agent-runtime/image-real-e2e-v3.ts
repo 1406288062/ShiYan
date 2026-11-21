@@ -5,7 +5,7 @@ import {readFileSync,writeFileSync,renameSync,existsSync} from 'node:fs';
 import assert from 'node:assert/strict';
 const file=new URL('./devices.json',import.meta.url);
 const stateFile=new URL('./data/state.json',import.meta.url);
-const report=[];
+const report: any[]=[];
 const load=()=>JSON.parse(readFileSync(file,'utf8'));
 const save=o=>{const tmp=file.pathname+'.v3-qa-tmp';writeFileSync(tmp,JSON.stringify(o),{mode:0o600});renameSync(tmp,file.pathname)};
 const {privateKey,publicKey}=generateKeyPairSync('ed25519');
@@ -13,11 +13,11 @@ const raw=publicKey.export({format:'der',type:'spki'}).subarray(-32);
 const sha=v=>createHash('sha256').update(v).digest('hex');
 const id=sha(raw),owner='shiyan-v3-qa-'+randomUUID();
 const base='http://127.0.0.1:4323/shiyan/v1/';
-function signed(method,route,obj){
+function signed(method,route,obj?: any){
  const data=obj===undefined?'':JSON.stringify(obj),time=String(Date.now()),nonce=randomUUID(),hash=sha(data);
  return {method,headers:{'Content-Type':'application/json','X-Shiyan-Device':id,'X-Shiyan-Time':time,'X-Shiyan-Nonce':nonce,'X-Shiyan-Body-Sha':hash,'X-Shiyan-Signature':sign(null,Buffer.from([method,'/shiyan/v1/'+route,time,nonce,hash].join('\n')),privateKey).toString('base64')},body:data||undefined};
 }
-async function req(method,route,obj){
+async function req(method,route,obj?: any){
  const res=await fetch(base+route,{...signed(method,route,obj),signal:AbortSignal.timeout(40000)});
  const body=await res.text();
  if(!res.ok)throw Error(method+' '+route+' '+res.status+' '+body.slice(0,250));
@@ -30,7 +30,7 @@ async function stream(job){
  try {
   const res=await fetch(base+route,{...signed('GET',route),signal:controller.signal});
   assert.equal(res.status,200);
-  for await(const chunk of res.body){
+  for await(const chunk of res.body!){
    buf+=Buffer.from(chunk).toString();
    let end;
    while((end=buf.indexOf('\n\n'))>=0) {
@@ -50,7 +50,7 @@ async function stream(job){
 const devices=load();
 devices[id]={id,publicKey:raw.toString('base64'),approved:true,owner,revoked:false};
 save(devices);
-let active=null;
+let active: any=null;
 try {
  const reference='/home/ubuntu/boss-codex-service/shiyan-v2/workspaces/3a11beeda02febf10a10075137814668c24f19019ac8976cef01e7816e490b02/inputs/228d4e40-3cf4-4f2e-96c2-a0baaf90dab9/image-1.jpg';
  const sameConversation=randomUUID();
