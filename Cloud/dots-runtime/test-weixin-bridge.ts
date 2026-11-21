@@ -5,7 +5,7 @@ import { createWeixinBridge, plainText } from './weixin-bridge.ts';
 
 const wait = ms => new Promise(r => setTimeout(r, ms));
 function fakeWeixin() {
-  const sent = [], calls = [];
+  const sent: any[] = [], calls: any[] = [];
   let delivered = false, qrPolls = 0;
   const fetchImpl = async (url, init) => {
     const path = new URL(url).pathname; calls.push(path);
@@ -31,7 +31,7 @@ test('scan to bind, receive own message, reply goes back, strangers ignored', as
   const db = new DatabaseSync(':memory:');
   db.exec("CREATE TABLE manager_messages(id INTEGER PRIMARY KEY,manager_id TEXT,role TEXT,content TEXT,origin TEXT,delivery_state TEXT,responds_to_message_ids TEXT)");
   const store = { db, managerId: 'm1' };
-  const ingested = [];
+  const ingested: any[] = [];
   const ingest = (text, requestId) => {
     ingested.push({ text, requestId });
     const id = Number(db.prepare("INSERT INTO manager_messages(manager_id,role,content,origin,delivery_state,responds_to_message_ids) VALUES('m1','user',?,'reply','completed','[]')").run(text).lastInsertRowid);
@@ -39,7 +39,7 @@ test('scan to bind, receive own message, reply goes back, strangers ignored', as
     return { id };
   };
   const fake = fakeWeixin();
-  const bridge = createWeixinBridge({ store, ingest, owner: 'o', fetchImpl: fake.fetchImpl, logger: {} });
+  const bridge = createWeixinBridge({ store, ingest, owner: 'o', fetchImpl: fake.fetchImpl, logger: {} as any });
   const started = await bridge.status();
   assert.equal(started.state, 'unbound');
   const login = await bridge.startLogin();
@@ -63,16 +63,16 @@ test('image from WeChat is decrypted, saved and handed to Dots; typing is shown'
   const encrypted = Buffer.concat([cipher.update(png), cipher.final()]);
   const db = new DatabaseSync(':memory:');
   db.exec("CREATE TABLE manager_messages(id INTEGER PRIMARY KEY,manager_id TEXT,role TEXT,content TEXT,origin TEXT,delivery_state TEXT,responds_to_message_ids TEXT)");
-  const ingested = [], saved = [], typing = [];
+  const ingested: any[] = [], saved: any[] = [], typing: any[] = [];
   const ingest = text => {
     ingested.push(text);
     const id = Number(db.prepare("INSERT INTO manager_messages(manager_id,role,content,origin,delivery_state,responds_to_message_ids) VALUES('m1','user',?,'reply','completed','[]')").run(text).lastInsertRowid);
     setTimeout(() => db.prepare("INSERT INTO manager_messages(manager_id,role,content,origin,delivery_state,responds_to_message_ids) VALUES('m1','assistant','看到了','reply','completed',?)").run(`[${id}]`), 30);
     return { id };
   };
-  let delivered = false, qrPolls = 0; const sent = [];
+  let delivered = false, qrPolls = 0; const sent: any[] = [];
   const reply = value => ({ ok: true, status: 200, text: async () => JSON.stringify(value) });
-  const fetchImpl = async (url, init = {}) => {
+  const fetchImpl = async (url, init: any = {}) => {
     const u = new URL(url), path = u.pathname, body = init.body ? JSON.parse(init.body) : {};
     if (u.hostname === 'novac2c.cdn.weixin.qq.com') return { ok: true, status: 200, arrayBuffer: async () => encrypted };
     if (path.endsWith('get_bot_qrcode')) return reply({ qrcode: 'q1', qrcode_img_content: 'https://liteapp.weixin.qq.com/q/x?qrcode=q1' });
@@ -86,7 +86,7 @@ test('image from WeChat is decrypted, saved and handed to Dots; typing is shown'
     if (path.endsWith('sendmessage')) { sent.push(body.msg); return reply({ ret: 0 }); }
     return reply({ ret: 0 });
   };
-  const bridge = createWeixinBridge({ store: { db, managerId: 'm1' }, ingest, owner: 'o', fetchImpl, logger: {},
+  const bridge = createWeixinBridge({ store: { db, managerId: 'm1' }, ingest, owner: 'o', fetchImpl, logger: {} as any,
     saveInbound: async ({ data, filename }) => { saved.push({ data, filename }); return '/workspace/inputs/' + filename; } });
   await bridge.startLogin();
   for (let i = 0; i < 100 && !sent.length; i++) await wait(20);
