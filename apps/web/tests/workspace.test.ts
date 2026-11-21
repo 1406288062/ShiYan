@@ -5,9 +5,9 @@ import vm from 'node:vm';
 
 const source = await readFile(new URL('../adapters/workspace.js', import.meta.url), 'utf8');
 
-function loadAdapter({install} = {}) {
-  const calls = [];
-  const originalApiCalls = [];
+function loadAdapter({install}: any = {}): any {
+  const calls: any[] = [];
+  const originalApiCalls: any[] = [];
   const listeners = new Map();
   const account = {
     user: {id: 'account-a'},
@@ -22,7 +22,7 @@ function loadAdapter({install} = {}) {
     originalApiCalls.push(args);
     return new Response(JSON.stringify({ok:true, route:String(args[0])}), {status:200, headers:{'Content-Type':'application/json'}});
   };
-  const window = {
+  const window: any = {
     ShiYanPlatform: {mode:'web'},
     ShiYanAccount: account,
     crypto: {randomUUID: () => 'request-uuid'},
@@ -54,10 +54,10 @@ function loadAdapter({install} = {}) {
   };
   window.ShiYanV2 = {install: baseInstall};
   vm.runInNewContext(source, context, {filename:'workspace.js'});
-  return {window, context, account, calls, originalApiCalls, nativeFetch, listeners, originalApiCalls};
+  return {window, context, account, calls, originalApiCalls, nativeFetch, listeners};
 }
 
-function makeContext(window, originalApiCalls, overrides = {}) {
+function makeContext(window, originalApiCalls, overrides = {}): any {
   const prefs = {selectedProjectId:'cloud-project-1'};
   const context = {
     prefs,
@@ -144,7 +144,7 @@ test('an empty device pane isolates original initFile from the cloud selectedPro
 });
 
 test('left cloud project selection restores the selected remote device tab', async () => {
-  const selected = [];
+  const selected: any[] = [];
   const {window, originalApiCalls} = loadAdapter();
   const C = makeContext(window, originalApiCalls, {
     tabs: [{id:'device-tab', type:'files', projectId:'web-device-123', webDeviceId:'device-1'}],

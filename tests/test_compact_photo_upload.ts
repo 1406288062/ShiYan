@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 const source=fs.readFileSync(new URL('../shared/frontend/app.js',import.meta.url),'utf8');
-const extract=name=>source.match(new RegExp('  async function '+name+'\\([^\\n]*\\) \\{[\\s\\S]*?\\n  \\}'))[0];
+const extract=name=>source.match(new RegExp('  async function '+name+'\\([^\\n]*\\) \\{[\\s\\S]*?\\n  \\}'))![0];
 const settle=async()=>{for(let n=0;n<12;n++)await Promise.resolve();};
-function setup({uploadFailure=false,saveFailure=false,uploadPending=false}={}){
- const calls=[],toasts=[],fields=new Map(),ui={input:null,result:null,photoUploadFile:null,photoLocalURL:null,feature:'enhance',model:'general',photoUploading:false};let releaseSave,releaseUpload;
- const context={ui,state:{settings:{}},window:{ShiYanPlatform:{mode:'web'}},FormData:class{append(){}},URL:{createObjectURL:()=> 'blob:fixture',revokeObjectURL(){}},Image:class{naturalWidth=32;naturalHeight=24;set src(v){this.onload?.()}},$:id=>{if(!fields.has(id))fields.set(id,{disabled:false,value:''});return fields.get(id)},renderPhoto(){},toast:m=>toasts.push(m),confirmAction:async()=>true,photoBusy:()=>false,setText(){},show(){},remember:a=>a,
+function setup({uploadFailure=false,saveFailure=false,uploadPending=false}={}): any {
+ const calls: any[] = [], toasts: any[] = [], fields=new Map(),ui={input:null,result:null,photoUploadFile:null,photoLocalURL:null,feature:'enhance',model:'general',photoUploading:false};let releaseSave,releaseUpload;
+ const context={ui,state:{settings:{}},window:{ShiYanPlatform:{mode:'web'}},FormData:class{append(){}},URL:{createObjectURL:()=> 'blob:fixture',revokeObjectURL(){}},Image:class{naturalWidth=32;naturalHeight=24;onload: any;set src(v){this.onload?.()}},$:id=>{if(!fields.has(id))fields.set(id,{disabled:false,value:''});return fields.get(id)},renderPhoto(){},toast:m=>toasts.push(m),confirmAction:async()=>true,photoBusy:()=>false,setText(){},show(){},remember:a=>a,
  api:async(path,method,body)=>{calls.push({path,body});if(path.startsWith('/api/assets')){if(uploadFailure)throw Error('upload failed');if(uploadPending)await new Promise(resolve=>releaseUpload=resolve);return {assets:[{id:'asset-a',width:32,height:24,url:'/api/assets/asset-a/file'}]};}if(saveFailure)throw Error('settings failed');return new Promise(r=>releaseSave=r);}};
  vm.createContext(context);vm.runInContext('let workspaceSaveQueue=Promise.resolve();\n'+['upload','saveWorkspace','choosePreviewHomeImage','chooseHomeImage'].map(extract).join('\n'),context);
  return {context,ui,calls,toasts,fields,release:()=>releaseSave?.({ok:true}),releaseUpload:()=>releaseUpload?.()};
