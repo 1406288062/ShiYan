@@ -3,7 +3,7 @@ import https from 'node:https';
 import {readFileSync,writeFileSync,renameSync} from 'node:fs';
 import {generateKeyPairSync,createHash,sign,randomUUID} from 'node:crypto';
 const state=JSON.parse(readFileSync('data/state.json','utf8'));
-const asset=Object.values(state.assets).at(-1);
+const asset=(Object.values(state.assets) as any[]).at(-1);
 if(!asset)throw new Error('No output artifact to inspect');
 const file='devices.json',load=()=>JSON.parse(readFileSync(file,'utf8'));
 const save=x=>{writeFileSync(file+'.tmp',JSON.stringify(x),{mode:0o600});renameSync(file+'.tmp',file);};
@@ -15,9 +15,9 @@ const route='/shiyan/v1/artifacts/'+asset.id;
 async function inspect(port,tls=false){
  const now=String(Date.now()),nonce=randomUUID(),sha=hash('');
  const headers={'X-Shiyan-Device':id,'X-Shiyan-Time':now,'X-Shiyan-Nonce':nonce,'X-Shiyan-Body-Sha':sha,'X-Shiyan-Signature':sign(null,Buffer.from(['GET',route,now,nonce,sha].join('\n')),keys.privateKey).toString('base64'),'Content-Type':'application/json','Content-Length':0,'Host':'129.226.81.110'};
- await new Promise((resolve,reject)=>{
+ await new Promise<void>((resolve,reject)=>{
   const req=(tls?https:http).request({host:'127.0.0.1',port,path:route,method:'GET',headers,ca:certificate,checkServerIdentity:()=>undefined},res=>{
-   const chunks=[];res.on('data',x=>chunks.push(x));res.on('end',()=>{const data=Buffer.concat(chunks);console.log({port,status:res.statusCode,contentType:res.headers['content-type'],bytes:data.length,shaMatches:hash(data)===asset.sha256,bodyError:res.statusCode===200?undefined:data.toString().slice(0,700)});resolve();});
+   const chunks: any[]=[];res.on('data',x=>chunks.push(x));res.on('end',()=>{const data=Buffer.concat(chunks);console.log({port,status:res.statusCode,contentType:res.headers['content-type'],bytes:data.length,shaMatches:hash(data)===asset.sha256,bodyError:res.statusCode===200?undefined:data.toString().slice(0,700)});resolve();});
   });req.on('error',reject);req.end();
  });
 }
