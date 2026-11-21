@@ -2,6 +2,7 @@
 // 影子人：导入与某个人的微信聊天记录，让 Dots 在主页对话里用这个人的方式回复。
 // 不再提供独立的人物对话窗口；聊天记录只作为 Dots 回复的风格与共同经历参考。
 import { randomUUID, createHash } from 'node:crypto';
+import type { DatabaseSync } from 'node:sqlite';
 
 const clean = value => typeof value === 'string' ? value.replace(/\r\n?/g, '\n').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '').trim() : '';
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
@@ -10,7 +11,7 @@ const sha = value => createHash('sha256').update(value).digest('hex');
 const bytes = value => Buffer.byteLength(value, 'utf8');
 // 服务器端再脱敏一次（客户端已做过一次），旧版客户端或其他调用方上传的内容也会被处理。
 // 顺序有讲究：证件号要在卡号之前匹配。
-const REDACTIONS = [
+const REDACTIONS: [RegExp, string][] = [
   [/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[邮箱已隐藏]'],
   [/(?:支付密码|登录密码|密码|口令|password|passwd|pwd)\s*(?:是|为|:|：|=)?\s*(?=[^\s,，。;；]*[A-Za-z0-9])[^\s,，。;；]{3,}/gi, '[凭据已隐藏]'],
   [/(?:验证码|校验码|动态码|取件码)\s*(?:是|为|:|：)?\s*[A-Za-z0-9]{4,8}/g, '[验证码已隐藏]'],
@@ -46,7 +47,7 @@ const LEARN_SCHEMA = {
 const CHAT_SCHEMA = {type:'object',properties:{reply:{type:'string'}},required:['reply'],additionalProperties:false};
 // 中文按二字词切分，英文/数字按词切分，用于在原始聊天里找相关片段。
 const terms = text => {
-  const out = new Set(), lower = String(text || '').toLowerCase();
+  const out = new Set<string>(), lower = String(text || '').toLowerCase();
   for (const run of lower.match(/[\p{Script=Han}]+/gu) || []) for (let i = 0; i + 1 < run.length; i++) out.add(run.slice(i, i + 2));
   for (const word of lower.match(/[a-z0-9]{2,}/g) || []) out.add(word);
   for (const stop of ['我们','你们','他们','什么','怎么','这个','那个','就是','一下','没有','可以','不是','现在','今天','还是','知道','觉得']) out.delete(stop);
@@ -55,7 +56,7 @@ const terms = text => {
 // 等距抽样，覆盖整段聊天的不同时期。
 const spread = (rows, limit) => {
   if (rows.length <= limit) return rows.slice();
-  const out = [], step = rows.length / limit;
+  const out: any[] = [], step = rows.length / limit;
   for (let i = 0; i < limit; i++) out.push(rows[Math.floor(i * step)]);
   return out;
 };
@@ -75,6 +76,8 @@ export class DigitalPersonService {
   assess: (data: any, schema: any, control?: any) => Promise<any>;
   embed: (texts: any, timeout?: number) => Promise<any[]>;
   logger: Console;
+  cache: Map<string, any>;
+  learning: Set<string>;
   constructor({db,owner,assess,now=()=>Date.now(),embed=embedTexts,logger=console}: DigitalPersonServiceOptions) {
     if(!db||!owner||typeof assess!=='function')throw new Error('DigitalPersonService requires db, owner and assess');
     this.db=db;this.owner=owner;this.assess=assess;this.now=now;this.embed=embed;this.logger=logger;this.cache=new Map();this.learning=new Set();
@@ -140,12 +143,12 @@ export class DigitalPersonService {
   }
   counts(id) {
     const rows=this.db.prepare('SELECT speaker,COUNT(*) AS n FROM digital_person_import_messages WHERE owner_id=? AND person_id=? GROUP BY speaker').all(this.owner,id);
-    const value={person:0,owner:0};for(const row of rows)if(row.speaker in value)value[row.speaker]=Number(row.n);
+    const value: Record<string, number>={person:0,owner:0};for(const row of rows){const speaker=String(row.speaker);if(speaker in value)value[speaker]=Number(row.n);}
     return value;
   }
   publicPerson(row,{includeMemories=false}={}) {
     const counts=this.counts(row.id);
-    const result={id:row.id,name:row.name,relationship:row.relationship,styleProfile:decode(row.style_profile),
+    const result: any={id:row.id,name:row.name,relationship:row.relationship,styleProfile:decode(row.style_profile),
       summary:row.summary,active:this.activePersonId()===row.id,learning:this.learning.has(row.id),
       learnedAt:row.learned_at?Number(row.learned_at):null,learnError:row.learn_error||'',
       personMessages:counts.person,ownerMessages:counts.owner,
@@ -158,7 +161,7 @@ export class DigitalPersonService {
     return {ok:true,activePersonId:this.activePersonId()||null,
       people:this.db.prepare('SELECT * FROM digital_people WHERE owner_id=? ORDER BY updated_at DESC,id').all(this.owner).map(row=>this.publicPerson(row))};
   }
-  create(input={}) {
+  create(input: any={}) {
     const name=clean(input.name).slice(0,80),relationship=clean(input.relationship).slice(0,80);
     if(!name)throw fail('请填写 Ta 是谁');
     const now=this.now();
@@ -174,7 +177,7 @@ export class DigitalPersonService {
     this.setActive(id);
     return {ok:true,person:this.publicPerson(this.personRow(id),{includeMemories:true})};
   }
-  async update(id,input={}) {
+  async update(id,input: any={}) {
     const row=this.personRow(id),name=input.name===undefined?row.name:clean(input.name).slice(0,80);
     const relationship=input.relationship===undefined?row.relationship:clean(input.relationship).slice(0,80);
     const summary=input.summary===undefined?row.summary:clean(input.summary).slice(0,4000);
@@ -183,7 +186,7 @@ export class DigitalPersonService {
     if(input.active===true)this.setActive(id);
     else if(input.active===false&&this.activePersonId()===id)this.setActive('');
     let learnError='';
-    if(input.relearn===true){try{await this.learn(id);}catch(error){learnError=error.message||'学习失败';}}
+    if(input.relearn===true){try{await this.learn(id);}catch(error){learnError=(error as any).message||'学习失败';}}
     return {ok:true,person:this.publicPerson(this.personRow(id),{includeMemories:true}),...(learnError?{learnError}:{})};
   }
   remove(id) {
@@ -201,7 +204,7 @@ export class DigitalPersonService {
         createdAt:Number(row.created_at),updatedAt:Number(row.updated_at)}));
   }
   // 导入只保存消息，不调用模型；整份记录传完（final）后统一学习一次。
-  async importBatch(personId,input={}) {
+  async importBatch(personId,input: any={}) {
     this.personRow(personId);
     const importId=clean(input.importId),source=clean(input.source||'wechat'),format=clean(input.format||'unknown');
     const messages=Array.isArray(input.messages)?input.messages:[];
@@ -233,9 +236,9 @@ export class DigitalPersonService {
       this.db.prepare("UPDATE digital_person_imports SET status='completed',updated_at=? WHERE owner_id=? AND id=?").run(this.now(),this.owner,importId);
       this.refreshSamples(personId);
       try{await this.learn(personId);status='completed';}
-      catch(error){status='saved';learnError=error.message||'学习失败';}
+      catch(error){status='saved';learnError=(error as any).message||'学习失败';}
     }
-    const memoryCount=Number(this.db.prepare('SELECT COUNT(*) AS n FROM digital_person_memories WHERE owner_id=? AND person_id=?').get(this.owner,personId).n);
+    const memoryCount=Number(this.db.prepare('SELECT COUNT(*) AS n FROM digital_person_memories WHERE owner_id=? AND person_id=?').get(this.owner,personId)?.n||0);
     return {ok:true,importId,accepted,importedMessages:total,status,memoryCount,...(learnError?{learnError}:{}),person:this.publicPerson(this.personRow(personId))};
   }
   // 按时间顺序读取记录（缓存到下次导入）。
@@ -247,7 +250,7 @@ export class DigitalPersonService {
   }
   // “我说一句 → Ta 回一句”的对话片段，覆盖不同时期，用作风格示例。
   exchanges(rows) {
-    const pairs=[];
+    const pairs: any[]=[];
     for(let i=1;i<rows.length;i++){
       if(rows[i].speaker!=='person'||rows[i-1].speaker!=='owner')continue;
       let reply=rows[i].content;
@@ -272,7 +275,7 @@ export class DigitalPersonService {
     this.learning.add(personId);
     try{
       const pairs=spread(this.exchanges(rows),160),lines=spread(rows.filter(row=>row.speaker==='person'),400);
-      const pick=(items,budget,format)=>{const out=[];let used=0;for(const item of items){const text=format(item);const size=bytes(text)+1;if(used+size>budget)continue;out.push(text);used+=size;}return out;};
+      const pick=(items,budget,format)=>{const out: any[]=[];let used=0;for(const item of items){const text=format(item);const size=bytes(text)+1;if(used+size>budget)continue;out.push(text);used+=size;}return out;};
       const day=at=>at?new Date(at).toISOString().slice(0,10):'';
       const dialog=pick(pairs,36000,pair=>(pair.at?'['+day(pair.at)+'] ':'')+'我：'+pair.me+'\nTa：'+pair.ta);
       const solo=pick(lines,30000,row=>(row.at?'['+day(row.at)+'] ':'')+row.content.slice(0,200));
@@ -287,22 +290,22 @@ export class DigitalPersonService {
       let extracted;
       try{extracted=await this.assess(prompt,LEARN_SCHEMA,{source:'dots-person-memory'});}
       catch(error){
-        const detail=String(error?.message||error),message=/weekly limit|quota|rate limit|额度|上限/i.test(detail)?'云端模型当前达到使用上限，聊天记录已保存，额度恢复后点“重新学习”即可。':'学习暂时失败，聊天记录已保存，可稍后点“重新学习”。';
+        const detail=String((error as any)?.message||error),message=/weekly limit|quota|rate limit|额度|上限/i.test(detail)?'云端模型当前达到使用上限，聊天记录已保存，额度恢复后点“重新学习”即可。':'学习暂时失败，聊天记录已保存，可稍后点“重新学习”。';
         this.db.prepare('UPDATE digital_people SET learn_error=?,updated_at=? WHERE owner_id=? AND id=?').run(message,this.now(),this.owner,personId);
         throw fail(message,503);
       }
-      const style=extracted?.styleProfile||{},profile={};
+      const style=extracted?.styleProfile||{},profile: any={};
       for(const key of ['vocabulary','expression','personality','phrases'])profile[key]=[...new Set((Array.isArray(style[key])?style[key]:[]).map(v=>clean(v).slice(0,120)).filter(Boolean))].slice(0,20);
       for(const key of ['rhythm','emotion','addressing','punctuation'])profile[key]=clean(style[key]).slice(0,400);
       const summary=[profile.personality.length?'性格：'+profile.personality.slice(0,5).join('、'):'',profile.expression.length?'表达：'+profile.expression.slice(0,4).join('、'):'',profile.addressing?'称呼你：'+profile.addressing:''].filter(Boolean).join('；').slice(0,500);
       const source=dialog.join('\n')+'\n'+solo.join('\n');
-      const memories=[];
+      const memories: any[]=[];
       for(const item of (Array.isArray(extracted?.memories)?extracted.memories:[]).slice(0,30)){
         const content=clean(item.content).slice(0,500),evidence=clean(item.evidence).slice(0,1000);
         if(!content||!evidence||!source.includes(evidence)||memories.some(m=>m.content===content))continue;
         memories.push({category:CATEGORIES.includes(item.category)?item.category:'other',content,evidence,occurredAt:Number.isSafeInteger(item.occurredAt)&&item.occurredAt>0?item.occurredAt:null});
       }
-      let vectors=[],embedError='';try{if(memories.length){const texts=memories.map(m=>m.content+'\n'+m.evidence);for(let i=0;i<texts.length;i+=5){const part=await this.embed(texts.slice(i,i+5),60000);vectors.push(...part);}}}catch(e){embedError=String(e?.message||e);}
+      let vectors: any[]=[],embedError='';try{if(memories.length){const texts=memories.map(m=>m.content+'\n'+m.evidence);for(let i=0;i<texts.length;i+=5){const part=await this.embed(texts.slice(i,i+5),60000);vectors.push(...part);}}}catch(e){embedError=String((e as any)?.message||e);}
       const now=this.now();
       this.db.exec('BEGIN');
       try{
@@ -320,7 +323,7 @@ export class DigitalPersonService {
     this.personRow(personId);
     const rows=this.db.prepare('SELECT * FROM digital_person_memories WHERE owner_id=? AND person_id=? ORDER BY updated_at DESC LIMIT 500').all(this.owner,personId);
     if(!rows.length)return [];
-    let vector=null;try{vector=(await this.embed([query],embedTimeout?4000:20000))?.[0]||null;}catch{}
+    let vector: number[] | null = null;try{vector=(await this.embed([query],embedTimeout?4000:20000))?.[0]||null;}catch{}
     const queryTerms=terms(query);
     const yearMatch=query.match(/\b(19|20)\d{2}\b/),targetYear=yearMatch?Number(yearMatch[0]):0;
     const asksOldMemory=/小时候|童年|以前|过去|当年|那年|从前|记得/.test(query);
@@ -340,14 +343,14 @@ export class DigitalPersonService {
   // 在原始聊天里找和当前话题有关的片段，让回复更像 Ta 在同类话题上的说法。
   relatedSnippets(personId,query,limit=6) {
     const queryTerms=terms(query);if(!queryTerms.size)return [];
-    const rows=this.rows(personId),scored=[];
+    const rows=this.rows(personId),scored: any[]=[];
     for(let i=0;i<rows.length;i++){
       let hits=0;const text=rows[i].content.toLowerCase();
       for(const term of queryTerms)if(text.includes(term))hits++;
       if(hits>=Math.min(2,queryTerms.size))scored.push({i,hits});
     }
     scored.sort((a,b)=>b.hits-a.hits||b.i-a.i);
-    const used=new Set(),out=[];
+    const used=new Set(),out: string[]=[];
     for(const {i} of scored){
       if(out.length>=limit)break;
       if(used.has(i))continue;
@@ -383,7 +386,7 @@ export class DigitalPersonService {
     return {ok:true,messages:rows.reverse().map(row=>({id:Number(row.id),role:row.role,content:row.content,createdAt:Number(row.created_at),memoryRefs:decode(row.memory_refs,[])})),
       hasMore:rows.length===Math.min(200,Math.max(1,Number(limit)||100))};
   }
-  async sendMessage(personId,input={}) {
+  async sendMessage(personId,input: any={}) {
     const person=this.personRow(personId),requestId=clean(input.requestId);
     const message=clean(input.message).slice(0,8000);
     if(!/^[A-Za-z0-9_-]{8,100}$/.test(requestId)||!message)throw fail('消息或请求标识无效');
@@ -403,9 +406,9 @@ ${JSON.stringify({person:{name:person.name,relationship:person.relationship},sty
     this.db.prepare('INSERT OR IGNORE INTO digital_person_chats(owner_id,person_id,role,content,request_id,memory_refs,created_at) VALUES(?,?,\'assistant\',?,?,?,?)')
       .run(this.owner,personId,reply,requestId,'[]',this.now());
     const saved=this.db.prepare('SELECT * FROM digital_person_chats WHERE owner_id=? AND person_id=? AND request_id=? AND role=\'assistant\'').get(this.owner,personId,requestId);
-    return {ok:true,message:{id:Number(saved.id),role:'assistant',content:saved.content,createdAt:Number(saved.created_at),memoryRefs:[]}};
+    return {ok:true,message:{id:Number(saved!.id),role:'assistant',content:saved!.content,createdAt:Number(saved!.created_at),memoryRefs:[]}};
   }
-  updateMemory(personId,memoryId,input={}) {
+  updateMemory(personId,memoryId,input: any={}) {
     this.personRow(personId);
     const content=clean(input.content).slice(0,500);
     if(!content)throw fail('内容不能为空');
@@ -430,7 +433,7 @@ async function embedTexts(texts,timeout=20000) {
     signal:AbortSignal.timeout(timeout)
   });
   if(!response.ok)throw new Error('embedding service unavailable');
-  const data=await response.json();
+  const data: any=await response.json();
   const vectors=data?.data?.map(item=>item.embedding);
   if(!Array.isArray(vectors)||vectors.length!==texts.length||vectors.some(v=>!Array.isArray(v)||v.length!==1024||v.some(n=>typeof n!=='number'||!Number.isFinite(n))))throw new Error('invalid embedding response');
   return vectors;
