@@ -29,10 +29,10 @@ import { createAccountHandler } from './account-http.ts';
 test('HTTP QR routes require phone authentication and ignore forged roles',async t=>{
  const {store,phone}=await setup(t);const handler=createAccountHandler({store});
  const server=http.createServer(async(req,res)=>{if(!await handler(req,res)){res.writeHead(404);res.end();}});
- await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)));
- const post=async(route,body={},token)=>{
-  const response=await fetch(`http://127.0.0.1:${server.address().port}/v1/auth/qr/${route}`,{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:JSON.stringify(body)});
-  return {status:response.status,value:await response.json()};
+ await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',()=>resolve()));t.after(()=>new Promise(resolve=>server.close(resolve)));
+ const post=async(route,body: any={},token?: any)=>{
+  const response=await fetch(`http://127.0.0.1:${(server.address() as any).port}/v1/auth/qr/${route}`,{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:JSON.stringify(body)});
+  return {status:response.status,value:(await response.json()) as any};
  };
  const c=(await post('create')).value;
  assert.equal((await post('preview',scan(c))).status,401);
