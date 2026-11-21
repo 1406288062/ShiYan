@@ -1,6 +1,6 @@
 // 跨 provider 切换或编辑分支时，把此前的对话记录整理成文本上下文带入新会话。
-export function transcriptText(history = [], { limit = 40, perItem = 20000 } = {}) {
-  const lines = [];
+export function transcriptText(history: any[] = [], { limit = 40, perItem = 20000 } = {}) {
+  const lines: string[] = [];
   for (const item of (Array.isArray(history) ? history : []).slice(-limit)) {
     if (!['user', 'assistant'].includes(item?.role) || typeof item.text !== 'string' || !item.text.trim()) continue;
     lines.push((item.role === 'user' ? '用户：' : '拾燕：') + item.text.slice(0, perItem));
@@ -19,7 +19,7 @@ export function appendTranscript(transcript, prompt, text, { keep = 20, perItem 
 export function retainTranscript(transcript, retainedPrompts: any[] = []) {
   const wanted = new Map();
   for (const prompt of retainedPrompts) wanted.set(String(prompt).slice(0, 8000), (wanted.get(String(prompt).slice(0, 8000)) || 0) + 1);
-  const out = []; let keeping = false;
+  const out: any[] = []; let keeping = false;
   for (const item of Array.isArray(transcript) ? transcript : []) {
     if (item?.role === 'user') {
       const left = wanted.get(item.text) || 0;

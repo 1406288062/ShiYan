@@ -26,8 +26,8 @@ let sdkPromise;
 export const loadClaudeSdk = () => (sdkPromise ||= import(SDK));
 
 // KEY=VALUE 文件（0600），便于之后配置认证而不改 systemd。
-export function readEnvFile(file = ENV_FILE) {
-  const out = {};
+export function readEnvFile(file = ENV_FILE): Record<string, string> {
+  const out: Record<string, string> = {};
   let text = '';
   try { text = readFileSync(file, 'utf8'); } catch { return out; }
   for (const raw of text.split(/\r?\n/)) {
@@ -39,7 +39,7 @@ export function readEnvFile(file = ENV_FILE) {
   }
   return out;
 }
-export function claudeEnv(extra = {}) {
+export function claudeEnv(extra: Record<string, string> = {}): Record<string, string | undefined> {
   return { ...process.env, ...readEnvFile(), DISABLE_AUTOUPDATER: '1', MCP_TOOL_TIMEOUT: '7200000', ...extra };
 }
 export function claudeCredentialsConfigured(env = claudeEnv()) {
@@ -61,7 +61,7 @@ export function toCatalogModel(info) {
 }
 
 // 在独立子进程中读取模型列表：SDK 进程生命周期与主服务隔离。
-function listModelsInChild(timeoutMs = 25000) {
+function listModelsInChild(timeoutMs = 25000): Promise<any> {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [path.join(HERE, 'claude-models.mjs')], { env: claudeEnv({ SHIYAN_CLAUDE_SDK: SDK }), stdio: ['ignore', 'pipe', 'pipe'] });
     let out = '', err = '';
@@ -85,7 +85,7 @@ async function imageBlock(file) {
 // 统一输入（Codex UserInput：字符串或 text/local_image 数组）-> Claude content blocks。
 export async function claudeContent(input) {
   if (typeof input === 'string') return [{ type: 'text', text: input }];
-  const blocks = [];
+  const blocks: any[] = [];
   for (const part of Array.isArray(input) ? input : []) {
     if (part?.type === 'text' && typeof part.text === 'string') blocks.push({ type: 'text', text: part.text });
     else if (part?.type === 'local_image' && typeof part.path === 'string') { const block = await imageBlock(part.path); if (block) blocks.push(block); }
@@ -93,9 +93,9 @@ export async function claudeContent(input) {
   return blocks.length ? blocks : [{ type: 'text', text: '请查看附件。' }];
 }
 // 统一 MCP 描述 -> Claude stdio 配置（secretEnv 只进子进程环境）。
-export function claudeMcpConfig(mcpServers = {}) {
-  const out = {};
-  for (const [name, spec] of Object.entries(mcpServers)) {
+export function claudeMcpConfig(mcpServers: any = {}) {
+  const out: any = {};
+  for (const [name, spec] of Object.entries(mcpServers) as [string, any][]) {
     out[name] = spec.url
       ? { type: 'http', url: spec.url, ...(spec.headers && Object.keys(spec.headers).length ? { headers: spec.headers } : {}) }
       : { type: 'stdio', command: spec.command, args: spec.args || [], env: { ...(spec.env || {}), ...(spec.secretEnv || {}) } };
@@ -104,7 +104,8 @@ export function claudeMcpConfig(mcpServers = {}) {
 }
 
 // 运行一轮 Claude 对话并输出统一事件。prompt 流在收到 result 前保持打开，保证 MCP 工具可用。
-export async function* streamClaude({ content, options, signal, isolatedServer, sdk = loadClaudeSdk }) {
+interface StreamClaudeOptions { content: any; options: any; signal?: any; isolatedServer?: any; sdk?: () => any; }
+export async function* streamClaude({ content, options, signal, isolatedServer, sdk = loadClaudeSdk }: StreamClaudeOptions): AsyncGenerator<any> {
   const { query } = await sdk();
   if (signal?.aborted) throw signal.reason || new Error('已停止处理');
   const controller = new AbortController();
@@ -125,7 +126,7 @@ export async function* streamClaude({ content, options, signal, isolatedServer, 
     }
   } catch (error) {
     if (signal?.aborted) throw signal.reason || error;
-    throw new Error('Claude 处理失败：' + String(error?.message || error).slice(0, 500));
+    throw new Error('Claude 处理失败：' + String((error as any)?.message || error).slice(0, 500));
   } finally {
     release(); signal?.removeEventListener('abort', abort);
     try { await q.return?.(); } catch {}
@@ -133,9 +134,9 @@ export async function* streamClaude({ content, options, signal, isolatedServer, 
 }
 
 // zod 形状由 MEMBER_AGENT_TOOLS 的 JSON Schema 生成：普通账号工具只维护一份定义。
-export function zodShape(z, parameters = {}) {
+export function zodShape(z, parameters: any = {}) {
   const shape = {}, required = new Set(parameters.required || []);
-  for (const [key, spec] of Object.entries(parameters.properties || {})) {
+  for (const [key, spec] of Object.entries(parameters.properties || {}) as [string, any][]) {
     let field = spec.type === 'integer' ? z.number().int() : spec.type === 'number' ? z.number() : spec.type === 'boolean' ? z.boolean()
       : spec.type === 'object' ? z.record(z.string(), z.any()) : spec.type === 'array' ? z.array(z.any()) : z.string();
     if (spec.type === 'integer' || spec.type === 'number') { if (Number.isFinite(spec.minimum)) field = field.min(spec.minimum); if (Number.isFinite(spec.maximum)) field = field.max(spec.maximum); }
@@ -153,7 +154,7 @@ const INFER_IMAGE_TYPES = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 
 
 // 运行一轮并收集文本与用量；无工具、不落盘会话。
 async function collectClaudeText({ content, options, signal, sdk }) {
-  const texts = []; let usage = null;
+  const texts: string[] = []; let usage = null;
   for await (const event of streamClaude({ content, options, signal, sdk })) {
     if (event.type === 'turn.failed') throw Object.assign(new Error(event.error?.message || 'Claude 处理失败'), { status: 503, code: 'provider_error' });
     if (event.type === 'turn.completed') usage = event.usage;
@@ -164,10 +165,11 @@ async function collectClaudeText({ content, options, signal, sdk }) {
 
 // 纯推理（无工具）。history: [{role,text}] 作为上下文带入；schema: 按完整 JSON Schema 校验，不通过时带着错误重试一次。
 // 推理调用（Dots 回复等，所有账号共用）：只用调用方传入的 MCP，不加载服务器 claude.ai 登录上挂的连接器。
-export async function inferClaude({ model, reasoning, prompt, images = [], schema, history = [], system, webSearch = false, mcpServers = {}, mcpToolAllowlist = [], signal, sdk = loadClaudeSdk, credentials = claudeCredentialsConfigured }) {
+interface InferClaudeOptions { model?: any; reasoning?: any; prompt?: any; images?: any[]; schema?: any; history?: any[]; system?: any; webSearch?: boolean; mcpServers?: any; mcpToolAllowlist?: any[]; signal?: any; sdk?: () => any; credentials?: () => boolean; }
+export async function inferClaude({ model, reasoning, prompt, images = [], schema, history = [], system, webSearch = false, mcpServers = {}, mcpToolAllowlist = [], signal, sdk = loadClaudeSdk, credentials = claudeCredentialsConfigured }: InferClaudeOptions) {
   if (!credentials()) throw Object.assign(new Error('Claude 未配置认证'), { status: 503, code: 'unavailable' });
   const base = [transcriptText(history), String(prompt || '').trim(), schema ? schemaInstruction(schema) : ''].filter(Boolean).join('\n\n');
-  const imageBlocks = [];
+  const imageBlocks: any[] = [];
   for (const image of images) {
     const media = INFER_IMAGE_TYPES[String(image?.suffix || '.png').toLowerCase()];
     if (media && image?.data) imageBlocks.push({ type: 'image', source: { type: 'base64', media_type: media, data: String(image.data) } });
@@ -194,7 +196,7 @@ export async function inferClaude({ model, reasoning, prompt, images = [], schem
       const check = await validateJson(schema, value);
       if (check.ok) return { text: JSON.stringify(value), usage, threadId: null };
       problem = check.errors;
-    } catch (error) { problem = error.message; }
+    } catch (error) { problem = (error as any).message; }
     previous = run.last || run.text;
   }
   throw Object.assign(new Error('Claude 输出未通过 JSON 校验：' + problem), { status: 502, code: 'invalid_output' });
@@ -202,6 +204,7 @@ export async function inferClaude({ model, reasoning, prompt, images = [], schem
 
 const isolatedCwd = () => { const dir = path.join(os.tmpdir(), 'shiyan-claude-isolated'); mkdirSync(dir, { recursive: true, mode: 0o700 }); return dir; };
 
+interface RunIsolatedJobOptions { history?: any[]; memory?: string; signal?: any; onEvent?: (event: any) => void; onText?: (text: string) => void; onActivity?: () => void; root?: any; }
 export default {
   id: 'anthropic',
   label: 'Claude',
@@ -227,7 +230,7 @@ export default {
   },
 
   // 普通账号：禁用全部内置工具，只提供与 GPT 隔离路径相同的沙箱工具（经 SDK 进程内 MCP 调用 bwrap 沙箱）。
-  async runIsolatedJob(job, { history = [], memory = '', signal, onEvent = () => {}, onText = () => {}, onActivity = () => {}, root } = {}) {
+  async runIsolatedJob(job, { history = [], memory = '', signal, onEvent = () => {}, onText = () => {}, onActivity = () => {}, root }: RunIsolatedJobOptions = {}) {
     const { owner, cwd, before, attachments } = await prepareIsolatedJob(job, { signal, root });
     const sdk = await loadClaudeSdk();
     const { z } = await import('zod');
@@ -238,12 +241,12 @@ export default {
         return { content: [{ type: 'text', text: JSON.stringify(output).slice(0, 256000) }] };
       } catch (error) {
         if (signal?.aborted) throw error;
-        return { content: [{ type: 'text', text: JSON.stringify({ error: error.message }) }], isError: true };
+        return { content: [{ type: 'text', text: JSON.stringify({ error: (error as any).message }) }], isError: true };
       } finally { onActivity(); }
     }));
     const server = sdk.createSdkMcpServer({ name: ISOLATED_SERVER, tools, alwaysLoad: true });
     const text = [memory, transcriptText(history), job.prompt || '请查看附件。'].filter(Boolean).join('\n\n');
-    const content = [{ type: 'text', text }];
+    const content: any[] = [{ type: 'text', text }];
     for (const attachment of attachments) {
       content.push({ type: 'text', text: '用户上传的附件：' + attachment.path });
       if (attachment.image) content.push({ type: 'image', source: { type: 'base64', media_type: attachment.image.mime, data: attachment.image.data } });
