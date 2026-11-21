@@ -1,11 +1,11 @@
 (() => {
   'use strict';
   let root, elements, opened = false, loaded = false, loading = false, busy = false;
-  let enabled = true, page = 'settings', restoreFocus, inertElements = [];
+  let enabled = true, page = 'settings', restoreFocus: any, inertElements: any[] = [];
   let quotaLoading = false;
-  let topics = [], topicsLoading = false, topicsBusy = false;
+  let topics: any[] = [], topicsLoading = false, topicsBusy = false;
   const additionalPages = new Map();
-  const api = (path, method, body) => window.shiyan.api(path, method, body);
+  const api = (path: any, method?: any, body?: any) => window.shiyan.api(path, method, body);
   const message = error => error?.message || '暂时无法连接，请重试。';
   function status(text = '', error = false) {
     elements.notice.textContent = text;
@@ -133,11 +133,11 @@
     elements.memoryEntry.focus();
   }
   // 记忆：上面是按类别整理的摘要，下面可以管理全部条目。
-  let entriesSection = null, entries = [], entriesQuery = '', editingId = '', entriesTimer = null;
-  const escHTML = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  let entriesSection: any = null, entries: any[] = [], entriesQuery = '', editingId = '', entriesTimer: any = null;
+  const escHTML = (value: any) => String(value ?? '').replace(/[&<>"']/g, (c: string): string => (({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'} as Record<string,string>)[c]));
   const categoryName = {profile:'关于你', preference:'偏好与习惯', project:'项目与工作', context:'近期在做'};
   const categoryOrder = ['profile','preference','project','context'];
-  let summaryTimer = null, summaryTries = 0;
+  let summaryTimer: any = null, summaryTries = 0;
   function ensureEntries() {
     if (entriesSection?.isConnected) return entriesSection;
     entriesSection = document.createElement('section');
@@ -145,7 +145,7 @@
     entriesSection.innerHTML = '<header><h3>记忆摘要</h3><small data-memory-summary-state></small></header><div class="memory-summary" data-memory-summary></div><details class="memory-all"><summary><span>管理全部记忆</span><small data-memory-count></small></summary><input type="search" placeholder="搜索" aria-label="搜索记忆" data-memory-search><ul class="memory-entry-list" data-memory-list></ul></details><p class="memory-entry-status" role="status" data-memory-status></p>';
     elements.topicsSection.before(entriesSection);
     entriesSection.querySelector('[data-memory-search]').addEventListener('input', event => {
-      clearTimeout(entriesTimer); entriesTimer = setTimeout(() => { entriesQuery = event.target.value.trim(); loadEntries(); }, 250);
+      clearTimeout(entriesTimer); entriesTimer = setTimeout(() => { entriesQuery = (event.target as any).value.trim(); loadEntries(); }, 250);
     });
     entriesSection.addEventListener('click', async event => {
       const item = event.target.closest('[data-memory-id]'); if (!item) return;
@@ -165,7 +165,7 @@
           item.classList.add('is-removing'); status.textContent = '已删除。';
           setTimeout(() => loadEntries(), 180);
         }
-      } catch (cause) { status.textContent = cause.message || '操作失败，请重试。'; }
+      } catch (cause) { status.textContent = (cause as any).message || '操作失败，请重试。'; }
     });
     return entriesSection;
   }
@@ -198,7 +198,7 @@
       const result = await api('/api/memory'+(entriesQuery ? '?query='+encodeURIComponent(entriesQuery) : ''));
       entries = Array.isArray(result?.memories) ? result.memories : [];
       drawEntries();
-    } catch (cause) { entriesSection.querySelector('[data-memory-status]').textContent = cause.message || '记忆暂时不可用。'; }
+    } catch (cause) { entriesSection.querySelector('[data-memory-status]').textContent = (cause as any).message || '记忆暂时不可用。'; }
   }
   function showMemory() {
     activatePage('memory', 'memoryTitle');
@@ -232,7 +232,7 @@
     } catch (error) { topicsStatus('读取失败：'+message(error), true); }
     finally { topicsLoading = false; topicsControls(); }
   }
-  function renderTopics(openId) {
+  function renderTopics(openId?: any) {
     elements.topicsList.replaceChildren();
     for (const topic of topics) {
       const item = document.createElement('details');
@@ -242,14 +242,14 @@
       item.append(codexText('summary', topic.title || '共同话题'));
       if (topic.needsReview) item.append(codexText('p', '请确认这段记忆', 'memory-notice'));
       const form = document.createElement('form');
-      for (const [name, label, maximum, rows] of [['title','话题',200,0],['summary','记住的内容',4000,3],['openQuestion','尚未聊完',2000,2]]) {
+      for (const [name, label, maximum, rows] of [['title','话题',200,0],['summary','记住的内容',4000,3],['openQuestion','尚未聊完',2000,2]] as [string, string, number, number][]) {
         const field = codexText('label', label);
         const input = document.createElement(rows ? 'textarea' : 'input');
         input.name = name;
         input.value = topic[name] || '';
         input.maxLength = maximum;
         input.required = name !== 'openQuestion';
-        if (rows) input.rows = rows;
+        if (rows) (input as any).rows = rows;
         field.append(input);
         form.append(field);
       }
@@ -271,7 +271,7 @@
     }
     if (!topics.length) elements.topicsList.append(codexText('p', '暂时没有保存的共同话题。', 'memory-notice'));
   }
-  async function saveTopic(id, method, data) {
+  async function saveTopic(id: any, method: any, data?: any) {
     if (topicsLoading || topicsBusy) return;
     topicsBusy = true;
     topicsStatus();
@@ -303,7 +303,7 @@
     elements.memoryPage.append(section);
     Object.assign(elements, {topicsSection:section, topicsList:list, topicsNotice:notice, topicsRetry:retry});
   }
-  function codexText(tag, text, className) {
+  function codexText(tag: any, text: any, className?: any) {
     const element = document.createElement(tag);
     element.textContent = text;
     if (className) element.className = className;
@@ -523,7 +523,7 @@
       document.getElementById('railSettings')?.remove();
       avatar.title = '个人菜单';
       avatar.setAttribute('aria-label', '个人菜单');
-      document.getElementById('avatarQuotaCard').setAttribute('aria-label', '个人菜单');
+      (document.getElementById('avatarQuotaCard') as any).setAttribute('aria-label', '个人菜单');
       if (!footer.querySelector('[data-open-settings]')) {
         const button = document.createElement('button');
         button.id = 'avatarSettings';
@@ -551,7 +551,7 @@
     }
     // Keep the main navigation usable while settings occupies the content area.
     document.addEventListener('click', event => {
-      if (opened && event.target.closest('#activityRail button')) close(false);
+      if (opened && (event.target as any).closest('#activityRail button')) close(false);
     }, true);
     window.addEventListener('resize', () => { if (opened) fitSettings(); });
     document.addEventListener('keydown', event => {
