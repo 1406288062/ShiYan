@@ -1,8 +1,8 @@
 /* Browser-only image transport. Account authentication stays on our own origin. */
 (() => {
   'use strict';
-  if (window.ShiYanPlatform?.mode !== 'web') return;
-  const fail = (message, status) => Object.assign(new Error(message),
+  if ((window as any).ShiYanPlatform?.mode !== 'web') return;
+  const fail = (message: any, status?: any) => Object.assign(new Error(message),
     {code: 'COS_UPLOAD_FAILED', ...(status ? {status} : {})});
   function validateUpload(upload, file) {
     let url;
@@ -30,7 +30,7 @@
       throw fail('图片上传凭证缺少隐私保护，请重试');
   }
   function put(upload, file, progress) {
-    return new Promise((resolve, reject) => {
+    return new Promise<void>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       let settled = false, timer;
       const finish = error => {
@@ -48,7 +48,7 @@
       xhr.open('PUT', upload.url);
       xhr.withCredentials = false;
       // No application cookies, Authorization or X-Shiyan-Local on the COS request.
-      for (const [name, value] of Object.entries(upload.headers)) {
+      for (const [name, value] of Object.entries(upload.headers) as any[]) {
         if (name.toLowerCase() !== 'content-length') xhr.setRequestHeader(name, value);
       }
       xhr.upload.onprogress = event => {
@@ -66,8 +66,8 @@
     });
   }
   async function upload(files, kind, api, onProgress, purpose) {
-    if (window.ShiYanPlatform?.mode !== 'web' || kind !== 'input' || purpose !== 'enhance') return null;
-    const items = Array.from(files);
+    if ((window as any).ShiYanPlatform?.mode !== 'web' || kind !== 'input' || purpose !== 'enhance') return null;
+    const items: any[] = Array.from(files);
     if (!items.length || items.length > 10) throw fail('一次最多上传 10 张增强图片');
     const plan = await api('/api/assets/cos/upload', 'POST', {kind, purpose, files: items.map(file =>
       ({name: file.name || 'image.png', size: file.size, type: file.type || ''}))});
@@ -91,5 +91,5 @@
       throw fail('图片已发送，但保存结果未确认，请重试');
     return data;
   }
-  window.ShiYanCosTransfer = {upload};
+  (window as any).ShiYanCosTransfer = {upload};
 })();
