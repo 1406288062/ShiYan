@@ -13,10 +13,10 @@ const clip = (text, max) => {
 };
 
 export function buildMemorySummary(memories) {
-  const sections = [];
+  const sections: any[] = [];
   for (const section of SECTIONS) {
     const seen = new Set();
-    const points = [];
+    const points: any[] = [];
     for (const memory of memories.filter(item => item.category === section.id)) {
       const point = clip(memory.content, 60);
       const key = point.toLocaleLowerCase();
