@@ -7,7 +7,7 @@ const SCHEMA = { type: 'object', additionalProperties: false, required: ['summar
 
 // 每次 query 依次返回脚本里的一段文本；记录收到的内容块与选项
 function scripted(texts) {
-  const seen = [];
+  const seen: any[] = [];
   const sdk = async () => ({ query({ prompt, options }) {
     return (async function* () {
       const first = await prompt[Symbol.asyncIterator]().next();
@@ -81,17 +81,17 @@ test('Claude 推理：历史、图片与 schema 提示进入内容块', async ()
 test('Claude 推理：输出不合规时带着错误重试一次，用量累加', async () => {
   const { sdk, seen } = scripted(['{"summary":"' + 'x'.repeat(30) + '","score":1}', '```json\n{"summary":"短","score":1}\n```']);
   const out = await inferClaude({ model: 'm', prompt: 'p', schema: SCHEMA, sdk, credentials: creds });
-  assert.deepEqual(JSON.parse(out.text), { summary: '短', score: 1 }); assert.equal(out.usage.input_tokens, 20); assert.equal(seen.length, 2);
+  assert.deepEqual(JSON.parse(out.text), { summary: '短', score: 1 }); assert.equal(out.usage!.input_tokens, 20); assert.equal(seen.length, 2);
   assert.match(seen[1].blocks[0].text, /没有通过校验[\s\S]*summary/);
 });
 
 test('Claude 推理：两次都不合规则报错；没有认证、空输入、空回复', async () => {
   const bad = scripted(['不是 JSON', '还是不是']);
-  await assert.rejects(inferClaude({ model: 'm', prompt: 'p', schema: SCHEMA, sdk: bad.sdk, credentials: creds }), error => error.code === 'invalid_output' && /未通过 JSON 校验/.test(error.message));
-  await assert.rejects(inferClaude({ model: 'm', prompt: 'p', credentials: () => false }), error => error.code === 'unavailable' && error.status === 503);
+  await assert.rejects(inferClaude({ model: 'm', prompt: 'p', schema: SCHEMA, sdk: bad.sdk, credentials: creds }), error => (error as any).code === 'invalid_output' && /未通过 JSON 校验/.test((error as any).message));
+  await assert.rejects(inferClaude({ model: 'm', prompt: 'p', credentials: () => false }), error => (error as any).code === 'unavailable' && (error as any).status === 503);
   await assert.rejects(inferClaude({ model: 'm', prompt: '  ', credentials: creds }), /prompt or image/);
   const empty = scripted(['   ']);
-  await assert.rejects(inferClaude({ model: 'm', prompt: 'p', sdk: empty.sdk, credentials: creds }), error => error.code === 'provider_error');
+  await assert.rejects(inferClaude({ model: 'm', prompt: 'p', sdk: empty.sdk, credentials: creds }), error => (error as any).code === 'provider_error');
 });
 
 test('Claude 推理：SDK 报错（如未登录）原样带出原因', async () => {
@@ -99,5 +99,5 @@ test('Claude 推理：SDK 报错（如未登录）原样带出原因', async () 
     yield { type: 'assistant', parent_tool_use_id: null, message: { id: 'm', content: [{ type: 'text', text: 'Not logged in · Please run /login' }] } };
     yield { type: 'result', subtype: 'error_during_execution', is_error: true, errors: ['Not logged in · Please run /login'] };
   })(); } });
-  await assert.rejects(inferClaude({ model: 'm', prompt: 'p', sdk, credentials: creds }), error => error.code === 'provider_error' && /Not logged in/.test(error.message));
+  await assert.rejects(inferClaude({ model: 'm', prompt: 'p', sdk, credentials: creds }), error => (error as any).code === 'provider_error' && /Not logged in/.test((error as any).message));
 });

@@ -182,7 +182,7 @@ export async function inferClaude({ model, reasoning, prompt, images = [], schem
   const allowedTools = [...new Set([...web, ...allowedMcp])];
   const options = { model, ...effortOption(reasoning), cwd: isolatedCwd(), tools: web, ...(allowedTools.length ? { allowedTools } : {}), ...(mcpNames.length ? { mcpServers: claudeMcpConfig(mcpServers) } : {}), settingSources: [], persistSession: false,
     permissionMode: 'dontAsk', maxTurns: mcpNames.length ? 20 : (web.length ? 10 : 2), systemPrompt: [system, mcpNames.length ? MCP_GUIDE : (system ? '' : INFER_SYSTEM)].filter(Boolean).join('\n\n') + (web.length ? WEB_GUIDE : ''), strictMcpConfig: true, env: claudeEnv({ ENABLE_CLAUDEAI_MCP_SERVERS: "false" }) };
-  let usage = null, problem = '', previous = '';
+  let usage: any = null, problem = '', previous = '';
   for (let attempt = 0; attempt < 2; attempt++) {
     const text = attempt ? `${base}\n\n你上一次的输出没有通过校验：${problem}\n上一次的输出：\n${previous.slice(0, 6000)}\n请只输出修正后的 JSON。` : base;
     const run = await collectClaudeText({ content: [{ type: 'text', text }, ...imageBlocks], options, signal, sdk });
