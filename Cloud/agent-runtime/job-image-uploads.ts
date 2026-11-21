@@ -7,12 +7,12 @@ const MAX_CHUNK = 48 * 1024;
 const SUFFIXES = new Set(['.png', '.jpg', '.jpeg', '.webp']);
 const SHA = /^[0-9a-f]{64}$/;
 const locks = new Map();
-const digest = bytes => createHash('sha256').update(bytes).digest('hex');
-const failure = (message, status = 400) => Object.assign(new Error(message), {status});
-const absent = error => error?.code === 'ENOENT';
+const digest = (bytes: any) => createHash('sha256').update(bytes).digest('hex');
+const failure = (message: any, status = 400) => Object.assign(new Error(message), {status});
+const absent = (error: any) => error?.code === 'ENOENT';
 
 // One lock per owner/content pair, including across instances in this process.
-async function locked(key, action) {
+async function locked(key: any, action: any) {
   const previous = locks.get(key) || Promise.resolve();
   const current = previous.catch(() => {}).then(action);
   const settled = current.then(() => {}, () => {});
@@ -23,25 +23,25 @@ async function locked(key, action) {
 
 export class JobImageUploads {
   root: string;
-  constructor(dataDirectory) {
+  constructor(dataDirectory: any) {
     this.root = path.resolve(dataDirectory, 'job-image-uploads');
   }
 
-  location(owner, id) {
+  location(owner: any, id: any) {
     if (typeof owner !== 'string' || !owner || typeof id !== 'string' || !SHA.test(id)) {
       throw failure('图片上传标识无效');
     }
     return path.join(this.root, digest(owner), id);
   }
 
-  async prepare(directory) {
+  async prepare(directory: any) {
     for (const target of [this.root, path.dirname(directory), directory]) {
       await mkdir(target, {recursive: true, mode: 0o700});
       await chmod(target, 0o700);
     }
   }
 
-  async load(directory, id) {
+  async load(directory: any, id: any) {
     let metadata;
     try { metadata = JSON.parse(await readFile(path.join(directory, 'metadata.json'), 'utf8')); }
     catch (error) {
@@ -67,23 +67,23 @@ export class JobImageUploads {
     return metadata;
   }
 
-  response(metadata) {
+  response(metadata: any) {
     const {id, offset, total, suffix, complete} = metadata;
     return {ok: true, upload: {id, offset, total, suffix, complete}};
   }
 
-  async save(directory, metadata) {
+  async save(directory: any, metadata: any) {
     const temporary = path.join(directory, `metadata-${randomUUID()}.tmp`);
     await writeFile(temporary, JSON.stringify(metadata), {mode: 0o600, flag: 'wx'});
     await rename(temporary, path.join(directory, 'metadata.json'));
   }
 
-  async inspect(owner, id) {
+  async inspect(owner: any, id: any) {
     const directory = this.location(owner, id);
     return locked(directory, async () => this.response(await this.load(directory, id)));
   }
 
-  async append(owner, id, input) {
+  async append(owner: any, id: any, input: any) {
     const directory = this.location(owner, id);
     if (!input || !Number.isSafeInteger(input.offset) || input.offset < 0
         || !Number.isSafeInteger(input.total) || input.total < 1 || input.total > MAX_IMAGE
@@ -134,7 +134,7 @@ export class JobImageUploads {
     });
   }
 
-  async resolve(owner, images) {
+  async resolve(owner: any, images: any) {
     if (!Array.isArray(images)) throw failure('图片列表无效');
     return Promise.all(images.map(async image => {
       if (!image || image.uploadId === undefined) return image;

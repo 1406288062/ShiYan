@@ -5,7 +5,7 @@ import { once } from 'node:events';
 import { digest } from './device-auth.ts';
 import { createKnowledgeSidecar, knowledgeRoute } from './knowledge-sidecar.ts';
 
-async function serve(t, server) {
+async function serve(t: any, server: any) {
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   t.after(() => { server.closeAllConnections(); server.close(); });
   return 'http://127.0.0.1:' + server.address().port;

@@ -7,22 +7,22 @@ import { fileURLToPath } from 'node:url';
 const ROOT = process.env.SHIYAN_ROOT || path.dirname(fileURLToPath(import.meta.url));
 const MAX_REQUEST_BYTES = 1024 * 1024;
 const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
-const reserved = value => typeof value === 'string' && ['sponge', '海绵宝宝'].includes(value.trim().toLowerCase());
-const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
-const failure = (message, status = 502, extra = {}) => Object.assign(new Error(message), { status, ...extra });
-const abortReason = signal => signal?.reason instanceof Error ? signal.reason : failure('操作已停止', 499);
-const validOwner = owner => typeof owner === 'string' && owner.length > 0 && owner.length <= 512 && !/[\x00-\x1f\x7f]/.test(owner);
+const reserved = (value: any) => typeof value === 'string' && ['sponge', '海绵宝宝'].includes(value.trim().toLowerCase());
+const object = (value: any) => value !== null && typeof value === 'object' && !Array.isArray(value);
+const failure = (message: any, status = 502, extra = {}) => Object.assign(new Error(message), { status, ...extra });
+const abortReason = (signal: any) => signal?.reason instanceof Error ? signal.reason : failure('操作已停止', 499);
+const validOwner = (owner: any) => typeof owner === 'string' && owner.length > 0 && owner.length <= 512 && !/[\x00-\x1f\x7f]/.test(owner);
 
 export function createSpongeClient({ socketPath = process.env.SHIYAN_SPONGE_SOCKET || path.join(ROOT, 'data', 'sponge', 'connector.sock'), timeoutMs = 60000 } = {}) {
   if (typeof socketPath !== 'string' || !path.isAbsolute(socketPath) || socketPath.includes('\0')) throw failure('海绵宝宝连接配置无效', 500);
-  async function request(route, input, { signal }: {signal?: AbortSignal} = {}) {
+  async function request(route: any, input: any, { signal }: {signal?: AbortSignal} = {}) {
     if (signal?.aborted) throw abortReason(signal);
     const uncertain = route === '/rpc' && input.method === 'tools/call';
     let body;
     try { body = Buffer.from(JSON.stringify(input)); } catch { throw failure('海绵宝宝请求格式无效', 400); }
     if (body.length > MAX_REQUEST_BYTES) throw failure('海绵宝宝请求过大', 413);
     return new Promise<any>((resolve, reject) => {
-      let req, timer, response, done = false;
+      let req: any, timer: any, response: any, done = false;
       const finish = (error: any, value?: any) => {
         if (done) return;
         done = true;
@@ -71,16 +71,16 @@ export function createSpongeClient({ socketPath = process.env.SHIYAN_SPONGE_SOCK
       } catch { transportError(); }
     });
   }
-  const ownerInput = owner => { if (!validOwner(owner)) throw failure('用户身份无效', 401); return owner; };
+  const ownerInput = (owner: any) => { if (!validOwner(owner)) throw failure('用户身份无效', 401); return owner; };
   return {
-    status(owner, options: { signal?: AbortSignal } = {}) { return request('/status', { owner: ownerInput(owner) }, options); },
-    start(auth, options: { signal?: AbortSignal } = {}) {
+    status(owner: any, options: { signal?: AbortSignal } = {}) { return request('/status', { owner: ownerInput(owner) }, options); },
+    start(auth: any, options: { signal?: AbortSignal } = {}) {
       if (!object(auth) || auth.accountSession !== true || !validOwner(auth.owner) ||
           typeof auth.userId !== 'string' || !auth.userId || typeof auth.sessionId !== 'string' || !auth.sessionId) throw failure('请先登录拾燕账号', 401);
       return request('/start', { auth: { owner: auth.owner, userId: auth.userId, sessionId: auth.sessionId, accountSession: true } }, options);
     },
-    disconnect(owner, options: { signal?: AbortSignal } = {}) { return request('/disconnect', { owner: ownerInput(owner) }, options); },
-    rpc(owner, method, params = {}, options: { signal?: AbortSignal } = {}) {
+    disconnect(owner: any, options: { signal?: AbortSignal } = {}) { return request('/disconnect', { owner: ownerInput(owner) }, options); },
+    rpc(owner: any, method: any, params = {}, options: { signal?: AbortSignal } = {}) {
       if (!['tools/list', 'tools/call'].includes(method) || !object(params)) throw failure('海绵宝宝工具请求无效', 400);
       return request('/rpc', { owner: ownerInput(owner), method, params }, options);
     },
@@ -91,7 +91,7 @@ export function createSpongeClient({ socketPath = process.env.SHIYAN_SPONGE_SOCK
 // only its server-derived owner. User-configured MCP servers retain their path.
 export function createSpongeMcpAdapter({ sandboxOperation, client = createSpongeClient() }: {sandboxOperation?: (owner: any, input: any, options?: any) => Promise<any>; client?: ReturnType<typeof createSpongeClient>} = {}) {
   if (typeof sandboxOperation !== 'function') throw new TypeError('sandboxOperation is required');
-  return async function memberMcpOperation(owner, input, options: {signal?: AbortSignal; [key: string]: any} = {}) {
+  return async function memberMcpOperation(owner: any, input: any, options: {signal?: AbortSignal; [key: string]: any} = {}) {
     if (input.operation === 'list_servers') {
       const [configured, connection] = await Promise.all([
         sandboxOperation(owner, input, options),
@@ -100,7 +100,7 @@ export function createSpongeMcpAdapter({ sandboxOperation, client = createSponge
           return null; // Connector unavailability must not disable other MCPs.
         }),
       ]);
-      const servers = (configured.servers || []).filter(server => !reserved(server.name));
+      const servers = (configured.servers || []).filter((server: any) => !reserved(server.name));
       if (connection?.connected === true) servers.push({ name: 'sponge', transport: 'managed' });
       return { ...configured, servers };
     }

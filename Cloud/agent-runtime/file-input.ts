@@ -1,13 +1,13 @@
 import path from 'node:path';
 import {writeFile} from 'node:fs/promises';
 const MAX_FILE=10*1024*1024, MAX_TOTAL=24*1024*1024;
-const invalid=message=>Object.assign(new Error(message),{status:400});
-export function normalizeFiles(value, images: any[]=[], maxCount=8) {
+const invalid=(message: any)=>Object.assign(new Error(message),{status:400});
+export function normalizeFiles(value: any, images: any[]=[], maxCount=8) {
   if(value!==undefined&&!Array.isArray(value))throw invalid('文件列表无效');
   const files=value||[];
   if(files.length+images.length>maxCount)throw invalid('本次上传的附件过多');
   let total=images.reduce((sum,x)=>sum+Buffer.from(x.data,'base64').length,0);
-  const uploads=files.map(file=>{
+  const uploads=files.map((file: any)=>{
     if(!file||typeof file.filename!=='string'||!file.filename.trim()||file.filename.length>255||typeof file.data!=='string'||file.data.length>Math.ceil(MAX_FILE/3)*4||/[^A-Za-z0-9+/=]/.test(file.data))throw invalid('文件格式或大小无效');
     const bytes=Buffer.from(file.data,'base64');
     if(bytes.toString('base64')!==file.data)throw invalid('文件数据不完整');
@@ -20,7 +20,7 @@ export function normalizeFiles(value, images: any[]=[], maxCount=8) {
   if(files.length&&total>MAX_TOTAL)throw invalid('附件总大小不能超过 24 MB');
   return uploads;
 }
-export async function writeFileInputs(files, directory) {
+export async function writeFileInputs(files: any, directory: any) {
   const records: any[]=[];
   for(const [index,file] of files.entries()) {
     let diskName=file.filename;

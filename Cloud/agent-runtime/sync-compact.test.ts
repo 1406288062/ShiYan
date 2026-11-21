@@ -10,9 +10,9 @@ process.env.SHIYAN_SYNC_NO_LISTEN='1';
 const { createSyncSidecar }=await import('./sync-sidecar.ts');
 const owner='compact-owner';
 const compactHeaders={'x-shiyan-sync-profile':'compact'};
-const mutation=(kind,id,data,baseRevision=0)=>({mutationId:randomUUID(),kind,id,data,baseRevision,deleted:false});
+const mutation=(kind: any,id: any,data: any,baseRevision=0)=>({mutationId:randomUUID(),kind,id,data,baseRevision,deleted:false});
 
-async function fixture(t){
+async function fixture(t: any){
   const root=mkdtempSync(path.join(os.tmpdir(),'shiyan-compact-'));
   const store=new SyncStore(root);
   const server=createSyncSidecar({root,store,runtimeWrites:true,authenticate:req=>req.headers['x-test-anonymous']?null:{
@@ -47,7 +47,7 @@ function largeMessage(store: any,{remoteJobId}: { remoteJobId?: any }={}){
 test('macOS compact snapshots retain text, assets and full authorized details without altering storage',async t=>{
   const {store,request}=await fixture(t),{id,asset,full}=largeMessage(store);
   const response=await request('sync');assert.equal(response.status,200);
-  const page: any=await response.json(),message=page.changes.find(c=>c.id===id);
+  const page: any=await response.json(),message=page.changes.find((c: any)=>c.id===id);
   assert.ok(Buffer.byteLength(JSON.stringify(page))<96*1024);
   assert.equal(message.data.text,full.data.text);assert.deepEqual(message.data.assets,full.data.assets);
   assert.equal(message.data.rawResult,null);assert.equal(message.data.executionDetailsAvailable,true);
@@ -60,8 +60,8 @@ test('macOS compact snapshots retain text, assets and full authorized details wi
   assert.equal((await request('sync/messages/'+id+'/details',{headers:{...compactHeaders,'x-test-owner':'other-owner'}})).status,404);
   assert.equal((await request('sync',{headers:{...compactHeaders,'x-test-anonymous':'yes'}})).status,401);
   let legacy: any=await(await request('sync',{headers:{}})).json();
-  if(!legacy.changes.some(c=>c.id===id))legacy=await(await request('sync?after='+legacy.cursor,{headers:{}})).json();
-  assert.equal(legacy.changes.find(c=>c.id===id).data.rawResult,full.data.rawResult);
+  if(!legacy.changes.some((c: any)=>c.id===id))legacy=await(await request('sync?after='+legacy.cursor,{headers:{}})).json();
+  assert.equal(legacy.changes.find((c: any)=>c.id===id).data.rawResult,full.data.rawResult);
 });
 
 test('compact POST canonical receipts and conflicts stay small, including unchanged hydrated snapshots',async t=>{
@@ -71,7 +71,7 @@ test('compact POST canonical receipts and conflicts stay small, including unchan
   const response=await request('sync',{method:'POST',data:{after:page.cursor,mutations:[edit]}});
   assert.equal(response.status,200);const receipt: any=await response.json();
   assert.equal(receipt.accepted.length,1);assert.equal(receipt.cursor,page.cursor);
-  const accepted=receipt.changes.find(c=>c.id===id);assert.equal(accepted.data.state,'completed');
+  const accepted=receipt.changes.find((c: any)=>c.id===id);assert.equal(accepted.data.state,'completed');
   assert.equal(accepted.data.executionDetailsAvailable,true);assert.equal(accepted.data.rawResult,null);
   assert.ok(Buffer.byteLength(JSON.stringify(receipt))<96*1024);
   assert.deepEqual(store.get(owner,'messages',id)!.data,full.data);
@@ -83,7 +83,7 @@ test('compact POST canonical receipts and conflicts stay small, including unchan
 
 test('non-job compact message edits preserve canonical execution data and original mutation identity',async t=>{
   const {store,request}=await fixture(t),{id,full}=largeMessage(store);
-  const page: any=await(await request('sync')).json(),wire=page.changes.find(c=>c.id===id);
+  const page: any=await(await request('sync')).json(),wire=page.changes.find((c: any)=>c.id===id);
   const edit=mutation('messages',id,{...wire.data,text:'用户修改了正文。'},wire.revision);
   const response=await request('sync',{method:'POST',data:{after:page.cursor,mutations:[edit]}});
   assert.equal(response.status,200);const first: any=await response.json();assert.equal(first.accepted.length,1);
@@ -101,7 +101,7 @@ test('non-job compact message edits preserve canonical execution data and origin
 
 test('compact restoration cannot read another owner, change the message identity or create partial records',async t=>{
   const {store,request}=await fixture(t),{id,full}=largeMessage(store);
-  const wire=((await(await request('sync')).json()) as any).changes.find(c=>c.id===id).data;
+  const wire=((await(await request('sync')).json()) as any).changes.find((c: any)=>c.id===id).data;
   assert.throws(()=>hydrateCompactMutation(mutation('messages',id,wire,0),'other-owner',store),{status:409});
   assert.throws(()=>hydrateCompactMutation(mutation('messages',randomUUID(),wire,0),owner,store),{status:409});
   assert.throws(()=>hydrateCompactMutation(mutation('messages',id,{...wire,role:'user'},1),owner,store),{status:409});
@@ -117,7 +117,7 @@ test('compact restoration cannot read another owner, change the message identity
 
 test('a lost compact receipt can be retried after a later deletion without blocking the batch',async t=>{
   const {store,request}=await fixture(t),{id,full}=largeMessage(store);
-  const wire=((await(await request('sync')).json()) as any).changes.find(c=>c.id===id).data;
+  const wire=((await(await request('sync')).json()) as any).changes.find((c: any)=>c.id===id).data;
   const edit=mutation('messages',id,{...wire,text:'edited'},full.revision);
   const first: any=await(await request('sync',{method:'POST',data:{mutations:[edit]}})).json();
   const current=store.get(owner,'messages',id)!;
@@ -135,7 +135,7 @@ test('explicit partial detail edits preserve every other canonical field and rem
     displayItems:[{id:'local-command',type:'command_execution',status:'completed',command:'inspect',aggregated_output:'local complete output'}]};
   for(const [field,value] of Object.entries(edits)){
     const {id,full}=largeMessage(store),after=Number(store.db.prepare('SELECT MAX(seq) AS seq FROM sync_changes WHERE owner=?').get(owner)!.seq)-1;
-    const wire=((await(await request('sync?after='+after)).json()) as any).changes.find(c=>c.id===id)?.data;
+    const wire=((await(await request('sync?after='+after)).json()) as any).changes.find((c: any)=>c.id===id)?.data;
     assert.ok(wire);assert.equal(wire.executionDetailsAvailable,true);
     const edit=mutation('messages',id,{...wire,[field]:value,executionDetailsChanged:[field]},full.revision);
     const response=await request('sync',{method:'POST',data:{after:store.list(owner).cursor,mutations:[edit]}});
@@ -152,7 +152,7 @@ test('explicit partial detail edits preserve every other canonical field and rem
 
 test('partial detail declarations cannot override authoritative remote job details or execution state',async t=>{
   const {store,request}=await fixture(t),{id,cid,full}=largeMessage(store,{remoteJobId:'partial-details-job'});
-  const wire=((await(await request('sync')).json()) as any).changes.find(c=>c.id===id).data;
+  const wire=((await(await request('sync')).json()) as any).changes.find((c: any)=>c.id===id).data;
   const files=[{path:'/project/local.swift',kind:'update',added:1,removed:1,diff:'-before\n+after'}];
   const edit=mutation('messages',id,{...wire,text:'stale reply',state:'running',fileChanges:files,executionDetailsChanged:['fileChanges']},full.revision);
   const restored=hydrateCompactMutation(edit,owner,store);
@@ -168,7 +168,7 @@ test('partial detail declarations cannot override authoritative remote job detai
 
 test('invalid partial detail declarations fail closed before changing any record',async t=>{
   const {store,request}=await fixture(t),{id,full}=largeMessage(store);
-  const wire=((await(await request('sync')).json()) as any).changes.find(c=>c.id===id).data;
+  const wire=((await(await request('sync')).json()) as any).changes.find((c: any)=>c.id===id).data;
   for(const executionDetailsChanged of ['fileChanges',null,['text'],['fileChanges','fileChanges'],['missing']]){
     const response=await request('sync',{method:'POST',data:{mutations:[mutation('messages',id,{...wire,executionDetailsChanged},full.revision)]}});
     assert.equal(response.status,400);assert.deepEqual(store.get(owner,'messages',id),full);

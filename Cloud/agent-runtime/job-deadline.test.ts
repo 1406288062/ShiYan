@@ -5,9 +5,9 @@ import { createJobDeadline, jobFailure, jobTimeouts } from './job-deadline.ts';
 function clock(): any {
   let now = 0, nextID = 0;
   const pending = new Map();
-  return { schedule(callback, delay) { const id = ++nextID; pending.set(id, { at: now + delay, callback }); return id; },
-    unschedule(id) { pending.delete(id); },
-    advance(value) {
+  return { schedule(callback: any, delay: any) { const id = ++nextID; pending.set(id, { at: now + delay, callback }); return id; },
+    unschedule(id: any) { pending.delete(id); },
+    advance(value: any) {
       const until = now + value;
       while (true) {
         const next = [...pending].filter(([, timer]) => timer.at <= until).sort((a, b) => a[1].at - b[1].at)[0];

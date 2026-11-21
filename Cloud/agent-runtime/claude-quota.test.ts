@@ -16,7 +16,7 @@ await assert.rejects(readClaudeUsage({ credentials: async () => null }), e => (e
 await assert.rejects(readClaudeUsage({ credentials: async () => ({ token: 't', expiresAt: Date.now() - 1 }) }), e => (e as any).code === 'expired');
 let seen;
 const ok = await readClaudeUsage({ credentials: async () => ({ token: 'tok', expiresAt: Date.now() + 1e6, plan: 'max' }), fetchImpl: async (url, init) => { seen = init!.headers; return { ok: true, status: 200, json: async () => usage }; } });
-assert.equal(seen.Authorization, 'Bearer tok');
+assert.equal(seen!.Authorization, 'Bearer tok');
 assert.equal(ok.plan, 'max');
 await assert.rejects(readClaudeUsage({ credentials: async () => ({ token: 't' }), fetchImpl: async () => ({ ok: false, status: 401 }) }), e => (e as any).code === 'unauthorized');
 

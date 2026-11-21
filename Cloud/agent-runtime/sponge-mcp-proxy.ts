@@ -14,13 +14,13 @@ if (!owner || owner.length > 128) {
 }
 const client = createSpongeClient();
 const server = new Server({ name: 'shiyan-sponge', version: '1.0.0' }, { capabilities: { tools: {} } });
-const failure = text => ({ isError: true, content: [{ type: 'text', text: String(text).slice(0, 4000) }] });
+const failure = (text: any) => ({ isError: true, content: [{ type: 'text', text: String(text).slice(0, 4000) }] });
 
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   const status = await client.status(owner).catch(() => null);
   if (!status?.connected) return { tools: [] };
   const result = await client.rpc(owner, 'tools/list', {});
-  return { tools: (result?.tools || []).filter(tool => SPONGE_TOOLS.includes(tool.name)) };
+  return { tools: (result?.tools || []).filter((tool: any) => SPONGE_TOOLS.includes(tool.name)) };
 });
 
 server.setRequestHandler(CallToolRequestSchema, async request => {

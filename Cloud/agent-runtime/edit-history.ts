@@ -1,7 +1,7 @@
 // Reconstruct the retained visible prefix of a conversation on a new Codex
 // thread. The old thread stays untouched; the current edited prompt remains
 // a separate field rather than overwriting a normal send's exact text.
-export function normalizeHistory(value) {
+export function normalizeHistory(value: any) {
   if (value === undefined) return [];
   if (!Array.isArray(value) || value.length > 40) {
     throw Object.assign(new Error('编辑历史格式无效'), {status: 400});
@@ -21,7 +21,7 @@ export function normalizeHistory(value) {
   });
 }
 
-export function editedBranchInput(history, prompt) {
+export function editedBranchInput(history: any, prompt: any) {
   if (!history.length) return prompt;
   // Historical messages are context data, not new operations or instructions.
   // The edited message is the ONLY new user turn being submitted.

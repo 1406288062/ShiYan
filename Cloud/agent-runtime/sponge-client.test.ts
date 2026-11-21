@@ -6,8 +6,8 @@ import path from 'node:path';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { createSpongeClient, createSpongeMcpAdapter } from './sponge-client.ts';
 
-const json = (res, status, value) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(value)); };
-async function fixture(t, handler) {
+const json = (res: any, status: any, value: any) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(value)); };
+async function fixture(t: any, handler: any) {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'sponge-client-'));
   const socketPath = path.join(directory, 'connector.sock');
   const received: any[] = [];
@@ -24,7 +24,7 @@ async function fixture(t, handler) {
 }
 
 test('Unix client uses the fixed socket, exact protocol, and no caller credential headers', async t => {
-  const f = await fixture(t, (req, res, input) => json(res, 200, req.url === '/status' ?
+  const f = await fixture(t, (req: any, res: any, input: any) => json(res, 200, req.url === '/status' ?
     { ok: true, connected: input.owner === 'A', devices: [], needsPairing: false } : { ok: true, result: { accepted: true } }));
   const client = createSpongeClient({ socketPath: f.socketPath });
   assert.equal((await client.status('A')).connected, true);
@@ -40,7 +40,7 @@ test('Unix client uses the fixed socket, exact protocol, and no caller credentia
 });
 
 test('request size is checked before sending and response size is bounded', async t => {
-  const f = await fixture(t, (req, res) => {
+  const f = await fixture(t, (req: any, res: any) => {
     if (req.url === '/status') { res.writeHead(200, { 'Content-Length': 8 * 1024 * 1024 + 1 }); res.end(' '); }
     else { res.writeHead(200); res.end(' '.repeat(8 * 1024 * 1024 + 1)); }
   });
@@ -52,7 +52,7 @@ test('request size is checked before sending and response size is bounded', asyn
 });
 
 test('HTTP errors and malformed responses fail without any retry', async t => {
-  const f = await fixture(t, (req, res) => req.url === '/rpc' ? json(res, 403, { ok: false, error: '连接已撤销' }) : res.end('not-json'));
+  const f = await fixture(t, (req: any, res: any) => req.url === '/rpc' ? json(res, 403, { ok: false, error: '连接已撤销' }) : res.end('not-json'));
   const client = createSpongeClient({ socketPath: f.socketPath });
   await assert.rejects(client.rpc('A', 'tools/call', { name: 'write_file' }), { status: 403, message: '连接已撤销' });
   await assert.rejects(client.status('A'), /无效结果/);
@@ -60,7 +60,7 @@ test('HTTP errors and malformed responses fail without any retry', async t => {
 });
 
 test('lost RPC connection reports uncertain execution and does not repeat the action', async t => {
-  const f = await fixture(t, req => req.socket.destroy());
+  const f = await fixture(t, (req: any) => req.socket.destroy());
   const client = createSpongeClient({ socketPath: f.socketPath });
   await assert.rejects(client.rpc('A', 'tools/call', { name: 'start_process', arguments: { command: 'example' } }), error => (error as any).status === 503 && (error as any).uncertain === true && /勿重复/.test((error as any).message));
   assert.equal(f.received.length, 1);
@@ -86,7 +86,7 @@ test('managed names cannot be shadowed and only connected owners discover Sponge
     sandboxOperation: async (owner, input) => { operations.push([owner, input]); return { servers: [
       { name: 'sponge', transport: 'stdio' }, { name: ' 海绵宝宝 ', transport: 'http' }, { name: 'SPONGE', transport: 'stdio' }, { name: 'mine', transport: 'stdio' },
     ] }; },
-    client: { status: async owner => ({ connected: owner === 'A' }) } as any,
+    client: { status: async (owner: any) => ({ connected: owner === 'A' }) } as any,
   });
   assert.deepEqual((await adapter('A', { operation: 'list_servers' })).servers, [{ name: 'mine', transport: 'stdio' }, { name: 'sponge', transport: 'managed' }]);
   assert.deepEqual((await adapter('B', { operation: 'list_servers' })).servers, [{ name: 'mine', transport: 'stdio' }]);
@@ -96,7 +96,7 @@ test('managed names cannot be shadowed and only connected owners discover Sponge
 test('managed tools route the trusted owner and cannot replace transport/authentication', async () => {
   const calls: any[] = [], sandbox: any[] = [];
   const adapter = createSpongeMcpAdapter({ sandboxOperation: async (...args) => { sandbox.push(args); return { result: 'generic' }; },
-    client: { rpc: async (...args) => { calls.push(args); return { content: [{ type: 'text', text: 'owned-result' }] }; } } as any,
+    client: { rpc: async (...args: any[]) => { calls.push(args); return { content: [{ type: 'text', text: 'owned-result' }] }; } } as any,
   });
   const signal = new AbortController().signal;
   const result = await adapter('A', { operation: 'call_tool', server: '海绵宝宝', owner: 'B', url: 'http://127.0.0.1', headers: { Authorization: 'bad' }, name: 'list_devices', arguments: {} }, { signal });

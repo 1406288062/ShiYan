@@ -9,29 +9,29 @@ import { SyncedSchedules, prepareScheduleMutation } from './sync-schedules.ts';
 
 const owner = 'schedule-test-owner';
 const keys = [generateKeyPairSync('ed25519'), generateKeyPairSync('ed25519')];
-const rawKey = pair => pair.publicKey.export({ format: 'der', type: 'spki' }).subarray(-32);
+const rawKey = (pair: any) => pair.publicKey.export({ format: 'der', type: 'spki' }).subarray(-32);
 const physical = createHash('sha256').update(rawKey(keys[0])).digest('hex');
 const otherPhysical = createHash('sha256').update(rawKey(keys[1])).digest('hex');
 const taskId = 'scheduled-task-1';
-const account = (session, overrides = {}) => ({ owner, deviceID: session, sessionId: session,
+const account = (session: any, overrides = {}) => ({ owner, deviceID: session, sessionId: session,
   accountSession: true, platform: 'macos', ...overrides });
 const schedule = () => ({ id: taskId, title: 'Daily report', instruction: 'Summarize available information',
   enabled: true, repeat: 'daily', time: '09:00', timezone: 'Asia/Shanghai', startDate: '2026-10-13', endDate: null,
   runLocally: true, newChatEachRun: false, notificationMode: 'important', model: 'test-model', reasoning: 'low',
   projectId: null, executorDeviceId: physical, nextRunAt: '2026-10-15T01:00:00Z', status: 'enabled' });
-function fixture(t) {
+function fixture(t: any) {
   const root = mkdtempSync(path.join(os.tmpdir(), 'shiyan-schedule-'));
   const store = new SyncStore(root), scheduler = new SyncedSchedules(store);
   t.after(() => { store.close(); rmSync(root, { recursive: true, force: true }); });
   return { store, scheduler };
 }
-function mutation(data) { return { kind: 'scheduledTasks', id: taskId, data }; }
-function proof(auth, deviceId = physical, { pair = keys[0], timestamp = Date.now(), nonce = randomUUID() } = {}) {
+function mutation(data: any) { return { kind: 'scheduledTasks', id: taskId, data }; }
+function proof(auth: any, deviceId = physical, { pair = keys[0], timestamp = Date.now(), nonce = randomUUID() } = {}) {
   const message = ['shiyan-schedule-host-v1', auth.owner, deviceId, String(timestamp), nonce].join('\n');
   return { deviceId, devicePublicKey: rawKey(pair).toString('base64'), deviceTime: timestamp,
     deviceNonce: nonce, deviceSignature: sign(null, Buffer.from(message), pair.privateKey).toString('base64') };
 }
-function claim(store, scheduler, auth, dueAt, requestId) {
+function claim(store: any, scheduler: any, auth: any, dueAt: any, requestId: any) {
   return scheduler.claim(auth, taskId, { dueAt, requestId, revision: store.get(owner, 'scheduledTasks', taskId).revision });
 }
 

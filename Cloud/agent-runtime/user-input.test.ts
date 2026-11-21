@@ -53,8 +53,8 @@ test('real stdio MCP waits, UI submits, and same in-flight call receives the ans
   const lines=createInterface({input:child.stdout});const replies=new Map(),waiters=new Map();let output='',error='';
   child.stdout.on('data',data=>output+=data);child.stderr.on('data',data=>error+=data);
   lines.on('line',line=>{const value=JSON.parse(line);replies.set(value.id,value);waiters.get(value.id)?.(value);});
-  const send=(id,method,params)=>{const result=new Promise<any>(resolve=>waiters.set(id,resolve));child.stdin.write(JSON.stringify({jsonrpc:'2.0',id,method,params})+'\n');return result;};
-  const get=async(job,owner='alice')=>{const response=await fetch(base+'/shiyan/v1/jobs/'+job+'/questions',{headers:{'x-test-owner':owner}});return {status:response.status,data:(await response.json()) as any};};
+  const send=(id: any,method: any,params: any)=>{const result=new Promise<any>(resolve=>waiters.set(id,resolve));child.stdin.write(JSON.stringify({jsonrpc:'2.0',id,method,params})+'\n');return result;};
+  const get=async(job: any,owner='alice')=>{const response=await fetch(base+'/shiyan/v1/jobs/'+job+'/questions',{headers:{'x-test-owner':owner}});return {status:response.status,data:(await response.json()) as any};};
   try{
     const init=await send(1,'initialize',{protocolVersion:'2024-11-05'});assert.equal(init.result.serverInfo.name,'shiyan-input');
     assert.equal((await send(2,'tools/list',{})).result.tools[0].name,'ask_user');
@@ -84,7 +84,7 @@ test('SDK injects stdio MCP configuration and token via environment, not argv',a
     const codex=new Codex({codexPathOverride:executable,env:{...process.env,INPUT_TEST_RECORD:record,SHIYAN_INPUT_TOKEN:token},config:{mcp_servers:{'shiyan-input':{command:process.execPath,args:['/tmp/tool.mjs'],env:{SHIYAN_INPUT_JOB:'job_test'},env_vars:['SHIYAN_INPUT_TOKEN'],tool_timeout_sec:7200}}}});
     const {events}=await codex.startThread({skipGitRepoCheck:true}).runStreamed('fixture');for await(const _ of events){}
     const value=JSON.parse(readFileSync(record,'utf8'));assert.equal(value.token,token);assert.equal(JSON.stringify(value.args).includes(token),false);
-    assert.ok(value.args.some(arg=>arg==='mcp_servers.shiyan-input.env_vars=["SHIYAN_INPUT_TOKEN"]'));
-    assert.ok(value.args.some(arg=>arg==='mcp_servers.shiyan-input.tool_timeout_sec=7200'));
+    assert.ok(value.args.some((arg: any)=>arg==='mcp_servers.shiyan-input.env_vars=["SHIYAN_INPUT_TOKEN"]'));
+    assert.ok(value.args.some((arg: any)=>arg==='mcp_servers.shiyan-input.tool_timeout_sec=7200'));
   }finally{rmSync(root,{recursive:true,force:true});}
 });

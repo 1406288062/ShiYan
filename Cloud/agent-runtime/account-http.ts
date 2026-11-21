@@ -6,17 +6,17 @@ import { RegistrationEmail } from './registration-email.ts';
 import { QRLogin } from './qr-login.ts';
 import { createAccountAvatarHandler } from './account-avatar.ts';
 const qrStores = new WeakMap(), emailStores = new WeakMap(), resetStores = new WeakMap();
-const emailFor = store => { if (!emailStores.has(store)) emailStores.set(store, new RegistrationEmail(store)); return emailStores.get(store); };
-const resetFor = store => { if (!resetStores.has(store)) resetStores.set(store, new RegistrationEmail(store, { purpose: 'password-reset' })); return resetStores.get(store); };
-const qrFor = store => { if (!qrStores.has(store)) qrStores.set(store, new QRLogin(store)); return qrStores.get(store); };
+const emailFor = (store: any) => { if (!emailStores.has(store)) emailStores.set(store, new RegistrationEmail(store)); return emailStores.get(store); };
+const resetFor = (store: any) => { if (!resetStores.has(store)) resetStores.set(store, new RegistrationEmail(store, { purpose: 'password-reset' })); return resetStores.get(store); };
+const qrFor = (store: any) => { if (!qrStores.has(store)) qrStores.set(store, new QRLogin(store)); return qrStores.get(store); };
 
-const failure = (message, status = 400) => Object.assign(new Error(message), { status });
-const json = (res, status, value) => {
+const failure = (message: any, status = 400) => Object.assign(new Error(message), { status });
+const json = (res: any, status: any, value: any) => {
   const bytes = Buffer.from(JSON.stringify(value));
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': bytes.length,
     'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); res.end(bytes);
 };
-async function body(req) {
+async function body(req: any) {
   const chunks: Buffer[] = []; let size = 0;
   for await (const chunk of req) { size += chunk.length; if (size > 16384) throw failure('账户请求过大', 413); chunks.push(chunk); }
   const bytes = Buffer.concat(chunks);
@@ -27,7 +27,7 @@ async function body(req) {
 interface AccountHandlerOptions { store?: any; registrationEmail?: any; passwordResetEmail?: any; authenticateLegacy?: (req: any) => { owner: any; deviceID: string; platform: any; } | null; }
 export function createAccountHandler({ store, registrationEmail, passwordResetEmail, authenticateLegacy = authenticateLegacyDevice }: AccountHandlerOptions = {}) {
   const avatarHandler = createAccountAvatarHandler({ store });
-  return async function handleAccountRequest(req, res) {
+  return async function handleAccountRequest(req: any, res: any) {
     if (await avatarHandler(req, res)) return true;
     const pathname = new URL(req.url || '/', 'http://localhost').pathname.replace(/^\/shiyan(?=\/)/, '');
     if (!pathname.startsWith('/v1/auth/') && !pathname.startsWith('/v1/admin/')) return false;

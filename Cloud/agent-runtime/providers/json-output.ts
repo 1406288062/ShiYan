@@ -4,7 +4,7 @@
 // 因此对 Claude：把 schema 写进提示词 -> 从回复中提取 JSON -> 用 ajv 按完整 schema 校验 -> 不通过时带着错误重试一次。
 import { createHash } from 'node:crypto';
 
-let ajvInstance, ajvTried = false;
+let ajvInstance: any, ajvTried = false;
 async function getAjv() {
   if (ajvTried) return ajvInstance;
   ajvTried = true;
@@ -20,7 +20,7 @@ async function getAjv() {
 }
 
 const compiled = new Map();
-export async function validateJson(schema, value) {
+export async function validateJson(schema: any, value: any) {
   const ajv = await getAjv();
   if (!ajv) return { ok: true, skipped: true };
   const { $schema, $id, ...rest } = schema || {};
@@ -36,11 +36,11 @@ export async function validateJson(schema, value) {
   return { ok: false, errors: ajv.errorsText(fn.errors, { separator: '；', dataVar: '输出' }).slice(0, 800) };
 }
 
-export function schemaInstruction(schema) {
+export function schemaInstruction(schema: any) {
   return '请只输出一个 JSON 值，不要使用 Markdown 代码块，不要附加任何解释文字，并严格符合下面的 JSON Schema：\n' + JSON.stringify(schema);
 }
 
-export function extractJson(text) {
+export function extractJson(text: any) {
   const raw = String(text || '').trim();
   if (!raw) throw new Error('模型没有返回内容');
   const attempts = [raw];
@@ -62,7 +62,7 @@ export function extractJson(text) {
   throw new Error('模型输出不是有效的 JSON');
 }
 
-export function addUsage(total, usage) {
+export function addUsage(total: any, usage: any) {
   if (!usage) return total;
   const next = { ...(total || {}) };
   for (const key of ['input_tokens', 'cached_input_tokens', 'output_tokens']) {

@@ -1,28 +1,28 @@
 import { createSpongeClient } from './sponge-client.ts';
 
-const failure = (message, status = 400) => Object.assign(new Error(message), { status });
-const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
-const respond = (res, status, value) => {
+const failure = (message: any, status = 400) => Object.assign(new Error(message), { status });
+const object = (value: any) => value !== null && typeof value === 'object' && !Array.isArray(value);
+const respond = (res: any, status: any, value: any) => {
   const body = Buffer.from(JSON.stringify(value));
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': body.length,
     'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
   res.end(body);
 };
-const visibleDevice = value => {
+const visibleDevice = (value: any) => {
   const result = {};
   for (const key of ['id', 'deviceId', 'name', 'platform', 'status', 'lastSeenAt', 'online', 'ready']) {
-    if (typeof value?.[key] === 'string' || typeof value?.[key] === 'boolean') result[key] = value[key];
+    if (typeof value?.[key] === 'string' || typeof value?.[key] === 'boolean') (result as any)[key] = value[key];
   }
   return result;
 };
-const publicStatus = value => ({ connected: value?.connected === true,
+const publicStatus = (value: any) => ({ connected: value?.connected === true,
   devices: Array.isArray(value?.devices) ? value.devices.map(visibleDevice) : [],
   ...(typeof value?.accountName === 'string' ? { accountName: value.accountName } : {}), needsPairing: value?.needsPairing === true });
 
 // Mount only after request authentication. No submitted owner, token, service
 // URL or socket path can select the connection affected by these routes.
 export function createSpongeHTTPHandler({ client = createSpongeClient() } = {}) {
-  return async function spongeRequest(req, res, auth, readBody) {
+  return async function spongeRequest(req: any, res: any, auth: any, readBody: any) {
     const route = new URL(req.url || '/', 'http://localhost').pathname.replace(/^\/shiyan(?=\/)/, '');
     const base = '/v1/integrations/sponge';
     if (![base, base + '/status', base + '/start', base + '/disconnect'].includes(route)) return false;

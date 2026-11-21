@@ -12,14 +12,14 @@ const {RegistrationEmail}=await import('./registration-email.ts');
 const {createAccountHandler}=await import('./account-http.ts');
 const password='initial-test-password',nextPassword='new-test-password-2026';
 test.after(()=>rmSync(root,{recursive:true,force:true}));
-async function fixture(t){
+async function fixture(t: any){
  let now=1000000;const messages: any[]=[];
  const store=new AccountStore(path.join(root,randomUUID()),{now:()=>now,registrationSocketPath:false});t.after(()=>store.close());
  const member=await store.register({email:'member@example.test',password});
  const other=await store.register({email:'other@example.test',password});
  const mail=new RegistrationEmail(store,{purpose:'password-reset',configured:()=>true,secret:Buffer.alloc(32,7),send:async m=>{messages.push(m);}});
  const input=()=>({email:member.user.email,password:nextPassword,confirmPassword:nextPassword,verificationCode:messages.at(-1).text.match(/：([0-9]{6})/)[1]});
- return {store,mail,member,other,messages,input,advance:ms=>now+=ms};
+ return {store,mail,member,other,messages,input,advance:(ms: any)=>now+=ms};
 }
 test('verified reset rotates password, revokes only the matching account sessions and cannot be reused',async t=>{
  const f=await fixture(t);await f.mail.request({email:f.member.user.email},'ip');
@@ -73,7 +73,7 @@ test('password-reset HTTP endpoints work without logging in and never issue a se
  const f=await fixture(t),handler=createAccountHandler({store:f.store,passwordResetEmail:f.mail});
  const server=http.createServer((req,res)=>handler(req,res));await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',()=>resolve()));
  t.after(()=>new Promise(resolve=>server.close(resolve)));
- const post=(route,body)=>fetch('http://127.0.0.1:'+(server.address() as any).port+'/v1/auth/'+route,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+ const post=(route: any,body: any)=>fetch('http://127.0.0.1:'+(server.address() as any).port+'/v1/auth/'+route,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
  let response=await post('password-reset-code',{email:f.member.user.email});assert.equal(response.status,200);
  response=await post('password-reset',f.input());assert.equal(response.status,200);assert.deepEqual(await response.json(),{ok:true});assert.equal(response.headers.get('set-cookie'),null);
  response=await post('login',{email:f.member.user.email,password:nextPassword});assert.equal(response.status,200);

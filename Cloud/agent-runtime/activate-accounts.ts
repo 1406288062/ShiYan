@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import os from 'node:os';
-const run=promisify(execFile),sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+const run=promisify(execFile),sleep=(ms: any)=>new Promise(resolve=>setTimeout(resolve,ms));
 const root=process.env.SHIYAN_ROOT||'/home/ubuntu/boss-codex-service/shiyan-v2';
 const jobId=process.argv[2],manifest=process.argv[3];
 if(!/^[a-f0-9-]{36}$/.test(jobId||'')||!manifest?.startsWith(root+'/workspaces/')||!manifest.endsWith('/.shiyan/changes/'+jobId+'.jsonl'))throw new Error('Invalid activation attribution');
@@ -46,7 +46,7 @@ try{
   await run('sudo',['-n','install','-m','644',candidate,filename]);
   try{await run('sudo',['-n','nginx','-t']);await run('sudo',['-n','systemctl','reload','nginx']);}
   catch(error){await writeFile(candidate,before,{mode:0o600});await run('sudo',['-n','install','-m','644',candidate,filename]);throw error;}
-  const snapshot=text=>({exists:true,text,sha256:createHash('sha256').update(text).digest('hex')});
+  const snapshot=(text: any)=>({exists:true,text,sha256:createHash('sha256').update(text).digest('hex')});
   const record={version:1,jobId,deviceId:'device_c70716a1-23a5-494d-8cd9-eb7401d95539',path:filename,before:snapshot(before),after:snapshot(await readFile(filename,'utf8'))};
   const previous=await readFile(manifest,'utf8');
   await writeFile(manifest+'.activation',previous+JSON.stringify(record)+'\n',{mode:0o600});await rename(manifest+'.activation',manifest);

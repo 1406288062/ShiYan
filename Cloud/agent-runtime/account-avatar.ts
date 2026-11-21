@@ -9,15 +9,15 @@ const MAX_BASE64 = 4 * Math.ceil(MAX_BYTES / 3);
 const MAX_BODY = MAX_BASE64 + 2048;
 const imageScript = fileURLToPath(new URL('./avatar-image.py', import.meta.url));
 const stateForStore = new WeakMap();
-const failure = (message, status = 400) => Object.assign(new Error(message), { status });
-const json = (res, status, value) => {
+const failure = (message: any, status = 400) => Object.assign(new Error(message), { status });
+const json = (res: any, status: any, value: any) => {
   const bytes = Buffer.from(JSON.stringify(value));
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': bytes.length,
     'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
   res.end(bytes);
 };
 
-function stateFor(accounts) {
+function stateFor(accounts: any) {
   if (!stateForStore.has(accounts)) {
     accounts.db.exec(`CREATE TABLE IF NOT EXISTS account_avatars (
       user_id TEXT PRIMARY KEY REFERENCES account_users(id),
@@ -28,13 +28,13 @@ function stateFor(accounts) {
   return stateForStore.get(accounts);
 }
 
-function snapshot(accounts, userId) {
+function snapshot(accounts: any, userId: any) {
   const row = accounts.db.prepare('SELECT data,revision,updated_at FROM account_avatars WHERE user_id=?').get(userId);
   return { ok: true, avatar: { data: row?.data ?? null, mimeType: 'image/jpeg',
     revision: Number(row?.revision ?? 0), updatedAt: row ? Number(row.updated_at) : null } };
 }
 
-async function body(req) {
+async function body(req: any) {
   if (Number(req.headers['content-length']) > MAX_BODY) throw failure('头像图片过大，请重新选择', 413);
   const chunks: Buffer[] = []; let size = 0;
   for await (const chunk of req) {
@@ -53,7 +53,7 @@ async function body(req) {
   } catch { throw failure('头像请求格式无效'); }
 }
 
-function decode(input) {
+function decode(input: any) {
   if (typeof input !== 'string' || !input || input.length > MAX_BASE64)
     throw failure(input?.length > MAX_BASE64 ? '头像图片过大，请重新选择' : '头像数据无效', input?.length > MAX_BASE64 ? 413 : 400);
   if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(input))
@@ -65,7 +65,7 @@ function decode(input) {
 }
 
 let decoding = 0;
-export async function normalizeAvatarImage(bytes) {
+export async function normalizeAvatarImage(bytes: any) {
   if (decoding >= 2) throw failure('头像更新较多，请稍后再试', 429);
   decoding++;
   try {
@@ -74,7 +74,7 @@ export async function normalizeAvatarImage(bytes) {
       const output: Buffer[] = []; let length = 0, complete = false;
       const timer = setTimeout(() => { child.kill('SIGKILL'); finish(failure('头像处理超时，请重新选择', 422)); }, 8000);
       timer.unref();
-      function finish(error) {
+      function finish(error: any) {
         if (complete) return;
         complete = true; clearTimeout(timer);
         if (error) reject(error); else resolve(Buffer.concat(output).toString('base64'));
@@ -94,7 +94,7 @@ export async function normalizeAvatarImage(bytes) {
 
 interface AccountAvatarHandlerOptions { store?: any; heartbeatMs?: number; normalizeImage?: (bytes: any) => Promise<unknown>; }
 export function createAccountAvatarHandler({ store, heartbeatMs = 15000, normalizeImage = normalizeAvatarImage }: AccountAvatarHandlerOptions = {}) {
-  return async function handleAccountAvatar(req, res) {
+  return async function handleAccountAvatar(req: any, res: any) {
     const pathname = new URL(req.url || '/', 'http://localhost').pathname.replace(/^\/shiyan(?=\/)/, '');
     if (pathname !== '/v1/account/avatar' && pathname !== '/v1/account/avatar/events') return false;
     const accounts = store || getAccountStore();
@@ -110,7 +110,7 @@ export function createAccountAvatarHandler({ store, heartbeatMs = 15000, normali
         res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store',
           'X-Accel-Buffering': 'no', 'X-Content-Type-Options': 'nosniff', Connection: 'keep-alive' });
         res.flushHeaders();
-        let closed = false, timer;
+        let closed = false, timer: any;
         const close = () => {
           if (closed) return;
           closed = true; clearInterval(timer); listeners.delete(send);
@@ -121,7 +121,7 @@ export function createAccountAvatarHandler({ store, heartbeatMs = 15000, normali
           try { return !accounts.closed && accounts.authenticate(token)?.userId === userId; }
           catch { return false; }
         };
-        const send = payload => {
+        const send = (payload: any) => {
           if (closed || res.destroyed || !authorized()) { close(); return; }
           const frame = `id: ${payload.avatar.revision}\nevent: avatar\ndata: ${JSON.stringify(payload)}\n\n`;
           if (res.writableLength + Buffer.byteLength(frame) > MAX_BODY * 2) { close(); return; }

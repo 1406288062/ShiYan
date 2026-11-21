@@ -10,7 +10,7 @@ import { writeFileSync, mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-const run = (mapper, messages) => messages.flatMap(m => mapper.map(m));
+const run = (mapper: any, messages: any) => messages.flatMap((m: any) => mapper.map(m));
 
 test('Claude 流式文本与完整消息使用同一 item id', () => {
   const events = run(createClaudeEventMapper(), [
@@ -22,9 +22,9 @@ test('Claude 流式文本与完整消息使用同一 item id', () => {
     { type: 'assistant', parent_tool_use_id: null, message: { id: 'm1', content: [{ type: 'text', text: '你好，世界' }] } },
   ]);
   assert.deepEqual(events[0], { type: 'thread.started', thread_id: 'sess-1' });
-  const updates = events.filter(e => e.type === 'item.updated');
+  const updates = events.filter((e: any) => e.type === 'item.updated');
   assert.equal(updates.at(-1).item.text, '你好，世界');
-  const done = events.find(e => e.type === 'item.completed');
+  const done = events.find((e: any) => e.type === 'item.completed');
   assert.equal(done.item.id, updates[0].item.id);
   assert.equal(done.item.type, 'agent_message');
 });
@@ -36,9 +36,9 @@ test('同一条 API 消息拆成多个 SDK 消息时 id 不冲突', () => {
     { type: 'user', parent_tool_use_id: null, message: { content: [{ type: 'tool_result', tool_use_id: 'tu1', content: 'a.txt' }] } },
     { type: 'assistant', parent_tool_use_id: null, message: { id: 'm2', content: [{ type: 'text', text: '完成' }] } },
   ]);
-  const texts = events.filter(e => e.item?.type === 'agent_message');
-  assert.equal(new Set(texts.map(e => e.item.id)).size, 2);
-  const cmd = events.filter(e => e.item?.type === 'command_execution');
+  const texts = events.filter((e: any) => e.item?.type === 'agent_message');
+  assert.equal(new Set(texts.map((e: any) => e.item.id)).size, 2);
+  const cmd = events.filter((e: any) => e.item?.type === 'command_execution');
   assert.equal(cmd[0].type, 'item.started'); assert.equal(cmd[0].item.command, 'ls');
   assert.equal(cmd[1].item.status, 'completed'); assert.equal(cmd[1].item.aggregated_output, 'a.txt'); assert.equal(cmd[1].item.exit_code, 0);
 });
@@ -56,7 +56,7 @@ test('工具类型映射：文件、待办、MCP 图片结果、失败', () => {
       { type: 'tool_result', tool_use_id: 'g', is_error: true, content: 'boom' },
     ] } },
   ]);
-  const byId = id => events.filter(e => e.item?.id === id);
+  const byId = (id: any) => events.filter((e: any) => e.item?.id === id);
   assert.deepEqual(byId('w')[0].item.changes, [{ path: '/tmp/x.md', kind: 'add' }]);
   assert.deepEqual(byId('t')[0].item.items, [{ text: '一', completed: true }, { text: '二', completed: false }]);
   const q = byId('q').at(-1).item;
@@ -73,9 +73,9 @@ test('普通账号沙箱工具按终端/工作区展示', () => {
       { type: 'tool_use', id: 'r', name: 'mcp__workspace__read_file', input: { path: '/workspace/a' } }] } },
     { type: 'user', parent_tool_use_id: null, message: { content: [{ type: 'tool_result', tool_use_id: 'e', content: JSON.stringify({ stdout: '/workspace\n', stderr: '', exitCode: 0 }) }] } },
   ]);
-  const e = events.filter(x => x.item?.id === 'e').at(-1).item;
+  const e = events.filter((x: any) => x.item?.id === 'e').at(-1).item;
   assert.equal(e.type, 'command_execution'); assert.equal(e.aggregated_output, '/workspace\n');
-  assert.equal(events.find(x => x.item?.id === 'r').item.server, 'workspace');
+  assert.equal(events.find((x: any) => x.item?.id === 'r').item.server, 'workspace');
 });
 
 test('结果消息：成功用量换算、失败、未完成工具标记中断、之后忽略', () => {
@@ -141,7 +141,7 @@ test('统一 MCP 描述：secretEnv 只进环境', () => {
   assert.deepEqual(claudeMcpConfig(spec), { 'shiyan-input': { type: 'stdio', command: 'node', args: ['x.mjs'], env: { JOB: '1', TOKEN: 's' } } });
   const codex = codexMcpConfig(spec);
   assert.deepEqual(codex.secret, { TOKEN: 's' });
-  assert.deepEqual(codex.servers['shiyan-input'], { command: 'node', args: ['x.mjs'], env: { JOB: '1' }, env_vars: ['TOKEN'], tool_timeout_sec: 7200 });
+  assert.deepEqual((codex.servers as any)['shiyan-input'], { command: 'node', args: ['x.mjs'], env: { JOB: '1' }, env_vars: ['TOKEN'], tool_timeout_sec: 7200 });
 });
 
 test('对话记录：追加、截取、编辑分支保留', () => {
@@ -165,13 +165,13 @@ test('认证配置检测与 env 文件解析', () => {
 
 test('streamClaude：输入流保持到 result，并输出统一事件', async () => {
   let closedBeforeResult: any = null, captured;
-  const fakeSdk = async () => ({ query({ prompt, options }) {
+  const fakeSdk = async () => ({ query({ prompt, options }: any) {
     captured = options;
     return (async function* () {
       const it = prompt[Symbol.asyncIterator]();
       const first = await it.next();
       assert.equal(first.value.message.content[0].text, 'hi');
-      let ended = false; it.next().then(r => { ended = r.done; });
+      let ended = false; it.next().then((r: any) => { ended = r.done; });
       yield { type: 'system', subtype: 'init', session_id: 'S' };
       yield { type: 'assistant', parent_tool_use_id: null, message: { id: 'm', content: [{ type: 'text', text: 'ok' }] } };
       await new Promise(r => setTimeout(r, 10)); closedBeforeResult = ended;
@@ -181,7 +181,7 @@ test('streamClaude：输入流保持到 result，并输出统一事件', async (
   const events: any[] = [];
   for await (const e of streamClaude({ content: [{ type: 'text', text: 'hi' }], options: { model: 'm' }, sdk: fakeSdk })) events.push(e);
   assert.equal(closedBeforeResult, false);
-  assert.ok(captured.abortController instanceof AbortController);
+  assert.ok(captured!.abortController instanceof AbortController);
   assert.deepEqual(events.map(e => e.type), ['thread.started', 'item.completed', 'turn.completed']);
 });
 

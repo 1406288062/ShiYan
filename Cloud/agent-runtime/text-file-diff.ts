@@ -7,7 +7,7 @@ import { promisify } from 'node:util';
 const exec = promisify(execFile);
 
 // Undefined denotes an absent file; an existing empty file remains distinct.
-export async function textFileChange(filename, before, after) {
+export async function textFileChange(filename: any, before: any, after: any) {
   if (before === after) return null;
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'shiyan-diff-'));
   try {

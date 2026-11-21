@@ -8,9 +8,9 @@ import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 
 const unavailable = () => Object.assign(new Error('对话服务暂不可用，请稍后重试'), { status: 503 });
-const textPart = text => ({ type: 'input_text', text });
+const textPart = (text: any) => ({ type: 'input_text', text });
 interface MemberRequestOptions { history?: any[]; memory?: string; }
-export function memberRequest(job, { history = [], memory = '' }: MemberRequestOptions = {}) {
+export function memberRequest(job: any, { history = [], memory = '' }: MemberRequestOptions = {}) {
   const input: any[] = [];
   if (memory) input.push({ role: 'user', content: [textPart(memory)] });
   for (const item of history.slice(-40)) {
@@ -19,7 +19,7 @@ export function memberRequest(job, { history = [], memory = '' }: MemberRequestO
   }
   const content: any[] = [textPart(job.prompt || '请查看附件。')];
   for (const image of job.uploads || []) {
-    const mime = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp' }[image.suffix];
+    const mime = ({ '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp' } as any)[image.suffix];
     if (!mime || typeof image.data !== 'string') throw new Error('图片格式无效');
     content.push({ type: 'input_image', image_url: `data:${mime};base64,${image.data}` });
   }
@@ -58,18 +58,18 @@ export async function memberProvider() {
   };
 }
 
-let refreshing;
+let refreshing: any;
 export function refreshMemberProvider() {
   if(refreshing)return refreshing;
   // Auth control messages only: no thread or model turn is started here.
   refreshing=new Promise<void>((resolve,reject)=>{
-    const env={};for(const key of ['HOME','PATH','USER','LANG','CODEX_HOME','HTTPS_PROXY','HTTP_PROXY','ALL_PROXY','NO_PROXY','SSL_CERT_FILE','SSL_CERT_DIR'])if(process.env[key]!==undefined)env[key]=process.env[key];
+    const env={};for(const key of ['HOME','PATH','USER','LANG','CODEX_HOME','HTTPS_PROXY','HTTP_PROXY','ALL_PROXY','NO_PROXY','SSL_CERT_FILE','SSL_CERT_DIR'])if(process.env[key]!==undefined)(env as any)[key]=process.env[key];
     const child=spawn('/home/ubuntu/.local/bin/codex',['app-server','--listen','stdio://'],{env,stdio:['pipe','pipe','ignore']});
     const lines=createInterface({input:child.stdout});let settled=false;
-    const finish=error=>{if(settled)return;settled=true;clearTimeout(timer);lines.close();child.kill();error?reject(unavailable()):resolve();};
+    const finish=(error: any)=>{if(settled)return;settled=true;clearTimeout(timer);lines.close();child.kill();error?reject(unavailable()):resolve();};
     const timer=setTimeout(()=>finish(true),15000);timer.unref();
     child.on('error',()=>finish(true));child.on('exit',()=>finish(true));child.stdin.on('error',()=>finish(true));
-    const send=message=>{if(!settled)child.stdin.write(JSON.stringify(message)+'\n');};
+    const send=(message: any)=>{if(!settled)child.stdin.write(JSON.stringify(message)+'\n');};
     lines.on('line',line=>{let message;try{message=JSON.parse(line);}catch{return;}
       if(message.id===1){if(message.error)return finish(true);send({method:'initialized'});send({id:2,method:'account/read',params:{refreshToken:true}});}
       if(message.id===2)finish(Boolean(message.error)||!message.result?.account);
@@ -80,7 +80,7 @@ export function refreshMemberProvider() {
 }
 
 interface RunMemberChatOptions { history?: any[]; memory?: string; schema?: any; signal?: AbortSignal; onText?: (text: string) => void; onActivity?: () => void; fetchImpl?: any; getProvider?: any; refreshProvider?: any; }
-export async function runMemberChat(job, { history, memory, schema, signal, onText = () => {}, onActivity = () => {}, fetchImpl = fetch, getProvider = memberProvider, refreshProvider = refreshMemberProvider }: RunMemberChatOptions = {}) {
+export async function runMemberChat(job: any, { history, memory, schema, signal, onText = () => {}, onActivity = () => {}, fetchImpl = fetch, getProvider = memberProvider, refreshProvider = refreshMemberProvider }: RunMemberChatOptions = {}) {
   const request: any = memberRequest(job, { history, memory });
   if(schema)request.text={format:{type:'json_schema',name:'shiyan_result',strict:true,schema}};
   let response;
@@ -92,7 +92,7 @@ export async function runMemberChat(job, { history, memory, schema, signal, onTe
   if (!response.ok || !response.body) throw unavailable();
   let buffer = '', text = '', completed = false, usage = null, count = 0;
   const decoder = new TextDecoder();
-  function consume(line) {
+  function consume(line: any) {
     if (!line.startsWith('data: ') || line.slice(6) === '[DONE]') return;
     let event;
     try { event = JSON.parse(line.slice(6)); } catch { throw unavailable(); }

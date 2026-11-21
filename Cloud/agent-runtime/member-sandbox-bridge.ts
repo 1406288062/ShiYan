@@ -4,17 +4,17 @@ import net from 'node:net';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
-const tunnels = new Map(); let next = 0, processControl;
-const send = value => { try { fs.writeSync(3, JSON.stringify(value) + '\n'); } catch {} };
+const tunnels = new Map(); let next = 0, processControl: any;
+const send = (value: any) => { try { fs.writeSync(3, JSON.stringify(value) + '\n'); } catch {} };
 const lines = createInterface({ input: new net.Socket({ fd: 4, readable: true, writable: false }) });
 lines.on('line', line => { let m; try { m=JSON.parse(line); } catch { return; } if(m.type==='resize'){processControl?.write(JSON.stringify({cols:m.cols,rows:m.rows})+'\n');return;} const state=tunnels.get(m.id); if(!state)return;
   if(m.type==='open'){state.open=true;state.ready?.();}
   if(m.type==='data')state.socket.write(Buffer.from(m.data,'base64'));
   if(m.type==='close'){state.socket.destroy();tunnels.delete(m.id);}
 });
-function tunnel(socket, host, port, ready, initial) {
+function tunnel(socket: any, host: any, port: any, ready: any, initial: any) {
   const id=String(++next);const state={socket,ready,open:false};tunnels.set(id,state);
-  socket.on('data',data=>send({type:'data',id,data:data.toString('base64')}));
+  socket.on('data',(data: any)=>send({type:'data',id,data:data.toString('base64')}));
   socket.on('error',()=>{});socket.on('close',()=>{send({type:'close',id});tunnels.delete(id);});
   send({type:'connect',id,host,port});if(initial?.length)send({type:'data',id,data:initial.toString('base64')});
 }
@@ -23,7 +23,7 @@ const proxy=http.createServer((req,res)=>{
   if(target.protocol!=='http:'||target.username||target.password){res.writeHead(403).end();return;}
   // The HTTP response itself is relayed, so take ownership of the socket.
   const socket=req.socket;req.pause();
-  const headers={...req.headers,host:target.host,connection:'close'};delete headers['proxy-connection'];delete headers['proxy-authorization'];
+  const headers={...req.headers,host:target.host,connection:'close'};delete (headers as any)['proxy-connection'];delete headers['proxy-authorization'];
   const head=`${req.method} ${target.pathname}${target.search} HTTP/1.1\r\n`+Object.entries(headers).map(([k,v])=>`${k}: ${v}`).join('\r\n')+'\r\n\r\n';
   const chunks: any[]=[];req.on('data',d=>chunks.push(d));req.on('end',()=>tunnel(socket,target.hostname,Number(target.port||80),null,Buffer.concat([Buffer.from(head),...chunks])));req.resume();
 });
@@ -77,7 +77,7 @@ except ChildProcessError: pass
   // Bound persistent storage even for shell writes bypassing the file API.
   // This is an execution watchdog; filesystem hard quotas are separate.
   let scanning=false;
-  async function storageUsage(){let size=0,count=0;async function visit(dir){let entries;try{entries=await fs.promises.opendir(dir);}catch{return;}for await(const entry of entries){const file=dir+'/'+entry.name;try{const st=await fs.promises.lstat(file);if(st.isSymbolicLink())continue;count++;size+=st.size;if(size>2147483648||count>100000)throw new Error('quota');if(st.isDirectory())await visit(file);}catch(error){if((error as any).message==='quota')throw error;}}}await visit('/workspace');await visit('/home/member');}
+  async function storageUsage(){let size=0,count=0;async function visit(dir: any){let entries;try{entries=await fs.promises.opendir(dir);}catch{return;}for await(const entry of entries){const file=dir+'/'+entry.name;try{const st=await fs.promises.lstat(file);if(st.isSymbolicLink())continue;count++;size+=st.size;if(size>2147483648||count>100000)throw new Error('quota');if(st.isDirectory())await visit(file);}catch(error){if((error as any).message==='quota')throw error;}}}await visit('/workspace');await visit('/home/member');}
   const quota=setInterval(async()=>{if(scanning)return;scanning=true;try{await storageUsage();}catch{process.stderr.write('隔离工作区超过存储配额，请清理文件后重试。\n');child.kill('SIGKILL');process.exit(122);}finally{scanning=false;}},500);quota.unref();
   child.on('error',()=>process.exit(126));child.on('exit',(code,signal)=>{send({type:'exit'});process.exit(code??(signal?128:1));});
   process.on('SIGTERM',()=>{child.kill('SIGTERM');setTimeout(()=>process.exit(143),1000).unref();});

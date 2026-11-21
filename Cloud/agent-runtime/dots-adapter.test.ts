@@ -13,12 +13,12 @@ import { createDotsSidecar } from './dots-sidecar.ts';
 const OWNER='shiyan-private-owner';
 const input=(extra={})=>({requestId:'create-one',conversationId:'conversation-one',title:'Fixture goal',instruction:'Fixture instruction',runNow:false,host:'shiyan_desktop',...extra});
 const failure=()=>Object.assign(new Error('fixture lost reply'),{status:503,code:'runtime_unavailable'});
-function signature(secret,body,eventId='evt_fixture',stamp=String(Math.floor(Date.now()/1000))){return {'webhook-id':eventId,'webhook-timestamp':stamp,'webhook-signature':'v1,'+createHmac('sha256',Buffer.from(secret.slice(6),'base64')).update(eventId+'.'+stamp+'.').update(body).digest('base64')};}
+function signature(secret: any,body: any,eventId='evt_fixture',stamp=String(Math.floor(Date.now()/1000))){return {'webhook-id':eventId,'webhook-timestamp':stamp,'webhook-signature':'v1,'+createHmac('sha256',Buffer.from(secret.slice(6),'base64')).update(eventId+'.'+stamp+'.').update(body).digest('base64')};}
 
 interface FixtureOptions { existing?: any[]; callbackURL?: string; importPrivateGoals?: boolean; }
-function fixture(t,{existing=[],callbackURL='',importPrivateGoals=false}: FixtureOptions={}){
+function fixture(t: any,{existing=[],callbackURL='',importPrivateGoals=false}: FixtureOptions={}){
   const root=mkdtempSync(path.join(os.tmpdir(),'shiyan-dots-fixture-'));const store=new DotsStore(root);const calls: any[]=[],goals=new Map(existing.map(g=>[g.id,g])),receipts=new Map(),events=new Map(),outputs=new Map(),notifications=new Map();let next=100,loseCreate=false,loseInstruct=false,loseControl=false,loseAck=false;
-  const client={forOwner(value){return client;},async rpc(method,params){calls.push({method,params});if(method==='ping')return {};if(method==='events/subscribe'){const raw=Buffer.from(JSON.stringify({type:'verification',challenge:'fixture-challenge'}));const verified=await adapter.webhook(signature(params.delivery.secret,raw,'msg_verify_fixture'),raw);assert.equal(verified.challenge,'fixture-challenge');return {id:'sub_fixture_'+params.arguments.goal_id,refreshBefore:new Date(Date.now()+7*86400000).toISOString()};}throw new Error('unknown fixture rpc');},async tool(name,args){
+  const client={forOwner(value: any){return client;},async rpc(method: any,params: any){calls.push({method,params});if(method==='ping')return {};if(method==='events/subscribe'){const raw=Buffer.from(JSON.stringify({type:'verification',challenge:'fixture-challenge'}));const verified=await adapter.webhook(signature(params.delivery.secret,raw,'msg_verify_fixture'),raw);assert.equal(verified.challenge,'fixture-challenge');return {id:'sub_fixture_'+params.arguments.goal_id,refreshBefore:new Date(Date.now()+7*86400000).toISOString()};}throw new Error('unknown fixture rpc');},async tool(name: any,args: any){
     calls.push({name,args});
     if(name==='dots_list_goals')return {ok:true,goals:[...goals.values()].sort((a,b)=>b.id-a.id)};
     if(name==='dots_create_goal'){
@@ -32,17 +32,17 @@ function fixture(t,{existing=[],callbackURL='',importPrivateGoals=false}: Fixtur
       if(receipts.has(args.request_id))return receipts.get(args.request_id).response;
       const added={id:10,goal_id:goal.id,type:'user_instruction',payload:args.message,created_at:1001,consumed_at:null};events.set(goal.id,[...(events.get(goal.id)||[]),added]);const response={ok:true,goal};receipts.set(args.request_id,{operation:'goal:instruct:'+goal.id,goal_id:goal.id,response});if(loseInstruct){loseInstruct=false;throw failure();}return response;
     }
-    if(name==='dots_control_goal'){goal.status={pause:'paused',resume:'active',cancel:'cancelled',wake:'active'}[args.action];if(loseControl){loseControl=false;throw failure();}return {ok:true,goal};}
-    if(name==='dots_list_approvals')return {ok:true,approvals:(goal?.approvals||[]).filter(a=>a.status==='pending')};
+    if(name==='dots_control_goal'){goal.status=({pause:'paused',resume:'active',cancel:'cancelled',wake:'active'} as any)[args.action];if(loseControl){loseControl=false;throw failure();}return {ok:true,goal};}
+    if(name==='dots_list_approvals')return {ok:true,approvals:(goal?.approvals||[]).filter((a: any)=>a.status==='pending')};
     if(name==='dots_decide_approval'){const approval=[...goals.values()].flatMap(g=>g.approvals||[]).find(a=>a.id===args.approval_id);assert.equal(args.decision==='approve'?args.confirmed_command:approval.command,approval.command);approval.status=args.decision==='approve'?'approved':'rejected';return {ok:true};}
-    if(name==='dots_get_timeline')return {timeline:(goal.timeline||[]).filter(e=>(e as any).id>args.after_id),next_cursor:goal.timeline?.at(-1)?.id||args.after_id,has_more:false};
+    if(name==='dots_get_timeline')return {timeline:(goal.timeline||[]).filter((e: any)=>(e as any).id>args.after_id),next_cursor:goal.timeline?.at(-1)?.id||args.after_id,has_more:false};
     if(name==='dots_list_outputs')return {outputs:[...outputs.values()].filter(o=>o.goal_id===args.goal_id)};
     if(name==='dots_read_output')return {output:outputs.get(args.output_id)};
-    if(name==='dots_list_notifications'){const rows=(notifications.get(args.goal_id)||[]).filter(n=>n.id>args.after_id);return {notifications:rows,next_cursor:rows.at(-1)?.id??args.after_id,has_more:false};}
+    if(name==='dots_list_notifications'){const rows=(notifications.get(args.goal_id)||[]).filter((n: any)=>n.id>args.after_id);return {notifications:rows,next_cursor:rows.at(-1)?.id??args.after_id,has_more:false};}
     if(name==='dots_ack_notifications'){assert.ok(store.db.prepare('SELECT seq FROM dots_events WHERE type=\'notification\' AND json_extract(payload,\'$.notification_id\')=?').get(args.notification_id),'ACK must follow durable notification');if(loseAck){loseAck=false;throw failure();}return {ok:true};}
     throw new Error('unknown fixture tool '+name);
   }};
-  const eventReader={read(id){return events.get(id)||[];},request(id){return receipts.get(id);},close(){}};
+  const eventReader={read(id: any){return events.get(id)||[];},request(id: any){return receipts.get(id);},close(){}};
   const adapter=new DotsAdapter({root,store,client,eventReader,callbackURL,importPrivateGoals,recoverIntervalMs:0,subscriptionRefreshMs:0});
   t.after(()=>{adapter.close();rmSync(root,{recursive:true,force:true});});
   return {root,store,adapter,client,eventReader,calls,goals,receipts,events,outputs,notifications,loseCreate(){loseCreate=true;},loseInstruct(){loseInstruct=true;},loseControl(){loseControl=true;},loseAck(){loseAck=true;}};

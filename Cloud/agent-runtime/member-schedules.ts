@@ -1,10 +1,10 @@
 import { createHash } from 'node:crypto';
 import { nextScheduleRun } from './dots-schedules.ts';
 
-const hash = value => createHash('sha256').update(value).digest('hex');
-const uuid = value => { const s = hash(value).slice(0, 32); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
-export const memberExecution = auth => auth?.role === 'user' || auth?.serverAccess === false;
-export function nextMemberRun(schedule, after = Date.now()) {
+const hash = (value: any) => createHash('sha256').update(value).digest('hex');
+const uuid = (value: any) => { const s = hash(value).slice(0, 32); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+export const memberExecution = (auth: any) => auth?.role === 'user' || auth?.serverAccess === false;
+export function nextMemberRun(schedule: any, after = Date.now()) {
   if (!schedule.enabled) return null;
   if (schedule.repeat !== 'hourly') { const value = nextScheduleRun(schedule, after); return value === null ? null : new Date(value).toISOString(); }
   const minute = Number(schedule.time.split(':')[1]);
@@ -19,7 +19,7 @@ export function nextMemberRun(schedule, after = Date.now()) {
   }
   return null;
 }
-export function prepareMemberSchedule(current, data, auth, now = Date.now()) {
+export function prepareMemberSchedule(current: any, data: any, auth: any, now = Date.now()) {
   const result = { ...data, runLocally: false, executionMode: 'isolated', executorDeviceId: 'isolated', source: 'server',
     createdAt: current.createdAt || new Date(now).toISOString(), updatedAt: new Date(now).toISOString() };
   // Clients configure schedules, but cannot forge execution results or claim another host.
@@ -42,13 +42,13 @@ export class MemberScheduleWorker {
   now: () => number;
   running: boolean;
   timer: any;
-  constructor(store, { submit, access, jobStatus = () => null, now = Date.now, pollMs = 15000 }: MemberScheduleWorkerOptions = {}) {
+  constructor(store: any, { submit, access, jobStatus = () => null, now = Date.now, pollMs = 15000 }: MemberScheduleWorkerOptions = {}) {
     this.store = store; this.submit = submit; this.access = access; this.jobStatus = jobStatus; this.now = now; this.running = false;
     store.db.exec(`CREATE TABLE IF NOT EXISTS member_schedule_runs(owner TEXT NOT NULL,task_id TEXT NOT NULL,due_at TEXT NOT NULL,request_id TEXT NOT NULL,job_id TEXT,state TEXT NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(owner,task_id,due_at));`);
     this.timer = pollMs > 0 ? setInterval(() => void this.tick().catch(() => {}), pollMs) : null; this.timer?.unref();
   }
   close() { clearInterval(this.timer); }
-  async submitTask(owner, task, requestId, prompt = task.instruction, due = 'manual:' + requestId) {
+  async submitTask(owner: any, task: any, requestId: any, prompt = task.instruction, due = 'manual:' + requestId) {
     const conversationId = task.newChatEachRun ? uuid(owner + ':' + requestId) : task.conversationId || uuid(owner + ':' + task.id);
     const job = await this.submit({ requestId, conversationId, syncConversationId: conversationId, projectId: task.projectId,
       userMessageId: uuid(owner + ':' + requestId + ':user'), assistantMessageId: uuid(owner + ':' + requestId + ':assistant'),
@@ -56,16 +56,16 @@ export class MemberScheduleWorker {
     this.store.db.prepare("INSERT INTO member_schedule_runs VALUES(?,?,?,?,?,'running',?) ON CONFLICT(owner,task_id,due_at) DO UPDATE SET job_id=excluded.job_id,state='running'").run(owner, task.id, due, requestId, job.id, this.now());
     return { job, conversationId };
   }
-  async handle(req, res, auth, readBody) {
+  async handle(req: any, res: any, auth: any, readBody: any) {
     const url = new URL(req.url, 'http://localhost');
     const match = url.pathname.match(/^\/(?:shiyan\/)?v1\/workspace\/schedules\/([A-Za-z0-9_-]{8,120})\/(control|messages|conversation)$/);
     if (!match) return false;
     const row = this.store.get(auth.owner, 'scheduledTasks', match[1]);
     if (!row || row.deleted || row.data.executionMode !== 'isolated') throw Object.assign(new Error('定时任务不存在'), { status: 404 });
-    const reply = value => { const bytes = Buffer.from(JSON.stringify({ ok: true, ...value })); res.writeHead(200, { 'Content-Type': 'application/json', 'Content-Length': bytes.length, 'Cache-Control': 'no-store' }); res.end(bytes); return true; };
+    const reply = (value: any) => { const bytes = Buffer.from(JSON.stringify({ ok: true, ...value })); res.writeHead(200, { 'Content-Type': 'application/json', 'Content-Length': bytes.length, 'Cache-Control': 'no-store' }); res.end(bytes); return true; };
     if (req.method === 'GET' && match[2] === 'conversation') {
       const conversationId = row.data.conversationId;
-      const messages = conversationId ? this.store.db.prepare("SELECT data FROM sync_entities WHERE owner=? AND kind='messages' AND deleted=0 AND json_extract(data,'$.conversationId')=? ORDER BY json_extract(data,'$.createdAt')").all(auth.owner, conversationId).map(r => JSON.parse(r.data)) : [];
+      const messages = conversationId ? this.store.db.prepare("SELECT data FROM sync_entities WHERE owner=? AND kind='messages' AND deleted=0 AND json_extract(data,'$.conversationId')=? ORDER BY json_extract(data,'$.createdAt')").all(auth.owner, conversationId).map((r: any) => JSON.parse(r.data)) : [];
       return reply({ conversationId: conversationId || null, conversation: conversationId ? this.store.get(auth.owner, 'conversations', conversationId)?.data || { id: conversationId, title: row.data.title } : null, messages });
     }
     if (req.method !== 'POST' || !['control', 'messages'].includes(match[2])) throw Object.assign(new Error('定时任务操作无效'), { status: 405 });

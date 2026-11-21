@@ -13,9 +13,9 @@ import { combinedRuntimeState } from './runtime-state.ts';
 
 const ROOT=process.env.SHIYAN_ROOT||'/home/ubuntu/boss-codex-service/shiyan-v2';
 const PORT=Number(process.env.SHIYAN_SYNC_PORT||4324);
-const fail=(message,status=400)=>Object.assign(new Error(message),{status});
-const json=(res,status,value)=>{const data=JSON.stringify(value);res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Content-Length':Buffer.byteLength(data)});res.end(data);};
-async function body(req,max){let total=0;const chunks: Buffer[]=[];for await(const chunk of req){total+=chunk.length;if(total>max)throw fail('上传内容过大',413);chunks.push(chunk);}const data=Buffer.concat(chunks);if(digest(data)!==req.headers['x-shiyan-body-sha'])throw fail('请求校验失败',401);try{return JSON.parse(data.toString()||'{}');}catch{throw fail('请求格式无效');}}
+const fail=(message: any,status=400)=>Object.assign(new Error(message),{status});
+const json=(res: any,status: any,value: any)=>{const data=JSON.stringify(value);res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Content-Length':Buffer.byteLength(data)});res.end(data);};
+async function body(req: any,max: any){let total=0;const chunks: Buffer[]=[];for await(const chunk of req){total+=chunk.length;if(total>max)throw fail('上传内容过大',413);chunks.push(chunk);}const data=Buffer.concat(chunks);if(digest(data)!==req.headers['x-shiyan-body-sha'])throw fail('请求校验失败',401);try{return JSON.parse(data.toString()||'{}');}catch{throw fail('请求格式无效');}}
 
 export function createSyncSidecar({root=ROOT,authenticate=authenticateDevice,store=new SyncStore(path.join(root,'data')),runtimeWrites=process.env.SHIYAN_SYNC_RUNTIME_WRITES==='1'}={}){
   let state: any={jobs:{},conversations:{},assets:{},requests:{}},version='';
@@ -45,9 +45,9 @@ export function createSyncSidecar({root=ROOT,authenticate=authenticateDevice,sto
       const mobile=auth.platform==='ios'||req.headers['x-shiyan-sync-profile']==='mobile';
       // A compact desktop response must keep macOS execution authorization.
       const compact=mobile||req.headers['x-shiyan-sync-profile']==='compact';
-      const projectChange=change=>{const resolved=resolvePaths(reconcileSyncImageResult(change,owner,store),owner);return compact?mobileSyncChange(resolved):resolved;};
-      const fullProject=async change=>{const resolved=await supplementChanges(resolvePaths(reconcileSyncImageResult(change,owner,store),owner),owner);return compact?mobileSyncChange(resolved):resolved;};
-      const project=async response=>{
+      const projectChange=(change: any)=>{const resolved=resolvePaths(reconcileSyncImageResult(change,owner,store),owner);return compact?mobileSyncChange(resolved):resolved;};
+      const fullProject=async (change: any)=>{const resolved=await supplementChanges(resolvePaths(reconcileSyncImageResult(change,owner,store),owner),owner);return compact?mobileSyncChange(resolved):resolved;};
+      const project=async (response: any)=>{
         const changes: any[]=[];
         for(const change of response.changes)changes.push(await fullProject(change));
         const conflicts: any[]=[];
@@ -56,8 +56,8 @@ export function createSyncSidecar({root=ROOT,authenticate=authenticateDevice,sto
       };
       // Explicit evidence can increase an otherwise small page. Keep its actual
       // delivery size bounded and advance only over rows that were delivered.
-      const projectPage=async(response,after)=>{
-        const candidates=new Map(response.changes.map(change=>[change.kind+':'+change.id,change]));
+      const projectPage=async(response: any,after: any)=>{
+        const candidates=new Map(response.changes.map((change: any)=>[change.kind+':'+change.id,change]));
         const selected=new Map();let bytes=0,consumed=0,cursor=Number(after||0);
         for(const entry of response.order){
           const key=entry.kind+':'+entry.id,change=candidates.get(key);
@@ -105,9 +105,9 @@ export function createSyncSidecar({root=ROOT,authenticate=authenticateDevice,sto
         if(!Number.isSafeInteger(after)||after<0||!Number.isSafeInteger(limit)||limit<1||limit>500)throw fail('同步游标无效');
         // Validate original identity before any hydration/archive work. apply()
         // checks again in its transaction, including races with another writer.
-        const replayed=new Set(input.mutations.filter(mutation=>store.hasMutation(owner,mutation)));
+        const replayed=new Set(input.mutations.filter((mutation: any)=>store.hasMutation(owner,mutation)));
         const unresolved: any[]=[];
-        let mutations=input.mutations.map(original=>{
+        let mutations=input.mutations.map((original: any)=>{
           if(replayed.has(original))return original;
           const compactMutation=hydrateCompactMutation(original,owner,store);
           if(!runtimeWrites)return compactMutation;
@@ -137,7 +137,7 @@ export function createSyncSidecar({root=ROOT,authenticate=authenticateDevice,sto
             }
           }
         }
-        mutations=mutations.map((mutation,i)=>replayed.has(input.mutations[i])?mutation:hydrateMutation(mutation,owner,requestState));
+        mutations=mutations.map((mutation: any,i: any)=>replayed.has(input.mutations[i])?mutation:hydrateMutation(mutation,owner,requestState));
         const result=store.apply(owner,mutations,after,limit,{...auth,mobile},{includeDelta:false});
         if(!runtimeWrites)materialize(true,owner);
         else for(const job of (Object.values(requestState.jobs) as any[]))materializeJob(store,job,requestState.conversations[job.conversationKey]);

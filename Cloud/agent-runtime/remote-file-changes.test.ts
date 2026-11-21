@@ -9,9 +9,9 @@ import { snapshotWorkspace, collectFileChanges } from './file-changes.ts';
 import { SyncStore, materializeJob } from './sync-store.ts';
 import { createFilePathResolver } from './sync-file-paths.ts';
 
-const hash = text => createHash('sha256').update(text).digest('hex');
-const snapshot = text => text === undefined ? { exists: false, text: null, sha256: null } : { exists: true, text, sha256: hash(text) };
-const record = (jobId, filename, before, after) => ({ version: 1, jobId, path: filename, deviceId: 'mac-test', before: snapshot(before), after: snapshot(after) });
+const hash = (text: any) => createHash('sha256').update(text).digest('hex');
+const snapshot = (text: any) => text === undefined ? { exists: false, text: null, sha256: null } : { exists: true, text, sha256: hash(text) };
+const record = (jobId: any, filename: any, before: any, after: any) => ({ version: 1, jobId, path: filename, deviceId: 'mac-test', before: snapshot(before), after: snapshot(after) });
 
 test('verified remote evidence excludes explicitly recorded staging files from cards and SDK supplements', async () => {
   const f = await fixture();
@@ -27,7 +27,7 @@ test('verified remote evidence excludes explicitly recorded staging files from c
       fileChanges: [{ path: staging, available: false }, { path: '/Users/yu/Keep.swift', available: false }],
       displayItems: [{ type: 'file_change', changes: [{ path: staging }] }] } };
     const projected = await createRemoteFileChangeProjector(f.root, store)(change, 'owner-a');
-    assert.deepEqual(projected.data.fileChanges.map(file => file.path), ['/Users/yu/Keep.swift', '/Users/yu/App.swift']);
+    assert.deepEqual(projected.data.fileChanges.map((file: any) => file.path), ['/Users/yu/Keep.swift', '/Users/yu/App.swift']);
     assert.equal(projected.data.fileChanges[1].available, true);
     assert.equal(projected.data.displayItems.length, 0);
     assert.equal(change.data.fileChanges[0].path, staging);
@@ -35,7 +35,7 @@ test('verified remote evidence excludes explicitly recorded staging files from c
     const unchanged = await collectFileChanges(f.workspace, before, [{ type: 'file_change', status: 'completed', changes: [{ path: staging, kind: 'update' }] }], { jobId: f.jobId });
     assert.deepEqual(unchanged, []);
     const netZero = await createRemoteFileChangeProjector(f.root, store)(change, 'owner-a');
-    assert.deepEqual(netZero.data.fileChanges.map(file => file.path), ['/Users/yu/Keep.swift']);
+    assert.deepEqual(netZero.data.fileChanges.map((file: any) => file.path), ['/Users/yu/Keep.swift']);
     await f.write([{ ...record(f.jobId, '/Users/yu/App.swift', 'old', 'new'), stagingPaths: ['/Users/yu/Keep.swift'] }]);
     await assert.rejects(readRemoteFileChanges(f.workspace, f.jobId), /staging/);
   } finally { await f.done(); }
@@ -46,7 +46,7 @@ async function fixture() {
   await fs.mkdir(path.join(workspace, '.shiyan', 'changes'), { recursive: true, mode: 0o700 });
   const filename = remoteChangeManifestPath(workspace, jobId);
   return { root, workspaceKey, workspace, jobId, filename,
-    async write(records) { await fs.writeFile(filename, records.map(value => JSON.stringify(value)).join('\n') + '\n', { mode: 0o600 }); },
+    async write(records: any) { await fs.writeFile(filename, records.map((value: any) => JSON.stringify(value)).join('\n') + '\n', { mode: 0o600 }); },
     async done() { await fs.rm(root, { recursive: true, force: true }); } };
 }
 
@@ -74,9 +74,9 @@ test('same-path chains merge and a net-zero edit produces no card', async () => 
 test('job identity, hash, canonical path, binary text, UTF-8 and bounds are validated', async () => {
   const f = await fixture();
   try {
-    for (const transform of [value => ({ ...value, jobId: randomUUID() }), value => ({ ...value, path: '/Users/yu/../App.swift' }),
-      value => ({ ...value, after: { ...value.after, sha256: '0'.repeat(64) } }), value => ({ ...value, after: snapshot('nul\0') }),
-      value => ({ ...value, after: snapshot('x'.repeat(1024 * 1024 + 1)) }), value => ({ ...value, after: snapshot('\ud800') })]) {
+    for (const transform of [(value: any) => ({ ...value, jobId: randomUUID() }), (value: any) => ({ ...value, path: '/Users/yu/../App.swift' }),
+      (value: any) => ({ ...value, after: { ...value.after, sha256: '0'.repeat(64) } }), (value: any) => ({ ...value, after: snapshot('nul\0') }),
+      (value: any) => ({ ...value, after: snapshot('x'.repeat(1024 * 1024 + 1)) }), (value: any) => ({ ...value, after: snapshot('\ud800') })]) {
       await f.write([transform(record(f.jobId, '/Users/yu/App.swift', 'before', 'after'))]);
       await assert.rejects(readRemoteFileChanges(f.workspace, f.jobId));
     }
@@ -146,9 +146,9 @@ test('completed sync records merge evidence and invalidate cache; in-flight and 
     const projected = await project(change, 'owner-a'); assert.equal(projected.data.fileChanges.length, 2); assert.equal(projected.revision, 1);
     const withControl = { ...change, data: { ...change.data, fileChanges: [...change.data.fileChanges, { path: f.filename, diff: 'control' }, { path: '/Users/yu/Legitimate.jsonl', diff: 'user file' }],
       displayItems: [{ id: 'control', type: 'file_change', changes: [{ path: f.filename, kind: 'add' }] }, { id: 'mixed', type: 'file_change', changes: [{ path: f.filename, kind: 'add' }, { path: '/Users/yu/Legitimate.jsonl', kind: 'update' }] }] } };
-    const clean = await project(withControl, 'owner-a'); assert.equal(clean.data.fileChanges.some(value => value.path === f.filename), false);
-    assert.ok(clean.data.fileChanges.some(value => value.path === '/Users/yu/Legitimate.jsonl')); assert.deepEqual(clean.data.displayItems.map(value => value.id), ['mixed']);
-    assert.deepEqual(clean.data.displayItems[0].changes.map(value => value.path), ['/Users/yu/Legitimate.jsonl']);
+    const clean = await project(withControl, 'owner-a'); assert.equal(clean.data.fileChanges.some((value: any) => value.path === f.filename), false);
+    assert.ok(clean.data.fileChanges.some((value: any) => value.path === '/Users/yu/Legitimate.jsonl')); assert.deepEqual(clean.data.displayItems.map((value: any) => value.id), ['mixed']);
+    assert.deepEqual(clean.data.displayItems[0].changes.map((value: any) => value.path), ['/Users/yu/Legitimate.jsonl']);
     assert.equal(await project(change, 'owner-b'), change); assert.equal(await project({ ...change, data: { ...change.data, state: 'running' } }, 'owner-a').then(value => value.data.fileChanges.length), 1);
     await f.write([record(f.jobId, '/Users/yu/App.swift', 'before\n', 'latest\n')]); assert.match((await project(change, 'owner-a')).data.fileChanges[1].diff, /latest/);
     await fs.chmod(path.dirname(f.filename), 0o755); assert.equal(await project(change, 'owner-a'), change);
@@ -168,8 +168,8 @@ test('sidecar projects the same remote paths on both platforms and serves full d
     await f.write([record(f.jobId, '/Users/yu/App.swift', 'before\n', 'long-after\n'.repeat(3000))]);
     const base = 'http://127.0.0.1:' + (server.address() as any).port;
     const desktop: any = await (await fetch(base + '/v1/sync')).json(), phone: any = await (await fetch(base + '/v1/sync', { headers: { 'x-test-platform': 'ios' } })).json();
-    const macFiles = desktop.changes.find(value => value.id === mid).data.fileChanges, iosFiles = phone.changes.find(value => value.id === mid).data.fileChanges;
-    assert.deepEqual(macFiles.map(value => value.path), [path.join(f.workspace, 'Canonical.swift'), '/Users/yu/App.swift']); assert.deepEqual(iosFiles.map(value => value.path), macFiles.map(value => value.path));
+    const macFiles = desktop.changes.find((value: any) => value.id === mid).data.fileChanges, iosFiles = phone.changes.find((value: any) => value.id === mid).data.fileChanges;
+    assert.deepEqual(macFiles.map((value: any) => value.path), [path.join(f.workspace, 'Canonical.swift'), '/Users/yu/App.swift']); assert.deepEqual(iosFiles.map((value: any) => value.path), macFiles.map((value: any) => value.path));
     assert.equal(iosFiles[1].diffTruncated, true); assert.equal(iosFiles[1].added, 3000);
     const details: any = await (await fetch(base + '/v1/sync/messages/' + mid + '/details')).json(); assert.equal(details.fileChanges[1].diff, macFiles[1].diff);
     assert.equal(((await (await fetch(base + '/v1/sync', { headers: { 'x-test-owner': 'owner-b' } })).json()) as any).changes.length, 0);
@@ -184,7 +184,7 @@ test('supplemented pages retain parents and exact cursors without skipping messa
   try {
     const cid = randomUUID(), ids: any[] = [];
     store.putAuthoritative('owner-a', 'conversations', cid, { id: cid, title: 'parent' });
-    async function addMessage(length) {
+    async function addMessage(length: any) {
       const mid = randomUUID(), jobId = randomUUID(); ids.push(mid);
       store.putAuthoritative('owner-a', 'messages', mid, { id: mid, role: 'assistant', state: 'completed', conversationId: cid, remoteJobId: jobId, text: 'reply', assets: [] });
       store.recordJobWorkspace('owner-a', jobId, cid, f.workspaceKey);
@@ -198,7 +198,7 @@ test('supplemented pages retain parents and exact cursors without skipping messa
       assert.equal(page.ok, true); assert.equal(Object.hasOwn(page, 'order'), false);
       assert.ok(Buffer.byteLength(JSON.stringify(page)) < 96 * 1024);
       assert.equal(page.changes[0].kind, 'conversations'); assert.equal(page.changes[0].id, cid);
-      const messages = page.changes.filter(value => value.kind === 'messages'); assert.equal(messages.length, 1);
+      const messages = page.changes.filter((value: any) => value.kind === 'messages'); assert.equal(messages.length, 1);
       delivered.push(messages[0].id); assert.ok(page.cursor > after); after = page.cursor;
       if (!page.hasMore) break;
       assert.ok(pages < 10);
@@ -206,7 +206,7 @@ test('supplemented pages retain parents and exact cursors without skipping messa
     assert.deepEqual(delivered, ids); assert.equal(pages, 3);
     await addMessage(150000);
     const large: any = await (await fetch(base + '/v1/sync?after=' + after)).json();
-    assert.equal(large.changes[0].kind, 'conversations'); assert.equal(large.changes.find(value => value.kind === 'messages').id, ids.at(-1));
+    assert.equal(large.changes[0].kind, 'conversations'); assert.equal(large.changes.find((value: any) => value.kind === 'messages').id, ids.at(-1));
     assert.ok(Buffer.byteLength(JSON.stringify(large)) > 96 * 1024); assert.ok(large.cursor > after); assert.equal(large.hasMore, false);
     assert.equal(Object.hasOwn(large, 'order'), false);
   } finally { await new Promise(resolve => server.close(resolve)); await f.done(); }
@@ -227,14 +227,14 @@ test('a parent snapshot from a later sequence does not advance past undelivered 
       await fs.writeFile(remoteChangeManifestPath(f.workspace, jobId), JSON.stringify(record(jobId, '/Users/yu/' + mid + '.swift', 'before\n', 'x'.repeat(index ? 65000 : 110000) + '\n')) + '\n', { mode: 0o600 });
     }
     store.putAuthoritative('owner-a', 'conversations', cid, { id: cid, title: 'latest parent' });
-    const sequence = id => Number(store.db.prepare("SELECT MAX(seq) AS seq FROM sync_changes WHERE owner='owner-a' AND id=?").get(id)!.seq);
+    const sequence = (id: any) => Number(store.db.prepare("SELECT MAX(seq) AS seq FROM sync_changes WHERE owner='owner-a' AND id=?").get(id)!.seq);
     const firstSequence = sequence(mids[0]), futureParentSequence = sequence(cid);
     const base = 'http://127.0.0.1:' + (server.address() as any).port;
     const first: any = await (await fetch(base + '/v1/sync')).json();
-    assert.equal(first.changes[0].data.title, 'latest parent'); assert.equal(first.changes.find(value => value.kind === 'messages').id, mids[0]);
+    assert.equal(first.changes[0].data.title, 'latest parent'); assert.equal(first.changes.find((value: any) => value.kind === 'messages').id, mids[0]);
     assert.equal(first.cursor, firstSequence); assert.ok(first.cursor < futureParentSequence); assert.equal(first.hasMore, true);
     const second: any = await (await fetch(base + '/v1/sync?after=' + first.cursor)).json();
-    assert.equal(second.changes[0].kind, 'conversations'); assert.equal(second.changes.find(value => value.kind === 'messages').id, mids[1]);
+    assert.equal(second.changes[0].kind, 'conversations'); assert.equal(second.changes.find((value: any) => value.kind === 'messages').id, mids[1]);
     assert.equal(second.cursor, futureParentSequence); assert.equal(second.hasMore, false); assert.equal(Object.hasOwn(second, 'order'), false);
   } finally { await new Promise(resolve => server.close(resolve)); await f.done(); }
 });

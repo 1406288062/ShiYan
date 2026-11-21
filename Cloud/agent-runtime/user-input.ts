@@ -4,11 +4,11 @@ import { randomBytes, randomUUID, createHash, timingSafeEqual } from 'node:crypt
 import { mkdirSync, chmodSync } from 'node:fs';
 import path from 'node:path';
 
-const fail=(message,status=400)=>Object.assign(new Error(message),{status});
-const identifier=value=>typeof value==='string'&&/^[A-Za-z0-9_-]{1,160}$/.test(value);
-const hash=value=>createHash('sha256').update(value).digest('hex');
-const text=(value,max)=>typeof value==='string'&&value.trim()&&value.length<=max&&!value.includes('\0');
-export function normalizeQuestions(input){
+const fail=(message: any,status=400)=>Object.assign(new Error(message),{status});
+const identifier=(value: any)=>typeof value==='string'&&/^[A-Za-z0-9_-]{1,160}$/.test(value);
+const hash=(value: any)=>createHash('sha256').update(value).digest('hex');
+const text=(value: any,max: any)=>typeof value==='string'&&value.trim()&&value.length<=max&&!value.includes('\0');
+export function normalizeQuestions(input: any){
   if(!Array.isArray(input)||input.length<1||input.length>3)throw fail('请选择一至三个问题');
   const ids=new Set();
   return input.map((question,index)=>{
@@ -24,9 +24,9 @@ export function normalizeQuestions(input){
     })};
   });
 }
-export function normalizeAnswers(questions,input){
+export function normalizeAnswers(questions: any,input: any){
   if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).length!==questions.length)throw fail('请回答所有问题');
-  return Object.fromEntries(questions.map(question=>{
+  return Object.fromEntries(questions.map((question: any)=>{
     const answers=input[question.id]?.answers;
     if(!Array.isArray(answers)||answers.length!==1||!text(answers[0],4000))throw fail('请选择一个选项或填写回答');
     return [question.id,{answers:[answers[0].trim()]}];
@@ -34,7 +34,7 @@ export function normalizeAnswers(questions,input){
 }
 export class UserInputStore {
   db: DatabaseSync;
-  constructor(root){
+  constructor(root: any){
     mkdirSync(root,{recursive:true,mode:0o700});const file=path.join(root,'user-input.sqlite3');
     this.db=new DatabaseSync(file);chmodSync(file,0o600);
     this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;
@@ -43,20 +43,20 @@ export class UserInputStore {
       CREATE INDEX IF NOT EXISTS input_pending ON input_requests(job_id,status);`);
   }
   close(){this.db.close();}
-  registerJob(job){
+  registerJob(job: any){
     if(!identifier(job.id)||!text(job.owner,200))throw fail('任务标识无效');
     const existing=this.db.prepare('SELECT * FROM input_jobs WHERE id=?').get(job.id);
     if(existing)throw fail('任务问答已注册',409);
     const token=randomBytes(32).toString('hex');
     this.db.prepare('INSERT INTO input_jobs VALUES(?,?,?,?,?)').run(job.id,job.owner,hash(token),'running',Date.now());return token;
   }
-  job(id){return this.db.prepare('SELECT * FROM input_jobs WHERE id=?').get(id);}
-  authorizeToken(id,token){
+  job(id: any){return this.db.prepare('SELECT * FROM input_jobs WHERE id=?').get(id);}
+  authorizeToken(id: any,token: any){
     const job=this.job(id);if(!job||typeof token!=='string'||token.length!==64||!timingSafeEqual(Buffer.from(String(job.token_hash)),Buffer.from(hash(token))))throw fail('任务问答未获授权',401);
     return job;
   }
-  public(row){return {id:row.id,jobId:row.job_id,status:row.status,questions:JSON.parse(row.questions),createdAt:row.created_at,...(row.answers?{answers:JSON.parse(row.answers),answeredAt:row.answered_at}:{})};}
-  create(id,token,input){
+  public(row: any){return {id:row.id,jobId:row.job_id,status:row.status,questions:JSON.parse(row.questions),createdAt:row.created_at,...(row.answers?{answers:JSON.parse(row.answers),answeredAt:row.answered_at}:{})};}
+  create(id: any,token: any,input: any){
     const job=this.authorizeToken(id,token);if(job.status!=='running')throw fail('任务已结束',409);
     if(!identifier(input.requestId))throw fail('问答请求标识无效');
     const questions=JSON.stringify(normalizeQuestions(input.questions));
@@ -67,10 +67,10 @@ export class UserInputStore {
     const requestID=randomUUID();this.db.prepare('INSERT INTO input_requests VALUES(?,?,?,?,?,?,?,?)').run(requestID,id,input.requestId,'pending',questions,null,Date.now(),null);
     return this.public(this.db.prepare('SELECT * FROM input_requests WHERE id=?').get(requestID));
   }
-  get(id,requestID,token){this.authorizeToken(id,token);const row=this.db.prepare('SELECT * FROM input_requests WHERE id=? AND job_id=?').get(requestID,id);if(!row)throw fail('问题不存在',404);return this.public(row);}
-  list(owner,id){const job=this.job(id);if(!job||job.owner!==owner)throw fail('任务不存在',404);return this.db.prepare('SELECT * FROM input_requests WHERE job_id=? ORDER BY created_at DESC,id DESC LIMIT 10').all(id).reverse().map(row=>this.public(row));}
-  hasPending(id){return Boolean(this.db.prepare("SELECT 1 FROM input_requests WHERE job_id=? AND status='pending' LIMIT 1").get(id));}
-  answer(owner,id,requestID,input){
+  get(id: any,requestID: any,token: any){this.authorizeToken(id,token);const row=this.db.prepare('SELECT * FROM input_requests WHERE id=? AND job_id=?').get(requestID,id);if(!row)throw fail('问题不存在',404);return this.public(row);}
+  list(owner: any,id: any){const job=this.job(id);if(!job||job.owner!==owner)throw fail('任务不存在',404);return this.db.prepare('SELECT * FROM input_requests WHERE job_id=? ORDER BY created_at DESC,id DESC LIMIT 10').all(id).reverse().map(row=>this.public(row));}
+  hasPending(id: any){return Boolean(this.db.prepare("SELECT 1 FROM input_requests WHERE job_id=? AND status='pending' LIMIT 1").get(id));}
+  answer(owner: any,id: any,requestID: any,input: any){
     const job=this.job(id);if(!job||job.owner!==owner)throw fail('任务不存在',404);
     this.db.exec('BEGIN IMMEDIATE');
     try{
@@ -82,7 +82,7 @@ export class UserInputStore {
       const result=this.public(this.db.prepare('SELECT * FROM input_requests WHERE id=?').get(row.id));this.db.exec('COMMIT');return result;
     }catch(error){this.db.exec('ROLLBACK');throw error;}
   }
-  finish(id,status='completed'){
+  finish(id: any,status='completed'){
     this.db.exec('BEGIN IMMEDIATE');try{
       this.db.prepare('UPDATE input_jobs SET status=? WHERE id=?').run(status,id);
       this.db.prepare("UPDATE input_requests SET status='cancelled' WHERE job_id=? AND status='pending'").run(id);this.db.exec('COMMIT');

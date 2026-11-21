@@ -9,16 +9,16 @@ import { AccountStore, PRIVATE_OWNER } from './accounts.ts';
 import { startRegistrationReceiver, postRegistrationEvent } from './registration-events.ts';
 
 const password = 'isolated-notification-test-42';
-const waitFor = async predicate => {
+const waitFor = async (predicate: any) => {
   const end = Date.now() + 5000;
   while (!predicate()) { if (Date.now() > end) throw new Error('Event delivery did not finish'); await new Promise(resolve => setTimeout(resolve, 10)); }
 };
-async function fixture(t) {
+async function fixture(t: any) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'registration-notices-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   return { root, socketPath: path.join(root, 'notices.sock') };
 }
-const rows = store => store.db.prepare('SELECT id,source,username,email,registered_at AS registeredAt FROM account_registration_outbox').all();
+const rows = (store: any) => store.db.prepare('SELECT id,source,username,email,registered_at AS registeredAt FROM account_registration_outbox').all();
 
 test('account event is atomic with successful registration, contains only notice fields, and excludes login/bootstrap/failure', async t => {
   const { root } = await fixture(t);
@@ -41,7 +41,7 @@ test('offline delivery survives account-store restart and acknowledgement loss r
   assert.equal(account.ok, true); assert.equal(rows(store).length, 1);
   store.close();
   const persisted = new Map(); let calls = 0;
-  const receiver = await startRegistrationReceiver({ socketPath, ingest(event) {
+  const receiver = await startRegistrationReceiver({ socketPath, ingest(event: any) {
     calls++; persisted.set(event.id, event);
     if (calls === 1) throw new Error('Lost response after durable insert');
   } });
@@ -78,11 +78,11 @@ test('legacy pending outbox migration restores account email once and retains th
 
 test('private receiver rejects owner injection, secrets, malformed sources and oversized events before ingest', async t => {
   const { socketPath } = await fixture(t); const received: any[] = [];
-  const receiver = await startRegistrationReceiver({ socketPath, ingest: event => received.push(event) }); t.after(() => receiver.close());
+  const receiver = await startRegistrationReceiver({ socketPath, ingest: (event: any) => received.push(event) }); t.after(() => receiver.close());
   const event = { id: 'registration:shiyan_web:abc', source: 'shiyan_web', username: 'alice', email: 'alice@example.test', registeredAt: Date.now() };
   await postRegistrationEvent(socketPath, event); assert.equal(received.length, 1);
   assert.equal(received[0].email, 'alice@example.test');
-  const rawPost = value => new Promise((resolve, reject) => {
+  const rawPost = (value: any) => new Promise((resolve, reject) => {
     const request = http.request({ socketPath, path: '/registration-events', method: 'POST' }, res => { res.resume(); res.on('end', () => resolve(res.statusCode)); });
     request.on('error', reject); request.end(JSON.stringify(value));
   });

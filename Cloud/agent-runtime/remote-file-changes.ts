@@ -4,17 +4,17 @@ import { createHash } from 'node:crypto';
 import { textFileChange } from './text-file-diff.ts';
 
 export const REMOTE_CHANGE_LIMITS = Object.freeze({ manifestBytes: 16 * 1024 * 1024, fileBytes: 1024 * 1024, files: 200, records: 1000 });
-const validId = value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,120}$/.test(value);
-const sha = value => createHash('sha256').update(value).digest('hex');
-const safePath = value => typeof value === 'string' && value.length <= 1024 && !/[\x00-\x1f\x7f]/.test(value)
+const validId = (value: any) => typeof value === 'string' && /^[A-Za-z0-9_-]{1,120}$/.test(value);
+const sha = (value: any) => createHash('sha256').update(value).digest('hex');
+const safePath = (value: any) => typeof value === 'string' && value.length <= 1024 && !/[\x00-\x1f\x7f]/.test(value)
   && path.posix.isAbsolute(value) && path.posix.normalize(value) === value && value !== '/';
 
-export function remoteChangeManifestPath(workspace, jobId) {
+export function remoteChangeManifestPath(workspace: any, jobId: any) {
   if (!validId(jobId)) throw new Error('Invalid remote change job ID');
   return path.join(workspace, '.shiyan', 'changes', jobId + '.jsonl');
 }
 
-function snapshot(value) {
+function snapshot(value: any) {
   if (!value || typeof value !== 'object' || typeof value.exists !== 'boolean') throw new Error('Invalid remote file snapshot');
   if (!value.exists) {
     if (value.text !== null || value.sha256 !== null) throw new Error('Absent file carries content');
@@ -26,7 +26,7 @@ function snapshot(value) {
   return value.text;
 }
 
-function recordsFor(text, jobId) {
+function recordsFor(text: any, jobId: any) {
   const records = new Map();
   let offset = 0, lineCount = 0;
   while (offset < text.length) {
@@ -52,13 +52,13 @@ function recordsFor(text, jobId) {
   return records;
 }
 
-async function privateDirectory(directory) {
+async function privateDirectory(directory: any) {
   const info = await fs.lstat(directory);
   if (!info.isDirectory() || info.isSymbolicLink() || (info.mode & 0o077) || (process.getuid && info.uid !== process.getuid())) throw new Error('Unsafe remote change directory');
 }
 
 // Read only explicit records. Never inspect shell commands or traverse remote roots.
-export async function readRemoteFileChanges(workspace, jobId) {
+export async function readRemoteFileChanges(workspace: any, jobId: any) {
   const filename = remoteChangeManifestPath(workspace, jobId);
   let handle;
   try {
@@ -105,27 +105,27 @@ export function mergeFileChanges(canonical: any[] = [], supplemental: any[] = []
   return result;
 }
 
-export function removeControlRecords(change, workspace, stagingPaths = new Set()) {
+export function removeControlRecords(change: any, workspace: any, stagingPaths = new Set()) {
   const control = path.join(workspace, '.shiyan');
-  const visible = file => typeof file?.path !== 'string' || (!stagingPaths.has(file.path) && file.path !== control && !file.path.startsWith(control + path.sep));
+  const visible = (file: any) => typeof file?.path !== 'string' || (!stagingPaths.has(file.path) && file.path !== control && !file.path.startsWith(control + path.sep));
   const data = change.data;
   const filteredFiles = Array.isArray(data.fileChanges) ? data.fileChanges.filter(visible) : data.fileChanges;
   const files = filteredFiles?.length === data.fileChanges?.length ? data.fileChanges : filteredFiles;
-  const filteredItems = Array.isArray(data.displayItems) ? data.displayItems.flatMap(item => {
+  const filteredItems = Array.isArray(data.displayItems) ? data.displayItems.flatMap((item: any) => {
     if (item?.type !== 'file_change' || !Array.isArray(item.changes)) return [item];
     const filtered = item.changes.filter(visible);
     return filtered.length === item.changes.length ? [item] : filtered.length ? [{ ...item, changes: filtered }] : [];
   }) : data.displayItems;
-  const items = filteredItems?.length === data.displayItems?.length && filteredItems?.every((item, index) => item === data.displayItems[index]) ? data.displayItems : filteredItems;
+  const items = filteredItems?.length === data.displayItems?.length && filteredItems?.every((item: any, index: any) => item === data.displayItems[index]) ? data.displayItems : filteredItems;
   if (files === data.fileChanges && items === data.displayItems) return change;
   return { ...change, data: { ...data, ...(files !== undefined ? { fileChanges: files } : {}), ...(items !== undefined ? { displayItems: items } : {}) } };
 }
 
-export function createRemoteFileChangeProjector(root, store) {
+export function createRemoteFileChangeProjector(root: any, store: any) {
   const cache = new Map();
   let cachedBytes = 0;
   const maximumBytes = 16 * 1024 * 1024, maximumEntries = 64;
-  return async function project(change, owner) {
+  return async function project(change: any, owner: any) {
     let data = change?.data;
     if (change?.kind !== 'messages' || change.deleted || data?.role !== 'assistant' || data.state !== 'completed' || !validId(data.remoteJobId)) return change;
     const workspaceKey = store.jobWorkspace(owner, data.remoteJobId, data.conversationId);
@@ -144,7 +144,7 @@ export function createRemoteFileChangeProjector(root, store) {
     if (entry?.signature !== signature) {
       let files;
       try { files = await readRemoteFileChanges(workspace, data.remoteJobId); } catch { files = []; }
-      const size = Buffer.byteLength(JSON.stringify({ files, stagingPaths: files.stagingPaths || [] }));
+      const size = Buffer.byteLength(JSON.stringify({ files, stagingPaths: (files as any).stagingPaths || [] }));
       if (entry) { cachedBytes -= entry.size; cache.delete(key); }
       entry = { signature, files, size };
       // Oversized results remain usable for this request without filling the cache.
@@ -155,7 +155,7 @@ export function createRemoteFileChangeProjector(root, store) {
         cache.set(key, entry); cachedBytes += size;
       }
     } else { cache.delete(key); cache.set(key, entry); }
-    change = removeControlRecords(change, workspace, new Set(entry.files.stagingPaths || entry.files.flatMap(file => file.stagingPaths || []))); data = change.data;
+    change = removeControlRecords(change, workspace, new Set(entry.files.stagingPaths || entry.files.flatMap((file: any) => file.stagingPaths || []))); data = change.data;
     if (!entry.files.length) return change;
     return { ...change, data: { ...data, fileChanges: mergeFileChanges(data.fileChanges, entry.files) } };
   };

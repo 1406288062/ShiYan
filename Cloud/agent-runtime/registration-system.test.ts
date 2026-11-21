@@ -15,34 +15,34 @@ import { createAccountHandler } from './account-http.ts';
 import { DotsAdapter, createLocalDotsClient } from './dots-adapter.ts';
 import { createDotsSidecar } from './dots-sidecar.ts';
 import { postRegistrationEvent } from './registration-events.ts';
-import { createApp as createSpongeApp } from '../../../yu-remote-commander/src/server.mjs';
+import { createApp as createSpongeApp } from '/home/ubuntu/yu-remote-commander/src/server.mjs';
 
 const password = 'isolated-system-test-password-42';
-const waitFor = async predicate => {
+const waitFor = async (predicate: any) => {
   const deadline = Date.now() + 12000;
   while (!await predicate()) { if (Date.now() > deadline) throw new Error('Isolated registration integration timed out'); await new Promise(resolve => setTimeout(resolve, 20)); }
 };
-const listen = async server => { await new Promise(resolve => server.listen(0, '127.0.0.1', resolve)); return 'http://127.0.0.1:' + server.address().port; };
-const closeServer = async server => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); };
-const post = (url, input, headers = {}) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(input) });
+const listen = async (server: any) => { await new Promise(resolve => server.listen(0, '127.0.0.1', resolve)); return 'http://127.0.0.1:' + server.address().port; };
+const closeServer = async (server: any) => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); };
+const post = (url: any, input: any, headers = {}) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(input) });
 async function freePort() { const server = net.createServer(); await new Promise<void>(resolve => server.listen(0, '127.0.0.1', () => resolve())); const port = (server.address() as any).port; await new Promise(resolve => server.close(resolve)); return port; }
 
 test('concurrent notice delivery waits past an older shared activity sync before acknowledgement',async()=>{
-  let release,cursor=0,inflight,syncCalls=0;const gate=new Promise(resolve=>{release=resolve;});
-  const adapter={authorize(value){assert.equal(value,PRIVATE_OWNER);},clientFor(value){assert.equal(value,PRIVATE_OWNER);return{rpc:async(method,event)=>{assert.equal(method,'dots/internal/registration');return{activityCursor:event.order,message:{id:event.order}};}};},
-    store:{manager(value){assert.equal(value,PRIVATE_OWNER);return{runtime_cursor:cursor};}},managerSnapshot:async()=>{},
-    async syncManagerActivity(value){assert.equal(value,PRIVATE_OWNER);if(inflight)return inflight;const number=++syncCalls;const next=number===1?gate.then(()=>{cursor=1;}):Promise.resolve().then(()=>{cursor=2;});inflight=next;try{await next;}finally{if(inflight===next)inflight=null;}}
+  let release,cursor=0,inflight: any,syncCalls=0;const gate=new Promise(resolve=>{release=resolve;});
+  const adapter={authorize(value: any){assert.equal(value,PRIVATE_OWNER);},clientFor(value: any){assert.equal(value,PRIVATE_OWNER);return{rpc:async(method: any,event: any)=>{assert.equal(method,'dots/internal/registration');return{activityCursor:event.order,message:{id:event.order}};}};},
+    store:{manager(value: any){assert.equal(value,PRIVATE_OWNER);return{runtime_cursor:cursor};}},managerSnapshot:async()=>{},
+    async syncManagerActivity(value: any){assert.equal(value,PRIVATE_OWNER);if(inflight)return inflight;const number=++syncCalls;const next=number===1?gate.then(()=>{cursor=1;}):Promise.resolve().then(()=>{cursor=2;});inflight=next;try{await next;}finally{if(inflight===next)inflight=null;}}
   };
   const first=DotsAdapter.prototype.registrationNotice.call(adapter,{order:1});await new Promise(resolve=>setImmediate(resolve));
   let secondAcknowledged=false;const second=DotsAdapter.prototype.registrationNotice.call(adapter,{order:2}).then(value=>{secondAcknowledged=true;return value;});
-  await new Promise(resolve=>setImmediate(resolve));assert.equal(secondAcknowledged,false);release();
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(secondAcknowledged,false);(release as any)?.();
   await Promise.all([first,second]);assert.equal(cursor,2);assert.equal(syncCalls,2);assert.equal(secondAcknowledged,true);
 });
 
 test('both website signup routes push one admin Dots message, reconnect replays it, and ordinary accounts cannot obtain it', { timeout: 45000 }, async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'registration-system-'));
   const shiyanRoot = path.join(root, 'shiyan'), runtimeRoot = path.join(root, 'runtime'), socketPath = path.join(root, 'registration.sock');
-  let runtime, accounts, accountServer, sponge, dots, reader, readLoop, db;
+  let runtime: any, accounts: any, accountServer, sponge: any, dots, reader, readLoop, db: any;
   let runtimeOutput = '';
   try {
     accounts = new AccountStore(path.join(shiyanRoot, 'data'), { registrationSocketPath: socketPath });
@@ -55,7 +55,7 @@ test('both website signup routes push one admin Dots message, reconnect replays 
     const runtimeSocket = path.join(runtimeRoot, 'local-ipc', 'mcp.sock');
     const startRuntime = async () => {
       runtime = spawn(process.execPath, ['/home/ubuntu/dots-runtime/server.mjs'], { env: runtimeEnv, stdio: ['ignore', 'pipe', 'pipe'] });
-      runtime.stdout.on('data', data => { runtimeOutput += data; }); runtime.stderr.on('data', data => { runtimeOutput += data; });
+      runtime.stdout.on('data', (data: any) => { runtimeOutput += data; }); runtime.stderr.on('data', (data: any) => { runtimeOutput += data; });
       await waitFor(async () => { if (runtime.exitCode !== null) throw new Error('Isolated Dots startup failed: ' + runtimeOutput); try { await access(runtimeSocket); return true; } catch { return false; } });
     };
     await startRuntime();
@@ -69,7 +69,7 @@ test('both website signup routes push one admin Dots message, reconnect replays 
       const base = await listen(server); await server.registrationReady; return { server, adapter, base };
     };
     dots = await makeDots();
-    const email = { configured: () => true, request: async () => ({ ok: true }), check: input => () => {
+    const email = { configured: () => true, request: async () => ({ ok: true }), check: (input: any) => () => {
       if (input.code !== 'fixture-code') throw Object.assign(new Error('Invalid test verification code'), { status: 400 });
     } };
     const handler = createAccountHandler({ store: accounts, registrationEmail: email });
@@ -94,9 +94,9 @@ test('both website signup routes push one admin Dots message, reconnect replays 
     assert.match(streamed, /拾燕网页端/); assert.match(streamed, /海绵宝宝 MCP 官网/);
     db = new DatabaseSync(path.join(runtimeRoot, 'data', 'dots.sqlite3'));
     const messages = () => db.prepare("SELECT * FROM manager_messages WHERE proactive_reason='管理员注册提醒' ORDER BY id").all();
-    assert.equal(messages().length, 2); assert(messages().every(row => row.role === 'assistant' && row.origin === 'proactive' && !row.task_id));
-    const shiyanMessage = messages().find(row => row.content.includes('拾燕网页端'));
-    const spongeMessage = messages().find(row => row.content.includes('海绵宝宝 MCP 官网'));
+    assert.equal(messages().length, 2); assert(messages().every((row: any) => row.role === 'assistant' && row.origin === 'proactive' && !row.task_id));
+    const shiyanMessage = messages().find((row: any) => row.content.includes('拾燕网页端'));
+    const spongeMessage = messages().find((row: any) => row.content.includes('海绵宝宝 MCP 官网'));
     assert(shiyanMessage.content.includes('用户名：' + registeredEmail));
     assert(!shiyanMessage.content.includes(alice.user.username), 'notice displays the real email instead of the generated internal username');
     assert(!shiyanMessage.content.includes('邮箱：'));
@@ -126,7 +126,7 @@ test('both website signup routes push one admin Dots message, reconnect replays 
     assert(subscribe.status >= 400, 'ordinary subscription cannot select registration events or an administrator recipient');
     await assert.rejects(client.forOwner(alice.user.owner).rpc('dots/internal/registration', notices[0]));
     await reader.cancel(); await readLoop; reader = null;
-    await dots.server.registrationReady.then(receiver => receiver.close());
+    await dots.server.registrationReady.then((receiver: any) => receiver.close());
     await closeServer(dots.server); dots = null;
     const stopped = once(runtime, 'exit'); runtime.kill('SIGTERM'); await stopped;
     await startRuntime(); dots = await makeDots();
@@ -136,8 +136,8 @@ test('both website signup routes push one admin Dots message, reconnect replays 
     for (const notice of notices) await postRegistrationEvent(socketPath, notice);
     assert.equal(messages().length, 2, 'deduplication survives sidecar and runtime restart');
     const manager: any = await (await fetch(dots.base + '/v1/dots/manager', { headers })).json();
-    assert.equal(manager.manager.messages.filter(message => message.proactiveReason === '管理员注册提醒').length, 2);
-    assert(manager.manager.messages.some(message => message.id === shiyanMessage.id && message.content.includes('用户名：' + registeredEmail)));
+    assert.equal(manager.manager.messages.filter((message: any) => message.proactiveReason === '管理员注册提醒').length, 2);
+    assert(manager.manager.messages.some((message: any) => message.id === shiyanMessage.id && message.content.includes('用户名：' + registeredEmail)));
     assert(!JSON.stringify(messages()).includes(password)); assert(!JSON.stringify(messages()).includes('fixture-code'));
   } catch (error) {
     (error as any).message += '\nIsolated Dots output: ' + runtimeOutput;
@@ -147,7 +147,7 @@ test('both website signup routes push one admin Dots message, reconnect replays 
   } finally {
     if (reader) await reader.cancel().catch(() => {});
     if (readLoop) await readLoop;
-    if (dots) { await dots.server.registrationReady.then(receiver => receiver.close()).catch(() => {}); await closeServer(dots.server); }
+    if (dots) { await dots.server.registrationReady.then((receiver: any) => receiver.close()).catch(() => {}); await closeServer(dots.server); }
     if (accountServer) await closeServer(accountServer);
     await sponge?.close(); accounts?.close(); db?.close();
     if (runtime && runtime.exitCode === null) { const exited = once(runtime, 'exit'); runtime.kill('SIGTERM'); await exited; }

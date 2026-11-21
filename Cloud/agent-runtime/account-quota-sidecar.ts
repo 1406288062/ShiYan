@@ -4,7 +4,7 @@ import { authenticateDevice, digest } from './device-auth.ts';
 import { createQuotaReader } from './account-quota.ts';
 import { createAccountQuotaReader } from './claude-quota.ts';
 
-const json = (res, status, value, headers = {}) => {
+const json = (res: any, status: any, value: any, headers = {}) => {
   const body = JSON.stringify(value);
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Length': Buffer.byteLength(body), ...headers });
   res.end(body);

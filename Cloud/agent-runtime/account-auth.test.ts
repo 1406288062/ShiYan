@@ -16,10 +16,10 @@ const { SyncStore } = await import('./sync-store.ts');
 const { MemoryStore } = await import('./memory-store.ts');
 const { sendSyncAsset } = await import('./sync-asset-response.ts');
 const password = 'test-only-password-42';
-const hash = value => createHash('sha256').update(value).digest('hex');
-const storeFor = t => { const store = new AccountStore(path.join(root, randomUUID())); t.after(() => store.close()); return store; };
-const bootstrap = store => store.register({ email: 'owner@example.test', password, display_name: '管理员' }, { bootstrap: true, trustedOwner: PRIVATE_OWNER });
-const register = (store, email = 'member@example.test') => store.register({ email, password });
+const hash = (value: any) => createHash('sha256').update(value).digest('hex');
+const storeFor = (t: any) => { const store = new AccountStore(path.join(root, randomUUID())); t.after(() => store.close()); return store; };
+const bootstrap = (store: any) => store.register({ email: 'owner@example.test', password, display_name: '管理员' }, { bootstrap: true, trustedOwner: PRIVATE_OWNER });
+const register = (store: any, email = 'member@example.test') => store.register({ email, password });
 
 test.after(() => { getAccountStore().close(); rmSync(root, { recursive: true, force: true }); });
 
@@ -36,9 +36,9 @@ test('authenticated full and partial asset downloads cannot remain in shared acc
   const bytes = Buffer.from('private asset'), asset = { metadata: { mimeType: 'text/plain', filename: 'private.txt' } };
   for (const query of ['', '?offset=1&length=3']) {
     let status, headers, body;
-    const response = { writeHead(code, values) { status = code; headers = values; }, end(value) { body = value; } };
+    const response = { writeHead(code: any, values: any) { status = code; headers = values; }, end(value: any) { body = value; } };
     sendSyncAsset(response, new URL('http://localhost/asset' + query), asset, bytes);
-    assert.equal(headers['Cache-Control'], 'no-store');
+    assert.equal(headers!['Cache-Control'], 'no-store');
     assert.equal(status, query ? 206 : 200);
     assert.deepEqual(body, query ? bytes.subarray(1, 4) : bytes);
   }
@@ -146,7 +146,7 @@ test('HTTP routes reject anonymous admin, invalid hashes and forged bootstrap; s
   const server = http.createServer(async (req, res) => { if (!await handler(req, res)) { res.writeHead(404); res.end(); } });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', () => resolve())); t.after(() => new Promise(resolve => server.close(resolve)));
   const url = 'http://127.0.0.1:' + (server.address() as any).port;
-  const request = (route, method = 'GET', data?: any, headers = {}) => fetch(url + '/shiyan/v1/' + route, { method, headers: { 'Content-Type': 'application/json', ...headers }, ...(data === undefined ? {} : { body: JSON.stringify(data) }) });
+  const request = (route: any, method = 'GET', data?: any, headers = {}) => fetch(url + '/shiyan/v1/' + route, { method, headers: { 'Content-Type': 'application/json', ...headers }, ...(data === undefined ? {} : { body: JSON.stringify(data) }) });
   let response = await request('auth/status'); assert.deepEqual(await response.json(), { ok: true, registrationEnabled: true, bootstrapRequired: true, canBootstrap: false, emailVerificationRequired: true, emailDeliveryAvailable: true });
   response = await request('admin/users'); assert.equal(response.status, 401);
   response = await request('auth/bootstrap', 'POST', { email: 'owner@example.test', password }); assert.equal(response.status, 403);
@@ -175,7 +175,7 @@ test('signed owner bootstrap disables legacy fallback, including invalid-token a
   };
   assert.equal(authenticateDevice(signed()).owner, PRIVATE_OWNER);
   const invalid = signed(); (invalid.headers as any).authorization = 'Bearer ' + 'x'.repeat(43); assert.equal(authenticateDevice(invalid), null);
-  const required = signed(); required.headers['x-shiyan-account-required'] = '1'; assert.equal(authenticateDevice(required), null);
+  const required = signed(); (required.headers as any)['x-shiyan-account-required'] = '1'; assert.equal(authenticateDevice(required), null);
   const replay = signed(); assert(authenticateLegacyDevice(replay)); assert.equal(authenticateLegacyDevice(replay), null);
   const store = getAccountStore(), admin = await bootstrap(store);
   assert.equal(authenticateDevice(signed()), null);

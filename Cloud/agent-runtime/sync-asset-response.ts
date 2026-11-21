@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-export function sendSyncAsset(res,url,asset,bytes){
+export function sendSyncAsset(res: any,url: any,asset: any,bytes: any){
  const headers={'Content-Type':asset.metadata.mimeType,'X-Content-SHA256':createHash('sha256').update(bytes).digest('hex'),'X-Content-Type-Options':'nosniff','Cache-Control':'no-store','Content-Disposition':"attachment; filename*=UTF-8''"+encodeURIComponent(asset.metadata.filename)};
  if(url.searchParams.has('offset')){
   const start=Number(url.searchParams.get('offset')),length=Number(url.searchParams.get('length')||65536);

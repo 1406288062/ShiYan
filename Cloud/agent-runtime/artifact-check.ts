@@ -6,13 +6,13 @@ const state=JSON.parse(readFileSync('data/state.json','utf8'));
 const asset=(Object.values(state.assets) as any[]).at(-1);
 if(!asset)throw new Error('No output artifact to inspect');
 const file='devices.json',load=()=>JSON.parse(readFileSync(file,'utf8'));
-const save=x=>{writeFileSync(file+'.tmp',JSON.stringify(x),{mode:0o600});renameSync(file+'.tmp',file);};
-const hash=x=>createHash('sha256').update(x).digest('hex');
+const save=(x: any)=>{writeFileSync(file+'.tmp',JSON.stringify(x),{mode:0o600});renameSync(file+'.tmp',file);};
+const hash=(x: any)=>createHash('sha256').update(x).digest('hex');
 const keys=generateKeyPairSync('ed25519'),raw=keys.publicKey.export({format:'der',type:'spki'}).subarray(-32),id=hash(raw);
 const devices=load();devices[id]={publicKey:raw.toString('base64'),approved:true,owner:asset.owner};save(devices);
 const certificate=readFileSync('/home/ubuntu/boss-codex-service/tls/server.crt');
 const route='/shiyan/v1/artifacts/'+asset.id;
-async function inspect(port,tls=false){
+async function inspect(port: any,tls=false){
  const now=String(Date.now()),nonce=randomUUID(),sha=hash('');
  const headers={'X-Shiyan-Device':id,'X-Shiyan-Time':now,'X-Shiyan-Nonce':nonce,'X-Shiyan-Body-Sha':sha,'X-Shiyan-Signature':sign(null,Buffer.from(['GET',route,now,nonce,sha].join('\n')),keys.privateKey).toString('base64'),'Content-Type':'application/json','Content-Length':0,'Host':'129.226.81.110'};
  await new Promise<void>((resolve,reject)=>{

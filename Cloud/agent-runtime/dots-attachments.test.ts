@@ -8,11 +8,11 @@ import { DotsAdapter } from './dots-adapter.ts';
 import { createDotsSidecar } from './dots-sidecar.ts';
 
 const owner='shiyan-private-owner';
-function fixture(t){
+function fixture(t: any){
   const root=mkdtempSync(path.join(os.tmpdir(),'dots-files-'));
   const manager: any={id:'manager:'+owner,ownerId:owner,status:'active',messages:[],tasks:[]};
   const calls: any[]=[],receipts=new Map();let loseReply=false;
-  const client={async tool(name,args){
+  const client={async tool(name: any,args: any){
     if(name==='dots_get_manager_activity')return {activity:[],nextCursor:args.after_id,hasMore:false};
     if(name==='dots_get_manager_messages')return {messages:manager.messages,hasMore:false};
     if(name==='dots_get_manager')return {manager};

@@ -8,7 +8,7 @@ import { spawn } from 'node:child_process';
 import { AccountStore, PRIVATE_OWNER } from './accounts.ts';
 import { createAccountAvatarHandler } from './account-avatar.ts';
 
-function python(code, input?: any) {
+function python(code: any, input?: any) {
   return new Promise<Buffer>((resolve, reject) => {
     const child = spawn('python3', ['-c', code]), chunks: Buffer[] = [];
     child.stdout.on('data', chunk => chunks.push(chunk)); child.stderr.on('data', () => {});
@@ -16,11 +16,11 @@ function python(code, input?: any) {
     child.stdin.end(input);
   });
 }
-const fixture = async format => (await python(`from PIL import Image\nimport io,sys\nb=io.BytesIO()\nexif=Image.Exif();exif[271]='test-camera';exif[274]=6\nImage.new('RGB',(700,500),'#4174aa').save(b,'${format}',exif=exif)\nsys.stdout.buffer.write(b.getvalue())`)).toString('base64');
+const fixture = async (format: any) => (await python(`from PIL import Image\nimport io,sys\nb=io.BytesIO()\nexif=Image.Exif();exif[271]='test-camera';exif[274]=6\nImage.new('RGB',(700,500),'#4174aa').save(b,'${format}',exif=exif)\nsys.stdout.buffer.write(b.getvalue())`)).toString('base64');
 const jpeg = await fixture('JPEG'), png = await fixture('PNG');
 const password = 'avatar-test-password-2026';
 
-async function setup(t, options: any = {}) {
+async function setup(t: any, options: any = {}) {
   const root = mkdtempSync(path.join(os.tmpdir(), 'shiyan-avatar-test-'));
   const store = new AccountStore(root);
   const a = await store.register({ username: 'avatar-a', password });
@@ -37,13 +37,13 @@ async function setup(t, options: any = {}) {
     await new Promise(resolve => server.close(resolve));
     store.close(); rmSync(root, { recursive: true, force: true });
   });
-  async function request(token, method = 'GET', input: any = undefined, suffix = '', headers: any = {}) {
+  async function request(token: any, method = 'GET', input: any = undefined, suffix = '', headers: any = {}) {
     const response = await fetch(base + suffix, { method, headers: {
       ...(token ? { Authorization: 'Bearer ' + token } : {}), 'Content-Type': 'application/json', ...headers
     }, ...(input === undefined ? {} : { body: typeof input === 'string' ? input : JSON.stringify(input) }) });
     return { status: response.status, headers: response.headers, body: (await response.json()) as any };
   }
-  async function subscribe(token) {
+  async function subscribe(token: any) {
     const controller = new AbortController(), events: any[] = [], waiters: Array<() => void> = [];
     let ended = false;
     const response = await fetch(base + '/events', { headers: { Authorization: 'Bearer ' + token }, signal: controller.signal });
@@ -66,7 +66,7 @@ async function setup(t, options: any = {}) {
       } catch (error) { if ((error as any).name !== 'AbortError') throw error; }
       finally { ended = true; for (const waiter of waiters.splice(0)) waiter(); }
     })();
-    const stream = { events, get ended() { return ended; }, stop() { controller.abort(); }, async until(predicate) {
+    const stream = { events, get ended() { return ended; }, stop() { controller.abort(); }, async until(predicate: any) {
       const deadline = Date.now() + 2000;
       while (!predicate()) {
         if (Date.now() > deadline) assert.fail('Timed out waiting for avatar SSE');
@@ -151,12 +151,12 @@ test('SSE shares only the same account, propagates updates and closes revoked se
 });
 
 test('a revoked login cannot commit after asynchronous image processing', async t => {
-  let release, started;
+  let release, started: any;
   const ready = new Promise(resolve => { started = resolve; });
   const pendingImage = new Promise(resolve => { release = resolve; });
   const { store, a, request } = await setup(t, { normalizeImage: async () => { started(); return await pendingImage; } });
   const writing = request(a.token, 'PUT', { data: jpeg });
-  await ready; store.logout(a.token); release(jpeg);
+  await ready; store.logout(a.token); (release as any)?.(jpeg);
   assert.equal((await writing).status, 401);
   assert.equal(store.db.prepare('SELECT COUNT(*) AS count FROM account_avatars').get()!.count, 0);
 });

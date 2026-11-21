@@ -8,12 +8,12 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync, existsSync, chmodSync } from 'node:fs';
 import path from 'node:path';
 
-const fail = (message, status = 400, code: any = undefined) => Object.assign(new Error(message), { status }, code ? { code } : {});
+const fail = (message: any, status = 400, code: any = undefined) => Object.assign(new Error(message), { status }, code ? { code } : {});
 const now = () => Date.now();
-const id = prefix => prefix + '_' + randomBytes(9).toString('base64url');
-const json = value => JSON.stringify(value ?? null);
-const parse = (value, fallback: any = null) => { try { return value == null ? fallback : JSON.parse(value); } catch { return fallback; } };
-const text = (value, max) => String(value ?? '').replace(/\u0000/g, '').slice(0, max);
+const id = (prefix: any) => prefix + '_' + randomBytes(9).toString('base64url');
+const json = (value: any) => JSON.stringify(value ?? null);
+const parse = (value: any, fallback: any = null) => { try { return value == null ? fallback : JSON.parse(value); } catch { return fallback; } };
+const text = (value: any, max: any) => String(value ?? '').replace(/\u0000/g, '').slice(0, max);
 
 export const PERMISSION_KEYS = ['siteAccess', 'downloads', 'uploads', 'savedPasswords'];
 export const DEFAULT_PERMISSIONS = { siteAccess: 'allow', downloads: 'ask', uploads: 'ask', savedPasswords: 'ask' };
@@ -47,14 +47,14 @@ export const DOTS_ANSWERABLE = ['choice', 'cart_confirmation'];
 // Question kinds answered only by the user in a dedicated interface — never through chat.
 export const USER_ONLY = ['secure_input', 'payment_authorization', 'takeover', 'site_access', 'download', 'upload', 'saved_password', 'verification_code', 'verification_share'];
 
-export function normalizeOrigin(value) {
+export function normalizeOrigin(value: any) {
   let url;
   try { url = new URL(String(value || '').includes('://') ? String(value) : 'https://' + String(value || '')); } catch { throw fail('网站地址无效'); }
   if (!['http:', 'https:'].includes(url.protocol) || !url.hostname) throw fail('网站地址无效');
   return url.origin.toLowerCase();
 }
 // A saved login for example.com also serves its subdomains (accounts.example.com).
-export function originMatches(ruleOrigin, pageOrigin) {
+export function originMatches(ruleOrigin: any, pageOrigin: any) {
   try {
     const rule = new URL(ruleOrigin), page = new URL(pageOrigin);
     if (rule.protocol !== page.protocol && !(rule.protocol === 'https:' && page.protocol === 'https:')) return false;
@@ -75,13 +75,13 @@ export class SecretBox {
     }
     if (this.key.length !== 32) throw new Error('Secure Vault key must be 32 bytes');
   }
-  seal(plain, aad = '') {
+  seal(plain: any, aad = '') {
     const iv = randomBytes(12), cipher = createCipheriv('aes-256-gcm', this.key, iv);
     cipher.setAAD(Buffer.from(aad));
     const data = Buffer.concat([cipher.update(String(plain), 'utf8'), cipher.final()]);
     return Buffer.concat([iv, cipher.getAuthTag(), data]).toString('base64');
   }
-  open(sealed, aad = '') {
+  open(sealed: any, aad = '') {
     const raw = Buffer.from(String(sealed), 'base64');
     const decipher = createDecipheriv('aes-256-gcm', this.key, raw.subarray(0, 12));
     decipher.setAAD(Buffer.from(aad)); decipher.setAuthTag(raw.subarray(12, 28));
@@ -124,19 +124,19 @@ export class BrowserStore {
       CREATE INDEX IF NOT EXISTS idx_browser_files ON browser_files(owner, task_id);`);
   }
   close() { try { this.db.close(); } catch {} }
-  transaction(fn) {
+  transaction(fn: any) {
     this.db.exec('BEGIN IMMEDIATE');
     try { const value = fn(); this.db.exec('COMMIT'); return value; } catch (error) { try { this.db.exec('ROLLBACK'); } catch {} throw error; }
   }
 
   // ---- tasks ------------------------------------------------------------------------------------
-  row(taskId): BrowserTask | null { const r = this.db.prepare('SELECT * FROM browser_tasks WHERE id=?').get(String(taskId || '')); return r ? r as unknown as BrowserTask : null; }
-  task(owner, taskId) {
+  row(taskId: any): BrowserTask | null { const r = this.db.prepare('SELECT * FROM browser_tasks WHERE id=?').get(String(taskId || '')); return r ? r as unknown as BrowserTask : null; }
+  task(owner: any, taskId: any) {
     const row = this.row(taskId);
     if (!row || row.owner !== String(owner)) throw fail('没有找到这个浏览器任务（task_id 无效）', 404, 'task_not_found');
     return row;
   }
-  createTask(owner, { title = '', identity = 'default', origin = 'chat', instruction = '', status = 'queued', grantedFiles = [] }: {title?: string; identity?: string; origin?: string; instruction?: string; status?: string; grantedFiles?: any[]} = {}) {
+  createTask(owner: any, { title = '', identity = 'default', origin = 'chat', instruction = '', status = 'queued', grantedFiles = [] }: {title?: string; identity?: string; origin?: string; instruction?: string; status?: string; grantedFiles?: any[]} = {}) {
     if (!TASK_ORIGINS.includes(origin)) origin = 'chat';
     const taskId = id('bt'), at = now();
     this.transaction(() => {
@@ -146,31 +146,31 @@ export class BrowserStore {
     });
     return this.row(taskId)!;
   }
-  updateTask(taskId, fields) {
+  updateTask(taskId: any, fields: any) {
     const allowed = ['title', 'status', 'summary', 'result', 'error', 'last_url', 'thread_id', 'claimed_by', 'claim_token', 'lease_until', 'checkout', 'granted_files', 'allowed_origins', 'finished_at', 'identity'];
     const keys = Object.keys(fields).filter(key => allowed.includes(key));
     if (!keys.length) return this.row(taskId);
     this.db.prepare(`UPDATE browser_tasks SET ${keys.map(key => key + '=?').join(',')},updated_at=? WHERE id=?`).run(...keys.map(key => fields[key] ?? null), now(), String(taskId));
     return this.row(taskId);
   }
-  listTasks(owner, { limit = 50, active = false } = {}) {
+  listTasks(owner: any, { limit = 50, active = false } = {}) {
     const rows = active
       ? this.db.prepare(`SELECT * FROM browser_tasks WHERE owner=? AND status IN (${ACTIVE_STATUSES.map(() => '?').join(',')}) ORDER BY updated_at DESC LIMIT ?`).all(String(owner), ...ACTIVE_STATUSES, Math.min(200, Number(limit) || 50))
       : this.db.prepare('SELECT * FROM browser_tasks WHERE owner=? ORDER BY updated_at DESC LIMIT ?').all(String(owner), Math.min(200, Number(limit) || 50));
     return rows;
   }
-  addInput(taskId, kind, value, questionId = null) {
+  addInput(taskId: any, kind: any, value: any, questionId = null) {
     this.db.prepare('INSERT INTO browser_inputs(task_id,kind,text,question_id,created_at) VALUES(?,?,?,?,?)').run(String(taskId), kind, text(value, 20000), questionId, now());
   }
-  pendingInputs(taskId) { return this.db.prepare('SELECT id,kind,text,question_id,created_at FROM browser_inputs WHERE task_id=? AND consumed_at IS NULL ORDER BY id').all(String(taskId)); }
-  consumeInputs(taskId, upto) { this.db.prepare('UPDATE browser_inputs SET consumed_at=? WHERE task_id=? AND id<=? AND consumed_at IS NULL').run(now(), String(taskId), Number(upto) || 0); }
-  allInstructions(taskId) { return this.db.prepare("SELECT kind,text,created_at FROM browser_inputs WHERE task_id=? AND kind IN ('instruction','answer','handback') ORDER BY id").all(String(taskId)); }
-  progress(taskId, value) { this.db.prepare('INSERT INTO browser_progress(task_id,text,created_at) VALUES(?,?,?)').run(String(taskId), text(value, 600), now()); }
-  progressList(taskId, limit = 30) { return this.db.prepare('SELECT text,created_at FROM browser_progress WHERE task_id=? ORDER BY id DESC LIMIT ?').all(String(taskId), limit).reverse(); }
+  pendingInputs(taskId: any) { return this.db.prepare('SELECT id,kind,text,question_id,created_at FROM browser_inputs WHERE task_id=? AND consumed_at IS NULL ORDER BY id').all(String(taskId)); }
+  consumeInputs(taskId: any, upto: any) { this.db.prepare('UPDATE browser_inputs SET consumed_at=? WHERE task_id=? AND id<=? AND consumed_at IS NULL').run(now(), String(taskId), Number(upto) || 0); }
+  allInstructions(taskId: any) { return this.db.prepare("SELECT kind,text,created_at FROM browser_inputs WHERE task_id=? AND kind IN ('instruction','answer','handback') ORDER BY id").all(String(taskId)); }
+  progress(taskId: any, value: any) { this.db.prepare('INSERT INTO browser_progress(task_id,text,created_at) VALUES(?,?,?)').run(String(taskId), text(value, 600), now()); }
+  progressList(taskId: any, limit = 30) { return this.db.prepare('SELECT text,created_at FROM browser_progress WHERE task_id=? ORDER BY id DESC LIMIT ?').all(String(taskId), limit).reverse(); }
 
   // Executor claims: one live executor per task; an expired lease is never silently re-run because
   // the page may have changed (an order may have been placed). It is surfaced as interrupted.
-  claimNext(workerId, { leaseMs = 5 * 60_000, exclude = [] }: {leaseMs?: number; exclude?: string[]} = {}) {
+  claimNext(workerId: any, { leaseMs = 5 * 60_000, exclude = [] }: {leaseMs?: number; exclude?: string[]} = {}) {
     return this.transaction(() => {
       const at = now();
       const expired = this.db.prepare("SELECT * FROM browser_tasks WHERE status='running' AND lease_until IS NOT NULL AND lease_until<?").all(at);
@@ -186,41 +186,41 @@ export class BrowserStore {
       return { task: this.row(row.id), token };
     });
   }
-  verifyClaim(taskId, token) {
+  verifyClaim(taskId: any, token: any) {
     const row = this.row(taskId);
     if (!row || !token || row.claim_token !== token) throw fail('浏览器任务执行凭证无效', 401);
     return row;
   }
-  renewClaim(taskId, token, leaseMs = 5 * 60_000) {
+  renewClaim(taskId: any, token: any, leaseMs = 5 * 60_000) {
     const row = this.verifyClaim(taskId, token);
     this.db.prepare('UPDATE browser_tasks SET lease_until=?,updated_at=? WHERE id=?').run(now() + leaseMs, now(), row.id);
     return this.row(row.id);
   }
-  releaseClaim(taskId) { this.db.prepare('UPDATE browser_tasks SET claimed_by=NULL,claim_token=NULL,lease_until=NULL,updated_at=? WHERE id=?').run(now(), String(taskId)); }
+  releaseClaim(taskId: any) { this.db.prepare('UPDATE browser_tasks SET claimed_by=NULL,claim_token=NULL,lease_until=NULL,updated_at=? WHERE id=?').run(now(), String(taskId)); }
 
   // ---- questions ----------------------------------------------------------------------------------
-  createQuestion(owner, taskId, { kind, prompt, options = [], data = {} }: {kind: string; prompt: string; options?: string[]; data?: any}) {
+  createQuestion(owner: any, taskId: any, { kind, prompt, options = [], data = {} }: {kind: string; prompt: string; options?: string[]; data?: any}) {
     const questionId = id('q');
     this.db.prepare('INSERT INTO browser_questions(id,task_id,owner,kind,prompt,options,data,created_at) VALUES(?,?,?,?,?,?,?,?)')
       .run(questionId, String(taskId), String(owner), kind, text(prompt, 2000), json(options), json(data), now());
     return this.question(questionId);
   }
-  question(questionId): BrowserQuestion | null {
+  question(questionId: any): BrowserQuestion | null {
     const row = this.db.prepare('SELECT * FROM browser_questions WHERE id=?').get(String(questionId || ''));
     return row ? { ...row, options: parse(row.options, []), data: parse(row.data, {}), answer: parse(row.answer, null) } as BrowserQuestion : null;
   }
-  ownedQuestion(owner, questionId) {
+  ownedQuestion(owner: any, questionId: any) {
     const row = this.question(questionId);
     if (!row || row.owner !== String(owner)) throw fail('没有找到这个问题（question_id 无效）', 404, 'question_not_found');
     return row;
   }
-  answerQuestion(questionId, answer, by) {
+  answerQuestion(questionId: any, answer: any, by: any) {
     const changed = this.db.prepare("UPDATE browser_questions SET status='answered',answer=?,answered_by=?,answered_at=? WHERE id=? AND status='pending'").run(json(answer), by, now(), String(questionId)).changes;
     if (!changed) throw fail('这个问题已经回答过或已关闭', 409, 'question_closed');
     return this.question(questionId);
   }
-  cancelQuestions(taskId) { this.db.prepare("UPDATE browser_questions SET status='cancelled',answered_at=? WHERE task_id=? AND status='pending'").run(now(), String(taskId)); }
-  pendingQuestions(owner, taskId = null) {
+  cancelQuestions(taskId: any) { this.db.prepare("UPDATE browser_questions SET status='cancelled',answered_at=? WHERE task_id=? AND status='pending'").run(now(), String(taskId)); }
+  pendingQuestions(owner: any, taskId = null) {
     const rows = taskId
       ? this.db.prepare("SELECT * FROM browser_questions WHERE owner=? AND task_id=? AND status='pending' ORDER BY created_at").all(String(owner), String(taskId))
       : this.db.prepare("SELECT * FROM browser_questions WHERE owner=? AND status='pending' ORDER BY created_at").all(String(owner));
@@ -228,28 +228,28 @@ export class BrowserStore {
   }
 
   // ---- events for the Dots conversation ------------------------------------------------------------
-  event(owner, taskId, type, payload) {
+  event(owner: any, taskId: any, type: any, payload: any) {
     this.db.prepare('INSERT INTO browser_events(owner,task_id,type,payload,created_at) VALUES(?,?,?,?,?)').run(String(owner), taskId, type, json(payload), now());
   }
   undeliveredEvents(limit = 50): any[] { return this.db.prepare('SELECT * FROM browser_events WHERE delivered_at IS NULL ORDER BY id LIMIT ?').all(limit).map(row => ({ ...row, payload: parse(row.payload, {}) })); }
-  markDelivered(ids) { const stmt = this.db.prepare('UPDATE browser_events SET delivered_at=? WHERE id=? AND delivered_at IS NULL'); for (const value of ids) stmt.run(now(), Number(value)); }
+  markDelivered(ids: any) { const stmt = this.db.prepare('UPDATE browser_events SET delivered_at=? WHERE id=? AND delivered_at IS NULL'); for (const value of ids) stmt.run(now(), Number(value)); }
 
   // ---- permissions (users change them in Settings; agents only read them) ---------------------------
-  permissions(owner) {
+  permissions(owner: any) {
     const row = this.db.prepare('SELECT permissions FROM browser_settings WHERE owner=?').get(String(owner));
     return { ...DEFAULT_PERMISSIONS, ...parse(row?.permissions, {}) };
   }
-  setPermissions(owner, input) {
+  setPermissions(owner: any, input: any) {
     const next = this.permissions(owner);
     for (const key of PERMISSION_KEYS) if (input?.[key] !== undefined) {
-      if (!PERMISSION_VALUES[key].includes(input[key])) throw fail('浏览器权限设置无效');
+      if (!(PERMISSION_VALUES as any)[key].includes(input[key])) throw fail('浏览器权限设置无效');
       next[key] = input[key];
     }
     this.db.prepare('INSERT INTO browser_settings(owner,permissions,updated_at) VALUES(?,?,?) ON CONFLICT(owner) DO UPDATE SET permissions=excluded.permissions,updated_at=excluded.updated_at').run(String(owner), json(next), now());
     return next;
   }
-  siteRules(owner) { return this.db.prepare('SELECT origin,setting,updated_at FROM browser_site_rules WHERE owner=? ORDER BY origin').all(String(owner)); }
-  setSiteRule(owner, origin, setting) {
+  siteRules(owner: any) { return this.db.prepare('SELECT origin,setting,updated_at FROM browser_site_rules WHERE owner=? ORDER BY origin').all(String(owner)); }
+  setSiteRule(owner: any, origin: any, setting: any) {
     origin = normalizeOrigin(origin);
     if (setting === null || setting === 'default') { this.db.prepare('DELETE FROM browser_site_rules WHERE owner=? AND origin=?').run(String(owner), origin); return null; }
     if (!['allow', 'ask', 'deny'].includes(setting)) throw fail('网站权限设置无效');
@@ -258,7 +258,7 @@ export class BrowserStore {
   }
   // Effective site-access decision: a site rule wins over the default; a task-level approval
   // (the user answered "allow" for this task) turns "ask" into "allow" for that task only.
-  siteDecision(owner, origin, task: BrowserTask | null = null) {
+  siteDecision(owner: any, origin: any, task: BrowserTask | null = null) {
     const rules = this.siteRules(owner);
     const rule = rules.find(item => originMatches(item.origin, origin) && new URL(String(item.origin)).hostname === new URL(origin).hostname) || rules.find(item => originMatches(item.origin, origin));
     const setting = rule?.setting || this.permissions(owner).siteAccess;
@@ -267,23 +267,23 @@ export class BrowserStore {
   }
 
   // ---- identities --------------------------------------------------------------------------------
-  identities(owner) {
+  identities(owner: any) {
     const rows = this.db.prepare('SELECT id,label,note,created_at FROM browser_identities WHERE owner=? ORDER BY created_at').all(String(owner));
     return [{ id: 'default', label: '默认身份', note: '所有窗口默认共用', created_at: 0 }, ...rows];
   }
-  hasIdentity(owner, identity) { return identity === 'default' || Boolean(this.db.prepare('SELECT 1 FROM browser_identities WHERE owner=? AND id=?').get(String(owner), identity)); }
-  addIdentity(owner, { id: identity, label, note = '' }) {
+  hasIdentity(owner: any, identity: any) { return identity === 'default' || Boolean(this.db.prepare('SELECT 1 FROM browser_identities WHERE owner=? AND id=?').get(String(owner), identity)); }
+  addIdentity(owner: any, { id: identity, label, note = '' }: any) {
     if (identity === 'default') throw fail('默认身份已存在');
     this.db.prepare('INSERT INTO browser_identities(owner,id,label,note,created_at) VALUES(?,?,?,?,?) ON CONFLICT(owner,id) DO UPDATE SET label=excluded.label,note=excluded.note').run(String(owner), identity, text(label || identity, 60), text(note, 200), now());
     return this.identities(owner).find(item => item.id === identity);
   }
-  removeIdentity(owner, identity) { if (identity === 'default') throw fail('默认身份不能删除'); this.db.prepare('DELETE FROM browser_identities WHERE owner=? AND id=?').run(String(owner), identity); }
+  removeIdentity(owner: any, identity: any) { if (identity === 'default') throw fail('默认身份不能删除'); this.db.prepare('DELETE FROM browser_identities WHERE owner=? AND id=?').run(String(owner), identity); }
 
   // ---- Secure Vault ------------------------------------------------------------------------------
-  vaultList(owner) {
+  vaultList(owner: any) {
     return this.db.prepare('SELECT id,origin,username,label,identity,created_at,updated_at,last_used_at FROM browser_vault WHERE owner=? ORDER BY origin,username').all(String(owner));
   }
-  vaultSave(owner, { id: entryId = null, origin, username, password, label = '', identity = 'default' }) {
+  vaultSave(owner: any, { id: entryId = null, origin, username, password, label = '', identity = 'default' }: any) {
     origin = normalizeOrigin(origin);
     username = text(username, 256).trim();
     if (!username) throw fail('请填写账号');
@@ -300,12 +300,12 @@ export class BrowserStore {
       .run(entry, String(owner), origin, username, this.box.seal(password, 'vault:' + owner + ':' + entry), text(label, 80), identity, now(), now());
     return this.vaultList(owner).find(item => item.id === entry);
   }
-  vaultDelete(owner, entryId) { this.db.prepare('DELETE FROM browser_vault WHERE id=? AND owner=?').run(String(entryId), String(owner)); }
-  vaultCandidates(owner, pageOrigin, identity = 'default') {
+  vaultDelete(owner: any, entryId: any) { this.db.prepare('DELETE FROM browser_vault WHERE id=? AND owner=?').run(String(entryId), String(owner)); }
+  vaultCandidates(owner: any, pageOrigin: any, identity = 'default') {
     return this.vaultList(owner).filter(item => item.identity === identity && originMatches(item.origin, pageOrigin));
   }
   // Only the agent host calls this, to type the password into the page. Never returned to a model.
-  vaultReveal(owner, entryId) {
+  vaultReveal(owner: any, entryId: any) {
     const row = this.db.prepare('SELECT * FROM browser_vault WHERE id=? AND owner=?').get(String(entryId), String(owner));
     if (!row) throw fail('没有找到这条保存的登录', 404);
     this.db.prepare('UPDATE browser_vault SET last_used_at=? WHERE id=?').run(now(), row.id);
@@ -313,7 +313,7 @@ export class BrowserStore {
   }
 
   // ---- protected verification codes: single use, bound to one task, released only after approval ---
-  createCode(owner, { taskId = null, code, label = '', approved = false, ttlMs = 10 * 60_000 }) {
+  createCode(owner: any, { taskId = null, code, label = '', approved = false, ttlMs = 10 * 60_000 }: any) {
     const value = text(code, 64).trim();
     if (!/^[A-Za-z0-9-]{3,32}$/.test(value)) throw fail('验证码格式无效');
     const ref = id('vc');
@@ -321,21 +321,21 @@ export class BrowserStore {
       .run(ref, String(owner), taskId, text(label, 80), this.box.seal(value, 'code:' + owner + ':' + ref), approved ? 'approved' : 'pending_approval', now(), now() + ttlMs);
     return this.code(owner, ref);
   }
-  code(owner, ref): BrowserCode {
+  code(owner: any, ref: any): BrowserCode {
     const row = this.db.prepare('SELECT id,owner,task_id,label,status,created_at,expires_at,used_at FROM browser_codes WHERE id=? AND owner=?').get(String(ref || ''), String(owner));
     if (!row) throw fail('验证码引用无效', 404, 'code_not_found');
     if (row.status !== 'used' && Number(row.expires_at) < now()) { this.db.prepare("UPDATE browser_codes SET status='expired' WHERE id=?").run(row.id); row.status = 'expired'; }
     return row as unknown as BrowserCode;
   }
-  bindCode(owner, ref, taskId) {
+  bindCode(owner: any, ref: any, taskId: any) {
     const row = this.code(owner, ref);
     if (row.task_id && row.task_id !== taskId) throw fail('这个验证码引用属于另一次验证，不能用于此任务', 403, 'code_scope');
     if (['used', 'expired', 'denied'].includes(String(row.status))) throw fail('这个验证码引用已失效', 409, 'code_closed');
     this.db.prepare('UPDATE browser_codes SET task_id=? WHERE id=?').run(taskId, row.id);
     return this.code(owner, ref);
   }
-  setCodeStatus(owner, ref, status) { this.db.prepare('UPDATE browser_codes SET status=? WHERE id=? AND owner=?').run(status, String(ref), String(owner)); }
-  consumeCode(owner, ref, taskId) {
+  setCodeStatus(owner: any, ref: any, status: any) { this.db.prepare('UPDATE browser_codes SET status=? WHERE id=? AND owner=?').run(status, String(ref), String(owner)); }
+  consumeCode(owner: any, ref: any, taskId: any) {
     const row = this.code(owner, ref);
     if (row.task_id !== taskId) throw fail('验证码引用不属于这个任务', 403, 'code_scope');
     if (row.status !== 'approved') throw fail(row.status === 'pending_approval' ? '用户还没有批准把验证码分享给浏览器' : '验证码引用已失效', 409, 'code_closed');
@@ -345,11 +345,11 @@ export class BrowserStore {
   }
 
   // ---- files ---------------------------------------------------------------------------------------
-  addFile(owner, taskId, { kind, filename, mime, size, sha256, attachmentId }) {
+  addFile(owner: any, taskId: any, { kind, filename, mime, size, sha256, attachmentId }: any) {
     const fileId = id('bf');
     this.db.prepare('INSERT INTO browser_files(id,owner,task_id,kind,filename,mime,size,sha256,attachment_id,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)')
       .run(fileId, String(owner), String(taskId), kind, text(filename, 180), text(mime, 120), Number(size) || 0, sha256, attachmentId || null, now());
     return this.db.prepare('SELECT * FROM browser_files WHERE id=?').get(fileId)!;
   }
-  files(owner, taskId) { return this.db.prepare('SELECT id,kind,filename,mime,size,attachment_id,created_at FROM browser_files WHERE owner=? AND task_id=? ORDER BY created_at').all(String(owner), String(taskId)); }
+  files(owner: any, taskId: any) { return this.db.prepare('SELECT id,kind,filename,mime,size,attachment_id,created_at FROM browser_files WHERE owner=? AND task_id=? ORDER BY created_at').all(String(owner), String(taskId)); }
 }

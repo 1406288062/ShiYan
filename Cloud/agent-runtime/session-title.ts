@@ -6,7 +6,7 @@ const TITLE_SCHEMA = {type:'object',properties:{title:{type:'string'}},required:
 const defaultHub = createHubClient();
 // 模型由模型中枢的 shiyan.title 决定：GPT 仍走 Codex（采用中枢指定的模型与推理强度），
 // 其他提供方交给中枢推理；中枢不可用时沿用原有的 Codex + 默认模型。
-export async function conversationTitle({codex, state, key, owner, model, workspaces, save, hub = defaultHub}) {
+export async function conversationTitle({codex, state, key, owner, model, workspaces, save, hub = defaultHub}: any) {
   const conversation = state.conversations[key];
   if (!conversation || conversation.owner !== owner) return null;
   if (conversation.title) return conversation.title;
@@ -41,7 +41,7 @@ export async function conversationTitle({codex, state, key, owner, model, worksp
 }
 
 // 成员账号的标题：只做纯推理（经模型中枢），不使用 Codex 工作区；中枢走 GPT 路线或失败时返回 null，由调用方退回截取首句。
-export async function memberConversationTitle({ owner, user, assistant, hub = defaultHub }) {
+export async function memberConversationTitle({ owner, user, assistant, hub = defaultHub }: any) {
   if (!hub || !user) return null;
   const route = await hub.route('shiyan.title');
   if (!route || route.provider === 'openai') return null;

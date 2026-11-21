@@ -1,6 +1,6 @@
 // Browser tool definitions shared by the MCP bridges (agent-runtime) and the Dots agent runtime
 // (dots-runtime), which exposes the same tools to sandboxed agents. No side effects on import.
-const str = (description, extra = {}) => ({ type: 'string', description, ...extra });
+const str = (description: any, extra = {}) => ({ type: 'string', description, ...extra });
 export const BROWSER_TOOLS = [
   { name: 'browse', description: '在真实网站上操作（服务器上的真实 Chrome，由后台执行者完成）。开新活传 task_id: "new"；继续某个已有窗口传它的 task_id。task 里写清：要达到的结果、已知的确切选择、限制条件，以及完成任务所需且已授权的信息（用户给的卡片或一次性验证码可以文字写进来）。密码绝不能写进 task：登录用保存的登录（Secure Vault）或用户加密录入。需要的文件用 files 授权（附件 id）。受保护的验证码引用放在 verification_code。返回的是受理回执，受理不等于完成；结果和需要决定的问题会自动回到对话。修改、登录、核对购物车、结账都继续用同一个 task_id；不同网站的购买或登录各开一个窗口；一个窗口一次只跑一个结账。回答任务提出的问题时：answer_to 设成那个 question_id，回复写在 task 里——先自己对照用户的要求核对（比如购物车），只把用户没定、会影响结果的选择拿给用户。加密输入、付款授权、权限询问和接管只能由用户在专用界面处理，别在聊天里索要，也别在等决定时另开任务。',
     inputSchema: { type: 'object', additionalProperties: false, required: ['task_id', 'task'], properties: {
@@ -24,9 +24,9 @@ export const BROWSER_TOOLS = [
     inputSchema: { type: 'object', additionalProperties: false, required: ['query'], properties: { query: str('要查找的文字'), url: str('网址（可选）') } } },
 ];
 
-const obj = (properties, required: string[] = []) => ({ type: 'object', additionalProperties: false, properties, required });
-const s = description => ({ type: 'string', description });
-const n = description => ({ type: 'number', description });
+const obj = (properties: any, required: string[] = []) => ({ type: 'object', additionalProperties: false, properties, required });
+const s = (description: any) => ({ type: 'string', description });
+const n = (description: any) => ({ type: 'number', description });
 export const EXEC_TOOLS = [
   ['get_task', '读取任务要求、新输入（追加要求、问题答复、交还说明）、授权文件、权限和窗口状态。', obj({})],
   ['snapshot', '读取当前页面：网址、标题、标签页、可交互元素（ref 编号）、可见文字、滚动位置、机器人验证迹象、被拦截的导航。页面变化后 ref 失效，需要重新 snapshot。', obj({})],

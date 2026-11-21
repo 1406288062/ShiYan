@@ -7,30 +7,30 @@ const MAX_PAYLOAD_BYTES = 64 * 1024;
 const terminalStatuses = new Set(['completed', 'failed', 'cancelled', 'interrupted']);
 const statuses = new Set(['in_progress', 'completed', 'failed', 'cancelled', 'interrupted']);
 
-function cleanText(value) {
+function cleanText(value: any) {
   if (typeof value !== 'string' || value.includes('\0') || /data:[^,\s]{0,100};base64,/i.test(value)) return '';
   return value.replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, '').replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '')
     .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '');
 }
 
-function text(value, limit) {
+function text(value: any, limit: any) {
   const clean = cleanText(value);
   return clean.length <= limit ? clean : clean.slice(0, limit - 1) + '…';
 }
 
-function outputText(value, limit) {
+function outputText(value: any, limit: any) {
   const clean = cleanText(value);
   if (clean.length <= limit) return clean;
   const marker = '\n…\n', head = Math.floor((limit - marker.length) / 2), tail = limit - marker.length - head;
   return clean.slice(0, head) + marker + clean.slice(-tail);
 }
 
-function itemStatus(item, lifecycle) {
+function itemStatus(item: any, lifecycle: any) {
   if (statuses.has(item.status)) return item.status;
   return lifecycle === 'item.completed' ? 'completed' : 'in_progress';
 }
 
-export function projectDisplayItem(item, lifecycle = 'item.completed') {
+export function projectDisplayItem(item: any, lifecycle = 'item.completed') {
   if (!item || typeof item !== 'object' || typeof item.id !== 'string' || !item.id || item.id.length > 160) return null;
   const base = { id: item.id, type: item.type, status: itemStatus(item, lifecycle) };
   switch (item.type) {
@@ -40,21 +40,21 @@ export function projectDisplayItem(item, lifecycle = 'item.completed') {
     case 'mcp_tool_call': {
       const parts = Array.isArray(item.result?.content) ? item.result.content : [];
       const resultText = typeof item.result_text === 'string' ? outputText(item.result_text, 4000)
-        : parts.filter(part => part?.type === 'text' && typeof part.text === 'string')
-          .map(part => outputText(part.text, 4000)).filter(Boolean).join('\n\n');
+        : parts.filter((part: any) => part?.type === 'text' && typeof part.text === 'string')
+          .map((part: any) => outputText(part.text, 4000)).filter(Boolean).join('\n\n');
       return { ...base, server: text(item.server, 160), tool: text(item.tool, 160),
         ...(resultText ? { result_text: outputText(resultText, 4000) } : {}),
         ...(typeof item.error?.message === 'string' ? { error: { message: text(item.error.message, 1000) } } : {}) };
     }
     case 'todo_list':
       return { ...base, items: (Array.isArray(item.items) ? item.items : []).slice(0, 32)
-        .filter(step => typeof step?.text === 'string').map(step => ({ text: text(step.text, 256), completed: step.completed === true })) };
+        .filter((step: any) => typeof step?.text === 'string').map((step: any) => ({ text: text(step.text, 256), completed: step.completed === true })) };
     case 'web_search':
       return { ...base, query: text(item.query, 1000) };
     case 'file_change':
       return { ...base, changes: (Array.isArray(item.changes) ? item.changes : []).slice(0, 32)
-        .filter(change => typeof change?.path === 'string')
-        .map(change => ({ path: text(change.path, 512), kind: ['add', 'delete', 'update'].includes(change.kind) ? change.kind : 'update' })) };
+        .filter((change: any) => typeof change?.path === 'string')
+        .map((change: any) => ({ path: text(change.path, 512), kind: ['add', 'delete', 'update'].includes(change.kind) ? change.kind : 'update' })) };
     case 'collab_tool_call':
       return { ...base, tool: text(item.tool, 160), count: Array.isArray(item.receiver_thread_ids) ? item.receiver_thread_ids.length
         : Number.isSafeInteger(item.count) && item.count >= 0 ? item.count : 0 };
@@ -74,10 +74,10 @@ export function projectDisplayItem(item, lifecycle = 'item.completed') {
   }
 }
 
-function boundItems(items) {
+function boundItems(items: any) {
   const bounded = items.slice(-MAX_ITEMS);
-  const sizes = bounded.map(item => Buffer.byteLength(JSON.stringify(item)));
-  let bytes = 2 + Math.max(0, bounded.length - 1) + sizes.reduce((sum, size) => sum + size, 0);
+  const sizes = bounded.map((item: any) => Buffer.byteLength(JSON.stringify(item)));
+  let bytes = 2 + Math.max(0, bounded.length - 1) + sizes.reduce((sum: any, size: any) => sum + size, 0);
   // Preserve factual status rows before old verbose command/tool output.
   for (let i = 0; i < bounded.length && bytes > MAX_PAYLOAD_BYTES; i++) {
     const item = bounded[i];
@@ -95,7 +95,7 @@ function boundItems(items) {
   return bounded;
 }
 
-export function upsertDisplayItem(existing, item, lifecycle, startOrder: any[] = []) {
+export function upsertDisplayItem(existing: any, item: any, lifecycle: any, startOrder: any[] = []) {
   const previous = Array.isArray(existing) ? existing : [];
   const projected = projectDisplayItem(item, lifecycle);
   if (!projected) return { displayItems: previous, displayItemOrder: startOrder };
@@ -107,7 +107,7 @@ export function upsertDisplayItem(existing, item, lifecycle, startOrder: any[] =
   return { displayItems: boundItems(next), displayItemOrder: order };
 }
 
-export function displayItemsForJob(job) {
+export function displayItemsForJob(job: any) {
   if (Array.isArray(job.displayItems)) return boundItems(job.displayItems);
   let items: any[] = [], order: any[] = [];
   for (const item of job.items || []) {
@@ -117,19 +117,19 @@ export function displayItemsForJob(job) {
   return items;
 }
 
-export function projectUsage(value) {
+export function projectUsage(value: any) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const usage = {};
   for (const key of ['input_tokens', 'cached_input_tokens', 'output_tokens']) {
-    if (Number.isSafeInteger(value[key]) && value[key] >= 0) usage[key] = value[key];
+    if (Number.isSafeInteger(value[key]) && value[key] >= 0) (usage as any)[key] = value[key];
   }
   return Object.keys(usage).length ? usage : null;
 }
 
-export function jobSnapshot(job) {
+export function jobSnapshot(job: any) {
   return { ok: true, id: job.id, status: job.status, text: job.text || '', assets: generatedOutputs(job.assets),
     threadId: job.threadId || null, events: job.events || [], error: job.error || null, reasoning: job.reasoning,
     displayItems: displayItemsForJob(job), fileChanges: job.fileChanges || [], usage: projectUsage(job.usage) };
 }
 
-export function terminalJobStatus(status) { return terminalStatuses.has(status); }
+export function terminalJobStatus(status: any) { return terminalStatuses.has(status); }

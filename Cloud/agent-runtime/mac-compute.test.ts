@@ -11,7 +11,7 @@ const clientToken = 'test-client-' + 'c'.repeat(40);
 const workerToken = 'test-worker-' + 'w'.repeat(40);
 const deviceId = 'device-test-mac';
 const ownerA = 'account:a', ownerB = 'account:b';
-const sha = data => createHash('sha256').update(data).digest('hex');
+const sha = (data: any) => createHash('sha256').update(data).digest('hex');
 const vector = (): number[] => Array.from({ length: 1024 }, (_, index) => index === 0 ? 1 : 0);
 function png(width = 2, height = 3) {
   const bytes = Buffer.alloc(33); Buffer.from([137,80,78,71,13,10,26,10]).copy(bytes);
@@ -23,13 +23,13 @@ function jpeg(width = 8, height = 12) {
   const bytes = Buffer.from('ffd8ffc0001108000c000803011100021100031100ffd9', 'hex');
   bytes.writeUInt16BE(height, 7); bytes.writeUInt16BE(width, 9); return bytes;
 }
-async function fixture(t, overrides = {}) {
+async function fixture(t: any, overrides = {}) {
   const root = await mkdtemp(path.join(tmpdir(), 'shiyan-compute-test-'));
   const active = new Set([ownerA, ownerB]); let authorizedDevice = true, clock = 1000000;
   const config = { dataDir: path.join(root, 'data'), clientToken, workerToken, deviceId,
-    allowedOwners: [ownerA, ownerB], now: () => clock, authorizeOwner: owner => active.has(owner),
+    allowedOwners: [ownerA, ownerB], now: () => clock, authorizeOwner: (owner: any) => active.has(owner),
     authorizeDevice: () => authorizedDevice, ...overrides };
-  let server, base;
+  let server: any, base: any;
   async function start() {
     server = createComputeBroker(config);
     await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', () => resolve()); });
@@ -37,20 +37,20 @@ async function fixture(t, overrides = {}) {
   }
   async function stop() {
     if (!server) return;
-    const closing = new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    const closing = new Promise<void>((resolve, reject) => server.close((error: any) => error ? reject(error) : resolve()));
     server.closeIdleConnections(); await closing; server = undefined;
   }
   t.after(async () => { await stop(); await rm(root, { recursive: true, force: true }); });
   await start();
   interface CallOptions { token?: string; owner?: string | null; lease?: string; method?: string; body?: any; bytes?: any; headers?: Record<string, string>; }
-  async function call(route, options: CallOptions = {}) {
+  async function call(route: any, options: CallOptions = {}) {
     const { token = clientToken, owner = ownerA, lease, method = 'GET', body, bytes, headers = {} } = options;
     const allHeaders = { Authorization: `Bearer ${token}`, ...headers };
-    if (owner !== null) allHeaders['X-Shiyan-Owner'] = owner;
-    if (lease) allHeaders['X-Task-Lease'] = lease;
+    if (owner !== null) (allHeaders as any)['X-Shiyan-Owner'] = owner;
+    if (lease) (allHeaders as any)['X-Task-Lease'] = lease;
     let payload = bytes;
-    if (body !== undefined) { payload = JSON.stringify(body); allHeaders['Content-Type'] = 'application/json'; }
-    if (bytes) allHeaders['Content-Length'] = String(bytes.length);
+    if (body !== undefined) { payload = JSON.stringify(body); (allHeaders as any)['Content-Type'] = 'application/json'; }
+    if (bytes) (allHeaders as any)['Content-Length'] = String(bytes.length);
     const response = await fetch(base + route, { method, headers: allHeaders, body: payload });
     const data: any = response.headers.get('content-type')?.includes('json') ? await response.json() : Buffer.from(await response.arrayBuffer());
     return { status: response.status, data };
@@ -60,12 +60,12 @@ async function fixture(t, overrides = {}) {
       params: { texts: ['sample PDF text'], operation: 'document_embedding', instruction: '', ...params } } });
   }
   async function claim() { return call('/v1/worker/claim', { token: workerToken, owner: null, method: 'POST', body: {} }); }
-  async function complete(task, embeddings = [vector()]) {
+  async function complete(task: any, embeddings = [vector()]) {
     return call(`/v1/worker/tasks/${task.id}/result`, { token: workerToken, owner: null, lease: task.lease_token,
       method: 'PUT', body: { embeddings, device: 'mps', dimensions: 1024 } });
   }
   return { root, config, active, call, submitEmbed, claim, complete, stop, start,
-    advance: ms => { clock += ms; }, revokeDevice: () => { authorizedDevice = false; } };
+    advance: (ms: any) => { clock += ms; }, revokeDevice: () => { authorizedDevice = false; } };
 }
 
 test('credentials and trusted owner binding guard every task route', async t => {
@@ -99,7 +99,7 @@ test('per-owner immutable request deduplication survives a broker restart', asyn
 
 test('only fixed computation kinds and bounded parameter schemas are accepted', async t => {
   const f = await fixture(t);
-  const task = (kind, params) => f.call('/v1/tasks', { method: 'POST', body: { kind, request_id: 'invalid', params } });
+  const task = (kind: any, params: any) => f.call('/v1/tasks', { method: 'POST', body: { kind, request_id: 'invalid', params } });
   assert.equal((await task('shell', { command: 'id' })).status, 400);
   assert.equal((await f.submitEmbed('huge', ownerA, { texts: Array(9).fill('x') })).status, 400);
   assert.equal((await f.submitEmbed('huge', ownerA, { texts: ['x'.repeat(16385)] })).status, 400);
@@ -202,7 +202,7 @@ test('streamed image source is immutable and result must be a JPEG of exact 4x d
   assert.equal(JSON.stringify(task).includes(f.root), false);
   assert.equal((await f.call(`/v1/worker/tasks/${id}/input`, { token: workerToken, lease: 'wrong' })).status, 409);
   assert.deepEqual((await f.call(`/v1/worker/tasks/${id}/input`, { token: workerToken, lease: task.lease_token })).data, source);
-  const put = bytes => f.call(`/v1/worker/tasks/${id}/result`, { token: workerToken, lease: task.lease_token, method: 'PUT', bytes });
+  const put = (bytes: any) => f.call(`/v1/worker/tasks/${id}/result`, { token: workerToken, lease: task.lease_token, method: 'PUT', bytes });
   assert.equal((await put(png(8,12))).status, 422);
   assert.equal((await put(jpeg(7,12))).status, 422);
   const output = jpeg(8,12); assert.equal((await put(output)).status, 200);
@@ -249,7 +249,7 @@ test('production authorization reads current account and device state, including
   accounts.exec('CREATE TABLE account_users(owner TEXT PRIMARY KEY,status TEXT);');
   accounts.prepare('INSERT INTO account_users VALUES(?,?)').run(ownerA, 'active');
   t.after(() => accounts.close());
-  const writeRegistry = async overrides => writeFile(deviceRegistryPath, JSON.stringify({ version: 2, devices: [
+  const writeRegistry = async (overrides: any) => writeFile(deviceRegistryPath, JSON.stringify({ version: 2, devices: [
     { deviceId, accountId: 'paired-owner', platform: 'darwin', revokedAt: null, ...overrides },
   ], calls: [] }), { mode: 0o600 });
   await writeRegistry({});

@@ -8,9 +8,9 @@ const jobID=process.env.SHIYAN_INPUT_JOB,token=process.env.SHIYAN_INPUT_TOKEN;
 const shutdown=new AbortController();
 const headers={'Content-Type':'application/json',Authorization:'Bearer '+token};
 const root=endpoint+'/internal/v1/jobs/'+encodeURIComponent(jobID||'')+'/questions';
-const write=value=>{if(!process.stdout.destroyed)process.stdout.write(JSON.stringify(value)+'\n');};
+const write=(value: any)=>{if(!process.stdout.destroyed)process.stdout.write(JSON.stringify(value)+'\n');};
 const tool={name:'ask_user',description:'Ask the user one to three optional clarification questions with clickable choices in ShiYan. This tool waits for the user’s answer and returns it to the current run. Use this tool for choice questions instead of request_user_input_async or a plain bullet list. Never use it to request action permissions.',inputSchema:{type:'object',properties:{questions:{type:'array',minItems:1,maxItems:3,items:{type:'object',properties:{id:{type:'string'},header:{type:'string'},question:{type:'string'},options:{type:'array',minItems:2,maxItems:5,items:{type:'object',properties:{label:{type:'string'},description:{type:'string'}},required:['label'],additionalProperties:false}}},required:['id','header','question','options'],additionalProperties:false}}},required:['questions'],additionalProperties:false},annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false}};
-async function request(url,options={}){
+async function request(url: any,options={}){
   for(let attempt=0;;attempt++){
     try{
       const response=await fetch(url,{...options,headers,signal:AbortSignal.any([shutdown.signal,AbortSignal.timeout(10000)])});
@@ -25,7 +25,7 @@ async function request(url,options={}){
     }
   }
 }
-async function ask(input){
+async function ask(input: any){
   let value=(await request(root,{method:'POST',body:JSON.stringify({requestId:randomUUID(),questions:input.questions})})).request;
   while(value.status==='pending'){
     await delay(500,undefined,{signal:shutdown.signal});
@@ -34,7 +34,7 @@ async function ask(input){
   if(value.status!=='answered')return {content:[{type:'text',text:'The question was closed because the task ended. No user answer was received.'}],isError:true};
   return {content:[{type:'text',text:JSON.stringify({answers:value.answers})}],structuredContent:{answers:value.answers}};
 }
-async function handle(message){
+async function handle(message: any){
   if(!Object.hasOwn(message,'id'))return;
   try{
     let result;

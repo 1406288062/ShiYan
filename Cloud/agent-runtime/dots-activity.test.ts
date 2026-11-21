@@ -21,11 +21,11 @@ test('schedule calendar preserves local timezone, weekdays, month end and inclus
   assert.equal(new Date(nextScheduleRun({...baseSchedule,time:'09:00',timezone:'America/New_York',startDate:'2026-10-31'},Date.parse('2026-10-31T14:00:00Z'))!).toISOString(),'2026-11-01T14:00:00.000Z');
 });
 
-function scheduleFixture(t){
+function scheduleFixture(t: any){
   const root=mkdtempSync(path.join(os.tmpdir(),'dots-schedule-test-'));
   let timestamp=Date.parse('2026-10-13T12:59:00Z'),status='active',lost=false;
   const calls: any[]=[],receipts=new Map();
-  const client={async rpc(){return {};},async tool(name,args){
+  const client={async rpc(){return {};},async tool(name: any,args: any){
     calls.push({name,args});
     if(name==='dots_get_manager')return {manager:{id:'manager:'+OWNER,ownerId:OWNER,name:'大内总管',status,tasks:[],messages:[],activityCursor:0}};
     if(name==='dots_create_goal'){
@@ -38,7 +38,7 @@ function scheduleFixture(t){
   const adapter=new DotsAdapter({root,client: client as any,eventReader:null as any,activityReader:null as any,recoverIntervalMs:0,subscriptionRefreshMs:0,managerPollMs:0,schedulePollMs:0});
   adapter.schedules.close();adapter.schedules=new DotsSchedules(adapter,{pollMs:0,now:()=>timestamp});
   t.after(()=>{adapter.close();rmSync(root,{recursive:true,force:true});});
-  return {adapter,calls,receipts,setNow(value){timestamp=Date.parse(value);},status(value){status=value;},lose(){lost=true;}};
+  return {adapter,calls,receipts,setNow(value: any){timestamp=Date.parse(value);},status(value: any){status=value;},lose(){lost=true;}};
 }
 test('schedule settings persist, updates deduplicate, response loss never dispatches twice and manager pause blocks runs',async t=>{
   const f=scheduleFixture(t),s=f.adapter.schedules;
@@ -68,7 +68,7 @@ test('recent activity excludes imported history and acceptance runs without drop
     return {manager:{id:'manager:'+OWNER,ownerId:OWNER,name:'大内总管',status:'active',tasks,messages:[],activityCursor:0}};
   };
   let outputIDs;
-  f.adapter.activityReader={outputs(ids,owner){assert.equal(owner,OWNER);outputIDs=ids;return ids.map(id=>({id:'output:'+id,taskId:id}));},close(){}} as any;
+  f.adapter.activityReader={outputs(ids: any,owner: any){assert.equal(owner,OWNER);outputIDs=ids;return ids.map((id: any)=>({id:'output:'+id,taskId:id}));},close(){}} as any;
   const panel=await f.adapter.activity(OWNER,{limit:500});
   assert.deepEqual(panel.activities.map(a=>a.taskId),[30,29,28,27,26]);
   assert.deepEqual(outputIDs,[26,27,28,29,30]);

@@ -4,18 +4,18 @@
 const FILE_TOOLS = { Write: 'add', Edit: 'update', MultiEdit: 'update', NotebookEdit: 'update' };
 
 interface IsolatedServerOptions { isolatedServer?: string; }
-export function toolItem(block, { isolatedServer }: IsolatedServerOptions = {}) {
+export function toolItem(block: any, { isolatedServer }: IsolatedServerOptions = {}) {
   const input = block.input && typeof block.input === 'object' ? block.input : {};
   const id = String(block.id || '');
   const name = String(block.name || '');
   if (name === 'Bash') return { id, type: 'command_execution', command: String(input.command || ''), aggregated_output: '', status: 'in_progress' };
-  if (FILE_TOOLS[name]) {
+  if ((FILE_TOOLS as any)[name]) {
     const file = input.file_path || input.notebook_path;
-    return { id, type: 'file_change', changes: typeof file === 'string' ? [{ path: file, kind: FILE_TOOLS[name] }] : [], status: 'in_progress' };
+    return { id, type: 'file_change', changes: typeof file === 'string' ? [{ path: file, kind: (FILE_TOOLS as any)[name] }] : [], status: 'in_progress' };
   }
   if (name === 'TodoWrite') {
     const todos = Array.isArray(input.todos) ? input.todos : [];
-    return { id, type: 'todo_list', items: todos.filter(t => typeof t?.content === 'string').map(t => ({ text: t.content, completed: t.status === 'completed' })), status: 'in_progress' };
+    return { id, type: 'todo_list', items: todos.filter((t: any) => typeof t?.content === 'string').map((t: any) => ({ text: t.content, completed: t.status === 'completed' })), status: 'in_progress' };
   }
   if (name === 'WebSearch') return { id, type: 'web_search', query: String(input.query || ''), status: 'in_progress' };
   if (name.startsWith('mcp__')) {
@@ -29,7 +29,7 @@ export function toolItem(block, { isolatedServer }: IsolatedServerOptions = {}) 
   return { id, type: 'mcp_tool_call', server: 'claude', tool: name, arguments: input, status: 'in_progress' };
 }
 
-function resultParts(content) {
+function resultParts(content: any) {
   if (typeof content === 'string') return [{ type: 'text', text: content }];
   if (!Array.isArray(content)) return [];
   const parts: any[] = [];
@@ -41,7 +41,7 @@ function resultParts(content) {
   return parts;
 }
 
-export function completeTool(item, block) {
+export function completeTool(item: any, block: any) {
   const failed = block?.is_error === true;
   const parts = resultParts(block?.content);
   const text = parts.filter(p => p.type === 'text').map(p => p.text).join('\n').slice(0, 128000);
@@ -56,9 +56,9 @@ export function completeTool(item, block) {
   return { ...item, status };
 }
 
-export function claudeUsage(usage) {
+export function claudeUsage(usage: any) {
   if (!usage || typeof usage !== 'object') return null;
-  const n = v => (Number.isSafeInteger(v) && v >= 0 ? v : 0);
+  const n = (v: any) => (Number.isSafeInteger(v) && v >= 0 ? v : 0);
   const cached = n(usage.cache_read_input_tokens);
   return { input_tokens: n(usage.input_tokens) + n(usage.cache_creation_input_tokens) + cached, cached_input_tokens: cached, output_tokens: n(usage.output_tokens) };
 }
@@ -68,11 +68,11 @@ export function createClaudeEventMapper({ isolatedServer }: IsolatedServerOption
   const partial = new Map();        // 流式块 index -> {id,type,text}
   const streamCounts = new Map();   // message.id -> {t,r} 流式阶段已见文本/思考块数
   const finalCounts = new Map();    // message.id -> {t,r} 完整消息阶段已见块数
-  let messageId = null, started = false, finished = false;
-  const nextId = (counts, id, kind) => { const c = counts.get(id) || { t: 0, r: 0 }; counts.set(id, c); return `${id}:${kind}${c[kind]++}`; };
+  let messageId: any = null, started = false, finished = false;
+  const nextId = (counts: any, id: any, kind: any) => { const c = counts.get(id) || { t: 0, r: 0 }; counts.set(id, c); return `${id}:${kind}${c[kind]++}`; };
   return {
     get finished() { return finished; },
-    map(message) {
+    map(message: any) {
       const out: any[] = [];
       if (!message || typeof message !== 'object' || finished) return out;
       if (message.type === 'system' && message.subtype === 'init') {

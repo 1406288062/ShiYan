@@ -11,20 +11,20 @@ import { createDotsSidecar } from './dots-sidecar.ts';
 
 const OWNER='shiyan-private-owner';
 const disconnected=()=>Object.assign(new Error('fixture disconnected'),{status:503,code:'runtime_unavailable'});
-const copy=value=>JSON.parse(JSON.stringify(value));
+const copy=(value: any)=>JSON.parse(JSON.stringify(value));
 const instruction=(extra={})=>({requestId:'manager-first',message:'检查手机端表格',host:'shiyan_mobile',...extra});
-function fixture(t,{managerPollMs=0}={}): any {
+function fixture(t: any,{managerPollMs=0}={}): any {
   const root=mkdtempSync(path.join(os.tmpdir(),'shiyan-manager-fixture-'));
   const store=new DotsStore(root),calls: any[]=[],receipts=new Map(),activity: any[]=[];
   const manager: any={id:'manager:'+OWNER,ownerId:OWNER,name:'大内总管',status:'active',controlRevision:0,createdAt:1000,updatedAt:1000,lastSummary:'',workerLimit:2,runningWorkers:0,tasks:[],messages:[],capabilities:{manager:true,delegation:true,dependencies:true,durableRuns:true,workerConcurrency:2,apns:false,hardBudgets:false,recurringSchedules:false},thread_id:'private-thread',token:'never-project'};
   let loseMessage=false,loseControl=false,unavailable=false,badCursor=false;
-  const append=(kind,{taskId=null,message='',data={}}={})=>{const row={id:activity.length+1,managerId:manager.id,taskId,kind,message,data,createdAt:1000+activity.length};activity.push(row);return row;};
-  const client={forOwner(value){return client;},async rpc(method){calls.push({method});if(method==='ping')return {};throw new Error('unsupported fixture rpc');},async tool(name,args){
+  const append=(kind: any,{taskId=null,message='',data={}}={})=>{const row={id:activity.length+1,managerId:manager.id,taskId,kind,message,data,createdAt:1000+activity.length};activity.push(row);return row;};
+  const client={forOwner(value: any){return client;},async rpc(method: any){calls.push({method});if(method==='ping')return {};throw new Error('unsupported fixture rpc');},async tool(name: any,args: any){
     if(args.owner_id&&args.owner_id!==OWNER)throw Object.assign(Error('Manager not found'),{status:404});
     calls.push({name,args});if(unavailable)throw disconnected();
     if(name==='dots_get_manager')return {ok:true,manager:{...copy(manager),activityCursor:activity.length,messages:copy(manager.messages.slice(-100)),hasMoreMessages:manager.messages.length>100,oldestMessageId:manager.messages.slice(-100)[0]?.id??null}};
     if(name==='dots_get_manager_messages'){
-      const rows=manager.messages.filter(message=>!args.before_id||message.id<args.before_id).sort((a,b)=>b.id-a.id).slice(0,args.limit+1);
+      const rows=manager.messages.filter((message: any)=>!args.before_id||message.id<args.before_id).sort((a: any,b: any)=>b.id-a.id).slice(0,args.limit+1);
       const visible=rows.slice(0,args.limit).reverse();return {ok:true,messages:copy(visible),hasMore:rows.length>args.limit,nextBeforeId:visible[0]?.id??null};
     }
     if(name==='dots_message_manager'){
@@ -34,7 +34,7 @@ function fixture(t,{managerPollMs=0}={}): any {
     }
     if(name==='dots_control_manager'){
       if(receipts.has(args.request_id))return copy(receipts.get(args.request_id));
-      manager.status={pause:'paused',resume:'active',cancel:'cancelled',wake:manager.status}[args.action];manager.controlRevision++;append('manager.control',{message:args.action});
+      manager.status=({pause:'paused',resume:'active',cancel:'cancelled',wake:manager.status} as any)[args.action];manager.controlRevision++;append('manager.control',{message:args.action});
       const result={ok:true,manager:copy(manager)};receipts.set(args.request_id,copy(result));if(loseControl){loseControl=false;throw disconnected();}return result;
     }
     if(name==='dots_get_manager_activity'){
@@ -55,15 +55,15 @@ test('one authenticated manager is shared across hosts and legacy task bindings 
   f.store.bind(OWNER,'original-conversation','chatgpt',{id:task.id,title:'Original',status:'paused'});
   const response=await f.adapter.manager(OWNER);assert.equal(response.manager.id,'manager:'+OWNER);assert.deepEqual(response.messages,[]);assert.equal(response.tasks[0].status,'paused');assert.equal(response.tasks[0].controlRevision,4);assert.equal(response.tasks[0].acceptanceStatus,'changes_requested');assert.deepEqual(response.tasks[0].dependencies,[99]);
   assert.ok(!('thread_id' in response.manager));assert.ok(!('token' in response.manager));assert.equal(f.store.mapping(OWNER,task.id).conversation_id,'original-conversation');assert.equal(f.store.mapping(OWNER,task.id).origin_host,'chatgpt');
-  assert.equal(f.calls.filter(c=>c.name==='dots_control_goal'||c.name==='dots_create_goal').length,0);assert.equal((await f.adapter.list(OWNER)).goals[0].controlRevision,4);
+  assert.equal(f.calls.filter((c: any)=>c.name==='dots_control_goal'||c.name==='dots_create_goal').length,0);assert.equal((await f.adapter.list(OWNER)).goals[0].controlRevision,4);
   await assert.rejects(f.adapter.manager('another-owner'),e=>(e as any).status===404);
 });
 
 test('manager instructions are durably accepted once despite duplicate requests and response loss',async t=>{
   const f=fixture(t);f.loseMessage();await assert.rejects(f.adapter.messageManager(OWNER,instruction()));
   const [a,b]=await Promise.all([f.adapter.messageManager(OWNER,instruction()),f.adapter.messageManager(OWNER,instruction())]);assert.equal(a.accepted,true);assert.equal(a.message.id,b.message.id);assert.equal(f.manager.messages.length,1);assert.equal(f.receipts.size,1);
-  assert.ok(a.cursor>0);assert.equal(f.store.receipt(OWNER,'manager-first').state,'completed');assert.equal(f.adapter.events(OWNER).events.filter(e=>(e as any).type==='manager_activity').length,1);
-  assert.equal(f.calls.filter(c=>c.name==='dots_message_manager').length,2);assert.ok(!f.calls.find(c=>c.name==='dots_message_manager').args.request_id.includes(OWNER));
+  assert.ok(a.cursor>0);assert.equal(f.store.receipt(OWNER,'manager-first').state,'completed');assert.equal(f.adapter.events(OWNER).events.filter((e: any)=>(e as any).type==='manager_activity').length,1);
+  assert.equal(f.calls.filter((c: any)=>c.name==='dots_message_manager').length,2);assert.ok(!f.calls.find((c: any)=>c.name==='dots_message_manager').args.request_id.includes(OWNER));
   await assert.rejects(f.adapter.messageManager(OWNER,instruction({message:'另一件事'})),e=>(e as any).code==='request_conflict');
 });
 
@@ -72,11 +72,11 @@ test('invalid instruction and foreign task IDs never reach runtime',async t=>{
 });
 
 test('paused manager accepts new instructions without silently resuming',async t=>{
-  const f=fixture(t);f.manager.status='paused';const response=await f.adapter.messageManager(OWNER,instruction());assert.equal(response.manager.status,'paused');assert.equal(response.accepted,true);assert.equal(f.calls.filter(c=>c.name==='dots_control_manager').length,0);
+  const f=fixture(t);f.manager.status='paused';const response=await f.adapter.messageManager(OWNER,instruction());assert.equal(response.manager.status,'paused');assert.equal(response.accepted,true);assert.equal(f.calls.filter((c: any)=>c.name==='dots_control_manager').length,0);
 });
 
 test('runtime manager controls are receipt-deduplicated even after a lost reply',async t=>{
-  const f=fixture(t);f.loseControl();const command={requestId:'pause-manager',action:'pause'};await assert.rejects(f.adapter.controlManager(OWNER,command));const response=await f.adapter.controlManager(OWNER,command);assert.equal(response.manager.status,'paused');assert.equal(f.manager.controlRevision,1);await f.adapter.controlManager(OWNER,command);assert.equal(f.calls.filter(c=>c.name==='dots_control_manager').length,2);assert.equal(f.adapter.events(OWNER).events.filter(e=>(e as any).type==='manager_snapshot').length,1);
+  const f=fixture(t);f.loseControl();const command={requestId:'pause-manager',action:'pause'};await assert.rejects(f.adapter.controlManager(OWNER,command));const response=await f.adapter.controlManager(OWNER,command);assert.equal(response.manager.status,'paused');assert.equal(f.manager.controlRevision,1);await f.adapter.controlManager(OWNER,command);assert.equal(f.calls.filter((c: any)=>c.name==='dots_control_manager').length,2);assert.equal(f.adapter.events(OWNER).events.filter((e: any)=>(e as any).type==='manager_snapshot').length,1);
 });
 
 test('assistant replies and worker lifecycle changes enter durable replay, deduplicated on catch-up',async t=>{
@@ -119,20 +119,20 @@ test('cached manager reads disclose offline state and never invent live webhook 
 
 test('manager read catches up snapshot when assistant activity arrives between initial read and replay',async t=>{
   const f=fixture(t);const original=f.client.tool;let injected=false;
-  f.client.tool=async(name,args)=>{const response=await original(name,args);if(name==='dots_get_manager'&&!injected){injected=true;const message={id:1,role:'assistant',content:'刚完成的回复',taskId:null,requestId:null,createdAt:1001};f.manager.messages.push(message);f.append('assistant_message',{message:message.content,data:{message}});}return response;};
+  f.client.tool=async(name: any,args: any)=>{const response=await original(name,args);if(name==='dots_get_manager'&&!injected){injected=true;const message={id:1,role:'assistant',content:'刚完成的回复',taskId:null,requestId:null,createdAt:1001};f.manager.messages.push(message);f.append('assistant_message',{message:message.content,data:{message}});}return response;};
   const current=await f.adapter.manager(OWNER);assert.equal(current.messages.at(-1).content,'刚完成的回复');assert.equal(current.manager.activityCursor,1);assert.equal(current.cursor,1);assert.equal(f.store.manager(OWNER).runtime_cursor,1);
 });
 
 test('replayed old acceptance snapshot cannot overwrite a newer assistant reply or task state',async t=>{
   const f=fixture(t);await f.adapter.messageManager(OWNER,instruction());await f.adapter.syncManagerActivity(OWNER);
-  const remote=f.calls.find(call=>call.name==='dots_message_manager').args.request_id;f.receipts.get(remote).manager.activityCursor=1;
+  const remote=f.calls.find((call: any)=>call.name==='dots_message_manager').args.request_id;f.receipts.get(remote).manager.activityCursor=1;
   const task=f.task({status:'done',acceptanceStatus:'accepted',legacyImported:false});const message={id:2,role:'assistant',content:'已完成并验收',taskId:task.id,requestId:null,createdAt:1002};f.manager.messages.push(message);f.append('task_created',{taskId:task.id});f.append('assistant_message',{message:message.content,data:{message}});await f.adapter.manager(OWNER);
   f.store.db.prepare("UPDATE dots_requests SET state='pending',response=NULL WHERE request_id='manager-first'").run();const recovered=await f.adapter.messageManager(OWNER,instruction());assert.equal(recovered.message.id,1);assert.equal(recovered.messages.at(-1).content,'已完成并验收');assert.equal(recovered.tasks[0].status,'done');assert.equal(recovered.tasks[0].legacyImported,false);assert.equal(JSON.parse(f.store.manager(OWNER).snapshot).activityCursor,3);await f.adapter.syncManagerActivity(OWNER);
 });
 
 test('active manager SSE listener receives worker changes using short polling, idle adapter does not poll',async t=>{
-  const f=fixture(t,{managerPollMs:10});await f.adapter.manager(OWNER);let received: any[]=[];const listener={destroyed:false,write(value){received.push(value);},end(){}};
-  const before=f.calls.filter(c=>c.name==='dots_get_manager_activity').length;await new Promise(resolve=>setTimeout(resolve,40));assert.equal(f.calls.filter(c=>c.name==='dots_get_manager_activity').length,before);
+  const f=fixture(t,{managerPollMs:10});await f.adapter.manager(OWNER);let received: any[]=[];const listener={destroyed:false,write(value: any){received.push(value);},end(){}};
+  const before=f.calls.filter((c: any)=>c.name==='dots_get_manager_activity').length;await new Promise(resolve=>setTimeout(resolve,40));assert.equal(f.calls.filter((c: any)=>c.name==='dots_get_manager_activity').length,before);
   f.listenersSet=new Set([listener]);f.adapter.listeners.set(OWNER,f.listenersSet);f.append('manager.message',{message:'后台结果'});await new Promise(resolve=>setTimeout(resolve,45));assert.ok(received.some(value=>value.includes('后台结果')));assert.equal(f.adapter.events(OWNER).events.length,1);
   f.listenersSet.clear();
 });
@@ -153,10 +153,10 @@ test('one issue opens the combined history and keeps cancelled phases cancelled'
  const f=fixture(t),first=f.task({title:'Dots 更新',status:'cancelled',updatedAt:1200}),second=f.task({title:'环境排查',status:'blocked',updatedAt:1100});
  await f.adapter.manager(OWNER);
  for(const task of [first,second])f.store.db.prepare('INSERT INTO dots_issue_members(owner,goal_id,issue_key,issue_title) VALUES(?,?,?,?)').run(OWNER,task.id,'dots-maintenance','Dots 更新与执行环境');
- const tool=f.client.tool;f.client.tool=async(name,args)=>name==='dots_get_goal'?{goal:{id:args.goal_id,title:f.manager.tasks.find(t=>t.id===args.goal_id).title,status:f.manager.tasks.find(t=>t.id===args.goal_id).status,outputs:[]}}:tool(name,args);
- f.adapter.activityReader={outputs:()=>[],conversation:(id)=>({messages:[{id:'same-local-id',role:'assistant',content:'记录 '+id,createdAt:id,source:'worker_transcript'}],outputs:[],transcriptAvailable:true}),close(){}};
+ const tool=f.client.tool;f.client.tool=async(name: any,args: any)=>name==='dots_get_goal'?{goal:{id:args.goal_id,title:f.manager.tasks.find((t: any)=>t.id===args.goal_id).title,status:f.manager.tasks.find((t: any)=>t.id===args.goal_id).status,outputs:[]}}:tool(name,args);
+ f.adapter.activityReader={outputs:()=>[],conversation:(id: any)=>({messages:[{id:'same-local-id',role:'assistant',content:'记录 '+id,createdAt:id,source:'worker_transcript'}],outputs:[],transcriptAvailable:true}),close(){}};
  const list=await f.adapter.activity(OWNER);assert.equal(list.activities.length,1);assert.equal(list.activities[0].taskId,second.id);assert.equal(list.activities[0].title,'Dots 更新与执行环境');
- const detail=await f.adapter.conversation(OWNER,second.id);assert.equal(detail.messages.length,2);assert.equal(new Set(detail.messages.map(m=>m.id)).size,2);assert.equal(detail.goal.title,'Dots 更新与执行环境');assert.equal(detail.relatedGoals.find(g=>g.id===first.id).status,'cancelled');
+ const detail=await f.adapter.conversation(OWNER,second.id);assert.equal(detail.messages.length,2);assert.equal(new Set(detail.messages.map((m: any)=>m.id)).size,2);assert.equal(detail.goal.title,'Dots 更新与执行环境');assert.equal(detail.relatedGoals.find((g: any)=>g.id===first.id).status,'cancelled');
  const read=await f.adapter.activity(OWNER);assert.equal(read.activities[0].unread,false);
  await assert.rejects(()=>f.adapter.conversation('other-owner',second.id),e=>(e as any).status===404);
 });

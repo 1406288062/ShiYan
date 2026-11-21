@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { authenticateDevice, digest } from './device-auth.ts';
 
-const fail = (message, status = 400) => Object.assign(new Error(message), { status });
+const fail = (message: any, status = 400) => Object.assign(new Error(message), { status });
 const MAX_BODY = 60 * 1024 * 1024;
 const ID = '[A-Za-z0-9_-]{1,120}';
 const routes: [string, RegExp][] = [
@@ -17,7 +17,7 @@ const routes: [string, RegExp][] = [
   ['POST', /^query$/],
   ['GET|DELETE', /^chat\/history$/],
 ];
-export function knowledgeRoute(method, url) {
+export function knowledgeRoute(method: any, url: any) {
   const parsed = new URL(url, 'http://localhost');
   const prefix = '/shiyan/v1/knowledge/';
   const alternative = '/v1/knowledge/';
@@ -28,7 +28,7 @@ export function knowledgeRoute(method, url) {
   for (const key of parsed.searchParams.keys()) if (key !== 'knowledge_base_id') throw fail('知识库参数无效');
   return '/api/' + route + parsed.search;
 }
-async function readBody(req) {
+async function readBody(req: any) {
   const length = Number(req.headers['content-length'] || 0);
   if (!Number.isSafeInteger(length) || length < 0) throw fail('请求长度无效');
   if (length > MAX_BODY) throw fail('PDF 文件过大，请选择小于 50 MB 的文件', 413);
@@ -43,7 +43,7 @@ async function readBody(req) {
   if (digest(body) !== req.headers['x-shiyan-body-sha']) throw fail('请求校验失败', 401);
   return body;
 }
-function json(res, status, value) {
+function json(res: any, status: any, value: any) {
   const body = JSON.stringify(value);
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Length': Buffer.byteLength(body) });
   res.end(body);
@@ -81,15 +81,15 @@ export function createKnowledgeSidecar({ authenticate = authenticateDevice, upst
           if (req.method !== 'GET' || attempt || controller.signal.aborted) throw error;
         }
       }
-      const bytes = Buffer.from(await response.arrayBuffer());
+      const bytes = Buffer.from(await response!.arrayBuffer());
       if (bytes.length > 32 * 1024 * 1024) throw fail('知识库结果过大，请缩小查询范围', 502);
-      if (!response.ok) {
+      if (!response!.ok) {
         let detail;
         try { const value = JSON.parse(bytes.toString()); detail = value.error || value.detail; } catch {}
-        const message = typeof detail === 'string' ? detail : response.status === 422 ? '请检查知识库名称、问题或 PDF 文件' : '知识库操作失败，请重试';
-        return json(res, response.status, { ok: false, error: message, detail: message });
+        const message = typeof detail === 'string' ? detail : response!.status === 422 ? '请检查知识库名称、问题或 PDF 文件' : '知识库操作失败，请重试';
+        return json(res, response!.status, { ok: false, error: message, detail: message });
       }
-      res.writeHead(response.status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Length': bytes.length });
+      res.writeHead(response!.status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Length': bytes.length });
       res.end(bytes);
     } catch (error) {
       if (!res.destroyed && !res.headersSent) json(res, (error as any).status || 503, { ok: false, error: (error as any).status ? (error as any).message : '知识库服务暂时无法连接，请稍后重试' });

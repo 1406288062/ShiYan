@@ -2,11 +2,11 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 let bytes: Buffer[]=[];for await(const chunk of process.stdin)bytes.push(chunk);const input=JSON.parse(Buffer.concat(bytes).toString('utf8'));
-const fail=message=>{throw new Error(message);};
+const fail=(message: any)=>{throw new Error(message);};
 function virtual(value='/workspace'){if(typeof value!=='string'||value.includes('\0'))fail('工作区路径无效');const result=path.posix.resolve('/workspace',value);if(result!=='/workspace'&&!result.startsWith('/workspace/'))fail('只能访问自己的工作区');return result;}
 const target=virtual(input.path);let result;
-async function confined(p,{missing=false}={}){let real;try{real=await fs.realpath(p);}catch(error){if(!missing||(error as any).code!=='ENOENT')throw error;const parent=await confined(path.dirname(p),{missing:true});return path.join(parent,path.basename(p));}if(real!=='/workspace'&&!real.startsWith('/workspace/'))fail('路径不在授权工作区内');return real;}
-async function storageUsage(){let size=0,count=0;async function visit(dir){let entries;try{entries=await fs.opendir(dir);}catch{return;}for await(const entry of entries){try{const p=dir+'/'+entry.name,st=await fs.lstat(p);if(st.isSymbolicLink())continue;count++;size+=st.size;if(st.isDirectory())await visit(p);}catch(error){if((error as any).code!=='ENOENT')throw error;}}}await visit('/workspace');await visit('/home/member');return{size,count};}
+async function confined(p: any,{missing=false}={}): Promise<any>{let real;try{real=await fs.realpath(p);}catch(error){if(!missing||(error as any).code!=='ENOENT')throw error;const parent=await confined(path.dirname(p),{missing:true});return path.join(parent,path.basename(p));}if(real!=='/workspace'&&!real.startsWith('/workspace/'))fail('路径不在授权工作区内');return real;}
+async function storageUsage(){let size=0,count=0;async function visit(dir: any){let entries;try{entries=await fs.opendir(dir);}catch{return;}for await(const entry of entries){try{const p=dir+'/'+entry.name,st=await fs.lstat(p);if(st.isSymbolicLink())continue;count++;size+=st.size;if(st.isDirectory())await visit(p);}catch(error){if((error as any).code!=='ENOENT')throw error;}}}await visit('/workspace');await visit('/home/member');return{size,count};}
 const run=async()=>{
  if(input.operation==='list'){
   await confined(target);const entries: any[]=[];for(const entry of (await fs.readdir(target,{withFileTypes:true})).slice(0,2000)){const file=path.join(target,entry.name);let blocked=false;try{await confined(file);}catch{blocked=true;}const st=await fs.lstat(file);entries.push({name:entry.name,path:file,directory:entry.isDirectory(),symlink:entry.isSymbolicLink(),blocked,size:st.size,modifiedAt:st.mtimeMs});}return {path:target,entries};
@@ -19,7 +19,7 @@ const run=async()=>{
  if(input.operation==='rename'){const to=virtual(input.to);if(target==='/workspace'||to==='/workspace')fail('不能移动工作区根目录');await confined(target);await confined(to,{missing:true});await fs.rename(target,to);return{path:to};}
  if(input.operation==='snapshot'){
   const files: any[]=[];let total=0,truncated=false;
-  async function walk(dir,depth){
+  async function walk(dir: any,depth: any){
    if(depth>16){truncated=true;return;}let entries;try{entries=await fs.readdir(dir,{withFileTypes:true});}catch{truncated=true;return;}
    for(const item of entries.sort((a,b)=>a.name.localeCompare(b.name))){
     if(['.git','node_modules','.cache','inputs'].includes(item.name)||item.isSymbolicLink())continue;

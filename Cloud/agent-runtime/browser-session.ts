@@ -31,22 +31,22 @@ const MAX_VIEW_PIXELS = Number(process.env.SHIYAN_BROWSER_MAX_PIXELS) || 1;
 const MAX_CLIENT_MESSAGE = 64 * 1024;
 const ALLOWED_ORIGINS = new Set(['https://yandot.ai', 'https://www.yandot.ai', 'https://129.226.81.110']);
 
-const fail = (message, status = 400, code: any = undefined) => Object.assign(new Error(message), { status }, code ? { code } : {});
+const fail = (message: any, status = 400, code: any = undefined) => Object.assign(new Error(message), { status }, code ? { code } : {});
 const IDENTITY_ROOT = '/home/browser/identities';
 export const BROWSER_CONTAINER_NAME = BROWSER_CONTAINER;
 // A browser identity is a persistent Chrome profile. Every window of an account shares the
 // "default" identity, so one login serves all conversations and scheduled tasks; a named identity
 // (another account on the same site) gets its own profile directory.
-export function normalizeIdentity(value) {
+export function normalizeIdentity(value: any) {
   const raw = String(value ?? 'default').trim().toLowerCase();
   if (!raw || raw === 'default') return 'default';
   if (!/^[a-z0-9][a-z0-9-]{0,31}$/.test(raw)) throw fail('浏览器身份名称只能包含小写字母、数字和连字符', 400);
   return raw;
 }
-export function identityProfilePath(owner, identity = 'default') {
+export function identityProfilePath(owner: any, identity = 'default') {
   return `${IDENTITY_ROOT}/${createHash('sha256').update(String(owner)).digest('hex').slice(0, 24)}-${normalizeIdentity(identity)}`;
 }
-const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+const delay = (ms: any) => new Promise(resolve => setTimeout(resolve, ms));
 
 function runLxc(args: string[], { timeoutMs = 15_000, allowFailure = false }: { timeoutMs?: number; allowFailure?: boolean } = {}): Promise<{ stdout: string; stderr: string; code: number | null }> {
   return new Promise((resolve, reject) => {
@@ -69,7 +69,7 @@ function runLxc(args: string[], { timeoutMs = 15_000, allowFailure = false }: { 
   });
 }
 
-function createTurnCredentials(sessionId) {
+function createTurnCredentials(sessionId: any) {
   const configPath = process.env.SHIYAN_TURN_CONFIG || path.join(process.env.HOME || '/home/ubuntu', '.config', 'shiyan-turnserver.conf');
   let config;
   try { config = readFileSync(configPath, 'utf8'); } catch { throw fail('WebRTC 中继服务未配置', 503); }
@@ -78,7 +78,7 @@ function createTurnCredentials(sessionId) {
   const externalIP = config.match(/^external-ip=([^/\s]+)/m)?.[1]?.trim();
   if (!secret || !externalIP || !Number.isInteger(port) || port < 1 || port > 65535) throw fail('WebRTC 中继服务配置不完整', 503);
   const expires = Math.floor(Date.now() / 1000) + Math.ceil(MAX_SESSION_MS / 1000) + 900;
-  const makePeer = role => {
+  const makePeer = (role: any) => {
     const username = `${expires}:shiyan-browser-${role}:${sessionId}`;
     const credential = createHmac('sha1', secret).update(username).digest('base64');
     return { username, credential };
@@ -90,18 +90,18 @@ function createTurnCredentials(sessionId) {
   };
 }
 
-function ipv4Number(value) {
+function ipv4Number(value: any) {
   const parts = String(value).split('.');
   if (parts.length !== 4 || parts.some(part => !/^\d{1,3}$/.test(part) || Number(part) > 255)) return null;
   return parts.reduce((out, part) => ((out << 8) | Number(part)) >>> 0, 0);
 }
-function inRange(ip, network, bits) {
+function inRange(ip: any, network: any, bits: any) {
   const value = ipv4Number(ip), base = ipv4Number(network);
   if (value === null || base === null) return false;
   const mask = bits === 0 ? 0 : (0xffffffff << (32 - bits)) >>> 0;
   return (value & mask) === (base & mask);
 }
-export function isPublicIPv4(ip) {
+export function isPublicIPv4(ip: any) {
   if (!ipv4Number(ip)) return false;
   const blocked = [
     ['0.0.0.0',8], ['10.0.0.0',8], ['100.64.0.0',10], ['127.0.0.0',8],
@@ -112,7 +112,7 @@ export function isPublicIPv4(ip) {
   return !blocked.some(([network,bits]) => inRange(ip,network,bits));
 }
 
-export function normalizeBrowserURL(input) {
+export function normalizeBrowserURL(input: any) {
   const raw = String(input ?? '').trim();
   if (!raw || raw.length > 2048) throw fail('请输入网址或搜索内容');
   let url;
@@ -130,7 +130,7 @@ export function normalizeBrowserURL(input) {
   return url.href;
 }
 
-async function resolvePublicIPv4(host) {
+async function resolvePublicIPv4(host: any) {
   const literal = host.replace(/^\[|\]$/g, '');
   if (literal.includes(':')) throw fail('目标地址不允许访问', 403);
   if (/^\d+(?:\.\d+){0,3}$/.test(literal)) {
@@ -143,7 +143,7 @@ async function resolvePublicIPv4(host) {
   return ipv4[0];
 }
 
-function rejectProxyClient(client, status = 403) {
+function rejectProxyClient(client: any, status = 403) {
   try { client.write(`HTTP/1.1 ${status} Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`); } catch {}
   client.destroy();
 }
@@ -151,7 +151,7 @@ function rejectProxyClient(client, status = 403) {
 // Listeners owned by the most recent startup. Measured 14:19: a session closed while still
 // starting left its transport listener open on 18181 and every later start failed (EADDRINUSE).
 let liveTransportServer: any = null, liveProxy: any = null;
-async function closeServer(server) {
+async function closeServer(server: any) {
   if (!server) return;
   try { server.closeAllConnections?.(); } catch {}
   await new Promise<void>(resolve => { try { server.close(() => resolve()); } catch { resolve(); } setTimeout(resolve, 1500).unref?.(); });
@@ -160,10 +160,10 @@ async function closeServer(server) {
 export function createRestrictedProxy() {
   const sockets: Set<Duplex> = new Set();
   let connectionSeq = 0;
-  const log = (event, fields = {}) => process.stderr.write(`[browser-proxy] ${new Date().toISOString()} ${event} ${JSON.stringify(fields)}\n`);
+  const log = (event: any, fields = {}) => process.stderr.write(`[browser-proxy] ${new Date().toISOString()} ${event} ${JSON.stringify(fields)}\n`);
   const server = createHttpServer(async (req, res) => {
     const id = ++connectionSeq;
-    let target;
+    let target: any;
     try {
       target = new URL(req.url || '/', `http://${req.headers.host || ''}`);
       log('http-in', { id, method: req.method, host: target.hostname, activeSockets: sockets.size });
@@ -174,7 +174,7 @@ export function createRestrictedProxy() {
       const ip = await resolvePublicIPv4(target.hostname);
       log('dns-ok', { id, host: target.hostname, ip, type: 'http' });
       const headers = { ...req.headers, host: target.host, connection: 'close' };
-      delete headers['proxy-connection']; delete headers['proxy-authorization'];
+      delete (headers as any)['proxy-connection']; delete headers['proxy-authorization'];
       const upstream = httpRequest({ host: ip, port: 80, method: req.method, path: target.pathname + target.search, headers, agent: false }, response => {
         log('http-response', { id, host: target.hostname, status: response.statusCode, bytesExpected: response.headers['content-length'] || null });
         const responseHeaders = { ...response.headers };
@@ -245,7 +245,7 @@ export function createRestrictedProxy() {
       if (target.protocol !== 'ws:' || (target.port && target.port !== '80')) return rejectProxyClient(client);
       const ip = await resolvePublicIPv4(target.hostname);
       const headers = { ...req.headers, host: target.host, connection: 'Upgrade' };
-      delete headers['proxy-connection']; delete headers['proxy-authorization'];
+      delete (headers as any)['proxy-connection']; delete headers['proxy-authorization'];
       const upstream = httpRequest({ host: ip, port: 80, method: req.method, path: target.pathname + target.search, headers, agent: false });
       upstream.on('upgrade', (response, socket, upstreamHead) => {
         const lines = Object.entries(response.headers).map(([key,value]) => `${key}: ${value}`).join('\r\n');
@@ -280,19 +280,19 @@ class CDPConnection extends EventEmitter {
   nextId: number;
   pending: Map<number, any>;
   closed: boolean;
-  constructor(webSocket, child) {
+  constructor(webSocket: any, child: any) {
     super();
     this.webSocket = webSocket;
     this.child = child;
     this.nextId = 0;
     this.pending = new Map();
     this.closed = false;
-    webSocket.addEventListener('message', event => this.#data(event.data));
+    webSocket.addEventListener('message', (event: any) => this.#data(event.data));
     webSocket.addEventListener('close', () => this.#close(null));
     webSocket.addEventListener('error', () => this.#close(null));
-    child.once('exit', code => this.#close(code));
+    child.once('exit', (code: any) => this.#close(code));
   }
-  #data(raw) {
+  #data(raw: any) {
     let message;
     try { message = JSON.parse(typeof raw === 'string' ? raw : Buffer.from(raw).toString('utf8')); } catch { return; }
     if (message.id) {
@@ -306,7 +306,7 @@ class CDPConnection extends EventEmitter {
       this.emit('event', message);
     }
   }
-  #close(code) {
+  #close(code: any) {
     if (this.closed) return;
     this.closed = true;
     for (const item of this.pending.values()) { clearTimeout(item.timer); item.reject(fail('服务器 Chrome 已断开', 503)); }
@@ -327,8 +327,8 @@ class CDPConnection extends EventEmitter {
   close() { try { this.webSocket.close(); } catch {} this.#close(null); }
 }
 
-async function connectChromeCDP(child) {
-  let lastError;
+async function connectChromeCDP(child: any) {
+  let lastError: any;
   for (let attempt = 0; attempt < 60; attempt++) {
     if (child.exitCode !== null) throw fail('隔离容器中的 Chrome 提前退出', 503);
     try {
@@ -351,7 +351,7 @@ async function connectChromeCDP(child) {
   throw fail('服务器浏览器启动超时', 503);
 }
 
-function makeFrame(opcode, payload = Buffer.alloc(0)) {
+function makeFrame(opcode: any, payload = Buffer.alloc(0)) {
   const data = Buffer.isBuffer(payload) ? payload : Buffer.from(payload);
   let header;
   if (data.length < 126) { header = Buffer.from([0x80 | opcode, data.length]); }
@@ -366,16 +366,16 @@ class WebSocketPeer {
   onClose: () => void;
   buffer: Buffer;
   closed: boolean;
-  constructor(socket, head, onMessage, onClose) {
+  constructor(socket: any, head: any, onMessage: any, onClose: any) {
     this.socket = socket; this.onMessage = onMessage; this.onClose = onClose;
     this.buffer = Buffer.alloc(0); this.closed = false;
     socket.setNoDelay(true);
-    socket.on('data', chunk => this.#data(chunk));
+    socket.on('data', (chunk: any) => this.#data(chunk));
     socket.on('close', () => this.#closed());
     socket.on('error', () => this.#closed());
     if (head?.length) this.#data(head);
   }
-  #data(chunk) {
+  #data(chunk: any) {
     this.buffer = Buffer.concat([this.buffer, chunk]);
     while (this.buffer.length >= 2) {
       const first = this.buffer[0], second = this.buffer[1], opcode = first & 0x0f, masked = !!(second & 0x80);
@@ -394,9 +394,9 @@ class WebSocketPeer {
       try { this.onMessage(JSON.parse(payload.toString('utf8'))); } catch { this.close(1007); return; }
     }
   }
-  #send(opcode, payload) { if (!this.closed && !this.socket.destroyed) this.socket.write(makeFrame(opcode, payload)); }
-  sendJSON(value) { this.#send(0x1, Buffer.from(JSON.stringify(value))); }
-  sendBinary(value) { if (this.socket.writableLength < 1_000_000) this.#send(0x2, value); }
+  #send(opcode: any, payload: any) { if (!this.closed && !this.socket.destroyed) this.socket.write(makeFrame(opcode, payload)); }
+  sendJSON(value: any) { this.#send(0x1, Buffer.from(JSON.stringify(value))); }
+  sendBinary(value: any) { if (this.socket.writableLength < 1_000_000) this.#send(0x2, value); }
   close(code = 1000) {
     if (this.closed) return;
     this.#send(0x8, Buffer.from([code >> 8, code & 255]));
@@ -406,7 +406,7 @@ class WebSocketPeer {
   #closed() { if (this.closed) return; this.closed = true; this.onClose?.(); }
 }
 
-async function startChromeRuntime(session, { debug = process.env.SHIYAN_BROWSER_DEBUG === '1' } = {}) {
+async function startChromeRuntime(session: any, { debug = process.env.SHIYAN_BROWSER_DEBUG === '1' } = {}) {
   const container = BROWSER_CONTAINER;
   session.container = container;
   const info = await runLxc(['info', container]);
@@ -506,7 +506,7 @@ async function startChromeRuntime(session, { debug = process.env.SHIYAN_BROWSER_
   const cdp = await connectChromeCDP(child);
   session.cdp = cdp;
   const targets = await cdp.send('Target.getTargets');
-  const target = targets.targetInfos?.find(item => item.type === 'page');
+  const target = targets.targetInfos?.find((item: any) => item.type === 'page');
   if (!target) throw fail('服务器 Chrome 没有创建浏览器页面', 503);
   const attached = await cdp.send('Target.attachToTarget', { targetId: target.targetId, flatten: true });
   session.targetSessionId = attached.sessionId;
@@ -545,9 +545,9 @@ async function startChromeRuntime(session, { debug = process.env.SHIYAN_BROWSER_
   }
   if (!ready?.result?.value) throw fail('浏览器音视频传输页没有正确加载', 503);
 
-  let loadTimer;
+  let loadTimer: any;
   const pageLoaded = new Promise<void>(resolve => {
-    const onLoad = message => {
+    const onLoad = (message: any) => {
       if (message.sessionId !== sid || message.method !== 'Page.loadEventFired') return;
       clearTimeout(loadTimer); cdp.off('event', onLoad); resolve();
     };
@@ -560,7 +560,7 @@ async function startChromeRuntime(session, { debug = process.env.SHIYAN_BROWSER_
   return { cdp, child, proxy, proxySocket: BROWSER_PROXY_SOCKET, transportServer, profilePath, container };
 }
 
-function tab0title(session) { for (const tab of session.tabs?.values() || []) if (tab.sessionId === session.targetSessionId) return tab.title || ''; return ''; }
+function tab0title(session: any) { for (const tab of session.tabs?.values() || []) if (tab.sessionId === session.targetSessionId) return tab.title || ''; return ''; }
 
 // 侧边服务刚启动时没有任何浏览器会话：容器里残留的 Chrome / 虚拟显示（上次进程被重启或崩溃时留下）一律结束。
 export async function sweepStaleBrowser() {
@@ -589,7 +589,7 @@ export class BrowserSessionManager {
     this.launch = launch; this.allowOrigins = allowOrigins; this.validateAccountToken = validateAccountToken;
     this.idleMs = idleMs; this.maxSessionMs = maxSessionMs; this.active = null; this.ticket = null;
   }
-  async createTicket(owner, { accountToken = null }: { accountToken?: string | null } = {}) {
+  async createTicket(owner: any, { accountToken = null }: { accountToken?: string | null } = {}) {
     if (!owner) throw fail('账号身份无效', 401);
     // The same account reopening (page refresh, closed tab without cleanup) takes over:
     // the stale session is closed instead of locking the user out until the idle timeout.
@@ -611,7 +611,7 @@ export class BrowserSessionManager {
     this.ticketTimer.unref?.();
     return { ticket, expiresIn: TICKET_TTL_MS };
   }
-  async exchangeTicket(value, origin = '') {
+  async exchangeTicket(value: any, origin = '') {
     // 同一凭证的重试（网络慢、请求中途断开）：2 分钟内返回同一个会话，而不是“入口已过期”。
     const last = this.lastExchange;
     if (last && typeof value === 'string' && value === last.value && last.expiresAt > Date.now()) {
@@ -638,9 +638,9 @@ export class BrowserSessionManager {
   // Agent-side runtime lease. Dots browser tasks use the same isolated Chrome as the viewer; one
   // account (and one identity) owns it at a time. The lease keeps Chrome alive while task windows
   // exist; the viewer can attach and detach without ending it.
-  setAgentHook(hook) { this.agentHook = hook || null; }
+  setAgentHook(hook: any) { this.agentHook = hook || null; }
   get activeSession() { return this.active && !this.active.closing ? this.active : null; }
-  async acquireAgent(owner, { identity = 'default' } = {}) {
+  async acquireAgent(owner: any, { identity = 'default' } = {}) {
     owner = String(owner || ''); identity = normalizeIdentity(identity);
     if (!owner) throw fail('账号身份无效', 401);
     for (let attempt = 0; attempt < 4; attempt++) {
@@ -662,13 +662,13 @@ export class BrowserSessionManager {
     }
     throw fail('服务器浏览器暂时无法启动，请稍后重试', 503, 'browser_busy');
   }
-  releaseAgent(session) {
+  releaseAgent(session: any) {
     if (!session) return;
     if (session.agentHolds > 0) session.agentHolds--;
     session.lastActivity = Date.now();
   }
   // Takeover: show a task's window in the viewer (tabs are attached by the agent host already).
-  async showAgentTargets(session, targets) {
+  async showAgentTargets(session: any, targets: any) {
     if (!session?.tabs || session.closing) return;
     let first = null;
     for (const item of targets || []) {
@@ -679,7 +679,7 @@ export class BrowserSessionManager {
     if (first) await this.#activateTab(session, first);
     this.#sendTabs(session);
   }
-  async hideAgentTargets(session, targetIds) {
+  async hideAgentTargets(session: any, targetIds: any) {
     if (!session?.tabs || session.closing) return;
     let wasMain = false;
     for (const id of targetIds || []) if (session.tabs.get(id)?.agent && session.tabs.delete(id) && session.mainTargetId === id) wasMain = true;
@@ -690,7 +690,7 @@ export class BrowserSessionManager {
     }
     this.#sendTabs(session);
   }
-  async #attachViewer(session, ticket) {
+  async #attachViewer(session: any, ticket: any) {
     this.#detachViewer(session, { notify: false });
     session.token = randomBytes(32).toString('base64url');
     if (ticket.accountToken) session.accountToken = ticket.accountToken;
@@ -709,7 +709,7 @@ export class BrowserSessionManager {
     try { await this.agentHook?.onViewerAttached?.(session); } catch (error) { process.stderr.write(`[browser-session] viewer attach hook failed: ${(error as any)?.message || error}\n`); }
     return { sessionToken: session.token, width: 1120, height: 720, iceServers: session.turn.clientIceServers };
   }
-  #detachViewer(session, { notify = true } = {}) {
+  #detachViewer(session: any, { notify = true } = {}) {
     if (!session) return;
     clearTimeout(session.disconnectTimer); clearTimeout(session.orphanTimer);
     try { session.ws?.close(1001); } catch {}
@@ -724,7 +724,7 @@ export class BrowserSessionManager {
     this.#wakePollers(session);
     if (notify) { try { void this.agentHook?.onViewerDetached?.(session); } catch {} }
   }
-  #endViewer(session) {
+  #endViewer(session: any) {
     if (session?.agentHolds > 0 && !session.closing) { process.stderr.write(`[browser-session] session=${session.id} viewer closed; agent tasks keep the browser\n`); this.#detachViewer(session); return Promise.resolve(); }
     return this.#destroy(session);
   }
@@ -736,11 +736,11 @@ export class BrowserSessionManager {
       targetSessionId: null, lastFrameAt: 0, identity: normalizeIdentity(identity), agentHolds: 0, viewer: !agent,
     };
     this.active = session;
-    let resolveStarted;
+    let resolveStarted: any;
     session.startPromise = new Promise(resolve => { resolveStarted = resolve; });
     // One startup at a time: a quick reopen must wait for the previous (possibly cancelled) start.
     const previousStart = this.startTail;
-    let releaseStart;
+    let releaseStart: any;
     this.startTail = new Promise(resolve => { releaseStart = resolve; });
     try {
       await previousStart?.catch?.(() => {});
@@ -756,7 +756,7 @@ export class BrowserSessionManager {
         if (liveTransportServer === runtime.transportServer) liveTransportServer = null;
         throw fail('服务器浏览器启动已取消', 409);
       }
-      releaseStart();
+      releaseStart?.();
       session.tabs = new Map(); session.tabSeq = 0; session.adopting = new Map();
       session.view = { width: VIEW_WIDTH, height: VIEW_HEIGHT, scale: 1 }; session.colorScheme ||= 'light';
       this.#registerTab(session, session.mainTargetId, session.targetSessionId);
@@ -782,22 +782,22 @@ export class BrowserSessionManager {
         }, 90_000);
         session.orphanTimer.unref?.();
       }
-      session.cdp.on('event', message => this.#cdpEvent(session, message));
+      session.cdp.on('event', (message: any) => this.#cdpEvent(session, message));
       session.cdp.on('exit', () => { if (!session.closing) void this.#destroy(session); });
       // Keep the real page in front and visible; the transport page sits in its own off-screen window.
       await session.cdp.send('Page.bringToFront', {}, session.targetSessionId);
-      resolveStarted();
+      resolveStarted?.();
       return session;
     } catch (error) {
-      resolveStarted();
+      resolveStarted?.();
       await this.#destroy(session).catch(() => {});
-      releaseStart();
+      releaseStart?.();
       if (process.env.SHIYAN_BROWSER_DEBUG === '1') process.stderr.write('[browser] startup failed: ' + ((error as any)?.stack || error) + '\n');
       process.stderr.write('[browser] session start failed: ' + ((error as any)?.message || error) + '\n');
       throw (error as any).status ? error : fail('服务器浏览器启动失败，请稍后重试', 503);
     }
   }
-  acceptWebSocket(req, socket, head) {
+  acceptWebSocket(req: any, socket: any, head: any) {
     const session = this.active;
     const origin = req.headers.origin || '';
     const protocols = String(req.headers['sec-websocket-protocol'] || '').split(',').map(value => value.trim());
@@ -812,7 +812,7 @@ export class BrowserSessionManager {
     const accept = createHash('sha1').update(key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64');
     socket.write('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ' + accept + '\r\nSec-WebSocket-Protocol: ' + protocol + '\r\n\r\n');
     clearTimeout(session.disconnectTimer); session.lastActivity = Date.now();
-    session.ws = new WebSocketPeer(socket, head, message => this.#clientMessage(session, message), () => {
+    session.ws = new WebSocketPeer(socket, head, (message: any) => this.#clientMessage(session, message), () => {
       if (session.ws) session.ws = null;
       if (session.closing) return;
       session.disconnectTimer = setTimeout(() => { if (!session.ws) void this.#endViewer(session); }, 15_000);
@@ -820,13 +820,13 @@ export class BrowserSessionManager {
     });
     void this.#sendStatus(session);
   }
-  closeOwner(owner) {
+  closeOwner(owner: any) {
     if (this.ticket?.owner === owner) { clearTimeout(this.ticketTimer); this.ticket = null; }
     if (this.active?.owner === owner) return this.#endViewer(this.active);
     return Promise.resolve();
   }
   async close() { clearTimeout(this.ticketTimer); this.ticket = null; if (this.active) await this.#destroy(this.active); }
-  async #destroy(session) {
+  async #destroy(session: any) {
     if (!session) return;
     if (session.destroyPromise) return session.destroyPromise;
     session.closing = true;
@@ -857,7 +857,7 @@ export class BrowserSessionManager {
     })();
     return session.destroyPromise;
   }
-  #sendJSON(session, value) {
+  #sendJSON(session: any, value: any) {
     if (!session || session.closing) return;
     if (session.ws) { session.ws.sendJSON(value); return; }
     session.pendingMessages ||= [];
@@ -865,24 +865,24 @@ export class BrowserSessionManager {
     if (session.pendingMessages.length > 100) session.pendingMessages.splice(0, session.pendingMessages.length - 100);
     this.#wakePollers(session);
   }
-  #wakePollers(session) {
+  #wakePollers(session: any) {
     const waiters = session.frameWaiters;
     if (!waiters?.length) return;
     session.frameWaiters = [];
     for (const wake of waiters) wake();
   }
-  #httpSessionByToken(token) {
+  #httpSessionByToken(token: any) {
     const session = this.active;
     if (!session || session.closing || typeof token !== 'string' || token.length !== session.token.length ||
         !timingSafeEqual(Buffer.from(token), Buffer.from(session.token))) throw fail('服务器电脑会话无效或已过期', 401);
     return session;
   }
-  #httpSession(owner, token) {
+  #httpSession(owner: any, token: any) {
     const session = this.#httpSessionByToken(token);
     if (session.owner !== String(owner)) throw fail('服务器电脑会话无效或已过期', 401);
     return session;
   }
-  async pollMessagesForToken(token, { wantFrames = false, frameSeq = 0 } = {}) {
+  async pollMessagesForToken(token: any, { wantFrames = false, frameSeq = 0 } = {}) {
     const session = this.#httpSessionByToken(token);
     if (!session.statusSent) { session.statusSent = true; await this.#sendStatus(session); this.#sendTabs(session); }
     session.lastPollAt = Date.now();
@@ -906,7 +906,7 @@ export class BrowserSessionManager {
     if (wantFrames === true && session.latestFrame && (session.frameSeq || 0) !== seq) { out.frame = session.latestFrame; out.frameSeq = session.frameSeq; }
     return out;
   }
-  async handleHttpMessagesForToken(token, messages) {
+  async handleHttpMessagesForToken(token: any, messages: any) {
     const session = this.#httpSessionByToken(token);
     if (!Array.isArray(messages) || messages.length < 1 || messages.length > 50) throw fail('浏览器操作批次无效');
     // Slow operations (WebRTC setup, navigation, tab changes) must never hold the HTTP control
@@ -930,9 +930,9 @@ export class BrowserSessionManager {
     }
     return { ok: true };
   }
-  async pollMessages(owner, token) { this.#httpSession(owner, token); return this.pollMessagesForToken(token); }
-  async handleHttpMessages(owner, token, messages) { this.#httpSession(owner, token); return this.handleHttpMessagesForToken(token, messages); }
-  async #sendStatus(session) {
+  async pollMessages(owner: any, token: any) { this.#httpSession(owner, token); return this.pollMessagesForToken(token); }
+  async handleHttpMessages(owner: any, token: any, messages: any) { this.#httpSession(owner, token); return this.handleHttpMessagesForToken(token, messages); }
+  async #sendStatus(session: any) {
     // Web clients use HTTP polling (no WebSocket); status must still reach them via the queue.
     if (!session.cdp || !session.targetSessionId) return;
     try {
@@ -944,15 +944,15 @@ export class BrowserSessionManager {
       if (tab && (tab.url !== (value.url || '') || tab.title !== (value.title || ''))) { tab.url = value.url || ''; tab.title = value.title || ''; this.#sendTabs(session); }
     } catch {}
   }
-  #registerTab(session, targetId, sessionId) {
+  #registerTab(session: any, targetId: any, sessionId: any) {
     const tab = { id: 't' + (++session.tabSeq), targetId, sessionId, url: '', title: '' };
     session.tabs.set(targetId, tab);
     return tab;
   }
-  #tabByTarget(session, targetId) { return session.tabs?.get(targetId) || null; }
-  #tabBySession(session, sid) { for (const tab of session.tabs?.values() || []) if (tab.sessionId === sid) return tab; return null; }
-  #tabById(session, id) { for (const tab of session.tabs?.values() || []) if (tab.id === id) return tab; return null; }
-  #sendTabs(session) {
+  #tabByTarget(session: any, targetId: any) { return session.tabs?.get(targetId) || null; }
+  #tabBySession(session: any, sid: any) { for (const tab of session.tabs?.values() || []) if (tab.sessionId === sid) return tab; return null; }
+  #tabById(session: any, id: any) { for (const tab of session.tabs?.values() || []) if (tab.id === id) return tab; return null; }
+  #sendTabs(session: any) {
     if (!session.tabs || session.closing || session.tabsTimer) return;
     session.tabsTimer = setTimeout(() => {
       session.tabsTimer = null;
@@ -963,7 +963,7 @@ export class BrowserSessionManager {
     }, 120);
     session.tabsTimer.unref?.();
   }
-  async #applyView(session, sid) {
+  async #applyView(session: any, sid: any) {
     // Real window sizing instead of Emulation: an emulated viewport is drawn in the top-left of the
     // full 1400x1000 surface, which tab capture/screenshots then show as a small "thumbnail".
     const view = session.view || { width: VIEW_WIDTH, height: VIEW_HEIGHT, scale: 1 };
@@ -1006,10 +1006,10 @@ export class BrowserSessionManager {
       if (candidate.h < 60) await delay(300);
     }
   }
-  async #applyColorScheme(session, sid) {
+  async #applyColorScheme(session: any, sid: any) {
     await session.cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: session.colorScheme === 'dark' ? 'dark' : 'light' }] }, sid, 4000);
   }
-  async #prepareTab(session, sid) {
+  async #prepareTab(session: any, sid: any) {
     const cdp = session.cdp;
     // File chooser interception first: a picker would expose the container filesystem.
     try { await cdp.send('Page.setInterceptFileChooserDialog', { enabled: true }, sid); } catch {}
@@ -1019,14 +1019,14 @@ export class BrowserSessionManager {
     await this.#applyView(session, sid).catch(() => {});
     await this.#applyColorScheme(session, sid).catch(() => {});
   }
-  #denyPermissions(session, url) {
+  #denyPermissions(session: any, url: any) {
     const origin = (() => { try { return new URL(url).origin; } catch { return ''; } })();
     if (!origin || !origin.startsWith('http')) return;
     for (const permission of ['geolocation','notifications','camera','microphone','clipboard-read','clipboard-write']) {
       void session.cdp.send('Browser.setPermission', { origin, permission: { name: permission }, setting: 'denied' }).catch(() => {});
     }
   }
-  async #adoptTarget(session, targetId, { activate = true } = {}) {
+  async #adoptTarget(session: any, targetId: any, { activate = true } = {}) {
     if (!session.tabs || session.closing || !targetId || targetId === session.transportTargetId) return null;
     const existing = session.tabs.get(targetId);
     if (existing) { if (activate) await this.#activateTab(session, existing); return existing; }
@@ -1053,14 +1053,14 @@ export class BrowserSessionManager {
     catch (error) { process.stderr.write(`[browser-tab] session=${session.id} adopt failed: ${(error as any)?.message || error}\n`); return null; }
     finally { session.adopting.delete(targetId); }
   }
-  #shotParams(session, quality = 72) {
+  #shotParams(session: any, quality = 72) {
     const view = session.view || { width: VIEW_WIDTH, height: VIEW_HEIGHT, scale: 1 };
     const params: any = { format: 'jpeg', quality, fromSurface: true, captureBeyondViewport: false };
     // Chrome hands screenshots/screencast back at CSS size; clip.scale yields true device pixels.
     if (view.scale > 1) params.clip = { x: 0, y: 0, width: view.width, height: view.height, scale: session.clipScale?.view === view ? session.clipScale.value : view.scale };
     return params;
   }
-  #restartCapture(session) {
+  #restartCapture(session: any) {
     if (session.closing || !(session.rtcReady || session.fallbackFrames)) return;
     const sid = session.targetSessionId;
     if (session.screencastStarted && sid) void session.cdp.send('Page.stopScreencast', {}, sid, 1500).catch(() => {});
@@ -1069,26 +1069,26 @@ export class BrowserSessionManager {
     session.screencastStarted = false; session.frameCaptureStarted = false;
     this.#startFrameCapture(session);
   }
-  async #withCaptureTitle(session, fn) {
+  async #withCaptureTitle(session: any, fn: any) {
     const sid = session.targetSessionId;
     await session.cdp.send('Runtime.evaluate', { expression: `(()=>{if(document.title!==${JSON.stringify(CAPTURE_TITLE)})window.__shiyanSavedTitle=document.title;document.title=${JSON.stringify(CAPTURE_TITLE)};return 1;})()`, returnByValue: true }, sid, 4000).catch(() => {});
     try { return await fn(); }
     finally { await session.cdp.send('Runtime.evaluate', { expression: `(()=>{if(document.title===${JSON.stringify(CAPTURE_TITLE)})document.title=window.__shiyanSavedTitle||'';return 1;})()`, returnByValue: true }, sid, 4000).catch(() => {}); }
   }
-  async #retargetCapture(session) {
+  async #retargetCapture(session: any) {
     if (!session.tabCapture || !session.transportSessionId) return;
     const started = Date.now();
     const result = await this.#withCaptureTitle(session, () => session.cdp.send('Runtime.evaluate', { expression: 'window.__shiyanUseTab()', awaitPromise: true, returnByValue: true, userGesture: true }, session.transportSessionId, 15_000));
-    setTimeout(() => { void session.cdp?.send('Runtime.evaluate', { expression: 'JSON.stringify(window.__shiyanPeer?.getSenders().find(x=>x.track?.kind==="video")?.track?.getSettings()||{})', returnByValue: true }, session.transportSessionId, 3000).then(r => process.stderr.write(`[browser-rtc] session=${session.id} capture-after-1s ${r?.result?.value}\n`)).catch(() => {}); }, 1000).unref?.();
+    setTimeout(() => { void session.cdp?.send('Runtime.evaluate', { expression: 'JSON.stringify(window.__shiyanPeer?.getSenders().find(x=>x.track?.kind==="video")?.track?.getSettings()||{})', returnByValue: true }, session.transportSessionId, 3000).then((r: any) => process.stderr.write(`[browser-rtc] session=${session.id} capture-after-1s ${r?.result?.value}\n`)).catch(() => {}); }, 1000).unref?.();
     process.stderr.write(`[browser-rtc] session=${session.id} capture-retarget ${result?.exceptionDetails ? 'failed ' + (result.exceptionDetails.exception?.description || result.exceptionDetails.text || '').slice(0, 160) : JSON.stringify(result?.result?.value || {})} ms=${Date.now() - started}\n`);
   }
-  #captureOnce(session) {
+  #captureOnce(session: any) {
     const sid = session.targetSessionId;
-    void session.cdp.send('Page.captureScreenshot', this.#shotParams(session), sid, 5000).then(shot => {
+    void session.cdp.send('Page.captureScreenshot', this.#shotParams(session), sid, 5000).then((shot: any) => {
       if (sid === session.targetSessionId && typeof shot?.data === 'string' && shot.data.length <= Math.ceil(MAX_FRAME_BYTES * 4 / 3)) { this.#pushFrame(session, shot.data); session.lastFrameAt = Date.now(); }
     }).catch(() => {});
   }
-  async #activateTab(session, tab) {
+  async #activateTab(session: any, tab: any) {
     if (!tab || session.closing) return;
     if (session.mainTargetId === tab.targetId && session.targetSessionId === tab.sessionId) { this.#sendTabs(session); return; }
     const previous = session.targetSessionId;
@@ -1105,17 +1105,17 @@ export class BrowserSessionManager {
     void this.#sendStatus(session);
     this.#sendTabs(session);
   }
-  async #openTab(session, url = 'about:blank') {
+  async #openTab(session: any, url = 'about:blank') {
     const created = await session.cdp.send('Target.createTarget', { url: 'about:blank', newWindow: true });
     const tab = await this.#adoptTarget(session, created.targetId, { activate: true });
     if (tab && url && url !== 'about:blank') {
-      void session.cdp.send('Page.navigate', { url }, tab.sessionId, 15_000).then(result => {
+      void session.cdp.send('Page.navigate', { url }, tab.sessionId, 15_000).then((result: any) => {
         if (result?.errorText) this.#sendJSON(session, { type: 'error', message: `Chrome 无法打开网页：${result.errorText}` });
-      }).catch(error => this.#sendJSON(session, { type: 'error', message: error?.message || '网页导航失败' }));
+      }).catch((error: any) => this.#sendJSON(session, { type: 'error', message: error?.message || '网页导航失败' }));
     }
     return tab;
   }
-  async #removeTab(session, targetId) {
+  async #removeTab(session: any, targetId: any) {
     const tab = this.#tabByTarget(session, targetId);
     if (!tab || session.closing) return;
     session.tabs.delete(targetId);
@@ -1126,7 +1126,7 @@ export class BrowserSessionManager {
     }
     this.#sendTabs(session);
   }
-  #handlePopup(session, info, method) {
+  #handlePopup(session: any, info: any, method: any) {
     // Links with target=_blank / window.open now become real tabs (previously folded into the page).
     if (!session.tabs || !info || info.type !== 'page' || info.targetId === session.transportTargetId) return;
     if (this.agentHook?.claimTarget?.(session, info, method) && !session.tabs.has(info.targetId)) return;
@@ -1138,7 +1138,7 @@ export class BrowserSessionManager {
     }
     if (method === 'Target.targetCreated') void this.#adoptTarget(session, info.targetId, { activate: true });
   }
-  #backgroundTabEvent(session, message) {
+  #backgroundTabEvent(session: any, message: any) {
     const tab = this.#tabBySession(session, message.sessionId);
     if (!tab) return;
     if (message.method === 'Page.javascriptDialogOpening') {
@@ -1149,7 +1149,7 @@ export class BrowserSessionManager {
       this.#sendTabs(session);
     }
   }
-  #cdpEvent(session, message) {
+  #cdpEvent(session: any, message: any) {
     if (session.closing || !session.targetSessionId) return;
     try { if (this.agentHook?.cdpEvent?.(session, message)) return; } catch (error) { process.stderr.write(`[browser-agent] event hook failed: ${(error as any)?.message || error}\n`); }
     if (!message.sessionId && (message.method === 'Target.targetCreated' || message.method === 'Target.targetInfoChanged')) {
@@ -1233,7 +1233,7 @@ export class BrowserSessionManager {
       })();
     }
   }
-  #startFrameCapture(session) {
+  #startFrameCapture(session: any) {
     if (session.frameCaptureStarted || session.closing) return;
     session.frameCaptureStarted = true;
     const fallback = () => this.#startScreenshotFallback(session);
@@ -1248,12 +1248,12 @@ export class BrowserSessionManager {
         if (!session.closing && !session.frameTimer && Date.now() - (session.lastFrameAt || 0) > 2500) fallback();
       }, 1000);
       session.screencastWatchdog.unref?.();
-    }).catch(error => {
+    }).catch((error: any) => {
       if (process.env.SHIYAN_BROWSER_DEBUG === '1') process.stderr.write('[browser] CDP screencast unavailable: ' + (error?.message || error) + '\n');
       fallback();
     });
   }
-  #startScreenshotFallback(session) {
+  #startScreenshotFallback(session: any) {
     if (session.frameTimer || session.closing) return;
     const capture = async () => {
       if (session.closing || !(session.rtcReady || session.fallbackFrames) || session.frameCaptureBusy) return;
@@ -1275,7 +1275,7 @@ export class BrowserSessionManager {
     session.frameTimer.unref?.();
     void capture();
   }
-  #calibrateClip(session, base64) {
+  #calibrateClip(session: any, base64: any) {
     // clip.scale interacts with the emulated device scale differently across Chrome builds; measure
     // the produced JPEG once and correct, so output = CSS size x viewer pixel ratio (no wasted bytes).
     const view = session.view;
@@ -1290,7 +1290,7 @@ export class BrowserSessionManager {
     if (Math.abs(width - target) / target <= 0.04) { session.clipScale = { view, value: current, done: true }; return; }
     session.clipScale = { view, value: Math.max(0.5, Math.min(2, current * target / width)), done: false };
   }
-  #pushFrame(session, base64) {
+  #pushFrame(session: any, base64: any) {
     if (session.closing) return;
     if (process.env.SHIYAN_FRAME_DUMP) { try { const b = Buffer.from(base64, 'base64'); writeFileSync('/tmp/shiyan-frame-dump.jpg', b); if (!session.frameDumpLogged || Date.now() - session.frameDumpLogged > 2000) { session.frameDumpLogged = Date.now(); process.stderr.write(`[browser-frame] DUMP bytes=${b.length} seq=${session.frameSeq || 0}\n`); } } catch {} }
     this.#calibrateClip(session, base64);
@@ -1320,7 +1320,7 @@ export class BrowserSessionManager {
       if (session.pendingFrame && !session.closing) this.#pushFrame(session, session.pendingFrame);
     })();
   }
-  async #clientMessage(session, message, throwErrors = false) {
+  async #clientMessage(session: any, message: any, throwErrors = false) {
     if (session.closing || !session.cdp || !session.targetSessionId || !message || typeof message.type !== 'string') return;
     session.lastActivity = Date.now();
     const sid = session.targetSessionId;

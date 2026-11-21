@@ -6,9 +6,9 @@ import { inferClaude } from './claude.ts';
 const SCHEMA = { type: 'object', additionalProperties: false, required: ['summary', 'score'], properties: { summary: { type: 'string', maxLength: 20 }, score: { type: 'integer', minimum: 0, maximum: 10 } } };
 
 // 每次 query 依次返回脚本里的一段文本；记录收到的内容块与选项
-function scripted(texts) {
+function scripted(texts: any) {
   const seen: any[] = [];
-  const sdk = async () => ({ query({ prompt, options }) {
+  const sdk = async () => ({ query({ prompt, options }: any) {
     return (async function* () {
       const first = await prompt[Symbol.asyncIterator]().next();
       seen.push({ blocks: first.value.message.content, options });

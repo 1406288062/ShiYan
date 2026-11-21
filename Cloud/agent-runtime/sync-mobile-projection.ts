@@ -1,17 +1,17 @@
 // Preserve reply text and attachments; fetch full execution records on demand.
-const bytes=value=>Buffer.byteLength(JSON.stringify(value));
-const preview=(text,limit)=>{
+const bytes=(value: any)=>Buffer.byteLength(JSON.stringify(value));
+const preview=(text: any,limit: any)=>{
   const data=Buffer.from(text);if(data.length<=limit)return text;
   return data.subarray(0,Math.max(0,limit-80)).toString('utf8').replace(/\uFFFD$/,'')+'\n…（完整内容按需加载）';
 };
-export function mobileSyncChange(change){
+export function mobileSyncChange(change: any){
   if(change.kind!=='messages'||change.deleted)return change;
   const data={...change.data};let details=data.executionDetailsAvailable===true;
   if(typeof data.rawResult==='string'&&data.rawResult.trim()&&data.rawResult!=='[]')details=true;
   data.rawResult=null;
   if(Array.isArray(data.fileChanges)){
     let remaining=16*1024;
-    data.fileChanges=data.fileChanges.map(file=>{
+    data.fileChanges=data.fileChanges.map((file: any)=>{
       if(!file||typeof file.diff!=='string')return file;
       const original=file.diff,limit=Math.min(4096,remaining);
       const diff=limit>=80?preview(original,limit):'';
@@ -21,7 +21,7 @@ export function mobileSyncChange(change){
     });
   }
   if(Array.isArray(data.displayItems)){
-    const items=data.displayItems.map(item=>({...item}));
+    const items=data.displayItems.map((item: any)=>({...item}));
     for(let i=0;i<items.length&&bytes(items)>24*1024;i++){
       for(const key of ['aggregated_output','result_text'])if(items[i][key]){items[i][key]='…（完整内容按需加载）';details=true;}
     }

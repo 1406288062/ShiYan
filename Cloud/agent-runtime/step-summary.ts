@@ -8,23 +8,23 @@ export const STEP_MODEL = 'claude-haiku-4-5-20251001';
 const SCHEMA = { type: 'object', additionalProperties: false, required: ['steps'], properties: { steps: { type: 'array', items: {
   type: 'object', additionalProperties: false, required: ['id', 'title', 'summary', 'detail'],
   properties: { id: { type: 'string' }, title: { type: 'string' }, summary: { type: 'string' }, detail: { type: 'string' } } } } } };
-const clip = (text, max) => { const value = String(text ?? '').trim(); return value.length > max ? value.slice(0, max - 1) + '…' : value; };
-const line = (text, max) => clip(String(text ?? '').replace(/\s+/g, ' '), max);
+const clip = (text: any, max: any) => { const value = String(text ?? '').trim(); return value.length > max ? value.slice(0, max - 1) + '…' : value; };
+const line = (text: any, max: any) => clip(String(text ?? '').replace(/\s+/g, ' '), max);
 
-export function normalizeSteps(input) {
+export function normalizeSteps(input: any) {
   return (Array.isArray(input) ? input : []).slice(0, 60).map((s, i) => ({
     id: line(s?.id || String(i), 120), type: line(s?.type, 40), title: line(s?.title, 120), status: line(s?.status, 30),
     input: clip(s?.input, 1500), output: clip(s?.output, 2000),
   })).filter(s => s.id && (s.input || s.output || s.title));
 }
-const keyOf = s => crypto.createHash('sha256').update(JSON.stringify([s.type, s.title, s.status, s.input, s.output])).digest('hex');
+const keyOf = (s: any) => crypto.createHash('sha256').update(JSON.stringify([s.type, s.title, s.status, s.input, s.output])).digest('hex');
 
-export function createStepSummaries(db, { infer = inferClaude, logger = console } = {}) {
+export function createStepSummaries(db: any, { infer = inferClaude, logger = console } = {}) {
   db.exec('CREATE TABLE IF NOT EXISTS step_summaries(hash TEXT PRIMARY KEY,value TEXT NOT NULL,created_at INTEGER NOT NULL)');
   const read = db.prepare('SELECT value FROM step_summaries WHERE hash=?');
   const write = db.prepare('INSERT OR REPLACE INTO step_summaries(hash,value,created_at) VALUES(?,?,?)');
   const inflight = new Map();
-  async function generate(steps): Promise<Map<string, any>> {
+  async function generate(steps: any): Promise<Map<string, any>> {
     const prompt = `下面是 AI 助手执行一个任务时依次做的步骤（工具调用、命令、搜索等）。为每一步写给用户看的说明，用中文：
 - title：动宾短语，8-20 个字，说清这一步做了什么，例如“读取 GitHub 连接器说明”“查看服务器网络接口”。不要写“我”，不要只写工具名。
 - summary：一句话说结果，不超过 40 个字，例如“确认使用官方服务器，不支持企业版”。失败的步骤说明失败原因。
@@ -38,12 +38,12 @@ ${JSON.stringify(steps)}
     let text = String(result.text || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
     const start = text.search(/[\[{]/); if (start > 0) text = text.slice(start);
     let value = JSON.parse(text); if (Array.isArray(value)) value = { steps: value };
-    return new Map((value.steps || []).map(s => [String(s.id), { title: line(s.title, 40), summary: line(s.summary, 80), detail: clip(s.detail, 2400) }]));
+    return new Map((value.steps || []).map((s: any) => [String(s.id), { title: line(s.title, 40), summary: line(s.summary, 80), detail: clip(s.detail, 2400) }]));
   }
   // 一轮对话：doing = 这轮在干嘛（列表里一句话），result = 结果的简短总结（详情页顶部）。
   const ROUND_SCHEMA = { type: 'object', additionalProperties: false, required: ['rounds'], properties: { rounds: { type: 'array', items: {
     type: 'object', additionalProperties: false, required: ['id', 'doing', 'result'], properties: { id: { type: 'string' }, doing: { type: 'string' }, result: { type: 'string' } } } } } };
-  async function generateRounds(rounds): Promise<Map<string, any>> {
+  async function generateRounds(rounds: any): Promise<Map<string, any>> {
     const prompt = `下面是用户发给 AI 助手的消息（prompt）和助手的回复（reply）。为每一轮写给用户看的简短说明，用中文：
 - doing：这一轮在做什么，动宾短语，6-20 个字，例如“查询武汉今天的天气”“修改 iOS 底部按钮的出现时机”。
 - result：用一两句话概括结果，不超过 60 个字，只说结论，不要照抄回复原文，不要列表和 Markdown。
@@ -54,10 +54,10 @@ ${JSON.stringify(rounds)}
 {"rounds":[{"id":"…","doing":"…","result":"…"}]}`;
     const result = await infer({ model: STEP_MODEL, reasoning: 'low', prompt, system: '你是一个只输出 JSON 的格式化工具。', schema: ROUND_SCHEMA, signal: AbortSignal.timeout(60_000) });
     const value = JSON.parse(result.text);
-    return new Map((value.rounds || []).map(r => [String(r.id), { doing: line(r.doing, 40), result: line(r.result, 120) }]));
+    return new Map((value.rounds || []).map((r: any) => [String(r.id), { doing: line(r.doing, 40), result: line(r.result, 120) }]));
   }
   return {
-    async rounds(input) {
+    async rounds(input: any) {
       const items = (Array.isArray(input) ? input : []).slice(0, 40).map((r, i) => ({ id: line(r?.id || String(i), 120), prompt: clip(r?.prompt, 1200), reply: clip(r?.reply, 2500) })).filter(r => r.prompt || r.reply);
       const out = new Map(), missing: any[] = [];
       for (const r of items) { const hash = 'round:' + keyOf({ type: 'round', title: '', status: '', input: r.prompt, output: r.reply }), row = read.get(hash); if (row) out.set(r.id, JSON.parse(row.value)); else missing.push({ r, hash }); }
@@ -68,7 +68,7 @@ ${JSON.stringify(rounds)}
       }
       return items.filter(r => out.has(r.id)).map(r => ({ id: r.id, ...out.get(r.id) }));
     },
-    async summarize(input) {
+    async summarize(input: any) {
       const steps = normalizeSteps(input), out = new Map(), missing: any[] = [];
       for (const step of steps) {
         const hash = keyOf(step), row = read.get(hash);

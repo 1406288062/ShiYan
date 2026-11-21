@@ -3,8 +3,8 @@ import { spawn } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
-const failure = (message, status = 400) => Object.assign(new Error(message), { status });
-export function registrationEmail(value) {
+const failure = (message: any, status = 400) => Object.assign(new Error(message), { status });
+export function registrationEmail(value: any) {
   const email = typeof value === 'string' ? value.normalize('NFKC').trim().toLowerCase() : '';
   if (!email || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw failure('请输入有效邮箱');
   return email;
@@ -44,7 +44,7 @@ with (smtplib.SMTP_SSL(host,port,timeout=15,context=ctx) if secure else smtplib.
  if not secure:s.starttls(context=ctx)
  s.login(e['SHIYAN_SMTP_USER'],e['SHIYAN_SMTP_PASSWORD']);s.send_message(m)
 `;
-export async function sendRegistrationEmail(message, env = process.env) {
+export async function sendRegistrationEmail(message: any, env = process.env) {
   env = registrationMailEnvironment(env);
   if (!mailConfigured(env)) throw failure('验证码邮件服务尚未配置，请稍后再试', 503);
   try {
@@ -73,7 +73,7 @@ export class RegistrationEmail {
   send: (message: any) => Promise<void>;
   configured: () => boolean;
   secret: any;
-  constructor(store, { send = sendRegistrationEmail, configured = () => mailConfigured(), secret, purpose = 'register' }: { send?: (message: any) => Promise<void>; configured?: () => boolean; secret?: any; purpose?: string } = {}) {
+  constructor(store: any, { send = sendRegistrationEmail, configured = () => mailConfigured(), secret, purpose = 'register' }: { send?: (message: any) => Promise<void>; configured?: () => boolean; secret?: any; purpose?: string } = {}) {
     if (!['register', 'password-reset'].includes(purpose)) throw failure('验证码用途无效');
     this.reset = purpose === 'password-reset';
     this.table = this.reset ? 'password_reset_email_codes' : 'registration_email_codes';
@@ -96,8 +96,8 @@ export class RegistrationEmail {
       ready INTEGER NOT NULL DEFAULT 0
     )`);
   }
-  digest(email, id, code) { return createHmac('sha256', this.secret).update(JSON.stringify(this.reset ? ['password-reset', email, id, code] : [email, id, code])).digest('hex'); }
-  async request(input, ip) {
+  digest(email: any, id: any, code: any) { return createHmac('sha256', this.secret).update(JSON.stringify(this.reset ? ['password-reset', email, id, code] : [email, id, code])).digest('hex'); }
+  async request(input: any, ip: any) {
     const email = registrationEmail(input?.email), store = this.store;
     if (!this.configured()) throw failure('验证码邮件服务尚未配置，请稍后再试', 503);
     store.consumeLimit((this.reset ? 'password-reset-mail-ip:' : 'registration-mail-ip:') + ip, 10, 3600000);
@@ -131,7 +131,7 @@ export class RegistrationEmail {
     }
     return { ok: true, expiresIn: 600, resendAfter: 60 };
   }
-  check(input) {
+  check(input: any) {
     const email = registrationEmail(input?.email), code = String(input?.verificationCode ?? '');
     const row = this.store.db.prepare(`SELECT * FROM ${this.table} WHERE email=?`).get(email);
     if (!row || !row.ready || row.expires_at <= this.store.now()) throw failure(this.reset ? '验证码无效或已过期，请重新获取' : '验证码已过期，请重新获取');

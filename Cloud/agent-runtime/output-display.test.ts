@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { projectDisplayItem, upsertDisplayItem, displayItemsForJob, jobSnapshot, projectUsage } from './output-display.ts';
 import { cleanSyncData, jobMessageData } from './sync-store.ts';
 
-const command = (id, overrides = {}) => ({ id, type: 'command_execution', command: 'npm test', aggregated_output: '', status: 'in_progress', ...overrides });
+const command = (id: any, overrides = {}) => ({ id, type: 'command_execution', command: 'npm test', aggregated_output: '', status: 'in_progress', ...overrides });
 const message = (overrides = {}) => ({ id: 'message-id', conversationId: 'conversation-id', role: 'assistant', text: 'answer', ...overrides });
 
 test('commands retain factual status and exit code within display bounds, without modifying SDK item', () => {
@@ -48,7 +48,7 @@ test('started items keep start order when later items finish first; replay repla
   result = upsertDisplayItem(result.displayItems, command('second'), 'item.started', result.displayItemOrder);
   result = upsertDisplayItem(result.displayItems, command('second', { status: 'completed' }), 'item.completed', result.displayItemOrder);
   result = upsertDisplayItem(result.displayItems, command('first', { status: 'failed', exit_code: 1 }), 'item.completed', result.displayItemOrder);
-  assert.deepEqual(result.displayItems.map(item => item.id), ['first', 'second']);
+  assert.deepEqual(result.displayItems.map((item: any) => item.id), ['first', 'second']);
   assert.equal(result.displayItems[0].status, 'failed');
   const replay = upsertDisplayItem(result.displayItems, command('first', { status: 'failed', exit_code: 1 }), 'item.completed', result.displayItemOrder);
   assert.deepEqual(replay, result);
@@ -74,9 +74,9 @@ test('whole projection is bounded and late completion cannot reorder an evicted 
   for (let n = 0; n < 160; n++) result = upsertDisplayItem(result.displayItems, command(String(n), { aggregated_output: 'x'.repeat(4000) }), 'item.started', result.displayItemOrder);
   assert.equal(result.displayItems.length <= 128, true);
   assert.equal(Buffer.byteLength(JSON.stringify(result.displayItems)) <= 64 * 1024, true);
-  const before = result.displayItems.map(item => Number(item.id));
+  const before = result.displayItems.map((item: any) => Number(item.id));
   result = upsertDisplayItem(result.displayItems, command('0', { status: 'completed' }), 'item.completed', result.displayItemOrder);
-  assert.deepEqual(result.displayItems.map(item => Number(item.id)), before);
+  assert.deepEqual(result.displayItems.map((item: any) => Number(item.id)), before);
 });
 
 test('snapshots restore display details, code cards and validated usage when reconnecting', () => {

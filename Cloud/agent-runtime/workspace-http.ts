@@ -3,10 +3,10 @@
 import path from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 
-const failure = (message, status = 400) => Object.assign(new Error(message), { status });
-const hash = value => createHash('sha256').update(value).digest('hex');
-const validID = value => typeof value === 'string' && /^[A-Za-z0-9_-]{8,100}$/.test(value);
-const name = value => {
+const failure = (message: any, status = 400) => Object.assign(new Error(message), { status });
+const hash = (value: any) => createHash('sha256').update(value).digest('hex');
+const validID = (value: any) => typeof value === 'string' && /^[A-Za-z0-9_-]{8,100}$/.test(value);
+const name = (value: any) => {
   if (typeof value !== 'string' || !value.trim() || ['.', '..'].includes(value.trim()) || value.length > 100 || /[/\\\x00-\x1f]/.test(value)) throw failure('项目名称无效');
   return value.trim();
 };
@@ -16,7 +16,7 @@ export function virtualPath(value = '/workspace') {
   if (result !== '/workspace' && !result.startsWith('/workspace/')) throw failure('不能访问授权工作区之外的文件', 403);
   return result;
 }
-const writeJSON = (res, status, value) => {
+const writeJSON = (res: any, status: any, value: any) => {
   const bytes = Buffer.from(JSON.stringify(value));
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': bytes.length, 'Cache-Control': 'no-store' });
   res.end(bytes);
@@ -26,22 +26,22 @@ const defaultOperations = async () => import('./member-sandbox.ts');
 interface WorkspaceHandlerOptions { operations?: any; revalidate?: (auth: any) => boolean; getAsset?: (owner: any, id: any) => any; }
 export function createWorkspaceHandler({ operations = defaultOperations, revalidate = () => true, getAsset }: WorkspaceHandlerOptions = {}) {
   const terminals = new Map(), locks = new Map(), previews = new Map();
-  const operate = async (owner, input) => (await operations()).workspaceOperation(owner, { ...(input.operation === 'mkdir' ? { recursive: true } : {}), ...input });
+  const operate = async (owner: any, input: any) => (await operations()).workspaceOperation(owner, { ...(input.operation === 'mkdir' ? { recursive: true } : {}), ...input });
   const metadataPath = '/workspace/.shiyan/workspace.json';
-  async function metadata(owner) {
+  async function metadata(owner: any) {
     try {
       const result = await operate(owner, { operation: 'read', path: metadataPath });
       const text = typeof result.text === 'string' ? result.text : Buffer.from(result.data || '', 'base64').toString();
       const value = JSON.parse(text);
       if (!Array.isArray(value.projects) || !value.preferences || typeof value.preferences !== 'object') throw Error();
-      value.projects = value.projects.filter(p => validID(p.id) && typeof p.name === 'string').map(p => ({ ...p, path: virtualPath(p.path) }));
+      value.projects = value.projects.filter((p: any) => validID(p.id) && typeof p.name === 'string').map((p: any) => ({ ...p, path: virtualPath(p.path) }));
       return value;
     } catch (error) {
       if ((error as any).status && (error as any).status !== 404) throw error;
       return { projects: [], preferences: {} };
     }
   }
-  async function mutate(owner, action) {
+  async function mutate(owner: any, action: any) {
     const previous = locks.get(owner) || Promise.resolve();
     const pending = previous.catch(() => {}).then(async () => {
       const state = await metadata(owner), result = await action(state);
@@ -52,12 +52,12 @@ export function createWorkspaceHandler({ operations = defaultOperations, revalid
     locks.set(owner, pending);
     try { return await pending; } finally { if (locks.get(owner) === pending) locks.delete(owner); }
   }
-  function project(state, id) {
-    const item = state.projects.find(p => p.id === id);
+  function project(state: any, id: any) {
+    const item = state.projects.find((p: any) => p.id === id);
     if (!item) throw failure('项目不存在', 404);
     return item;
   }
-  function reference(state, input) {
+  function reference(state: any, input: any) {
     if (input.fileId) {
       if (typeof input.fileId !== 'string' || input.fileId.length > 6000) throw failure('文件引用无效');
       let value;
@@ -70,7 +70,7 @@ export function createWorkspaceHandler({ operations = defaultOperations, revalid
     if (target !== base && !target.startsWith(base + '/')) throw failure('不能访问项目之外的文件', 403);
     return virtualPath(target);
   }
-  async function readFile(owner, state, input) {
+  async function readFile(owner: any, state: any, input: any) {
     const target = reference(state, input), result = await operate(owner, { operation: 'read', path: target });
     const bytes = typeof result.data === 'string' ? Buffer.from(result.data, 'base64') : Buffer.from(result.text ?? result.content ?? '');
     const file = { name: path.posix.basename(target), path: target, size: result.size ?? bytes.length, projectId: input.projectId || null,
@@ -83,26 +83,26 @@ export function createWorkspaceHandler({ operations = defaultOperations, revalid
     if (bytes.includes(0) || !Buffer.from(text).equals(bytes)) return { ...file, kind: 'binary', message: '此文件暂不支持文本预览' };
     return { ...file, kind: 'text', text, encoding: 'UTF-8', language: ext.slice(1) || 'text' };
   }
-  const publicTerminal = item => ({ id: item.id, cwd: item.cwd, projectId: item.projectId, running: !item.closed });
-  function terminal(owner, id) {
+  const publicTerminal = (item: any) => ({ id: item.id, cwd: item.cwd, projectId: item.projectId, running: !item.closed });
+  function terminal(owner: any, id: any) {
     const item = terminals.get(id);
     if (!item || item.owner !== owner) throw failure('终端不存在或已关闭', 404);
     return item;
   }
-  function append(item, event) {
+  function append(item: any, event: any) {
     const record = { seq: ++item.sequence, ...event };
     item.events.push(record);
     if (item.events.length > 512) item.events.shift();
     for (const res of item.listeners) if (!res.destroyed) res.write(`id: ${record.seq}\nevent: terminal\ndata: ${JSON.stringify(record)}\n\n`);
   }
-  const close = item => { clearInterval(item.authorization);if (!item.closed) { item.closed = true; item.child.kill('SIGTERM'); } };
-  return async function workspaceRequest(req, res, auth, readBody) {
+  const close = (item: any) => { clearInterval(item.authorization);if (!item.closed) { item.closed = true; item.child.kill('SIGTERM'); } };
+  return async function workspaceRequest(req: any, res: any, auth: any, readBody: any) {
     const url = new URL(req.url, 'http://localhost');
     const route = url.pathname.replace(/^\/shiyan/, '').replace(/^\/v1\/workspace/, '');
     if (!/^\/(?:shiyan\/)?v1\/workspace(?:\/|$)/.test(url.pathname)) return false;
     if (!auth?.owner) throw failure('请先登录', 401);
     const owner = auth.owner;
-    const respond = value => { writeJSON(res, 200, { ok: true, ...value }); return true; };
+    const respond = (value: any) => { writeJSON(res, 200, { ok: true, ...value }); return true; };
     const input = async () => {
       const value = await readBody(req, 12 * 1024 * 1024);
       if (!value || typeof value !== 'object' || Array.isArray(value)) throw failure('工作区请求格式无效');
@@ -115,14 +115,14 @@ export function createWorkspaceHandler({ operations = defaultOperations, revalid
     if (route === '/preferences' && req.method === 'PATCH') {
       const data = await input();
       if (JSON.stringify(data).length > 100000) throw failure('工作区配置过大');
-      return respond(await mutate(owner, state => { state.preferences = { ...state.preferences, ...data }; return { preferences: state.preferences }; }));
+      return respond(await mutate(owner, (state: any) => { state.preferences = { ...state.preferences, ...data }; return { preferences: state.preferences }; }));
     }
     if (route === '/projects' && req.method === 'GET') return respond({ projects: (await metadata(owner)).projects });
     if (route === '/projects' && req.method === 'POST') {
       const data = await input();
-      return respond(await mutate(owner, async state => {
+      return respond(await mutate(owner, async (state: any) => {
         const id = data.id || randomUUID();
-        if (!validID(id) || state.projects.some(p => p.id === id)) throw failure('项目标识无效或已存在');
+        if (!validID(id) || state.projects.some((p: any) => p.id === id)) throw failure('项目标识无效或已存在');
         const projectName = name(data.name);
         const projectPath = data.path ? data.create === true ? path.posix.join(virtualPath(data.path), projectName) : virtualPath(data.path) : '/workspace/projects/' + id;
         const item = { id, name: projectName, path: virtualPath(projectPath), createdAt: new Date().toISOString() };
@@ -133,9 +133,9 @@ export function createWorkspaceHandler({ operations = defaultOperations, revalid
     const projectRoute = route.match(/^\/projects\/([A-Za-z0-9_-]{8,100})(?:\/(select|bind))?$/);
     if (projectRoute && ['PATCH', 'POST', 'DELETE'].includes(req.method)) {
       const data = req.method === 'DELETE' ? {} : await input();
-      return respond(await mutate(owner, async state => {
+      return respond(await mutate(owner, async (state: any) => {
         const item = project(state, projectRoute[1]);
-        if (req.method === 'DELETE') { state.projects = state.projects.filter(p => p.id !== item.id); return { projects: state.projects }; }
+        if (req.method === 'DELETE') { state.projects = state.projects.filter((p: any) => p.id !== item.id); return { projects: state.projects }; }
         if (projectRoute[2] === 'select') state.preferences.selectedProjectId = item.id;
         else if (projectRoute[2] === 'bind') { item.path = virtualPath(data.path); await operate(owner, { operation: 'mkdir', path: item.path }); }
         else { if (data.name !== undefined) item.name = name(data.name); if (data.isPinned !== undefined) item.isPinned = data.isPinned === true; }
@@ -147,7 +147,7 @@ export function createWorkspaceHandler({ operations = defaultOperations, revalid
       const target = reference(state, { projectId, path: relative });
       const result = await operate(owner, { operation: 'list', path: target });
       const base = projectId ? project(state, projectId).path : '/workspace';
-      return respond({ path: path.posix.relative(base, target) || '.', truncated: Boolean(result.truncated), entries: (result.entries || []).filter(e => e.name !== '.shiyan').slice(0, 600).map(e => {
+      return respond({ path: path.posix.relative(base, target) || '.', truncated: Boolean(result.truncated), entries: (result.entries || []).filter((e: any) => e.name !== '.shiyan').slice(0, 600).map((e: any) => {
         const entryPath = virtualPath(path.posix.join(target, e.name));
         return { name: e.name, path: path.posix.relative(base, entryPath), directory: e.directory === true || e.type === 'directory', blocked: e.blocked === true, symlink: e.symlink === true };
       }) });
@@ -193,7 +193,7 @@ export function createWorkspaceHandler({ operations = defaultOperations, revalid
       if (Buffer.byteLength(data.baselineText) > 2 * 1024 * 1024) throw failure('基准内容过大', 413);
       const before = data.baselineText.split('\n'), after = (file as any).text.split('\n');
       const changed = data.baselineText !== (file as any).text;
-      return respond({ changes: { name: file.name, available: true, source: '打开文件时', diff: changed ? ['--- 打开文件时', '+++ 当前文件', ...before.map(l => '-' + l), ...after.map(l => '+' + l)].join('\n') : '', added: changed ? after.length : 0, removed: changed ? before.length : 0 } });
+      return respond({ changes: { name: file.name, available: true, source: '打开文件时', diff: changed ? ['--- 打开文件时', '+++ 当前文件', ...before.map((l: any) => '-' + l), ...after.map((l: any) => '+' + l)].join('\n') : '', added: changed ? after.length : 0, removed: changed ? before.length : 0 } });
     }
     if (route === '/terminals' && req.method === 'POST') {
       const data = await input(), state = await metadata(owner);
@@ -206,8 +206,8 @@ export function createWorkspaceHandler({ operations = defaultOperations, revalid
       item.authorization=setInterval(()=>{if(!revalidate(auth))close(item);},2000);item.authorization.unref();
       terminals.set(item.id, item);
       child.stdin.on('error', () => {});
-      for (const stream of [child.stdout, child.stderr]) stream.on('data', bytes => append(item, { type: 'data', data: Buffer.from(bytes).toString('base64') }));
-      child.on('close', code => { clearInterval(item.authorization);item.closed = true; append(item, { type: 'exit', code }); for (const res of item.listeners) res.end();setTimeout(()=>terminals.delete(item.id),60000).unref(); });
+      for (const stream of [child.stdout, child.stderr]) stream.on('data', (bytes: any) => append(item, { type: 'data', data: Buffer.from(bytes).toString('base64') }));
+      child.on('close', (code: any) => { clearInterval(item.authorization);item.closed = true; append(item, { type: 'exit', code }); for (const res of item.listeners) res.end();setTimeout(()=>terminals.delete(item.id),60000).unref(); });
       child.on('error', () => { clearInterval(item.authorization);item.closed = true; append(item, { type: 'exit', code: 1 });for(const res of item.listeners)res.end(); });
       const expiry = setTimeout(() => { close(item); terminals.delete(item.id); }, 8 * 3600000); expiry.unref();
       return respond({ terminal: publicTerminal(item) });

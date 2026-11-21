@@ -13,11 +13,11 @@ import {getAccountStore} from './accounts.ts';
 const ROOT=process.env.SHIYAN_ROOT || '/home/ubuntu/boss-codex-service/shiyan-v2';
 export const SPONGE_SOCKET=process.env.SHIYAN_SPONGE_SOCKET || path.join(ROOT,'data/sponge/connector.sock');
 export const SPONGE_SECRET_FILE=process.env.SHIYAN_SPONGE_SECRET_FILE || '/home/ubuntu/.config/shiyan/sponge-link.key';
-const sha=value=>createHash('sha256').update(value).digest('hex');
+const sha=(value: any)=>createHash('sha256').update(value).digest('hex');
 const nonce=()=>randomBytes(32).toString('base64url');
-const failure=(message,status=400)=>Object.assign(new Error(message),{status});
-const aliasId=subject=>'shiyan_'+sha(subject);
-function decodeMcp(result){
+const failure=(message: any,status=400)=>Object.assign(new Error(message),{status});
+const aliasId=(subject: any)=>'shiyan_'+sha(subject);
+function decodeMcp(result: any){
   if(result?.isError)throw failure('海绵宝宝暂时无法确认当前账号，请重新连接',401);
   if(result?.structuredContent?.accountId)return result.structuredContent;
   for(const item of result?.content || [])if(item.type==='text'){
@@ -62,22 +62,22 @@ export class SpongeConnector {
       CREATE INDEX IF NOT EXISTS flows_owner ON flows(owner);`);
   }
   accounts(){return this.accountStore || getAccountStore();}
-  access(owner){
+  access(owner: any){
     const a=this.accounts().access(owner);
     if(a?.status!=='active'||typeof a.userId!=='string')throw failure('当前账号无法使用海绵宝宝，请重新登录',403);
     return a;
   }
-  sessionActive(subject,sessionId){
+  sessionActive(subject: any,sessionId: any){
     return !!this.accounts().db.prepare('SELECT id FROM account_sessions WHERE id=? AND user_id=? AND expires_at>?').get(sessionId,subject,this.now());
   }
-  _row(owner){return this.db.prepare('SELECT * FROM connections WHERE owner=?').get(owner);}
-  _current(owner,revision){
+  _row(owner: any){return this.db.prepare('SELECT * FROM connections WHERE owner=?').get(owner);}
+  _current(owner: any,revision: any){
     const access=this.access(owner),row=this._row(owner);
     if(!row||row.subject!==access.userId||row.revision!==revision)throw failure('连接已变更，请重新连接海绵宝宝',409);
     return row;
   }
-  _abort(owner){for(const c of this.controllers.get(owner)||[])c.abort();}
-  async _request(route,body,{owner,token,signal,timeout=15000}: {owner?: string; token?: string; signal?: AbortSignal; timeout?: number}={}){
+  _abort(owner: any){for(const c of this.controllers.get(owner)||[])c.abort();}
+  async _request(route: any,body: any,{owner,token,signal,timeout=15000}: {owner?: string; token?: string; signal?: AbortSignal; timeout?: number}={}){
     const controller=new AbortController();
     if(owner){if(!this.controllers.has(owner))this.controllers.set(owner,new Set());this.controllers.get(owner)!.add(controller);}
     const abort=()=>controller.abort();signal?.addEventListener('abort',abort,{once:true});if(signal?.aborted)controller.abort();
@@ -104,13 +104,13 @@ export class SpongeConnector {
       if(owner){const set=this.controllers.get(owner);set?.delete(controller);if(!set?.size)this.controllers.delete(owner);}
     }
   }
-  async _mcp(token,method,params,options: {owner?: string; signal?: AbortSignal; timeout?: number}={}){
+  async _mcp(token: any,method: any,params: any,options: {owner?: string; signal?: AbortSignal; timeout?: number}={}){
     const value=await this._request('/mcp',{jsonrpc:'2.0',id:1,method,params},{token,...options});
     if(value.error)throw failure('海绵宝宝工具请求未完成',502);
     if(!Object.hasOwn(value,'result'))throw failure('海绵宝宝工具响应无效',502);
     return value.result;
   }
-  async _revoke(tokens,clientId){
+  async _revoke(tokens: any,clientId: any){
     // An expired access token may already have been pruned by the relay while
     // its refresh grant remains valid. Revoke through the durable family token.
     const token=tokens?.refresh_token || tokens?.access_token;
@@ -134,13 +134,13 @@ export class SpongeConnector {
     })().finally(()=>{if(this.clientPromise===task)this.clientPromise=null;});
     this.clientPromise=task;return task;
   }
-  _clear(owner){
+  _clear(owner: any){
     const row=this._row(owner);this._abort(owner);
     this.db.prepare('UPDATE connections SET revision=revision+1,token_json=NULL,expires_at=0,updated_at=? WHERE owner=?').run(this.now(),owner);
     this.db.prepare('DELETE FROM flows WHERE owner=?').run(owner);
     return row?.token_json?JSON.parse(String(row.token_json)):null;
   }
-  async start(auth){
+  async start(auth: any){
     const a=this.access(auth?.owner);
     if(!auth.accountSession||auth.userId!==a.userId||!this.sessionActive(a.userId,auth.sessionId))throw failure('请先登录当前拾燕账号',401);
     const client=await this._client();this.access(auth.owner);
@@ -184,10 +184,10 @@ export class SpongeConnector {
       return {ok:true,connected:true};
     }catch(cause){if(tokens)await this._revoke(tokens,flow.client_id);throw cause;}
   }
-  _validTokens(tokens){
+  _validTokens(tokens: any){
     if(typeof tokens?.access_token!=='string'||tokens.access_token.length>4096||!tokens.access_token||typeof tokens.refresh_token!=='string'||!tokens.refresh_token||tokens.refresh_token.length>4096||tokens.token_type?.toLowerCase()!=='bearer'||!Number.isFinite(tokens.expires_in)||tokens.expires_in<=0||tokens.expires_in>86400)throw failure('海绵宝宝授权响应无效',502);
   }
-  async _token(owner){
+  async _token(owner: any){
     const a=this.access(owner),row=this._row(owner);
     if(!row?.token_json||row.subject!==a.userId)throw failure('请先在拾燕设置中连接海绵宝宝，并使用当前拾燕账号登录',409);
     if(Number(row.expires_at)>this.now()+30000)return {row,tokens:JSON.parse(String(row.token_json))};
@@ -213,7 +213,7 @@ export class SpongeConnector {
     })().finally(()=>{if(this.refreshes.get(owner)===task)this.refreshes.delete(owner);});
     this.refreshes.set(owner,task);return task;
   }
-  async rpc(owner,method,params: any={},signal?: AbortSignal){
+  async rpc(owner: any,method: any,params: any={},signal?: AbortSignal){
     if(!['tools/list','tools/call'].includes(method))throw failure('不支持的海绵宝宝请求');
     if(method==='tools/call'&&(typeof params?.name!=='string'||!params.name||params.name.length>200||!params.arguments||typeof params.arguments!=='object'||Array.isArray(params.arguments)))throw failure('工具请求无效');
     const {row,tokens}=await this._token(owner);
@@ -228,7 +228,7 @@ export class SpongeConnector {
       throw error; // No replay of device operations after a network failure.
     }
   }
-  async status(owner){
+  async status(owner: any){
     const access=this.access(owner),row=this._row(owner);
     if(!row?.token_json||row.subject!==access.userId)return {ok:true,connected:false,devices:[],needsPairing:false};
     try{
@@ -236,7 +236,7 @@ export class SpongeConnector {
       const identity=decodeMcp(await this._mcp(tokens.access_token,'tools/call',{name:'who_am_i',arguments:{}},{owner}));
       if(identity.accountId!==aliasId(access.userId))throw failure('海绵宝宝账号不匹配，请重新连接',403);
       this._current(owner,row.revision);
-      const devices=(Array.isArray(identity.devices)?identity.devices:[]).filter(d=>d&&!d.revokedAt&&d.status!=='revoked').map(d=>({deviceId:d.deviceId,name:d.name,platform:d.platform,online:d.online===true,ready:d.ready===true,status:d.status}));
+      const devices=(Array.isArray(identity.devices)?identity.devices:[]).filter((d: any)=>d&&!d.revokedAt&&d.status!=='revoked').map((d: any)=>({deviceId:d.deviceId,name:d.name,platform:d.platform,online:d.online===true,ready:d.ready===true,status:d.status}));
       return {ok:true,connected:true,devices,needsPairing:devices.length===0};
     }catch(error){
       if([400,401,403,409].includes((error as any).status)){
@@ -246,7 +246,7 @@ export class SpongeConnector {
       throw error;
     }
   }
-  async disconnect(owner){
+  async disconnect(owner: any){
     this.access(owner);const tokens=this._clear(owner);
     if(tokens)await this._revoke(tokens,tokens.client_id);
     return {ok:true,connected:false,devices:[],needsPairing:false};
@@ -254,7 +254,7 @@ export class SpongeConnector {
   close(){for(const owner of this.controllers.keys())this._abort(owner);this.db.close();}
 }
 
-export function createSpongeServer(connector){
+export function createSpongeServer(connector: any){
   return http.createServer(async(req,res)=>{
     res.setHeader('Cache-Control','no-store');res.setHeader('Content-Type','application/json; charset=utf-8');
     try{
@@ -273,12 +273,12 @@ export function createSpongeServer(connector){
 
 // A second broker must never unlink the first broker's live entry point.
 // The service also holds a process lock across this probe/bind boundary.
-export async function prepareSpongeSocket(socketPath,{timeoutMs=500}={}){
+export async function prepareSpongeSocket(socketPath: any,{timeoutMs=500}={}){
   let before;try{before=await fs.lstat(socketPath);}catch(error){if((error as any).code==='ENOENT')return;throw error;}
   if(!before.isSocket())throw new Error('Refusing to replace a non-socket path.');
   await new Promise<void>((resolve,reject)=>{
     const socket=net.createConnection({path:socketPath});let finished=false;
-    const finish=error=>{if(finished)return;finished=true;clearTimeout(timer);socket.destroy();error?reject(error):resolve();};
+    const finish=(error: any)=>{if(finished)return;finished=true;clearTimeout(timer);socket.destroy();error?reject(error):resolve();};
     const timer=setTimeout(()=>finish(new Error('Cannot confirm socket is stale; refusing to replace it.')),timeoutMs);
     socket.once('connect',()=>finish(new Error('A Sponge connector is already listening on this socket.')));
     socket.once('error',error=>finish((error as any).code==='ECONNREFUSED'?null:error));
@@ -288,7 +288,7 @@ export async function prepareSpongeSocket(socketPath,{timeoutMs=500}={}){
   await fs.unlink(socketPath);
 }
 
-export async function removeOwnedSpongeSocket(socketPath,owned){
+export async function removeOwnedSpongeSocket(socketPath: any,owned: any){
   let current;try{current=await fs.lstat(socketPath);}catch(error){if((error as any).code==='ENOENT')return false;throw error;}
   if(!owned||!current.isSocket()||current.dev!==owned.dev||current.ino!==owned.ino)return false;
   await fs.unlink(socketPath);return true;

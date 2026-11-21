@@ -7,17 +7,17 @@ export const SECTIONS = [
   { id: 'context', title: '近期在做' },
 ];
 
-const clip = (text, max) => {
+const clip = (text: any, max: any) => {
   const value = String(text || '').replace(/\s+/g, ' ').trim();
   return value.length > max ? value.slice(0, max - 1) + '…' : value;
 };
 
-export function buildMemorySummary(memories) {
+export function buildMemorySummary(memories: any) {
   const sections: any[] = [];
   for (const section of SECTIONS) {
     const seen = new Set();
     const points: any[] = [];
-    for (const memory of memories.filter(item => item.category === section.id)) {
+    for (const memory of memories.filter((item: any) => item.category === section.id)) {
       const point = clip(memory.content, 60);
       const key = point.toLocaleLowerCase();
       if (!point || seen.has(key)) continue;
@@ -32,15 +32,15 @@ export function buildMemorySummary(memories) {
 
 export const fallbackSummary = buildMemorySummary;
 
-export function createMemorySummary(store, { now = () => Date.now() } = {}) {
+export function createMemorySummary(store: any, { now = () => Date.now() } = {}) {
   store.db.exec('CREATE TABLE IF NOT EXISTS memory_summaries(owner TEXT PRIMARY KEY,revision INTEGER NOT NULL,sections TEXT NOT NULL,generated_at INTEGER NOT NULL)');
   return {
-    get(owner) {
+    get(owner: any) {
       const settings = store.settings(owner);
       const revision = Number(settings.revision || 0);
       const memories = store.list(owner).memories || [];
       const counts = Object.fromEntries(SECTIONS.map(section => [
-        section.id, memories.filter(memory => memory.category === section.id).length
+        section.id, memories.filter((memory: any) => memory.category === section.id).length
       ]));
       if (!memories.length) {
         store.db.prepare('DELETE FROM memory_summaries WHERE owner=?').run(owner);

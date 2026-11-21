@@ -13,14 +13,14 @@ import { startLocalMcpSocket } from '/home/ubuntu/dots-runtime/local-mcp-socket.
 import { DotsAdapter, DotsStore, createLocalDotsClient } from './dots-adapter.ts';
 
 const OWNER='shiyan-private-owner';
-function fixture(t){
+function fixture(t: any){
   const root=mkdtempSync(path.join(os.tmpdir(),'shiyan-runtime-manager-integration-'));
   const db=new DatabaseSync(path.join(root,'runtime.sqlite3'));
   db.exec(`CREATE TABLE goals(id INTEGER PRIMARY KEY AUTOINCREMENT,title TEXT NOT NULL,instruction TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'active',thread_id TEXT,workspace TEXT NOT NULL,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,next_wake_at INTEGER,last_run_at INTEGER,last_summary TEXT NOT NULL DEFAULT '',run_count INTEGER NOT NULL DEFAULT 0);CREATE TABLE events(id INTEGER PRIMARY KEY AUTOINCREMENT,goal_id INTEGER NOT NULL,type TEXT NOT NULL,payload TEXT NOT NULL DEFAULT '',created_at INTEGER NOT NULL,consumed_at INTEGER);CREATE TABLE approvals(id INTEGER PRIMARY KEY AUTOINCREMENT,goal_id INTEGER NOT NULL,status TEXT NOT NULL DEFAULT 'pending');`);
   db.prepare("INSERT INTO goals(title,instruction,status,thread_id,workspace,created_at,updated_at,next_wake_at) VALUES('旧任务','保留原线程','paused','original-thread',?,1000,1000,NULL)").run(path.join(root,'legacy'));
   const runtime=createManagerStore({db,ownerId:OWNER,workspaceRoot:path.join(root,'workspaces'),now:()=>1000});
   const store=new DotsStore(path.join(root,'gateway'));let lost=false;const calls: any[]=[];
-  const client={async rpc(){return {};},forOwner(value){return client;},async tool(name,args){
+  const client={async rpc(){return {};},forOwner(value: any){return client;},async tool(name: any,args: any){
     calls.push({name,args});runtime.requireOwner(args.owner_id);
     if(name==='dots_get_manager')return {ok:true,manager:runtime.snapshot()};
     if(name==='dots_get_manager_messages')return runtime.messages({beforeId:args.before_id,limit:args.limit});
@@ -41,13 +41,13 @@ test('real manager migration only reparents legacy goals and preserves status, w
 
 test('real runtime receipt survives gateway response loss and mobile and desktop share message order',async t=>{
   const f=fixture(t);const input={requestId:'mobile-write',message:'先检查渲染',host:'shiyan_mobile'};f.lose();await assert.rejects(f.adapter.messageManager(OWNER,input));const first=await f.adapter.messageManager(OWNER,input);assert.equal(first.accepted,true);assert.equal(first.message.createdAt,1000);assert.equal(first.message.host,'shiyan_mobile');
-  await f.adapter.messageManager(OWNER,{requestId:'desktop-write',message:'同时检查同步',host:'shiyan_desktop'});await f.adapter.syncManagerActivity(OWNER);assert.equal(f.runtime.snapshot().messages.length,2);assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM manager_requests').get()!.n,2);assert.deepEqual((await f.adapter.manager(OWNER)).messages.map(m=>m.content),['先检查渲染','同时检查同步']);assert.equal(f.adapter.events(OWNER).events.filter(e=>e.type==='manager_activity').length,2);
+  await f.adapter.messageManager(OWNER,{requestId:'desktop-write',message:'同时检查同步',host:'shiyan_desktop'});await f.adapter.syncManagerActivity(OWNER);assert.equal(f.runtime.snapshot().messages.length,2);assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM manager_requests').get()!.n,2);assert.deepEqual((await f.adapter.manager(OWNER)).messages.map((m: any)=>m.content),['先检查渲染','同时检查同步']);assert.equal(f.adapter.events(OWNER).events.filter(e=>e.type==='manager_activity').length,2);
 });
 
 test('real manager structured delegation produces dependent child tasks and assistant SSE replay',async t=>{
   const f=fixture(t);await f.adapter.messageManager(OWNER,{requestId:'delegate',message:'修复并验证',host:'shiyan_mobile'});
   const run=f.runtime.claimManager();assert.ok(run);const completed=f.runtime.completeManager(run,{reply:'已派两项任务，修复后再验证。',summary:'修复手机表格',tasks:[{key:'fix',title:'修复表格',instruction:'修改渲染',dependencies:[],acceptanceCriteria:'列宽跟随内容',resourceKey:'project:ios'},{key:'verify',title:'验证表格',instruction:'核对修复',dependencies:['fix'],acceptanceCriteria:'证明修复生效',resourceKey:'project:ios'}],reviews:[],controls:[],instructions:[]});assert.equal(completed.committed,true);
-  await f.adapter.syncManagerActivity(OWNER);const response=await f.adapter.manager(OWNER);assert.equal(response.messages.at(-1).role,'assistant');assert.equal(response.tasks.length,3);const verify=response.tasks.find(task=>task.title==='验证表格');const fix=response.tasks.find(task=>task.title==='修复表格');assert.deepEqual(verify.dependencies,[fix.id]);assert.equal(verify.acceptanceCriteria,'证明修复生效');assert.equal(fix.resourceKey,'project:ios');assert.equal(f.runtime.taskEligibility(verify.id),false);assert.equal(f.runtime.taskEligibility(fix.id),true);assert.ok(f.store.mapping(OWNER,fix.id));assert.ok(f.adapter.events(OWNER).events.some(e=>e.payload.activity?.kind==='assistant_message'));
+  await f.adapter.syncManagerActivity(OWNER);const response=await f.adapter.manager(OWNER);assert.equal(response.messages.at(-1).role,'assistant');assert.equal(response.tasks.length,3);const verify=response.tasks.find((task: any)=>task.title==='验证表格');const fix=response.tasks.find((task: any)=>task.title==='修复表格');assert.deepEqual(verify.dependencies,[fix.id]);assert.equal(verify.acceptanceCriteria,'证明修复生效');assert.equal(fix.resourceKey,'project:ios');assert.equal(f.runtime.taskEligibility(verify.id),false);assert.equal(f.runtime.taskEligibility(fix.id),true);assert.ok(f.store.mapping(OWNER,fix.id));assert.ok(f.adapter.events(OWNER).events.some(e=>e.payload.activity?.kind==='assistant_message'));
 });
 
 test('voice reply attribution survives gateway snapshot, pagination and activity without cross-owner access',async t=>{
@@ -85,14 +85,14 @@ test('failed voice turn retains exact source IDs in durable activity without inv
   const failure=f.adapter.events(OWNER).events.find(item=>item.payload.activity?.kind==='manager_error');
   assert.deepEqual(failure.payload.activity.data.respondsToMessageIds,[accepted.message.id]);
   const activity=await f.adapter.managerActivity(OWNER);
-  assert.deepEqual(activity.activity.find(item=>item.kind==='manager_error').data.respondsToMessageIds,[accepted.message.id]);
-  assert.equal((await f.adapter.manager(OWNER)).messages.filter(item=>item.role==='assistant').length,0);
+  assert.deepEqual(activity.activity.find((item: any)=>item.kind==='manager_error').data.respondsToMessageIds,[accepted.message.id]);
+  assert.equal((await f.adapter.manager(OWNER)).messages.filter((item: any)=>item.role==='assistant').length,0);
 });
 
 test('real reported done waits for manager acceptance before dependent task becomes eligible',async t=>{
   const f=fixture(t);const [fix,verify]=f.runtime.createTasks([{key:'fix',title:'修复',instruction:'执行修复',dependencies:[],acceptanceCriteria:'验证修复'},{key:'verify',title:'验证',instruction:'独立核对',dependencies:['fix']}]);
-  f.db.prepare("UPDATE goals SET status='done',last_summary='fixture evidence' WHERE id=?").run(fix.id);f.runtime.reportGoal(fix.id,'done','fixture evidence');assert.equal(f.runtime.taskEligibility(verify.id),false);await f.adapter.manager(OWNER);assert.equal((await f.adapter.manager(OWNER)).tasks.find(task=>task.id===fix.id).acceptanceStatus,'pending');
-  f.runtime.acceptTask(fix.id,{accepted:true,reason:'核对了产物和测试'});await f.adapter.syncManagerActivity(OWNER);assert.equal(f.runtime.taskEligibility(verify.id),true);assert.equal((await f.adapter.manager(OWNER)).tasks.find(task=>task.id===fix.id).acceptanceStatus,'accepted');assert.ok(f.adapter.events(OWNER).events.some(e=>e.payload.activity?.kind==='task_accepted'));
+  f.db.prepare("UPDATE goals SET status='done',last_summary='fixture evidence' WHERE id=?").run(fix.id);f.runtime.reportGoal(fix.id,'done','fixture evidence');assert.equal(f.runtime.taskEligibility(verify.id),false);await f.adapter.manager(OWNER);assert.equal((await f.adapter.manager(OWNER)).tasks.find((task: any)=>task.id===fix.id).acceptanceStatus,'pending');
+  f.runtime.acceptTask(fix.id,{accepted:true,reason:'核对了产物和测试'});await f.adapter.syncManagerActivity(OWNER);assert.equal(f.runtime.taskEligibility(verify.id),true);assert.equal((await f.adapter.manager(OWNER)).tasks.find((task: any)=>task.id===fix.id).acceptanceStatus,'accepted');assert.ok(f.adapter.events(OWNER).events.some(e=>e.payload.activity?.kind==='task_accepted'));
 });
 
 test('real pause and cancellation controls preserve manager identity and do not double-apply',async t=>{
@@ -105,7 +105,7 @@ test('real private Unix MCP bridge translates manager writes, activity and messa
   const TOKEN='fixture-token-local-only';const requests: any[]=[];
   const server=http.createServer(async(req,res)=>{
     const url=new URL(req.url||'/','http://fixture');const chunks: any[]=[];for await(const chunk of req)chunks.push(chunk);const body=chunks.length?JSON.parse(Buffer.concat(chunks).toString()):{};
-    const reply=(status,value)=>{res.writeHead(status,{'Content-Type':'application/json'});res.end(JSON.stringify(value));};
+    const reply=(status: any,value: any)=>{res.writeHead(status,{'Content-Type':'application/json'});res.end(JSON.stringify(value));};
     if(req.headers.authorization!=='Bearer '+TOKEN)return reply(401,{error:'Fixture authorization failed'});requests.push({method:req.method,url:req.url,body});
     try{
       const match=url.pathname.match(/^\/v1\/managers\/([^/]+)(?:\/(messages|control|activity))?$/);if(!match)return reply(404,{error:'Fixture route not found'});f.runtime.requireOwner(decodeURIComponent(match[1]));
@@ -121,7 +121,7 @@ test('real private Unix MCP bridge translates manager writes, activity and messa
   const bridge=createMcpBridge({db:f.db,pathSecret:'fixture-path-only',runtimeToken:TOKEN,runtimeBase:'http://127.0.0.1:'+(server.address() as any).port,retryIntervalMs:0});
   const stopSocket=await startLocalMcpSocket({root:f.root,bridge});f.adapter.client=createLocalDotsClient({socketPath:path.join(f.root,'local-ipc','mcp.sock')});
   try{
-    const tools=await f.adapter.client.rpc('tools/list');assert.ok(tools.tools.some(tool=>tool.name==='dots_get_manager_messages'));
+    const tools=await f.adapter.client.rpc('tools/list');assert.ok(tools.tools.some((tool: any)=>tool.name==='dots_get_manager_messages'));
     const accepted=await f.adapter.messageManager(OWNER,{requestId:'unix-real-write',message:'在总管下创建子任务',host:'shiyan_desktop'});assert.equal(accepted.accepted,true);assert.equal(accepted.message.host,'shiyan_desktop');
     const run=f.runtime.claimManager();f.runtime.completeManager(run,{reply:'已安排子任务。',summary:'派工',tasks:[{key:'one',title:'核对项目',instruction:'只读检查',dependencies:[],acceptanceCriteria:'提供证据',resourceKey:''}],reviews:[],controls:[],instructions:[]});await f.adapter.syncManagerActivity(OWNER);
     const current=await f.adapter.manager(OWNER);assert.equal(current.messages.at(-1).content,'已安排子任务。');assert.equal(current.tasks.length,2);assert.ok(f.adapter.events(OWNER).events.some(event=>event.payload.activity?.kind==='task_created'));

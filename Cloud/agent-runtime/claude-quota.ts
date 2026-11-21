@@ -22,7 +22,7 @@ export async function readClaudeCredentials(file = CREDENTIALS) {
   } catch { return null; }
 }
 
-const seconds = value => {
+const seconds = (value: any) => {
   const time = typeof value === 'string' ? Date.parse(value) : NaN;
   return Number.isFinite(time) ? Math.round(time / 1000) : null;
 };
@@ -37,10 +37,10 @@ export function claudeWindows(usage: any, plan: string | null = null) {
   });
 }
 
-export function claudeExtraUsage(usage) {
+export function claudeExtraUsage(usage: any) {
   const extra = usage?.extra_usage;
   if (!extra || extra.is_enabled !== true) return null;
-  const number = value => typeof value === 'number' && Number.isFinite(value) ? value : null;
+  const number = (value: any) => typeof value === 'number' && Number.isFinite(value) ? value : null;
   return { utilization: number(extra.utilization), usedCredits: number(extra.used_credits), monthlyLimit: number(extra.monthly_limit), currency: typeof extra.currency === 'string' ? extra.currency : null };
 }
 
@@ -60,7 +60,7 @@ export async function readClaudeUsage({ credentials = readClaudeCredentials, fet
 }
 
 export function createClaudeQuotaReader(read = readClaudeUsage) {
-  let cached, pending;
+  let cached: any, pending: any;
   return async () => {
     if (cached && Date.now() - cached.fetchedAt < 60000) return cached;
     if (!pending) pending = read().then(({ plan, usage }) => {
@@ -75,11 +75,11 @@ export function createClaudeQuotaReader(read = readClaudeUsage) {
 const CLAUDE_ERRORS = { not_logged_in: '服务器尚未登录 Claude', expired: 'Claude 登录已过期，等待 Claude CLI 自动续期', unauthorized: 'Claude 登录无效' };
 
 // 合并 Codex 与 Claude：任一可用即返回，二者独立降级。
-export function createAccountQuotaReader({ codex, claude = createClaudeQuotaReader() }) {
+export function createAccountQuotaReader({ codex, claude = createClaudeQuotaReader() }: any) {
   return async () => {
     const [c, a] = await Promise.allSettled([codex(), claude()]);
     if (c.status === 'rejected' && a.status === 'rejected') throw new Error('暂时无法获取账户额度');
-    const claudePart = a.status === 'fulfilled' ? a.value : { available: false, windows: [], error: CLAUDE_ERRORS[a.reason?.code] || '暂时无法获取 Claude 额度' };
+    const claudePart = a.status === 'fulfilled' ? a.value : { available: false, windows: [], error: (CLAUDE_ERRORS as any)[a.reason?.code] || '暂时无法获取 Claude 额度' };
     const codexPart = c.status === 'fulfilled' ? c.value : { available: false, windows: [], resetCredits: null, error: '暂时无法获取 Codex 额度' };
     return { ...codexPart, claude: claudePart };
   };

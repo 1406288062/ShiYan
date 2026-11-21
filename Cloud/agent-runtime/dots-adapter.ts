@@ -10,7 +10,7 @@ import { DotsSchedules } from './dots-schedules.ts';
 import { DatabaseSync } from 'node:sqlite';
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 
-const fail=(message,status=400,code='invalid_request')=>Object.assign(new Error(message),{status,code});
+const fail=(message: any,status=400,code='invalid_request')=>Object.assign(new Error(message),{status,code});
 const relationshipTools=new Set(['dots_get_relationship','dots_update_relationship_topic','dots_delete_relationship_topic']);
 const relationshipErrors=new Map([
   ['共同话题包含不支持的字段',400],['请填写有效的共同话题',400],['共同话题不存在',404],
@@ -19,27 +19,27 @@ const relationshipErrors=new Map([
 
 // Installed older iOS builds require this response envelope to read memories.
 // These constants are wire compatibility only: no stored preference or setter.
-const relationshipResponse=result=>({...result,relationship:{...result.relationship,settings:{initiative:'natural',paused:false,quietUntil:0}}});
+const relationshipResponse=(result: any)=>({...result,relationship:{...result.relationship,settings:{initiative:'natural',paused:false,quietUntil:0}}});
 
-const stable=value=>Array.isArray(value)?value.map(stable):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().map(k=>[k,stable(value[k])])):value;
-const encoded=value=>JSON.stringify(stable(value));
-const hash=value=>createHash('sha256').update(value).digest('hex');
-const fields=(value,keys)=>Object.fromEntries(keys.filter(k=>Object.hasOwn(value||{},k)).map(k=>[k,value[k]]));
-const integer=(value,min=0,max=Number.MAX_SAFE_INTEGER)=>{const n=Number(value);if(!Number.isSafeInteger(n)||n<min||n>max)throw fail('标识或游标无效');return n;};
-const identifier=(value,label='请求标识')=>{if(typeof value!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value))throw fail(label+'无效');return value;};
-const text=(value,max,label)=>{if(typeof value!=='string'||!value.trim()||value.length>max)throw fail(label+'无效');return value.trim();};
-const only=(input,keys)=>{if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(k=>!keys.includes(k)))throw fail('请求包含不支持的字段');};
+const stable=(value: any): any=>Array.isArray(value)?value.map(stable):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().map(k=>[k,stable(value[k])])):value;
+const encoded=(value: any)=>JSON.stringify(stable(value));
+const hash=(value: any)=>createHash('sha256').update(value).digest('hex');
+const fields=(value: any,keys: any)=>Object.fromEntries(keys.filter((k: any)=>Object.hasOwn(value||{},k)).map((k: any)=>[k,value[k]]));
+const integer=(value: any,min=0,max=Number.MAX_SAFE_INTEGER)=>{const n=Number(value);if(!Number.isSafeInteger(n)||n<min||n>max)throw fail('标识或游标无效');return n;};
+const identifier=(value: any,label='请求标识')=>{if(typeof value!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value))throw fail(label+'无效');return value;};
+const text=(value: any,max: any,label: any)=>{if(typeof value!=='string'||!value.trim()||value.length>max)throw fail(label+'无效');return value.trim();};
+const only=(input: any,keys: any)=>{if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(k=>!keys.includes(k)))throw fail('请求包含不支持的字段');};
 const goalKeys=['id','title','instruction','status','created_at','updated_at','next_wake_at','last_run_at','last_summary','run_count','manager_id','managerId','parent_task_id','parentTaskId','dependencies','acceptance_status','acceptanceStatus','acceptance_criteria','acceptanceCriteria','resource_key','resourceKey','origin_host','legacy_imported','legacyImported','control_revision','controlRevision','execution_status','executionStatus','task_kind','taskKind','attempt_count','attemptCount','lease_expires_at','leaseExpiresAt','blockedReason','deliveryStatus'];
 const managerKeys=['id','ownerId','name','status','controlRevision','activityCursor','createdAt','updatedAt','lastSummary','workerLimit','runningWorkers','capabilities','hasMoreMessages','oldestMessageId','hasMoreTasks'];
 const managerTaskKeys=['id','managerId','title','instruction','status','acceptanceStatus','acceptanceCriteria','resourceKey','legacyImported','dependencies','controlRevision','createdAt','updatedAt','nextWakeAt','lastSummary','runCount','originHost','parentTaskId','executionStatus','taskKind','attemptCount','leaseExpiresAt','blockedReason','deliveryStatus'];
 const managerMessageKeys=['id','role','content','taskId','requestId','host','createdAt','respondsToMessageIds','deliveryState','revision','origin','topicId','proactiveReason','card','feedback'];
 // 对话订阅卡片：只含来源、动作、字段名与非机密的预填值；机密字段的值始终为空。
-function validSubscriptionCard(card){
+function validSubscriptionCard(card: any){
   if(card==null)return true;
   if(typeof card!=='object'||Array.isArray(card)||card.type!=='subscription')return false;
   if(!['github','email','google-calendar','rss'].includes(card.provider)||!['subscribe','unsubscribe'].includes(card.action)||!['open','done','cancelled'].includes(card.state))return false;
   if(!Array.isArray(card.fields)||card.fields.length>8)return false;
-  return card.fields.every(f=>f&&typeof f.key==='string'&&/^[A-Za-z]{1,40}$/.test(f.key)&&typeof f.label==='string'&&f.label.length<=80&&(f.value===undefined||(typeof f.value==='string'&&f.value.length<=200&&!(f.secret&&f.value))))&&JSON.stringify(card).length<=4000;
+  return card.fields.every((f: any)=>f&&typeof f.key==='string'&&/^[A-Za-z]{1,40}$/.test(f.key)&&typeof f.label==='string'&&f.label.length<=80&&(f.value===undefined||(typeof f.value==='string'&&f.value.length<=200&&!(f.secret&&f.value))))&&JSON.stringify(card).length<=4000;
 }
 const managerActivityKeys=['id','managerId','taskId','kind','message','data','createdAt'];
 const outputKeys=['id','goal_id','run_number','status','summary','notification','created_at','raw_result'];
@@ -64,7 +64,7 @@ export function createLocalDotsClient({socketPath='/home/ubuntu/dots-runtime/loc
           // 设置、授权、记录、微信这类面向用户的 RPC：运行时自己写的提示可以原样给用户看。
           if(res.statusCode===200&&parsed.error?.code===-32000&&/^dots\/(settings|grants|audit|weixin|life-goals)\//.test(method)&&typeof parsed.error.message==='string'&&/[\u4e00-\u9fff]/.test(parsed.error.message))throw fail(parsed.error.message.slice(0,200),400,'runtime_rejected');
           if(res.statusCode===200&&method.startsWith('dots/people/')&&(parsed.error||parsed.result?.isError)){
-            const message=parsed.error?.message||parsed.result?.content?.find(item=>item.type==='text')?.text;
+            const message=parsed.error?.message||parsed.result?.content?.find((item: any)=>item.type==='text')?.text;
             if(typeof message==='string'&&message.trim())throw fail(message.trim().slice(0,240),503,'runtime_rejected');
           }
           if(res.statusCode!==200||parsed.error||parsed.result?.isError)throw fail('Dots 未能完成操作，请刷新目标状态后重试',502,'runtime_rejected');
@@ -76,14 +76,14 @@ export function createLocalDotsClient({socketPath='/home/ubuntu/dots-runtime/loc
     req.on('error',error=>reject((error as any)?.status?error:fail('Dots 服务暂时无法连接',503,'runtime_unavailable')));
     req.end(body);
   });
-  return {rpc,forOwner(value){return createLocalDotsClient({socketPath,timeoutMs,owner:value});},async tool(name,args={}){const result=await rpc('tools/call',{name,arguments:args});if(result?.structuredContent)return result.structuredContent;try{return JSON.parse(result.content.find(c=>c.type==='text').text);}catch{throw fail('Dots 返回内容无效',502,'runtime_unavailable');}}};
+  return {rpc,forOwner(value: any){return createLocalDotsClient({socketPath,timeoutMs,owner:value});},async tool(name: any,args={}){const result=await rpc('tools/call',{name,arguments:args});if(result?.structuredContent)return result.structuredContent;try{return JSON.parse(result.content.find((c: any)=>c.type==='text').text);}catch{throw fail('Dots 返回内容无效',502,'runtime_unavailable');}}};
 }
 
 // Input events are not included by the upstream detail tool. This same-user,
 // read-only projection fills that gap without writing the Dots database.
 export function createDotsEventReader({databasePath='/home/ubuntu/dots-runtime/data/dots.sqlite3'}={}) {
-  let db;
-  return {read(goalId){db??=new DatabaseSync(databasePath,{readOnly:true});return db.prepare('SELECT id,goal_id,type,payload,created_at,consumed_at FROM events WHERE goal_id=? ORDER BY id DESC LIMIT 100').all(goalId).reverse();},request(requestId,owner){db??=new DatabaseSync(databasePath,{readOnly:true});return owner&&owner!==(process.env.SHIYAN_DOTS_OWNER||'shiyan-private-owner')?db.prepare('SELECT operation,goal_id,response_json FROM runtime_scoped_requests WHERE owner=? AND request_id=?').get(owner,requestId):db.prepare('SELECT operation,goal_id,response_json FROM runtime_requests WHERE request_id=?').get(requestId);},close(){db?.close();}};
+  let db: any;
+  return {read(goalId: any){db??=new DatabaseSync(databasePath,{readOnly:true});return db.prepare('SELECT id,goal_id,type,payload,created_at,consumed_at FROM events WHERE goal_id=? ORDER BY id DESC LIMIT 100').all(goalId).reverse();},request(requestId: any,owner: any){db??=new DatabaseSync(databasePath,{readOnly:true});return owner&&owner!==(process.env.SHIYAN_DOTS_OWNER||'shiyan-private-owner')?db.prepare('SELECT operation,goal_id,response_json FROM runtime_scoped_requests WHERE owner=? AND request_id=?').get(owner,requestId):db.prepare('SELECT operation,goal_id,response_json FROM runtime_requests WHERE request_id=?').get(requestId);},close(){db?.close();}};
 }
 
 export function groupIssueTasks(tasks: any[], memberships: any[]) {
@@ -94,17 +94,17 @@ export function groupIssueTasks(tasks: any[], memberships: any[]) {
     groups.get(key).tasks.push(task);
   }
   return [...groups.values()].map(group=>{
-    const pending=group.tasks.filter(task=>!['done','completed','cancelled'].includes(task.status)||(task.status==='done'&&task.acceptanceStatus!=='accepted'));
-    const rank=task=>({running:0,waiting_approval:1,active:2,pending:2,queued:2,blocked:3,paused:4}[task.status]??5);
-    const task=(pending.length?pending:group.tasks).slice().sort((a,b)=>rank(a)-rank(b)||Number(b.updatedAt||0)-Number(a.updatedAt||0)||b.id-a.id)[0];
-    return {...group,task,updatedAt:Math.max(...group.tasks.map(t=>Number(t.updatedAt||0))),createdAt:Math.min(...group.tasks.map(t=>Number(t.createdAt||0)))};
+    const pending=group.tasks.filter((task: any)=>!['done','completed','cancelled'].includes(task.status)||(task.status==='done'&&task.acceptanceStatus!=='accepted'));
+    const rank=(task: any)=>(({running:0,waiting_approval:1,active:2,pending:2,queued:2,blocked:3,paused:4} as any)[task.status]??5);
+    const task=(pending.length?pending:group.tasks).slice().sort((a: any,b: any)=>rank(a)-rank(b)||Number(b.updatedAt||0)-Number(a.updatedAt||0)||b.id-a.id)[0];
+    return {...group,task,updatedAt:Math.max(...group.tasks.map((t: any)=>Number(t.updatedAt||0))),createdAt:Math.min(...group.tasks.map((t: any)=>Number(t.createdAt||0)))};
   });
 }
 
 export class DotsStore {
   db: DatabaseSync;
   webhookSecret: string;
-  constructor(root,{databasePath=path.join(root,'dots-adapter.sqlite3')}={}) {
+  constructor(root: any,{databasePath=path.join(root,'dots-adapter.sqlite3')}={}) {
     mkdirSync(root,{recursive:true,mode:0o700});this.db=new DatabaseSync(databasePath);
     try{chmodSync(databasePath,0o600);}catch{}
     this.db.exec(`PRAGMA journal_mode=WAL;PRAGMA busy_timeout=5000;
@@ -129,36 +129,36 @@ export class DotsStore {
     this.webhookSecret=String(secret);
   }
   close(){this.db.close();}
-  transaction(fn){this.db.exec('BEGIN IMMEDIATE');try{const value=fn();this.db.exec('COMMIT');return value;}catch(error){this.db.exec('ROLLBACK');throw error;}}
-  mapping(owner,id){return this.db.prepare('SELECT * FROM dots_goals WHERE owner=? AND goal_id=?').get(owner,id);}
-  mappedGoal(id){return this.db.prepare('SELECT * FROM dots_goals WHERE goal_id=?').get(id);}
+  transaction(fn: any){this.db.exec('BEGIN IMMEDIATE');try{const value=fn();this.db.exec('COMMIT');return value;}catch(error){this.db.exec('ROLLBACK');throw error;}}
+  mapping(owner: any,id: any){return this.db.prepare('SELECT * FROM dots_goals WHERE owner=? AND goal_id=?').get(owner,id);}
+  mappedGoal(id: any){return this.db.prepare('SELECT * FROM dots_goals WHERE goal_id=?').get(id);}
   mappings(owner: any=undefined){return owner===undefined?this.db.prepare('SELECT * FROM dots_goals ORDER BY goal_id DESC').all():this.db.prepare('SELECT * FROM dots_goals WHERE owner=? ORDER BY goal_id DESC').all(owner);}
-  manager(owner){return this.db.prepare('SELECT * FROM dots_managers WHERE owner=?').get(owner);}
-  managerSnapshot(owner,manager){this.db.prepare('INSERT INTO dots_managers(owner,manager_id,snapshot,updated_at) VALUES(?,?,?,?) ON CONFLICT(owner) DO UPDATE SET snapshot=excluded.snapshot,updated_at=excluded.updated_at').run(owner,manager.id,encoded(manager),Date.now());}
-  latestCursor(owner){return Number(this.db.prepare('SELECT MAX(seq) AS cursor FROM dots_events WHERE owner=?').get(owner)?.cursor||0);}
-  receipt(owner,requestId){return this.db.prepare('SELECT * FROM dots_requests WHERE owner=? AND request_id=?').get(owner,requestId);}
-  recentManagerRequestIds(owner){return this.db.prepare("SELECT request_id FROM dots_requests WHERE owner=? AND operation='manager:message' ORDER BY rowid DESC LIMIT 500").all(owner).map(row=>row.request_id);}
-  reserve(owner,requestId,operation,payload){
+  manager(owner: any){return this.db.prepare('SELECT * FROM dots_managers WHERE owner=?').get(owner);}
+  managerSnapshot(owner: any,manager: any){this.db.prepare('INSERT INTO dots_managers(owner,manager_id,snapshot,updated_at) VALUES(?,?,?,?) ON CONFLICT(owner) DO UPDATE SET snapshot=excluded.snapshot,updated_at=excluded.updated_at').run(owner,manager.id,encoded(manager),Date.now());}
+  latestCursor(owner: any){return Number(this.db.prepare('SELECT MAX(seq) AS cursor FROM dots_events WHERE owner=?').get(owner)?.cursor||0);}
+  receipt(owner: any,requestId: any){return this.db.prepare('SELECT * FROM dots_requests WHERE owner=? AND request_id=?').get(owner,requestId);}
+  recentManagerRequestIds(owner: any){return this.db.prepare("SELECT request_id FROM dots_requests WHERE owner=? AND operation='manager:message' ORDER BY rowid DESC LIMIT 500").all(owner).map(row=>row.request_id);}
+  reserve(owner: any,requestId: any,operation: any,payload: any){
     const fingerprint=hash(encoded(payload));const prior=this.receipt(owner,requestId);
     if(prior){if(prior.operation!==operation||prior.fingerprint!==fingerprint)throw fail('此请求标识已用于不同内容',409,'request_conflict');return prior;}
     this.db.prepare('INSERT INTO dots_requests(owner,request_id,operation,fingerprint,payload,state,created_at) VALUES(?,?,?,?,?,?,?)').run(owner,requestId,operation,fingerprint,encoded(payload),'pending',Date.now());return this.receipt(owner,requestId);
   }
-  finish(owner,requestId,response){this.db.prepare("UPDATE dots_requests SET state='completed',response=? WHERE owner=? AND request_id=?").run(encoded(response),owner,requestId);}
-  bind(owner,conversationId,host,goal,requestId=null){
+  finish(owner: any,requestId: any,response: any){this.db.prepare("UPDATE dots_requests SET state='completed',response=? WHERE owner=? AND request_id=?").run(encoded(response),owner,requestId);}
+  bind(owner: any,conversationId: any,host: any,goal: any,requestId=null){
     const existing=this.db.prepare('SELECT * FROM dots_goals WHERE owner=? AND conversation_id=?').get(owner,conversationId);
     if(existing&&existing.goal_id!==goal.id)throw fail('此会话已绑定另一个目标',409,'conversation_conflict');
     const prior=this.mappedGoal(goal.id);if(prior&&(prior.owner!==owner||prior.conversation_id!==conversationId))throw fail('目标不存在',404,'not_found');
     this.db.prepare('INSERT OR IGNORE INTO dots_goals(goal_id,owner,conversation_id,origin_host,snapshot,created_at,create_request_id) VALUES(?,?,?,?,?,?,?)').run(goal.id,owner,conversationId,host,encoded(goal),Date.now(),requestId);
   }
-  snapshot(id,goal){this.db.prepare('UPDATE dots_goals SET snapshot=? WHERE goal_id=?').run(encoded(goal),id);}
-  append(owner,goalId,type,payload,eventId){
+  snapshot(id: any,goal: any){this.db.prepare('UPDATE dots_goals SET snapshot=? WHERE goal_id=?').run(encoded(goal),id);}
+  append(owner: any,goalId: any,type: any,payload: any,eventId: any){
     const result=this.db.prepare('INSERT OR IGNORE INTO dots_events(owner,event_id,goal_id,type,payload,created_at) VALUES(?,?,?,?,?,?)').run(owner,eventId,goalId,type,encoded(payload),Date.now());
     if(!result.changes)return null;
     return this.event(this.db.prepare('SELECT * FROM dots_events WHERE seq=?').get(Number(result.lastInsertRowid)));
   }
-  event(row){return {seq:Number(row.seq),eventId:row.event_id,goalId:Number(row.goal_id),type:row.type,payload:JSON.parse(row.payload),createdAt:Number(row.created_at)};}
-  events(owner,after,limit){const rows=this.db.prepare('SELECT * FROM dots_events WHERE owner=? AND seq>? ORDER BY seq LIMIT ?').all(owner,after,limit+1);const visible=rows.slice(0,limit);return {ok:true,events:visible.map(row=>this.event(row)),cursor:visible.at(-1)?.seq??after,hasMore:rows.length>limit};}
-  ack(owner,consumerId,cursor){
+  event(row: any){return {seq:Number(row.seq),eventId:row.event_id,goalId:Number(row.goal_id),type:row.type,payload:JSON.parse(row.payload),createdAt:Number(row.created_at)};}
+  events(owner: any,after: any,limit: any){const rows=this.db.prepare('SELECT * FROM dots_events WHERE owner=? AND seq>? ORDER BY seq LIMIT ?').all(owner,after,limit+1);const visible=rows.slice(0,limit);return {ok:true,events:visible.map(row=>this.event(row)),cursor:visible.at(-1)?.seq??after,hasMore:rows.length>limit};}
+  ack(owner: any,consumerId: any,cursor: any){
     if(cursor>0&&!this.db.prepare('SELECT seq FROM dots_events WHERE owner=? AND seq=?').get(owner,cursor))throw fail('通知游标不属于当前用户',400,'invalid_cursor');
     this.db.prepare('INSERT INTO dots_consumers(owner,consumer_id,cursor,updated_at) VALUES(?,?,?,?) ON CONFLICT(owner,consumer_id) DO UPDATE SET cursor=MAX(cursor,excluded.cursor),updated_at=excluded.updated_at').run(owner,consumerId,cursor,Date.now());
     return {ok:true,consumerId,cursor:this.db.prepare('SELECT cursor FROM dots_consumers WHERE owner=? AND consumer_id=?').get(owner,consumerId)!.cursor,handoffOnly:true};
@@ -168,7 +168,7 @@ export class DotsStore {
 // 微信发来的图片/文件：给模型的附件说明不在界面上展示，只显示用户写的话和“[图片]”“[文件]”标签。
 const WEIXIN_INPUTS=path.resolve(process.env.DOTS_WEIXIN_INPUTS||'/home/ubuntu/dots-runtime/workspaces/.manager/inputs/weixin')+path.sep;
 // 微信图片登记为这条消息的附件，界面可直接显示。只收私人账号工作区 inputs/weixin 下的真实文件（不跟随符号链接）。
-export function weixinImageAttachments(attachments,owner,message){
+export function weixinImageAttachments(attachments: any,owner: any,message: any){
   const out: any[] = [];
   for(const match of String(message.content).matchAll(/"type":"image","filename":"([^"]+)","path":"([^"]+)"/g)){
     try{
@@ -184,11 +184,11 @@ export function weixinImageAttachments(attachments,owner,message){
   }
   return out.slice(0,8);
 }
-export function weixinDisplay(message,shownImages: any[]=[]){
+export function weixinDisplay(message: any,shownImages: any[]=[]){
   if(message?.role!=='user'||typeof message.content!=='string')return message;
   const at=message.content.indexOf('[用户从微信发来的附件]');if(at<0)return message;
   const head=message.content.slice(0,at).trim().replace(/^（我从微信发来了[^）]*）$/,''),rest=message.content.slice(at);
-  const count=type=>(rest.match(new RegExp('"type":"'+type+'"','g'))||[]).length,images=count('image'),files=count('file');
+  const count=(type: any)=>(rest.match(new RegExp('"type":"'+type+'"','g'))||[]).length,images=count('image'),files=count('file');
   const tag=[images?'[图片'+(images>1?' ×'+images:'')+']':'',files?'[文件'+(files>1?' ×'+files:'')+']':''].filter(Boolean).join(' ');
   // 图片能显示时不再写“[图片]”，只保留用户的文字。
   const shown=shownImages.length?[files?'[文件'+(files>1?' ×'+files:'')+']':''].filter(Boolean).join(''):tag;
@@ -201,9 +201,9 @@ const NOISE_EXTENSIONS=new Set(['.txt','.md','.json']);
 const SCRIPT_EXTENSIONS=new Set(['.py','.sh','.bash','.zsh','.js','.mjs','.cjs','.ts','.rb','.pl','.ps1','.bat','.cmd']);
 const PRIVATE_TASK_ROOT=path.resolve(process.env.DOTS_TASK_WORKSPACES||'/home/ubuntu/dots-runtime/workspaces');
 const MEMBER_TASK_ROOT=path.resolve(process.env.SHIYAN_MEMBER_SANDBOX_ROOT||path.join(process.env.SHIYAN_ROOT||'/home/ubuntu/boss-codex-service/shiyan-v2','data','member-workspaces'));
-export function taskArtifactFiles(dir,{maxDepth=3,limit=20}={}){
+export function taskArtifactFiles(dir: any,{maxDepth=3,limit=20}={}){
   const found: Array<{file: string; relative: string; size: number; mtimeMs: number}> = [];
-  const walk=(current,depth)=>{
+  const walk=(current: any,depth: any)=>{
     let entries: import('node:fs').Dirent[] = [];try{entries=readdirSync(current,{withFileTypes:true});}catch{return;}
     for(const entry of entries){
       if(entry.name.startsWith('.')||['node_modules','__pycache__','venv','.venv'].includes(entry.name)||entry.isSymbolicLink())continue;
@@ -217,7 +217,7 @@ export function taskArtifactFiles(dir,{maxDepth=3,limit=20}={}){
   walk(dir,0);
   return found.sort((a,b)=>b.mtimeMs-a.mtimeMs).slice(0,limit);
 }
-export function taskArtifactOutputs(attachments,owner,taskIds,{privateOwner=false,limit=40}={}){
+export function taskArtifactOutputs(attachments: any,owner: any,taskIds: any,{privateOwner=false,limit=40}={}){
   const roots=privateOwner?[PRIVATE_TASK_ROOT]:[path.join(MEMBER_TASK_ROOT,createHash('sha256').update(owner).digest('hex'),'workspace','dots')];
   const out: Array<{id: string; attachmentId: any; type: string; taskId: number; filename: any; title: any; summary: any; mimeType: any; bytes: any; downloadPath: string; createdAt: number; updatedAt: number}> = [];
   for(const taskId of taskIds){
@@ -229,7 +229,7 @@ export function taskArtifactOutputs(attachments,owner,taskIds,{privateOwner=fals
       for(const item of taskArtifactFiles(dir)){
         try{
           const h=createHash('sha256').update(owner+'\0'+item.file+'\0'+item.size+'\0'+Math.floor(item.mtimeMs)).digest('hex'),id=[h.slice(0,8),h.slice(8,12),h.slice(12,16),h.slice(16,20),h.slice(20,32)].join('-');
-          const filename=path.basename(item.file),mimeType=ARTIFACT_MIME[path.extname(filename).toLowerCase()]||'application/octet-stream';
+          const filename=path.basename(item.file),mimeType=(ARTIFACT_MIME as any)[path.extname(filename).toLowerCase()]||'application/octet-stream';
           const known=attachments.db.prepare('SELECT * FROM dots_attachments WHERE owner=? AND id=?').get(owner,id);
           const attachment=known?attachments.public(known):attachments.upload(owner,{id,filename,mimeType,data:readFileSync(item.file).toString('base64')});
           out.push({id:'file:'+attachment.id,attachmentId:attachment.id,type:'file',taskId:Number(taskId),filename:attachment.filename,title:attachment.filename,summary:item.relative,mimeType:attachment.mimeType,bytes:attachment.bytes,downloadPath:'/api/dots/attachments/'+attachment.id,createdAt:Math.floor(item.mtimeMs),updatedAt:Math.floor(item.mtimeMs)});
@@ -260,7 +260,7 @@ export class DotsAdapter {
   managerTimer: NodeJS.Timeout | null;
   requestIdMaps?: Map<string, Map<string, any>>;
   importSourceTruncated?: boolean;
-  weixinView(owner,message){if(message?.role!=='user'||typeof message.content!=='string'||!message.content.includes('[用户从微信发来的附件]'))return message;return weixinDisplay(message,owner===this.allowedOwner?weixinImageAttachments(this.attachments,owner,message):[]);}
+  weixinView(owner: any,message: any){if(message?.role!=='user'||typeof message.content!=='string'||!message.content.includes('[用户从微信发来的附件]'))return message;return weixinDisplay(message,owner===this.allowedOwner?weixinImageAttachments(this.attachments,owner,message):[]);}
   constructor({root,store=new DotsStore(root),client=createLocalDotsClient(),eventReader=createDotsEventReader(),activityReader=createDotsActivityReader(),allowedOwner='shiyan-private-owner',callbackURL='',importPrivateGoals=false,recoverIntervalMs=30000,subscriptionRefreshMs=4*3600000,managerPollMs=1000,schedulePollMs=15000}: {root?: string; store?: DotsStore; client?: ReturnType<typeof createLocalDotsClient>; eventReader?: ReturnType<typeof createDotsEventReader>; activityReader?: ReturnType<typeof createDotsActivityReader>; allowedOwner?: string; callbackURL?: string; importPrivateGoals?: boolean; recoverIntervalMs?: number; subscriptionRefreshMs?: number; managerPollMs?: number; schedulePollMs?: number}={}) {
     this.store=store;this.attachments=new DotsAttachments(root,store.db);this.client=client;this.eventReader=eventReader;this.allowedOwner=allowedOwner;this.callbackURL=callbackURL;this.importPrivateGoals=importPrivateGoals;this.listeners=new Map();this.inflight=new Map();this.subscriptionInflight=new Map();this.managerSyncInflight=new Map();this.recovering=false;this.managerPollMs=managerPollMs;
     this.activityReader=activityReader;this.schedules=new DotsSchedules(this,{pollMs:schedulePollMs});
@@ -272,9 +272,9 @@ export class DotsAdapter {
     this.managerTimer=managerPollMs>0?setInterval(()=>{for(const [owner,listeners] of this.listeners)if(listeners.size&&this.store.manager(owner))void this.syncManagerActivity(owner).catch(()=>{});},managerPollMs):null;this.managerTimer?.unref();
   }
   close(){if(this.timer!==null)clearInterval(this.timer);if(this.refreshTimer!==null)clearInterval(this.refreshTimer);if(this.managerTimer!==null)clearInterval(this.managerTimer);this.schedules.close();for(const listeners of this.listeners.values())for(const listener of listeners)listener.end();this.activityReader?.close();this.eventReader?.close();this.store.close();}
-  authorize(owner){if(typeof owner!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(owner))throw fail('用户身份无效',401,'unauthorized');}
-  clientFor(owner){this.authorize(owner);return this.client.forOwner?.(owner)||this.client;}
-  async registrationNotice(event){
+  authorize(owner: any){if(typeof owner!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(owner))throw fail('用户身份无效',401,'unauthorized');}
+  clientFor(owner: any){this.authorize(owner);return this.client.forOwner?.(owner)||this.client;}
+  async registrationNotice(event: any){
     // Only the private Unix receiver calls this method. No public route or AI
     // tool accepts a recipient, owner id or administrator subscription.
     this.authorize(PRIVATE_OWNER);
@@ -289,40 +289,40 @@ export class DotsAdapter {
     if(Number(this.store.manager(PRIVATE_OWNER)?.runtime_cursor||0)<target)throw fail('注册提醒尚未同步，请重试',503,'runtime_unavailable');
     return {ok:true,durable:true,messageId:result.message.id};
   }
-  async subscriptions(owner){this.authorize(owner);return this.clientFor(owner).rpc('dots/subscriptions/list');}
-  async messageFeedback(owner,messageId,value){this.authorize(owner);if(!Number.isSafeInteger(Number(messageId))||Number(messageId)<1||!['useful','not_useful','clear'].includes(value))throw fail('反馈无效',400);return this.clientFor(owner).rpc('dots/messages/feedback',{messageId:Number(messageId),value});}
-  async weixin(owner,action='status',input: any={}){this.authorize(owner);if(!['status','login','verify','unbind','push'].includes(action))throw fail('操作无效',400);const params=action==='verify'?{code:String(input.code||'')}:action==='push'?{enabled:input.enabled===true}:{};return this.clientFor(owner).rpc('dots/weixin/'+action,params);}
-  async settings(owner){this.authorize(owner);return this.clientFor(owner).rpc('dots/settings/get');}
-  async audit(owner,query: any={}){this.authorize(owner);const params: {limit: number; before?: number; category?: string}={limit:Math.max(1,Math.min(200,Number(query.limit)||50))};if(query.before!==undefined&&query.before!==null&&query.before!==''){const before=Number(query.before);if(!Number.isSafeInteger(before)||before<1)throw fail('分页参数无效');params.before=before;}if(query.category){if(!['action','message','change'].includes(query.category))throw fail('类别无效');params.category=query.category;}return this.clientFor(owner).rpc('dots/audit/list',params);}
-  async lifeGoals(owner,action='list',id: string | null=null,input: any={}){
+  async subscriptions(owner: any){this.authorize(owner);return this.clientFor(owner).rpc('dots/subscriptions/list');}
+  async messageFeedback(owner: any,messageId: any,value: any){this.authorize(owner);if(!Number.isSafeInteger(Number(messageId))||Number(messageId)<1||!['useful','not_useful','clear'].includes(value))throw fail('反馈无效',400);return this.clientFor(owner).rpc('dots/messages/feedback',{messageId:Number(messageId),value});}
+  async weixin(owner: any,action='status',input: any={}){this.authorize(owner);if(!['status','login','verify','unbind','push'].includes(action))throw fail('操作无效',400);const params=action==='verify'?{code:String(input.code||'')}:action==='push'?{enabled:input.enabled===true}:{};return this.clientFor(owner).rpc('dots/weixin/'+action,params);}
+  async settings(owner: any){this.authorize(owner);return this.clientFor(owner).rpc('dots/settings/get');}
+  async audit(owner: any,query: any={}){this.authorize(owner);const params: {limit: number; before?: number; category?: string}={limit:Math.max(1,Math.min(200,Number(query.limit)||50))};if(query.before!==undefined&&query.before!==null&&query.before!==''){const before=Number(query.before);if(!Number.isSafeInteger(before)||before<1)throw fail('分页参数无效');params.before=before;}if(query.category){if(!['action','message','change'].includes(query.category))throw fail('类别无效');params.category=query.category;}return this.clientFor(owner).rpc('dots/audit/list',params);}
+  async lifeGoals(owner: any,action='list',id: string | null=null,input: any={}){
     this.authorize(owner);
     if(!['list','create','update','milestone','replan','remove'].includes(action))throw fail('操作无效',400);
     const params: {id?: number; goal?: any; change?: any}={};
     if(action!=='list'&&action!=='create')params.id=integer(id,1);
     if(input!==null&&(typeof input!=='object'||Array.isArray(input)))throw fail('内容无效',400);
-    const pick=(keys)=>Object.fromEntries(keys.filter(k=>k in (input||{})).map(k=>[k,input[k]]));
+    const pick=(keys: any)=>Object.fromEntries(keys.filter((k: any)=>k in (input||{})).map((k: any)=>[k,input[k]]));
     if(action==='create'||action==='update')params.goal=pick(['title','why','targetDate','cadence','checkinTime','status']);
     if(action==='milestone')params.change=pick(['milestoneId','done','title','due','add','remove']);
     return this.clientFor(owner).rpc('dots/life-goals/'+action,params);
   }
-  async approvalGrants(owner){this.authorize(owner);return this.clientFor(owner).rpc('dots/grants/list');}
-  async revokeApprovalGrant(owner,id){this.authorize(owner);id=integer(id,1);return this.clientFor(owner).rpc('dots/grants/revoke',{id});}
-  async updateSettings(owner,input){this.authorize(owner);const allowed={};for(const key of ['approvalMode','dailyBrief','dailyBriefTime'])if(key in (input||{}))allowed[key]=input[key];return this.clientFor(owner).rpc('dots/settings/update',allowed);}
-  async updateSubscription(owner,provider,input){this.authorize(owner);return this.clientFor(owner).rpc('dots/subscriptions/update',{provider,config:input});}
-  async deleteSubscription(owner,provider){this.authorize(owner);return this.clientFor(owner).rpc('dots/subscriptions/delete',{provider});}
-  async digitalPeople(owner){this.authorize(owner);return this.clientFor(owner).rpc('dots/people/list',{});}
-  async createDigitalPerson(owner,input){this.authorize(owner);return this.clientFor(owner).rpc('dots/people/create',{name:text(input.name,80,'人物称呼'),relationship:String(input.relationship||'').slice(0,80)});}
-  async digitalPerson(owner,id){this.authorize(owner);return this.clientFor(owner).rpc('dots/people/get',{person_id:identifier(id,'人物标识')});}
-  async updateDigitalPerson(owner,id,input){this.authorize(owner);const value: {person_id: string; [key: string]: any}={person_id:identifier(id,'人物标识')};for(const key of ['name','relationship','summary'])if(input[key]!==undefined)value[key]=input[key];if(typeof input.active==='boolean')value.active=input.active;if(input.relearn===true)value.relearn=true;return this.clientFor(owner).rpc('dots/people/update',value,input.relearn===true?210000:undefined);}
-  async deleteDigitalPerson(owner,id){this.authorize(owner);return this.clientFor(owner).rpc('dots/people/delete',{person_id:identifier(id,'人物标识')});}
-  async importDigitalPerson(owner,id,input){this.authorize(owner);if(!Array.isArray(input.messages)||input.messages.length<1||input.messages.length>40)throw fail('每批导入消息数量无效');return this.clientFor(owner).rpc('dots/people/import',{person_id:identifier(id,'人物标识'),import_id:identifier(input.importId,'导入标识'),format:text(input.format||'unknown',20,'文件格式'),messages:input.messages,final:input.final===true},210000);}
-  async digitalPersonMessages(owner,id,query: any={}){this.authorize(owner);return this.clientFor(owner).rpc('dots/people/messages/list',{person_id:identifier(id,'人物标识'),before:integer(Number(query.before)||0),limit:integer(Number(query.limit)||100,1,200)});}
-  async sendDigitalPersonMessage(owner,id,input){this.authorize(owner);return this.clientFor(owner).rpc('dots/people/messages/send',{person_id:identifier(id,'人物标识'),request_id:identifier(input.requestId,'请求标识'),message:text(input.message,8000,'消息内容')},210000);}
-  async digitalPersonMemories(owner,id){this.authorize(owner);return this.clientFor(owner).rpc('dots/people/memories/list',{person_id:identifier(id,'人物标识')});}
-  async updateDigitalPersonMemory(owner,id,memoryId,input){this.authorize(owner);return this.clientFor(owner).rpc('dots/people/memories/update',{person_id:identifier(id,'人物标识'),memory_id:identifier(memoryId,'记忆标识'),content:text(input.content,500,'记忆内容')});}
-  async deleteDigitalPersonMemory(owner,id,memoryId){this.authorize(owner);return this.clientFor(owner).rpc('dots/people/memories/delete',{person_id:identifier(id,'人物标识'),memory_id:identifier(memoryId,'记忆标识')});}
-  async relationship(owner){this.authorize(owner);return relationshipResponse(await this.clientFor(owner).tool('dots_get_relationship',{owner_id:owner}));}
-  async updateRelationshipTopic(owner,topicId,input){
+  async approvalGrants(owner: any){this.authorize(owner);return this.clientFor(owner).rpc('dots/grants/list');}
+  async revokeApprovalGrant(owner: any,id: any){this.authorize(owner);id=integer(id,1);return this.clientFor(owner).rpc('dots/grants/revoke',{id});}
+  async updateSettings(owner: any,input: any){this.authorize(owner);const allowed={};for(const key of ['approvalMode','dailyBrief','dailyBriefTime'])if(key in (input||{}))(allowed as any)[key]=input[key];return this.clientFor(owner).rpc('dots/settings/update',allowed);}
+  async updateSubscription(owner: any,provider: any,input: any){this.authorize(owner);return this.clientFor(owner).rpc('dots/subscriptions/update',{provider,config:input});}
+  async deleteSubscription(owner: any,provider: any){this.authorize(owner);return this.clientFor(owner).rpc('dots/subscriptions/delete',{provider});}
+  async digitalPeople(owner: any){this.authorize(owner);return this.clientFor(owner).rpc('dots/people/list',{});}
+  async createDigitalPerson(owner: any,input: any){this.authorize(owner);return this.clientFor(owner).rpc('dots/people/create',{name:text(input.name,80,'人物称呼'),relationship:String(input.relationship||'').slice(0,80)});}
+  async digitalPerson(owner: any,id: any){this.authorize(owner);return this.clientFor(owner).rpc('dots/people/get',{person_id:identifier(id,'人物标识')});}
+  async updateDigitalPerson(owner: any,id: any,input: any){this.authorize(owner);const value: {person_id: string; [key: string]: any}={person_id:identifier(id,'人物标识')};for(const key of ['name','relationship','summary'])if(input[key]!==undefined)value[key]=input[key];if(typeof input.active==='boolean')value.active=input.active;if(input.relearn===true)value.relearn=true;return this.clientFor(owner).rpc('dots/people/update',value,input.relearn===true?210000:undefined);}
+  async deleteDigitalPerson(owner: any,id: any){this.authorize(owner);return this.clientFor(owner).rpc('dots/people/delete',{person_id:identifier(id,'人物标识')});}
+  async importDigitalPerson(owner: any,id: any,input: any){this.authorize(owner);if(!Array.isArray(input.messages)||input.messages.length<1||input.messages.length>40)throw fail('每批导入消息数量无效');return this.clientFor(owner).rpc('dots/people/import',{person_id:identifier(id,'人物标识'),import_id:identifier(input.importId,'导入标识'),format:text(input.format||'unknown',20,'文件格式'),messages:input.messages,final:input.final===true},210000);}
+  async digitalPersonMessages(owner: any,id: any,query: any={}){this.authorize(owner);return this.clientFor(owner).rpc('dots/people/messages/list',{person_id:identifier(id,'人物标识'),before:integer(Number(query.before)||0),limit:integer(Number(query.limit)||100,1,200)});}
+  async sendDigitalPersonMessage(owner: any,id: any,input: any){this.authorize(owner);return this.clientFor(owner).rpc('dots/people/messages/send',{person_id:identifier(id,'人物标识'),request_id:identifier(input.requestId,'请求标识'),message:text(input.message,8000,'消息内容')},210000);}
+  async digitalPersonMemories(owner: any,id: any){this.authorize(owner);return this.clientFor(owner).rpc('dots/people/memories/list',{person_id:identifier(id,'人物标识')});}
+  async updateDigitalPersonMemory(owner: any,id: any,memoryId: any,input: any){this.authorize(owner);return this.clientFor(owner).rpc('dots/people/memories/update',{person_id:identifier(id,'人物标识'),memory_id:identifier(memoryId,'记忆标识'),content:text(input.content,500,'记忆内容')});}
+  async deleteDigitalPersonMemory(owner: any,id: any,memoryId: any){this.authorize(owner);return this.clientFor(owner).rpc('dots/people/memories/delete',{person_id:identifier(id,'人物标识'),memory_id:identifier(memoryId,'记忆标识')});}
+  async relationship(owner: any){this.authorize(owner);return relationshipResponse(await this.clientFor(owner).tool('dots_get_relationship',{owner_id:owner}));}
+  async updateRelationshipTopic(owner: any,topicId: any,input: any){
     this.authorize(owner);if(typeof topicId!=='string'||!/^[A-Za-z0-9_-]{1,128}$/.test(topicId))throw fail('共同话题标识无效');
     only(input,['title','summary','openQuestion','revision']);
     if(input.title!==undefined)text(input.title,200,'话题名称');
@@ -330,13 +330,13 @@ export class DotsAdapter {
     if(input.revision!==undefined)integer(input.revision);
     return relationshipResponse(await this.clientFor(owner).tool('dots_update_relationship_topic',{owner_id:owner,topicId,...input}));
   }
-  async deleteRelationshipTopic(owner,topicId){
+  async deleteRelationshipTopic(owner: any,topicId: any){
     this.authorize(owner);if(typeof topicId!=='string'||!/^[A-Za-z0-9_-]{1,128}$/.test(topicId))throw fail('共同话题标识无效');
     return relationshipResponse(await this.clientFor(owner).tool('dots_delete_relationship_topic',{owner_id:owner,topicId}));
   }
-  requireGoal(owner,id){this.authorize(owner);const row=this.store.mapping(owner,integer(id,1));if(!row)throw fail('目标不存在',404,'not_found');return row;}
-  presentGoal(goal,row): {[key: string]: any}{return {...fields(goal,goalKeys),conversationId:row.conversation_id,originHost:row.origin_host,...(goal.client_context?{originContext:fields(goal.client_context,['host','conversation_id'])}:{}),...(goal.timeline?{timeline:goal.timeline.map(t=>fields(t,timelineKeys))}:{}),...(goal.outputs?{outputs:goal.outputs.map(o=>fields(o,outputKeys))}:{}),...(goal.approvals?{approvals:goal.approvals.map(a=>fields(a,approvalKeys))}:{})};}
-  presentEvent(owner,event){
+  requireGoal(owner: any,id: any){this.authorize(owner);const row=this.store.mapping(owner,integer(id,1));if(!row)throw fail('目标不存在',404,'not_found');return row;}
+  presentGoal(goal: any,row: any): {[key: string]: any}{return {...fields(goal,goalKeys),conversationId:row.conversation_id,originHost:row.origin_host,...(goal.client_context?{originContext:fields(goal.client_context,['host','conversation_id'])}:{}),...(goal.timeline?{timeline:goal.timeline.map((t: any)=>fields(t,timelineKeys))}:{}),...(goal.outputs?{outputs:goal.outputs.map((o: any)=>fields(o,outputKeys))}:{}),...(goal.approvals?{approvals:goal.approvals.map((a: any)=>fields(a,approvalKeys))}:{})};}
+  presentEvent(owner: any,event: any){
     const activity=event?.payload?.activity;
     // Older durable notifications stored the runtime attachment instruction.
     // Project at delivery as well as ingestion so replay uses the same public
@@ -344,10 +344,10 @@ export class DotsAdapter {
     if(event?.type!=='manager_activity'||!['user_message','assistant_delta','assistant_message','proactive_message'].includes(activity?.kind))return event;
     return {...event,payload:{...event.payload,activity:this.presentManagerActivity(owner,activity)}};
   }
-  publish(event,owner: any=null){if(!event)return;const target=owner||this.store.mappedGoal(event.goalId)?.owner,visible=this.presentEvent(target,event);for(const listener of this.listeners.get(target)||[])if(!listener.destroyed)listener.write(`id: ${visible.seq}\nevent: update\ndata: ${JSON.stringify(visible)}\n\n`);}
-  async goal(owner,id){const row=this.requireGoal(owner,id);const result=await this.clientFor(owner).tool('dots_get_goal',{goal_id:Number(row.goal_id)});if(!result.goal)throw fail('目标不存在',404,'not_found');const goal=this.presentGoal(result.goal,row);try{goal.events=this.eventReader?.read(Number(row.goal_id))||[];}catch{goal.events=[];goal.eventsUnavailable=true;}this.store.snapshot(row.goal_id,goal);return {ok:true,goal,timeline:goal.timeline||[],outputs:goal.outputs||[],approvals:goal.approvals||[],events:goal.events};}
-  async capabilities(owner){this.authorize(owner);let available=true;try{await this.client.rpc('ping');}catch{available=false;}const mapped=this.store.mappings(owner);const subs=this.store.db.prepare('SELECT * FROM dots_subscriptions').all();const configured=Boolean(this.callbackURL);const subscriptionsActive=mapped.length?mapped.every(g=>subs.some(s=>s.goal_id===g.goal_id&&s.subscription_id&&(!s.expires_at||Number(s.expires_at)>Date.now()))):false;return {ok:true,available,service:'Dots',adapterInstalled:true,sharedGoals:true,events:true,webhookConfigured:configured,realtimeAvailable:configured&&available&&subscriptionsActive,notificationTransport:configured?'signed-webhook-with-durable-replay':'durable-replay',subscriptionsActive,singleManager:true,managerTransport:'durable-activity-polling-with-SSE-replay',managerWebhook:false,managerPollIntervalMs:this.managerPollMs,managerRealtimeAvailable:available&&this.managerPollMs>0&&Boolean(this.store.manager(owner)),apns:false,modelsSelectable:false,budgetsSupported:false,stopSemantics:'暂停或取消会阻止后续步骤；已开始的命令可能仍会完成'};}
-  presentManager(owner,source){
+  publish(event: any,owner: any=null){if(!event)return;const target=owner||this.store.mappedGoal(event.goalId)?.owner,visible=this.presentEvent(target,event);for(const listener of this.listeners.get(target)||[])if(!listener.destroyed)listener.write(`id: ${visible.seq}\nevent: update\ndata: ${JSON.stringify(visible)}\n\n`);}
+  async goal(owner: any,id: any){const row=this.requireGoal(owner,id);const result=await this.clientFor(owner).tool('dots_get_goal',{goal_id:Number(row.goal_id)});if(!result.goal)throw fail('目标不存在',404,'not_found');const goal=this.presentGoal(result.goal,row);try{goal.events=this.eventReader?.read(Number(row.goal_id))||[];}catch{goal.events=[];goal.eventsUnavailable=true;}this.store.snapshot(row.goal_id,goal);return {ok:true,goal,timeline:goal.timeline||[],outputs:goal.outputs||[],approvals:goal.approvals||[],events:goal.events};}
+  async capabilities(owner: any){this.authorize(owner);let available=true;try{await this.client.rpc('ping');}catch{available=false;}const mapped=this.store.mappings(owner);const subs=this.store.db.prepare('SELECT * FROM dots_subscriptions').all();const configured=Boolean(this.callbackURL);const subscriptionsActive=mapped.length?mapped.every(g=>subs.some(s=>s.goal_id===g.goal_id&&s.subscription_id&&(!s.expires_at||Number(s.expires_at)>Date.now()))):false;return {ok:true,available,service:'Dots',adapterInstalled:true,sharedGoals:true,events:true,webhookConfigured:configured,realtimeAvailable:configured&&available&&subscriptionsActive,notificationTransport:configured?'signed-webhook-with-durable-replay':'durable-replay',subscriptionsActive,singleManager:true,managerTransport:'durable-activity-polling-with-SSE-replay',managerWebhook:false,managerPollIntervalMs:this.managerPollMs,managerRealtimeAvailable:available&&this.managerPollMs>0&&Boolean(this.store.manager(owner)),apns:false,modelsSelectable:false,budgetsSupported:false,stopSemantics:'暂停或取消会阻止后续步骤；已开始的命令可能仍会完成'};}
+  presentManager(owner: any,source: any){
     const expected='manager:'+owner;
     if(!source||source.id!==expected||source.ownerId!==owner)throw fail('总管归属不一致',502,'runtime_rejected');
     // Runtime mutation receipts intentionally retain their original response.
@@ -358,8 +358,8 @@ export class DotsAdapter {
       if(cached.activityCursor!==undefined&&integer(source.activityCursor)<integer(cached.activityCursor))return cached;
     }
     const manager=fields(source,managerKeys);
-    manager.messages=(source.messages||[]).map(message=>this.presentManagerMessage(message,owner)).sort((a,b)=>a.id-b.id);
-    manager.tasks=(source.tasks||[]).map(task=>{
+    manager.messages=(source.messages||[]).map((message: any)=>this.presentManagerMessage(message,owner)).sort((a: any,b: any)=>a.id-b.id);
+    manager.tasks=(source.tasks||[]).map((task: any)=>{
       if(task.managerId&&task.managerId!==expected)throw fail('子任务归属不一致',502,'runtime_rejected');
       return {...fields(task,managerTaskKeys),id:integer(task.id,1),managerId:expected};
     });
@@ -378,9 +378,9 @@ export class DotsAdapter {
     for(const task of manager.tasks)void this.ensureSubscription(task.id).catch(()=>{});
     return manager;
   }
-  presentManagerMessage(message,owner){
+  presentManagerMessage(message: any,owner: any){
     if(!['user','assistant','system'].includes(message.role)||typeof message.content!=='string')throw fail('总管消息格式无效',502,'runtime_rejected');
-    if(message.respondsToMessageIds!==undefined&&(!Array.isArray(message.respondsToMessageIds)||message.respondsToMessageIds.some(id=>!Number.isSafeInteger(id)||id<1)))throw fail('总管回复归属格式无效',502,'runtime_rejected');
+    if(message.respondsToMessageIds!==undefined&&(!Array.isArray(message.respondsToMessageIds)||message.respondsToMessageIds.some((id: any)=>!Number.isSafeInteger(id)||id<1)))throw fail('总管回复归属格式无效',502,'runtime_rejected');
     if(message.deliveryState!==undefined&&!['streaming','completed','failed','cancelled'].includes(message.deliveryState))throw fail('总管回复状态无效',502,'runtime_rejected');
     if(message.revision!==undefined&&(!Number.isSafeInteger(message.revision)||message.revision<0))throw fail('总管回复版本无效',502,'runtime_rejected');
     if(message.origin!==undefined&&!['reply','proactive'].includes(message.origin))throw fail('消息来源格式无效',502,'runtime_rejected');
@@ -392,13 +392,13 @@ export class DotsAdapter {
     const projected=message.role==='assistant'?{...message,content:normalizeMailPresentationLinks(message.content)}:this.weixinView(owner,message);
     return {...fields(projected,managerMessageKeys),requestId:this.localRequestId(owner,message.requestId),...(Array.isArray(projected.attachments)&&projected.attachments.length?{attachments:projected.attachments}:{}),...(metadata?{content:metadata.text,attachments:metadata.attachments}:{}),id:integer(message.id,1),taskId:message.taskId==null?null:integer(message.taskId,1),respondsToMessageIds:[...new Set(message.respondsToMessageIds||[])]};
   }
-  managerResponse(owner,manager,extra={}){return {ok:true,manager,messages:manager.messages||[],tasks:manager.tasks||[],...fields(manager,['hasMoreMessages','oldestMessageId','hasMoreTasks']),cursor:this.store.latestCursor(owner),...extra};}
-  async managerSnapshot(owner){
+  managerResponse(owner: any,manager: any,extra={}){return {ok:true,manager,messages:manager.messages||[],tasks:manager.tasks||[],...fields(manager,['hasMoreMessages','oldestMessageId','hasMoreTasks']),cursor:this.store.latestCursor(owner),...extra};}
+  async managerSnapshot(owner: any){
     this.authorize(owner);
     const result=await this.clientFor(owner).tool('dots_get_manager',{owner_id:owner});
     return this.presentManager(owner,result.manager);
   }
-  async manager(owner){
+  async manager(owner: any){
     this.authorize(owner);
     const before=Number(this.store.manager(owner)?.runtime_cursor||0);
     let manager;
@@ -416,7 +416,7 @@ export class DotsAdapter {
       return this.managerResponse(owner,manager);
     }catch{return this.managerResponse(owner,manager,{realtimeUnavailable:true});}
   }
-  async messageManager(owner,input){
+  async messageManager(owner: any,input: any){
     this.authorize(owner);only(input,['requestId','message','host','taskId','attachments']);
     const attachments=this.attachments.resolve(owner,input.attachments||[]);
     const payload={message:text(input.message,20000,'总管指令'),host:input.host,...(attachments.length?{attachments:attachments.map(a=>a.id)}:{}),...(input.taskId==null?{}:{taskId:integer(input.taskId,1)})};
@@ -427,14 +427,14 @@ export class DotsAdapter {
       const instruction=await this.attachments.bindRuntimeMessage(owner,remoteId,payload.message,attachments,{privateOwner:this.allowedOwner});
       const result=await this.clientFor(owner).tool('dots_message_manager',{owner_id:owner,message:instruction,display_message:payload.message,host:payload.host,request_id:remoteId,...(payload.taskId?{task_id:payload.taskId}:{})});
       const manager=this.presentManager(owner,result.manager);
-      const message=manager.messages.find(m=>m.id===result.message?.id)||this.presentManagerMessage(result.message||{},owner);
+      const message=manager.messages.find((m: any)=>m.id===result.message?.id)||this.presentManagerMessage(result.message||{},owner);
       if(result.accepted!==true||!Number.isSafeInteger(message.id)||message.role!=='user'||message.content!==payload.message)throw fail('总管未确认接收此指令',502,'runtime_rejected');
       this.publish(this.store.append(owner,0,'manager_snapshot',{manager:fields(manager,managerKeys),managerId:manager.id,message},'manager-message:'+hash(owner)+':'+input.requestId),owner);
       void this.syncManagerActivity(owner).catch(()=>{});
       return this.managerResponse(owner,manager,{accepted:true,message});
     },{replaySafe:true});
   }
-  async controlManager(owner,input){
+  async controlManager(owner: any,input: any){
     this.authorize(owner);only(input,['requestId','action']);
     if(!['pause','resume','cancel','wake','interrupt'].includes(input.action))throw fail('总管操作不支持');
     return this.mutation(owner,input.requestId,'manager:control',{action:input.action},async()=>{
@@ -445,27 +445,27 @@ export class DotsAdapter {
       return this.managerResponse(owner,manager);
     },{replaySafe:true});
   }
-  async managerMessages(owner,{before=0,limit=100}={}){
+  async managerMessages(owner: any,{before=0,limit=100}={}){
     this.authorize(owner);before=integer(before);limit=integer(limit,1,200);
     const result=await this.clientFor(owner).tool('dots_get_manager_messages',{owner_id:owner,before_id:before,limit});
-    const messages=(result.messages||[]).map(message=>this.presentManagerMessage(message,owner)).sort((a,b)=>a.id-b.id);
-    if(before&&messages.some(message=>message.id>=Number(before)))throw fail('总管历史分页顺序无效',502,'runtime_rejected');
+    const messages=(result.messages||[]).map((message: any)=>this.presentManagerMessage(message,owner)).sort((a: any,b: any)=>a.id-b.id);
+    if(before&&messages.some((message: any)=>message.id>=Number(before)))throw fail('总管历史分页顺序无效',502,'runtime_rejected');
     return {ok:true,messages,hasMore:Boolean(result.hasMore),nextBeforeId:result.nextBeforeId==null?null:integer(result.nextBeforeId)};
   }
-  async managerActivity(owner,{after=0,limit=50}={}){
+  async managerActivity(owner: any,{after=0,limit=50}={}){
     this.authorize(owner);
     const result=await this.clientFor(owner).tool('dots_get_manager_activity',{owner_id:owner,after_id:integer(after),limit:integer(limit,1,200)});
-    const activity=(result.activity||[]).map(item=>this.presentManagerActivity(owner,item));
+    const activity=(result.activity||[]).map((item: any)=>this.presentManagerActivity(owner,item));
     return {ok:true,activity,nextCursor:integer(result.nextCursor??after),hasMore:Boolean(result.hasMore),cursor:this.store.latestCursor(owner)};
   }
-  presentManagerActivity(owner,item){
+  presentManagerActivity(owner: any,item: any){
     if(item.managerId!=='manager:'+owner)throw fail('总管活动归属不一致',502,'runtime_rejected');
     const data=item.data;
     const projected=data?.message&&['assistant_delta','assistant_message','proactive_message','user_message'].includes(item.kind)
       ?{...data,message:this.presentManagerMessage(data.message,owner)}:data;
     return {...fields(item,managerActivityKeys),...(projected!==undefined?{data:projected}:{}),...(item.kind==='user_message'&&projected?.message?{message:projected.message.content}:{}),id:integer(item.id,1),taskId:item.taskId==null?null:integer(item.taskId,1)};
   }
-  async syncManagerActivity(owner){
+  async syncManagerActivity(owner: any){
     this.authorize(owner);
     if(this.managerSyncInflight.has(owner))return this.managerSyncInflight.get(owner);
     const promise=(async()=>{
@@ -473,8 +473,8 @@ export class DotsAdapter {
       let after=Number(this.store.manager(owner)!.runtime_cursor);
       for(let page=0;page<10;page++){
         const result=await this.managerActivity(owner,{after,limit:200});
-        if(result.activity.some(a=>a.taskId&&!this.store.mapping(owner,a.taskId)))await this.managerSnapshot(owner);
-        if(result.activity.some(a=>a.taskId&&!this.store.mapping(owner,a.taskId)))throw fail('总管活动子任务不存在',502,'runtime_rejected');
+        if(result.activity.some((a: any)=>a.taskId&&!this.store.mapping(owner,a.taskId)))await this.managerSnapshot(owner);
+        if(result.activity.some((a: any)=>a.taskId&&!this.store.mapping(owner,a.taskId)))throw fail('总管活动子任务不存在',502,'runtime_rejected');
         const events: any[]=[];
         this.store.transaction(()=>{
           let previous=after;
@@ -495,24 +495,24 @@ export class DotsAdapter {
     })();this.managerSyncInflight.set(owner,promise);
     try{return await promise;}finally{this.managerSyncInflight.delete(owner);}
   }
-  async list(owner,{after=0,limit=50,status}: {after?: number; limit?: number; status?: string}={}){
+  async list(owner: any,{after=0,limit=50,status}: {after?: number; limit?: number; status?: string}={}){
     this.authorize(owner);after=integer(after);limit=integer(limit,1,200);
     if(status&&!['active','paused','done','blocked','waiting_approval','cancelled'].includes(status))throw fail('目标状态无效');
     let source=new Map(),stale=false;
-    try{const result=await this.clientFor(owner).tool('dots_list_goals',{limit:200});source=new Map((result.goals||[]).map(g=>[g.id,g]));}catch{stale=true;}
+    try{const result=await this.clientFor(owner).tool('dots_list_goals',{limit:200});source=new Map((result.goals||[]).map((g: any)=>[g.id,g]));}catch{stale=true;}
     const rows=this.store.mappings(owner).filter(row=>(!after||Number(row.goal_id)<after)&&(!status||(source.get(row.goal_id)||JSON.parse(String(row.snapshot))).status===status));
     const selected=rows.slice(0,limit+1),goals: any[]=[];
     for(const row of selected.slice(0,limit)){const fresh=source.get(row.goal_id);const goal=fresh?this.presentGoal(fresh,row):JSON.parse(String(row.snapshot));if(fresh)this.store.snapshot(row.goal_id,goal);goals.push({...fields(goal,[...goalKeys,'conversationId','originHost','originContext']),...(stale?{stale:true}:{})});}
     return {ok:true,goals,cursor:selected.slice(0,limit).at(-1)?.goal_id??after,hasMore:selected.length>limit,sourceTruncated:Boolean(this.importSourceTruncated)};
   }
-  remoteRequestId(owner,requestId){return 'shiyan:'+hash(owner+':'+requestId);}
-  localRequestId(owner,remote){
+  remoteRequestId(owner: any,requestId: any){return 'shiyan:'+hash(owner+':'+requestId);}
+  localRequestId(owner: any,remote: any){
     if(!remote||!String(remote).startsWith('shiyan:'))return remote??null;
     let map=this.requestIdMaps?.get(owner);
     if(!map?.has(remote)){map=new Map(this.store.recentManagerRequestIds(owner).map(id=>[this.remoteRequestId(owner,id),id]));(this.requestIdMaps??=new Map()).set(owner,map);}
     return map.get(remote)??null;
   }
-  async mutation(owner,requestId,operation,payload,execute,{replaySafe=false,reconcile}: {replaySafe?: boolean; reconcile?: () => any}={}) {
+  async mutation(owner: any,requestId: any,operation: any,payload: any,execute: any,{replaySafe=false,reconcile}: {replaySafe?: boolean; reconcile?: () => any}={}) {
     this.authorize(owner);identifier(requestId);const key=owner+':'+requestId;
     const hadReceipt=Boolean(this.store.receipt(owner,requestId));const receipt=this.store.reserve(owner,requestId,operation,payload);
     if(receipt?.state==='completed')return JSON.parse(String(receipt.response));
@@ -529,7 +529,7 @@ export class DotsAdapter {
     })();this.inflight.set(key,promise);
     try{return await promise;}finally{this.inflight.delete(key);}
   }
-  async create(owner,input){
+  async create(owner: any,input: any){
     this.authorize(owner);only(input,['requestId','conversationId','title','instruction','runNow','host']);
     const payload={conversationId:identifier(input.conversationId,'会话标识'),title:text(input.title,200,'目标标题'),instruction:text(input.instruction,20000,'目标内容'),runNow:input.runNow!==false,host:input.host};
     if(!['shiyan_desktop','shiyan_mobile'].includes(payload.host)||input.runNow!==undefined&&typeof input.runNow!=='boolean')throw fail('目标来源或启动选项无效');
@@ -550,7 +550,7 @@ export class DotsAdapter {
       return {ok:true,goal,timeline:goal.timeline||[],outputs:goal.outputs||[],approvals:goal.approvals||[]};
     },{replaySafe:true});
   }
-  async instruct(owner,id,input){
+  async instruct(owner: any,id: any,input: any){
     this.requireGoal(owner,id);only(input,['requestId','message']);const message=text(input.message,20000,'追加指令');
     return this.mutation(owner,input.requestId,'instruct:'+id,{message},async()=>{
       let saved;try{saved=this.eventReader?.request?.(this.remoteRequestId(owner,input.requestId),owner);}catch{}
@@ -561,35 +561,35 @@ export class DotsAdapter {
       const response=await this.goal(owner,id);this.publish(this.store.append(owner,Number(id),'goal',{goal:response.goal},'goal-instruct:'+owner+':'+input.requestId));return response;
     },{replaySafe:true});
   }
-  async control(owner,id,input){this.requireGoal(owner,id);only(input,['requestId','action']);if(!['pause','resume','cancel','wake'].includes(input.action))throw fail('目标操作不支持');return this.mutation(owner,input.requestId,'control:'+id,{action:input.action},async()=>{await this.clientFor(owner).tool('dots_control_goal',{goal_id:Number(id),action:input.action});const result=await this.goal(owner,id);this.publish(this.store.append(owner,Number(id),'goal',{goal:result.goal},'goal-control:'+owner+':'+input.requestId));return result;},{reconcile:async()=>{const result=await this.goal(owner,id);return ({pause:'paused',cancel:'cancelled',resume:'active'})[input.action]===result.goal.status?result:null;}});}
-  async timeline(owner,id,{after=0,limit=50}={}){this.requireGoal(owner,id);const result=await this.clientFor(owner).tool('dots_get_timeline',{goal_id:Number(id),after_id:integer(after),limit:integer(limit,1,200)});return {ok:true,timeline:(result.timeline||[]).map(t=>fields(t,timelineKeys)),nextCursor:result.next_cursor,hasMore:result.has_more};}
-  async outputs(owner,id,{limit=50}={}){this.requireGoal(owner,id);const result=await this.clientFor(owner).tool('dots_list_outputs',{goal_id:Number(id),limit:integer(limit,1,200)});return {ok:true,outputs:(result.outputs||[]).map(o=>fields(o,outputKeys))};}
-  async output(owner,id){this.authorize(owner);id=integer(id,1);const result=await this.clientFor(owner).tool('dots_read_output',{output_id:id});if(!result.output||!this.store.mapping(owner,Number(result.output.goal_id)))throw fail('输出不存在',404,'not_found');return {ok:true,output:fields(result.output,outputKeys)};}
-  async activity(owner,{limit=100}={}){
+  async control(owner: any,id: any,input: any){this.requireGoal(owner,id);only(input,['requestId','action']);if(!['pause','resume','cancel','wake'].includes(input.action))throw fail('目标操作不支持');return this.mutation(owner,input.requestId,'control:'+id,{action:input.action},async()=>{await this.clientFor(owner).tool('dots_control_goal',{goal_id:Number(id),action:input.action});const result=await this.goal(owner,id);this.publish(this.store.append(owner,Number(id),'goal',{goal:result.goal},'goal-control:'+owner+':'+input.requestId));return result;},{reconcile:async()=>{const result=await this.goal(owner,id);return (({pause:'paused',cancel:'cancelled',resume:'active'}) as any)[input.action]===result.goal.status?result:null;}});}
+  async timeline(owner: any,id: any,{after=0,limit=50}={}){this.requireGoal(owner,id);const result=await this.clientFor(owner).tool('dots_get_timeline',{goal_id:Number(id),after_id:integer(after),limit:integer(limit,1,200)});return {ok:true,timeline:(result.timeline||[]).map((t: any)=>fields(t,timelineKeys)),nextCursor:result.next_cursor,hasMore:result.has_more};}
+  async outputs(owner: any,id: any,{limit=50}={}){this.requireGoal(owner,id);const result=await this.clientFor(owner).tool('dots_list_outputs',{goal_id:Number(id),limit:integer(limit,1,200)});return {ok:true,outputs:(result.outputs||[]).map((o: any)=>fields(o,outputKeys))};}
+  async output(owner: any,id: any){this.authorize(owner);id=integer(id,1);const result=await this.clientFor(owner).tool('dots_read_output',{output_id:id});if(!result.output||!this.store.mapping(owner,Number(result.output.goal_id)))throw fail('输出不存在',404,'not_found');return {ok:true,output:fields(result.output,outputKeys)};}
+  async activity(owner: any,{limit=100}={}){
     this.authorize(owner);limit=integer(limit,1,500);
     const current=await this.manager(owner),schedules=this.schedules.list(owner);
     // Imported history includes the old runtime and integration acceptance runs.
     // Keep those records accessible without mixing them into current activity.
-    const tasks=current.tasks.filter(task=>!task.legacyImported);
+    const tasks=current.tasks.filter((task: any)=>!task.legacyImported);
     const memberships=this.store.db.prepare('SELECT goal_id,issue_key,issue_title FROM dots_issue_members WHERE owner=?').all(owner);
-    const conversations=groupIssueTasks(tasks,memberships).map(group=>({id:group.key,type:'conversation',taskId:group.task.id,title:group.title,status:group.task.status,createdAt:millis(group.createdAt),updatedAt:millis(group.updatedAt),lastSummary:group.task.lastSummary||'',runCount:group.tasks.reduce((n,t)=>n+Number(t.runCount||0),0),relatedTaskIds:group.tasks.map(t=>t.id),unread:false,isNew:false}));
+    const conversations=groupIssueTasks(tasks,memberships).map(group=>({id:group.key,type:'conversation',taskId:group.task.id,title:group.title,status:group.task.status,createdAt:millis(group.createdAt),updatedAt:millis(group.updatedAt),lastSummary:group.task.lastSummary||'',runCount:group.tasks.reduce((n: any,t: any)=>n+Number(t.runCount||0),0),relatedTaskIds:group.tasks.map((t: any)=>t.id),unread:false,isNew:false}));
     const scheduled=schedules.schedules.map(schedule=>({id:'schedule:'+schedule.id,type:'schedule',scheduleId:schedule.id,taskId:schedule.lastTaskId,title:schedule.title,status:schedule.status,createdAt:schedule.createdAt,updatedAt:schedule.updatedAt,lastSummary:'',schedule,unread:false,isNew:false}));
-    let outputs: any[]=[];try{outputs=await this.activityReader?.outputs(tasks.map(t=>t.id),owner,{limit})||[];}catch{}
-    try{const files=taskArtifactOutputs(this.attachments,owner,tasks.map(t=>t.id),{privateOwner:owner===this.allowedOwner});if(files.length){const seen=new Set(files.map(f=>f.taskId+'\0'+f.filename+'\0'+f.bytes));outputs=[...files,...outputs.filter(o=>!(o.kind==='file'&&seen.has(o.taskId+'\0'+o.filename+'\0'+o.bytes)))];}if(files.length)outputs=outputs.sort((a,b)=>(Number(b.createdAt)||0)-(Number(a.createdAt)||0)).slice(0,limit);}catch{}
+    let outputs: any[]=[];try{outputs=await this.activityReader?.outputs(tasks.map((t: any)=>t.id),owner,{limit})||[];}catch{}
+    try{const files=taskArtifactOutputs(this.attachments,owner,tasks.map((t: any)=>t.id),{privateOwner:owner===this.allowedOwner});if(files.length){const seen=new Set(files.map(f=>f.taskId+'\0'+f.filename+'\0'+f.bytes));outputs=[...files,...outputs.filter(o=>!(o.kind==='file'&&seen.has(o.taskId+'\0'+o.filename+'\0'+o.bytes)))];}if(files.length)outputs=outputs.sort((a,b)=>(Number(b.createdAt)||0)-(Number(a.createdAt)||0)).slice(0,limit);}catch{}
     const reads=new Map(this.store.db.prepare('SELECT activity_id,seen_at FROM dots_activity_reads WHERE owner=?').all(owner).map(row=>[row.activity_id,row.seen_at]));
     const activities=[...conversations,...scheduled].sort((a,b)=>b.updatedAt-a.updatedAt).slice(0,limit).map(item=>({...item,unread:!reads.has(item.id)||item.updatedAt>Number(reads.get(item.id)),isNew:!reads.has(item.id)}));
     return {ok:true,activities,outputs,cursor:current.cursor,scheduler:schedules.scheduler,...((current as any).stale?{stale:true}:{}),hasMore:conversations.length+scheduled.length>limit};
   }
-  markActivityRead(owner,id){this.authorize(owner);this.store.db.prepare('INSERT INTO dots_activity_reads(owner,activity_id,seen_at) VALUES(?,?,?) ON CONFLICT(owner,activity_id) DO UPDATE SET seen_at=excluded.seen_at').run(owner,id,Date.now());}
-  async conversation(owner,id,{ungrouped=false}={}){
+  markActivityRead(owner: any,id: any){this.authorize(owner);this.store.db.prepare('INSERT INTO dots_activity_reads(owner,activity_id,seen_at) VALUES(?,?,?) ON CONFLICT(owner,activity_id) DO UPDATE SET seen_at=excluded.seen_at').run(owner,id,Date.now());}
+  async conversation(owner: any,id: any,{ungrouped=false}={}): Promise<any>{
     this.authorize(owner);id=integer(id,1);
     const issue=ungrouped?null:this.store.db.prepare('SELECT issue_key,issue_title FROM dots_issue_members WHERE owner=? AND goal_id=?').get(owner,id);
     if(issue){
       const ids=this.store.db.prepare('SELECT goal_id FROM dots_issue_members WHERE owner=? AND issue_key=? ORDER BY goal_id').all(owner,issue.issue_key).map(row=>Number(row.goal_id));
       const parts=await Promise.all(ids.map(member=>this.conversation(owner,member,{ungrouped:true})));
-      const selected=parts.find(part=>Number(part.goal.id)===id),messages=parts.flatMap(part=>part.messages.map(message=>({...message,id:'issue:'+part.goal.id+':'+message.id,sourceTaskId:part.goal.id}))).sort((a,b)=>Number(a.createdAt||0)-Number(b.createdAt||0));
+      const selected=parts.find((part: any)=>Number(part.goal.id)===id),messages=parts.flatMap((part: any)=>part.messages.map((message: any)=>({...message,id:'issue:'+part.goal.id+':'+message.id,sourceTaskId:part.goal.id}))).sort((a: any,b: any)=>Number(a.createdAt||0)-Number(b.createdAt||0));
       this.markActivityRead(owner,'issue:'+issue.issue_key);
-      return {...selected,goal:{...selected.goal,title:issue.issue_title},messages,outputs:parts.flatMap(part=>part.outputs||[]),relatedGoals:parts.map(part=>({id:part.goal.id,title:part.goal.title,status:part.goal.status,summary:part.goal.last_summary||''})),transcriptAvailable:parts.some(part=>part.transcriptAvailable)};
+      return {...selected,goal:{...selected.goal,title:issue.issue_title},messages,outputs:parts.flatMap((part: any)=>part.outputs||[]),relatedGoals:parts.map((part: any)=>({id:part.goal.id,title:part.goal.title,status:part.goal.status,summary:part.goal.last_summary||''})),transcriptAvailable:parts.some((part: any)=>part.transcriptAvailable)};
     }
     if(!this.store.mapping(owner,id))await this.managerSnapshot(owner);
     const result=await this.goal(owner,id);let projection;
@@ -603,28 +603,28 @@ export class DotsAdapter {
     projection.messages=projection.messages.map(message=>{const metadata=message.requestId?this.attachments.message(owner,message.requestId):null;return metadata?{...message,content:metadata.text,attachments:metadata.attachments}:this.weixinView(owner,message);});
     this.markActivityRead(owner,'conversation:'+id);return {ok:true,goal:result.goal,...projection};
   }
-  async outputFile(owner,id,{format='txt'}={}){
+  async outputFile(owner: any,id: any,{format='txt'}={}){
     if(!['txt','json'].includes(format))throw fail('输出格式无效');const {output}=await this.output(owner,id);
     const content=format==='json'?JSON.stringify(output,null,2):readableResult(output.raw_result)||output.notification||output.summary||'';
     const data=Buffer.from(content);return {filename:'任务-'+output.goal_id+'-第'+output.run_number+'次回复.'+format,mimeType:format==='json'?'application/json':'text/plain; charset=utf-8',data,bytes:data.length,sha256:hash(data)};
   }
-  artifact(owner,id,key){this.requireGoal(owner,id);return this.activityReader.artifact(integer(id,1),key,owner);}
-  async approvals(owner,id){this.requireGoal(owner,id);const result=await this.clientFor(owner).tool('dots_list_approvals',{goal_id:Number(id)});return {ok:true,approvals:(result.approvals||[]).filter(a=>a.goal_id===Number(id)).map(a=>fields(a,approvalKeys))};}
-  async decide(owner,id,approvalId,input){
+  artifact(owner: any,id: any,key: any){this.requireGoal(owner,id);return this.activityReader.artifact(integer(id,1),key,owner);}
+  async approvals(owner: any,id: any){this.requireGoal(owner,id);const result=await this.clientFor(owner).tool('dots_list_approvals',{goal_id:Number(id)});return {ok:true,approvals:(result.approvals||[]).filter((a: any)=>a.goal_id===Number(id)).map((a: any)=>fields(a,approvalKeys))};}
+  async decide(owner: any,id: any,approvalId: any,input: any){
     this.requireGoal(owner,id);approvalId=integer(approvalId,1);only(input,['requestId','decision','confirmedCommand','scope']);if(!['approve','reject'].includes(input.decision))throw fail('审批选项无效');
     if(input.scope!==undefined&&input.scope!=='once'&&!GRANT_SCOPES.includes(input.scope))throw fail('授权范围无效');
     const scope=input.decision==='approve'&&GRANT_SCOPES.includes(input.scope)?input.scope:null;
     const payload={decision:input.decision,...(input.confirmedCommand!==undefined?{confirmedCommand:input.confirmedCommand}:{}),...(scope?{scope}:{})};
     return this.mutation(owner,input.requestId,'approval:'+id+':'+approvalId,payload,async()=>{
-      const approval=(await this.approvals(owner,id)).approvals.find(a=>a.id===approvalId);if(!approval)throw fail('审批不存在或已处理',409,'approval_changed');
+      const approval=(await this.approvals(owner,id)).approvals.find((a: any)=>a.id===approvalId);if(!approval)throw fail('审批不存在或已处理',409,'approval_changed');
       if(input.decision==='approve'&&(typeof input.confirmedCommand!=='string'||input.confirmedCommand!==approval.command))throw fail('请确认当前显示的完整命令，命令必须完全一致',409,'approval_changed');
       await this.clientFor(owner).tool('dots_decide_approval',{approval_id:approvalId,decision:input.decision,...(input.decision==='approve'?{confirmed_command:input.confirmedCommand}:{})});
       let grant=null,grantError=null;
       if(scope){try{grant=(await this.clientFor(owner).rpc('dots/grants/create',{approvalId,scope})).grant||null;}catch(cause){grantError=(cause as any)?.message||'授权未能保存';}}
       const result={...(await this.goal(owner,id)),...(grant?{grant}:{}),...(grantError?{grantError}:{})};this.publish(this.store.append(owner,Number(id),'goal',{goal:result.goal},'goal-approval:'+owner+':'+input.requestId));return result;
-    },{reconcile:async()=>{const result=await this.goal(owner,id);const approval=result.approvals.find(a=>a.id===approvalId);return approval&&(input.decision==='reject'?approval.status==='rejected':['approved','executed','failed'].includes(approval.status))?result:null;}});
+    },{reconcile:async()=>{const result=await this.goal(owner,id);const approval=result.approvals.find((a: any)=>a.id===approvalId);return approval&&(input.decision==='reject'?approval.status==='rejected':['approved','executed','failed'].includes(approval.status))?result:null;}});
   }
-  async ensureSubscription(id){
+  async ensureSubscription(id: any){
     if(!this.callbackURL)return false;
     if(this.subscriptionInflight.has(id))return this.subscriptionInflight.get(id);
     const owner=this.store.mappedGoal(id)?.owner;if(!owner)throw fail('目标不存在',404,'not_found');
@@ -652,18 +652,18 @@ export class DotsAdapter {
     }
     this.importSourceTruncated=Boolean(result.source_truncated||result.has_more);
   }
-  notification(owner,goalId,notification){
+  notification(owner: any,goalId: any,notification: any){
     const eventId='dots-notification:'+goalId+':'+notification.notification_id;
     return this.store.append(owner,goalId,'notification',notification,eventId);
   }
-  verifyWebhook(headers,raw){
+  verifyWebhook(headers: any,raw: any){
     const eventId=headers['webhook-id'],stamp=headers['webhook-timestamp'],signature=headers['webhook-signature'];
     if(typeof eventId!=='string'||eventId.length>200||!eventId||typeof stamp!=='string'||!/^\d+$/.test(stamp)||Math.abs(Date.now()/1000-Number(stamp))>300||typeof signature!=='string')throw fail('通知签名无效',401,'invalid_signature');
     const expected=createHmac('sha256',Buffer.from(this.store.webhookSecret.slice(6),'base64')).update(eventId+'.'+stamp+'.').update(raw).digest();
     const valid=signature.split(/\s+/).some(piece=>{const [version,value]=piece.split(',');if(version!=='v1'||!value)return false;const actual=Buffer.from(value,'base64');return actual.length===expected.length&&timingSafeEqual(actual,expected);});
     if(!valid)throw fail('通知签名无效',401,'invalid_signature');return eventId;
   }
-  async webhook(headers,raw){
+  async webhook(headers: any,raw: any){
     const webhookId=this.verifyWebhook(headers,raw);let body;try{body=JSON.parse(raw.toString());}catch{throw fail('通知格式无效');}
     if(body.type==='verification'){if(typeof body.challenge!=='string'||body.challenge.length>500)throw fail('通知验证格式无效');return {challenge:body.challenge};}
     if(body.name!=='goal.notification'||body.eventId!==webhookId||!body.data)throw fail('通知类型无效');
@@ -702,9 +702,9 @@ export class DotsAdapter {
       }
     }}finally{this.recovering=false;}
   }
-  events(owner,{after=0,limit=100}={}){this.authorize(owner);const batch=this.store.events(owner,integer(after),integer(limit,1,500));return {...batch,events:batch.events.map(event=>this.presentEvent(owner,event))};}
-  acknowledge(owner,input){this.authorize(owner);only(input,['consumerId','cursor']);return this.store.ack(owner,identifier(input.consumerId,'设备接收标识'),integer(input.cursor));}
-  stream(owner,res,after=0){
+  events(owner: any,{after=0,limit=100}={}){this.authorize(owner);const batch=this.store.events(owner,integer(after),integer(limit,1,500));return {...batch,events:batch.events.map(event=>this.presentEvent(owner,event))};}
+  acknowledge(owner: any,input: any){this.authorize(owner);only(input,['consumerId','cursor']);return this.store.ack(owner,identifier(input.consumerId,'设备接收标识'),integer(input.cursor));}
+  stream(owner: any,res: any,after=0){
     this.authorize(owner);after=integer(after);res.socket?.setNoDelay(true);res.writeHead(200,{'Content-Type':'text/event-stream; charset=utf-8','Cache-Control':'no-cache, no-transform','Connection':'close','X-Accel-Buffering':'no'});res.flushHeaders();
     // Registration and replay run synchronously, so callbacks cannot land in a
     // gap between reading the durable cursor and attaching the live listener.

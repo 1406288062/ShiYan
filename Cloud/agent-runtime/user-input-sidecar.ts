@@ -6,12 +6,12 @@ import { authenticateDevice, digest } from './device-auth.ts';
 import { UserInputStore } from './user-input.ts';
 
 const ROOT=process.env.SHIYAN_ROOT||'/home/ubuntu/boss-codex-service/shiyan-v2';
-const fail=(message,status=400)=>Object.assign(new Error(message),{status});
-const json=(res,status,value)=>{const data=JSON.stringify(value);res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Content-Length':Buffer.byteLength(data)});res.end(data);};
-async function body(req,signed=false){let size=0;const chunks: Buffer[]=[];for await(const chunk of req){size+=chunk.length;if(size>32768)throw fail('请求内容过大',413);chunks.push(chunk);}const data=Buffer.concat(chunks);if(signed&&digest(data)!==req.headers['x-shiyan-body-sha'])throw fail('请求校验失败',401);try{return JSON.parse(data.toString()||'{}');}catch{throw fail('请求格式无效');}}
-export function legacyOwnerReader(root,read: (path: string, encoding: BufferEncoding) => string=readFileSync){
+const fail=(message: any,status=400)=>Object.assign(new Error(message),{status});
+const json=(res: any,status: any,value: any)=>{const data=JSON.stringify(value);res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Content-Length':Buffer.byteLength(data)});res.end(data);};
+async function body(req: any,signed=false){let size=0;const chunks: Buffer[]=[];for await(const chunk of req){size+=chunk.length;if(size>32768)throw fail('请求内容过大',413);chunks.push(chunk);}const data=Buffer.concat(chunks);if(signed&&digest(data)!==req.headers['x-shiyan-body-sha'])throw fail('请求校验失败',401);try{return JSON.parse(data.toString()||'{}');}catch{throw fail('请求格式无效');}}
+export function legacyOwnerReader(root: any,read: (path: string, encoding: BufferEncoding) => string=readFileSync){
   const owners=new Map();
-  return id=>{
+  return (id: any)=>{
     if(owners.has(id))return owners.get(id);
     let owner=null;try{owner=JSON.parse(read(path.join(root,'data','state.json'),'utf8')).jobs?.[id]?.owner||null;}catch{}
     if(owners.size>=256)owners.delete(owners.keys().next().value);owners.set(id,owner);return owner;

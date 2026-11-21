@@ -6,13 +6,13 @@ import path from 'node:path';
 import { AccountStore } from './accounts.ts';
 import { RegistrationEmail, mailConfigured, registrationMailEnvironment } from './registration-email.ts';
 const password = 'test-only-password-42';
-function fixture(t, options={}) {
+function fixture(t: any, options={}) {
   const root=mkdtempSync(path.join(os.tmpdir(),'shiyan-otp-'));
   let now=1000000; const messages: any[]=[];
   const store=new AccountStore(root,{now:()=>now});
   const mail=new RegistrationEmail(store,{configured:()=>true,send:async m=>{messages.push(m);},...options});
   t.after(()=>{store.close();rmSync(root,{recursive:true,force:true});});
-  return {root,store,mail,messages,advance:ms=>now+=ms,code:()=>messages.at(-1).text.match(/\d{6}/)[0]};
+  return {root,store,mail,messages,advance:(ms: any)=>now+=ms,code:()=>messages.at(-1).text.match(/\d{6}/)[0]};
 }
 test('six-digit email code is bound to normalized email, consumed atomically, and grants only ordinary role',async t=>{
   const f=fixture(t); const result=await f.mail.request({email:'  Member@Example.Test '},'ip');
@@ -55,7 +55,7 @@ test('delivery must finish before a code can be used',async t=>{
   let release;const f=fixture(t,{send:()=>new Promise(r=>release=r)});
   const sending=f.mail.request({email:'a@example.test'},'ip');
   assert.throws(()=>f.mail.check({email:'a@example.test',verificationCode:'000000'}));
-  release();await sending;
+  (release as any)?.();await sending;
 });
 
 test('existing QQ configuration is resolved without copying credentials and honours disablement', t => {

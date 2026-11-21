@@ -34,13 +34,13 @@ export const CATEGORIES = [
   { id: 'docs', name: '文档' }, { id: 'custom', name: '自定义' }, { id: 'builtin', name: '内置能力' },
 ];
 
-function subscriptionState(sub) {
+function subscriptionState(sub: any) {
   if (!sub?.configured) return { state: 'available', status: '未连接' };
   if (!sub.enabled) return { state: 'paused', status: '已暂停' };
   if (['backoff', 'error', 'failed', 'waiting_authorization'].includes(sub.status)) return { state: 'error', status: sub.status === 'waiting_authorization' ? '需要重新授权' : '连接异常' };
   return { state: 'connected', status: '已连接' };
 }
-function subscriptionAccount(sub) {
+function subscriptionAccount(sub: any) {
   if (!sub?.configured) return '';
   if (sub.address) return sub.address;
   if (sub.repository) return sub.repository;
@@ -61,10 +61,10 @@ export function buildConnectors({ subscriptions = [], sponge = null, spongeError
     }
     if (entry.kind === 'sponge') {
       const devices = Array.isArray(sponge?.devices) ? sponge.devices : [];
-      const online = devices.filter(d => d.online === true || d.status === 'online').length;
+      const online = devices.filter((d: any) => d.online === true || d.status === 'online').length;
       const state = spongeError ? 'error' : sponge?.connected ? (devices.length ? 'connected' : 'available') : 'available';
       return { ...base, state, status: spongeError ? '状态未知' : !sponge?.connected ? '未连接' : devices.length ? `${devices.length} 台设备 · ${online} 台在线` : '未配对设备',
-        account: sponge?.accountName || '', devices: devices.slice(0, 10).map(d => ({ name: d.name || d.deviceId || '设备', platform: d.platform || '', online: d.online === true || d.status === 'online' })),
+        account: sponge?.accountName || '', devices: devices.slice(0, 10).map((d: any) => ({ name: d.name || d.deviceId || '设备', platform: d.platform || '', online: d.online === true || d.status === 'online' })),
         actions: sponge?.connected ? ['manage'] : ['connect'] };
     }
     if (entry.kind === 'weixin') {

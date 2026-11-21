@@ -2,20 +2,20 @@ import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import type { DotsAdapter } from './dots-adapter.ts';
 
-const fail=(message,status=400,code='invalid_schedule')=>Object.assign(new Error(message),{status,code});
+const fail=(message: any,status=400,code='invalid_schedule')=>Object.assign(new Error(message),{status,code});
 const datePattern=/^\d{4}-\d{2}-\d{2}$/;
-const day=date=>new Date(date+'T12:00:00Z');
-const validDate=date=>typeof date==='string'&&datePattern.test(date)&&Number.isFinite(day(date).getTime())&&day(date).toISOString().slice(0,10)===date;
-const shiftDate=(date,days)=>{const result=day(date);result.setUTCDate(result.getUTCDate()+days);return result.toISOString().slice(0,10);};
-const parts=(timestamp,timezone)=>Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:timezone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).formatToParts(timestamp).filter(p=>p.type!=='literal').map(p=>[p.type,p.value]));
-const localDate=(timestamp,timezone)=>{const p=parts(timestamp,timezone);return p.year+'-'+p.month+'-'+p.day;};
-function localTime(date,time,timezone){
+const day=(date: any)=>new Date(date+'T12:00:00Z');
+const validDate=(date: any)=>typeof date==='string'&&datePattern.test(date)&&Number.isFinite(day(date).getTime())&&day(date).toISOString().slice(0,10)===date;
+const shiftDate=(date: any,days: any)=>{const result=day(date);result.setUTCDate(result.getUTCDate()+days);return result.toISOString().slice(0,10);};
+const parts=(timestamp: any,timezone: any)=>Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:timezone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).formatToParts(timestamp).filter(p=>p.type!=='literal').map(p=>[p.type,p.value]));
+const localDate=(timestamp: any,timezone: any)=>{const p=parts(timestamp,timezone);return p.year+'-'+p.month+'-'+p.day;};
+function localTime(date: any,time: any,timezone: any){
   const target=Date.parse(date+'T'+time+':00Z');let candidate=target;
   for(let i=0;i<4;i++){const p=parts(candidate,timezone),actual=Date.parse(p.year+'-'+p.month+'-'+p.day+'T'+p.hour+':'+p.minute+':'+p.second+'Z'),difference=target-actual;if(!difference)break;candidate+=difference;}
   const p=parts(candidate,timezone);
   return p.year+'-'+p.month+'-'+p.day===date&&p.hour+':'+p.minute===time?candidate:null;
 }
-export function nextScheduleRun(schedule,after=Date.now()){
+export function nextScheduleRun(schedule: any,after=Date.now()){
   if(!schedule.enabled)return null;
   let date=localDate(after,schedule.timezone);if(date<schedule.startDate)date=schedule.startDate;
   const anchor=day(schedule.startDate),anchorWeekday=anchor.getUTCDay(),anchorDay=anchor.getUTCDate();
@@ -38,7 +38,7 @@ export class DotsSchedules {
   now: () => number;
   running: boolean;
   timer: NodeJS.Timeout | null;
-  constructor(adapter,{pollMs=15000,now=()=>Date.now()}={}){
+  constructor(adapter: any,{pollMs=15000,now=()=>Date.now()}={}){
     this.adapter=adapter;this.db=adapter.store.db;this.now=now;this.running=false;
     this.db.exec(`CREATE TABLE IF NOT EXISTS dots_schedules(id TEXT PRIMARY KEY,owner TEXT NOT NULL,title TEXT NOT NULL,instruction TEXT NOT NULL,enabled INTEGER NOT NULL,repeat TEXT NOT NULL,time TEXT NOT NULL,timezone TEXT NOT NULL,start_date TEXT NOT NULL,end_date TEXT,next_run_at INTEGER,last_run_at INTEGER,last_task_id INTEGER,revision INTEGER NOT NULL DEFAULT 1,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);
       CREATE INDEX IF NOT EXISTS dots_schedules_due ON dots_schedules(owner,enabled,next_run_at);
@@ -46,11 +46,11 @@ export class DotsSchedules {
     this.timer=pollMs>0?setInterval(()=>void this.tick().catch(()=>{}),pollMs):null;this.timer?.unref();
   }
   close(){if(this.timer!==null)clearInterval(this.timer);}
-  public(row){return {id:row.id,title:row.title,instruction:row.instruction,enabled:Boolean(row.enabled),repeat:row.repeat,time:row.time,timezone:row.timezone,startDate:row.start_date,endDate:row.end_date,nextRunAt:row.next_run_at,lastRunAt:row.last_run_at,lastTaskId:row.last_task_id,revision:row.revision,createdAt:row.created_at,updatedAt:row.updated_at,status:row.enabled?'active':'paused'};}
-  row(owner,id){this.adapter.authorize(owner);if(typeof id!=='string'||!/^[0-9a-f-]{36}$/i.test(id))throw fail('定时任务不存在',404);const row=this.db.prepare('SELECT * FROM dots_schedules WHERE owner=? AND id=?').get(owner,id);if(!row)throw fail('定时任务不存在',404);return row;}
-  get(owner,id){return {ok:true,schedule:this.public(this.row(owner,id))};}
-  list(owner){this.adapter.authorize(owner);return {ok:true,schedules:this.db.prepare('SELECT * FROM dots_schedules WHERE owner=? ORDER BY updated_at DESC LIMIT 500').all(owner).map(row=>this.public(row)),scheduler:{available:true,durable:true,transport:'server',pollIntervalMs:15000,managerPauseBlocksRuns:true,missedRuns:'one-catch-up-run'}};}
-  validate(input,prior: ReturnType<DotsSchedules['public']> | null=null){
+  public(row: any){return {id:row.id,title:row.title,instruction:row.instruction,enabled:Boolean(row.enabled),repeat:row.repeat,time:row.time,timezone:row.timezone,startDate:row.start_date,endDate:row.end_date,nextRunAt:row.next_run_at,lastRunAt:row.last_run_at,lastTaskId:row.last_task_id,revision:row.revision,createdAt:row.created_at,updatedAt:row.updated_at,status:row.enabled?'active':'paused'};}
+  row(owner: any,id: any){this.adapter.authorize(owner);if(typeof id!=='string'||!/^[0-9a-f-]{36}$/i.test(id))throw fail('定时任务不存在',404);const row=this.db.prepare('SELECT * FROM dots_schedules WHERE owner=? AND id=?').get(owner,id);if(!row)throw fail('定时任务不存在',404);return row;}
+  get(owner: any,id: any){return {ok:true,schedule:this.public(this.row(owner,id))};}
+  list(owner: any){this.adapter.authorize(owner);return {ok:true,schedules:this.db.prepare('SELECT * FROM dots_schedules WHERE owner=? ORDER BY updated_at DESC LIMIT 500').all(owner).map(row=>this.public(row)),scheduler:{available:true,durable:true,transport:'server',pollIntervalMs:15000,managerPauseBlocksRuns:true,missedRuns:'one-catch-up-run'}};}
+  validate(input: any,prior: ReturnType<DotsSchedules['public']> | null=null){
     if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(k=>!['requestId','title','instruction','enabled','repeat','time','timezone','startDate','endDate'].includes(k)))throw fail('定时任务包含不支持的字段');
     const timezone=input.timezone??prior?.timezone??'Asia/Shanghai';
     try{if(typeof timezone!=='string'||timezone.length>100)throw new Error();new Intl.DateTimeFormat('en',{timeZone:timezone});}catch{throw fail('时区无效');}
@@ -60,8 +60,8 @@ export class DotsSchedules {
     if(!validDate(value.startDate)||value.endDate!==null&&(!validDate(value.endDate)||value.endDate<value.startDate))throw fail('开始或结束日期无效');
     return value;
   }
-  emit(owner,schedule,requestId){this.adapter.publish(this.adapter.store.append(owner,0,'schedule',{schedule},'schedule:'+owner+':'+requestId),owner);}
-  commitMutation(owner,requestId,change){
+  emit(owner: any,schedule: any,requestId: any){this.adapter.publish(this.adapter.store.append(owner,0,'schedule',{schedule},'schedule:'+owner+':'+requestId),owner);}
+  commitMutation(owner: any,requestId: any,change: any){
     let event;
     const response=this.adapter.store.transaction(()=>{
       const result=change();
@@ -75,7 +75,7 @@ export class DotsSchedules {
     this.adapter.publish(event,owner);
     return response;
   }
-  async create(owner,input){
+  async create(owner: any,input: any){
     this.adapter.authorize(owner);const value=this.validate(input);
     return this.adapter.mutation(owner,input.requestId,'schedule:create',value,()=>this.commitMutation(owner,input.requestId,()=>{
       const id=randomUUID(),timestamp=this.now(),next=nextScheduleRun(value,timestamp-1);if(value.enabled&&!next)throw fail('执行时间已过去，请选择未来的时间');
@@ -83,7 +83,7 @@ export class DotsSchedules {
       return this.get(owner,id);
     }),{replaySafe:true});
   }
-  async update(owner,id,input){
+  async update(owner: any,id: any,input: any){
     const current=this.public(this.row(owner,id)),value=this.validate(input,current);
     return this.adapter.mutation(owner,input.requestId,'schedule:update:'+id,value,()=>this.commitMutation(owner,input.requestId,()=>{
       const next=nextScheduleRun(value,this.now()-1);if(value.enabled&&!next)throw fail('执行时间已过去，请选择未来的时间');
@@ -91,7 +91,7 @@ export class DotsSchedules {
       return this.get(owner,id);
     }),{replaySafe:true});
   }
-  async control(owner,id,input){
+  async control(owner: any,id: any,input: any){
     this.adapter.authorize(owner);if(!input||Object.keys(input).some(k=>!['requestId','action'].includes(k))||!['pause','resume','cancel'].includes(input.action))throw fail('定时任务操作无效');
     if(input.action==='cancel')return this.adapter.mutation(owner,input.requestId,'schedule:cancel:'+id,{},()=>this.commitMutation(owner,input.requestId,()=>{this.row(owner,id);this.db.prepare('DELETE FROM dots_schedules WHERE owner=? AND id=?').run(owner,id);return {ok:true,id,deleted:true};}),{replaySafe:true});
     return this.update(owner,id,{requestId:input.requestId,enabled:input.action==='resume'});

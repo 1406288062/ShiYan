@@ -1,10 +1,10 @@
 import test from 'node:test';import assert from 'node:assert/strict';import http from 'node:http';
 process.env.SHIYAN_GATEWAY_NO_LISTEN='1';
 const {createMemberGateway}=await import('./member-gateway.ts');
-const listen=server=>new Promise<number>(resolve=>server.listen(0,'127.0.0.1',()=>resolve((server.address() as any).port)));
-const close=server=>new Promise(resolve=>{server.closeAllConnections();server.close(resolve);});
+const listen=(server: any)=>new Promise<number>(resolve=>server.listen(0,'127.0.0.1',()=>resolve((server.address() as any).port)));
+const close=(server: any)=>new Promise(resolve=>{server.closeAllConnections();server.close(resolve);});
 test('gateway routes authenticated members to isolated execution and preserves streamed responses',async()=>{
-  const destination=label=>http.createServer((req,res)=>{res.writeHead(200,{'Content-Type':'text/event-stream'});res.write('data: '+JSON.stringify({label,url:req.url,spoof:req.headers['x-shiyan-owner']||null})+'\n\n');setImmediate(()=>res.end('data: done\n\n'));});
+  const destination=(label: any)=>http.createServer((req,res)=>{res.writeHead(200,{'Content-Type':'text/event-stream'});res.write('data: '+JSON.stringify({label,url:req.url,spoof:req.headers['x-shiyan-owner']||null})+'\n\n');setImmediate(()=>res.end('data: done\n\n'));});
   const admin=destination('admin'),member=destination('member');let calls=0;
   const gateway=createMemberGateway({adminPort:await listen(admin),memberPort:await listen(member),authenticate:req=>{calls++;return req.headers.authorization==='Bearer ordinary'?{role:'user',serverAccess:false}:{role:'admin',serverAccess:true};}});
   try{
@@ -17,7 +17,7 @@ test('gateway routes authenticated members to isolated execution and preserves s
 });
 
 test('Sponge connection routes use the isolated destination for every account without matching adjacent names',async()=>{
-  const destination=label=>http.createServer((req,res)=>{res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({label,url:req.url,owner:req.headers['x-shiyan-owner']||null,dotsOwner:req.headers['x-dots-owner']||null}));});
+  const destination=(label: any)=>http.createServer((req,res)=>{res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({label,url:req.url,owner:req.headers['x-shiyan-owner']||null,dotsOwner:req.headers['x-dots-owner']||null}));});
   const admin=destination('admin'),member=destination('member');let authCalls=0;
   const gateway=createMemberGateway({adminPort:await listen(admin),memberPort:await listen(member),authenticate:req=>{authCalls++;return req.headers.authorization==='Bearer ordinary'?{role:'user',serverAccess:false}:{role:'admin',serverAccess:true};}});
   try{

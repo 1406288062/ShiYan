@@ -5,8 +5,8 @@ import {mkdtemp,rm} from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import {once} from 'node:events';
-const listen=server=>new Promise(resolve=>server.listen(0,'127.0.0.1',()=>resolve(server.address().port)));
-const close=server=>new Promise(resolve=>{server.closeAllConnections();server.close(resolve);});
+const listen=(server: any)=>new Promise(resolve=>server.listen(0,'127.0.0.1',()=>resolve(server.address().port)));
+const close=(server: any)=>new Promise(resolve=>{server.closeAllConnections();server.close(resolve);});
 
 test('runtime mounts Sponge only after real account authentication and keeps owner/session identity server-derived',async t=>{
  const root=await mkdtemp(path.join(os.tmpdir(),'shiyan-sponge-routes-'));
@@ -29,7 +29,7 @@ test('runtime mounts Sponge only after real account authentication and keeps own
  const other=await store.register({username:'route_other',password:'route-password'});
  const {createServer}=await import('./server.ts');const runtime=createServer();const base='http://127.0.0.1:'+await listen(runtime);
  t.after(async()=>{await Promise.all([close(runtime),close(connector)]);store.close();await rm(root,{recursive:true,force:true});});
- const request=(route,token,{method='GET',body}: {method?: string; body?: any}={})=>fetch(base+route,{method,headers:{...(token?{Authorization:'Bearer '+token}:{}),...(body===undefined?{}:{'Content-Type':'application/json'}),'x-shiyan-owner':'spoofed-admin','x-dots-owner':'spoofed-admin'},...(body===undefined?{}:{body:JSON.stringify(body)})});
+ const request=(route: any,token: any,{method='GET',body}: {method?: string; body?: any}={})=>fetch(base+route,{method,headers:{...(token?{Authorization:'Bearer '+token}:{}),...(body===undefined?{}:{'Content-Type':'application/json'}),'x-shiyan-owner':'spoofed-admin','x-dots-owner':'spoofed-admin'},...(body===undefined?{}:{body:JSON.stringify(body)})});
  for(const prefix of ['/v1','/shiyan/v1']){
   const before=calls.length;
   for(const token of [undefined,'invalid-session'])assert.equal((await request(prefix+'/integrations/sponge/status',token)).status,401);

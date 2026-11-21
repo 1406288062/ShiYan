@@ -9,14 +9,14 @@ export function transcriptText(history: any[] = [], { limit = 40, perItem = 2000
 }
 
 // 每轮完成后追加，供之后切换模型提供方时使用；长度受限，避免运行状态文件膨胀。
-export function appendTranscript(transcript, prompt, text, { keep = 20, perItem = 8000 } = {}) {
+export function appendTranscript(transcript: any, prompt: any, text: any, { keep = 20, perItem = 8000 } = {}) {
   return [...(Array.isArray(transcript) ? transcript : []),
     { role: 'user', text: String(prompt || '').slice(0, perItem) },
     { role: 'assistant', text: String(text || '').slice(0, perItem) }].slice(-keep);
 }
 
 // 编辑分支：只保留被保留的用户消息及其回复。
-export function retainTranscript(transcript, retainedPrompts: any[] = []) {
+export function retainTranscript(transcript: any, retainedPrompts: any[] = []) {
   const wanted = new Map();
   for (const prompt of retainedPrompts) wanted.set(String(prompt).slice(0, 8000), (wanted.get(String(prompt).slice(0, 8000)) || 0) + 1);
   const out: any[] = []; let keeping = false;

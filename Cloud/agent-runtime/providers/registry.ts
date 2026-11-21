@@ -6,9 +6,9 @@ const cache = new Map(); // id -> {models, checkedAt, error}
 const inflight = new Map();
 const TTL = Number(process.env.SHIYAN_MODEL_CATALOG_TTL_MS || 300000);
 const LIST_TIMEOUT = Number(process.env.SHIYAN_MODEL_LIST_TIMEOUT_MS || 30000);
-const fail = (message, status = 400) => Object.assign(new Error(message), { status });
+const fail = (message: any, status = 400) => Object.assign(new Error(message), { status });
 
-export function registerProvider(provider) {
+export function registerProvider(provider: any) {
   if (!provider || typeof provider.id !== 'string' || !/^[a-z][a-z0-9-]{1,31}$/.test(provider.id)) throw new Error('provider id 无效');
   for (const key of ['listModels', 'runTurn', 'runIsolatedJob']) if (typeof provider[key] !== 'function') throw new Error(`provider ${provider.id} 缺少 ${key}`);
   if (provider.infer !== undefined && typeof provider.infer !== 'function') throw new Error(`provider ${provider.id} 的 infer 必须是函数`);
@@ -16,22 +16,22 @@ export function registerProvider(provider) {
   providers.set(provider.id, provider);
   return provider;
 }
-export function unregisterProvider(id) { providers.delete(id); cache.delete(id); inflight.delete(id); }
+export function unregisterProvider(id: any) { providers.delete(id); cache.delete(id); inflight.delete(id); }
 export function listProviders() { return [...providers.values()]; }
-export function getProvider(id) {
+export function getProvider(id: any) {
   const provider = providers.get(id);
   if (!provider) throw fail('所选模型的服务暂不可用', 503);
   return provider;
 }
 
-const withTimeout = (promise, ms, message) => new Promise((resolve, reject) => {
+const withTimeout = (promise: any, ms: any, message: any) => new Promise((resolve, reject) => {
   const timer = setTimeout(() => reject(new Error(message)), ms); timer.unref?.();
-  promise.then(value => { clearTimeout(timer); resolve(value); }, error => { clearTimeout(timer); reject(error); });
+  promise.then((value: any) => { clearTimeout(timer); resolve(value); }, (error: any) => { clearTimeout(timer); reject(error); });
 });
 
-export function normalizeModel(provider, model) {
+export function normalizeModel(provider: any, model: any) {
   if (!model || typeof model.id !== 'string' || !model.id.trim()) return null;
-  const levels = (Array.isArray(model.reasoningEfforts) ? model.reasoningEfforts : []).filter(x => typeof x === 'string' && x);
+  const levels = (Array.isArray(model.reasoningEfforts) ? model.reasoningEfforts : []).filter((x: any) => typeof x === 'string' && x);
   if (!levels.length || !levels.includes(model.defaultReasoning)) return null;
   return {
     id: model.id, displayName: typeof model.displayName === 'string' && model.displayName ? model.displayName : model.id,
@@ -41,7 +41,7 @@ export function normalizeModel(provider, model) {
   };
 }
 
-async function loadProvider(provider, force) {
+async function loadProvider(provider: any, force: any) {
   const entry = cache.get(provider.id);
   if (!force && entry && Date.now() - entry.checkedAt < TTL) return entry;
   if (inflight.has(provider.id)) return inflight.get(provider.id);
@@ -91,8 +91,8 @@ export function verifiedCatalog() {
   return out;
 }
 
-export function modelEntry(modelId) { return verifiedCatalog().find(m => m.id === modelId) || null; }
-export function providerForModel(modelId) {
+export function modelEntry(modelId: any) { return verifiedCatalog().find(m => m.id === modelId) || null; }
+export function providerForModel(modelId: any) {
   const model = modelEntry(modelId);
   if (!model) throw fail('当前服务不支持所选模型', 400);
   return getProvider(model.provider);

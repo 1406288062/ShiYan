@@ -11,8 +11,8 @@ import { resolveSandboxDestination } from './member-sandbox.ts';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 export const REDIRECT_URI = process.env.SHIYAN_MCP_REDIRECT_URI || 'https://hub.yandot.ai/oauth/mcp/callback';
-const fail = (message, status = 400) => Object.assign(new Error(message), { status });
-const b64url = buf => Buffer.from(buf).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const fail = (message: any, status = 400) => Object.assign(new Error(message), { status });
+const b64url = (buf: any) => Buffer.from(buf).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const now = () => Date.now();
 const MAX_PER_OWNER = 30, PENDING_TTL = 15 * 60_000;
 
@@ -34,27 +34,27 @@ export const MCP_CATALOG = [
   { id: 'kuaidi100', name: '快递100', category: '物流与生活', url: 'https://api.kuaidi100.com/mcp/streamable', auth: 'token', tokenParam: 'key', summary: '查快递、物流轨迹和寄件时效', tokenHint: '在快递100 API 开放平台（api.kuaidi100.com）注册后，在「我的信息」里复制授权 Key', abilities: ["输入单号查快递物流轨迹", "估算寄件时效和运费"], example: "帮我查一下这个快递单号到哪了：SF1234567890", howto: "需要快递100的授权 Key。获取方法：在 api.kuaidi100.com 注册并登录 › 管理后台 › 我的信息，复制「授权 key」粘贴到这里。Key 是服务商发给你的一串字符，相当于让 Dots 代表你使用这个服务的通行证。它只保存在拾燕服务器上，不会出现在对话里；断开连接时一并删除。" },
   { id: 'fliggy', name: '飞猪旅行', category: '出行与生活', url: 'https://flyai.open.fliggy.com/mcp', auth: 'token', summary: '机票、酒店、景点门票和行程', tokenHint: '在飞猪 AI 开放平台（flyai.open.fliggy.com）创建应用后获取 API Key', abilities: ["查机票、酒店、景点门票的价格和余票", "帮你比价、规划出行行程"], example: "下周五北京到成都的机票哪班最便宜？", howto: "需要飞猪 AI 开放平台的 API Key。获取方法：登录 flyai.open.fliggy.com › 创建应用 › 复制 API Key 粘贴到这里。Key 是服务商发给你的一串字符，相当于让 Dots 代表你使用这个服务的通行证。它只保存在拾燕服务器上，不会出现在对话里；断开连接时一并删除。" },
 ];
-const catalogEntry = id => MCP_CATALOG.find(c => c.id === id);
+const catalogEntry = (id: any) => MCP_CATALOG.find(c => c.id === id);
 // 令牌放在地址参数里的服务（高德、百度等）：保存的地址不含令牌，请求时再拼上。
-const endpointFor = c => { if (c.auth?.type !== 'query') return c.url; const u = new URL(c.url); u.searchParams.set(c.auth.param, c.auth.token); return u.toString(); };
+const endpointFor = (c: any) => { if (c.auth?.type !== 'query') return c.url; const u = new URL(c.url); u.searchParams.set(c.auth.param, c.auth.token); return u.toString(); };
 
-function checkURL(value) {
+function checkURL(value: any) {
   let u; try { u = new URL(String(value || '').trim()); } catch { throw fail('MCP 地址无效'); }
   if (u.protocol !== 'https:') throw fail('只支持 https 地址');
   if (u.username || u.password) throw fail('MCP 地址不能包含账号密码');
   return u;
 }
-async function safeFetch(url, init = {}, timeout = 20_000) {
+async function safeFetch(url: any, init = {}, timeout = 20_000) {
   const u = checkURL(url);
   await resolveSandboxDestination(u.hostname); // 只允许公网地址
   return fetch(u, { ...init, redirect: 'manual', signal: AbortSignal.timeout(timeout) });
 }
-async function getJSON(url): Promise<any> {
+async function getJSON(url: any): Promise<any> {
   try { const r = await safeFetch(url, { headers: { accept: 'application/json' } }, 12_000); return r.ok ? await r.json() : null; } catch { return null; }
 }
 
 // —— MCP（Streamable HTTP）请求 ——
-function parseBody(text, type) {
+function parseBody(text: any, type: any) {
   if (/event-stream/i.test(type || '')) {
     let found = null;
     for (const line of String(text).split('\n')) if (line.startsWith('data:')) { try { const v = JSON.parse(line.slice(5)); if (v && v.id !== undefined) found = v; } catch {} }
@@ -62,7 +62,7 @@ function parseBody(text, type) {
   }
   try { return JSON.parse(text); } catch { return null; }
 }
-async function rpc(url, headers, message, session = '') {
+async function rpc(url: any, headers: any, message: any, session = '') {
   const h = { 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18', ...headers };
   if (session) h['mcp-session-id'] = session;
   const r = await safeFetch(url, { method: 'POST', headers: h, body: JSON.stringify(message) }, 45_000);
@@ -70,10 +70,10 @@ async function rpc(url, headers, message, session = '') {
   if (text.length > 8 * 1024 * 1024) throw fail('MCP 返回内容过大', 502);
   return { status: r.status, www: r.headers.get('www-authenticate') || '', session: r.headers.get('mcp-session-id') || session || '', value: parseBody(text, r.headers.get('content-type')) };
 }
-async function openSseSession(url, headers) {
+async function openSseSession(url: any, headers: any) {
   const base = new URL(url);
   await resolveSandboxDestination(base.hostname);
-  const safeFetchImpl = async (input, init = {}) => {
+  const safeFetchImpl = async (input: any, init = {}) => {
     const target = new URL(input);
     checkURL(target.toString());
     await resolveSandboxDestination(target.hostname);
@@ -91,7 +91,7 @@ async function openSseSession(url, headers) {
     throw error;
   }
 }
-async function openSession(url, headers, transportType = 'streamable') {
+async function openSession(url: any, headers: any, transportType = 'streamable') {
   if (transportType === 'sse') {
     const opened = await openSseSession(url, headers);
     try { await opened.client.listTools(); return { session: 'sse' }; }
@@ -103,7 +103,7 @@ async function openSession(url, headers, transportType = 'streamable') {
   await rpc(url, headers, { jsonrpc: '2.0', method: 'notifications/initialized' }, init.session).catch(() => {});
   return { session: init.session };
 }
-export async function mcpCall(url, headers, method, params: any = {}, transportType = 'streamable') {
+export async function mcpCall(url: any, headers: any, method: any, params: any = {}, transportType = 'streamable') {
   if (transportType === 'sse') {
     const opened = await openSseSession(url, headers);
     try {
@@ -121,7 +121,7 @@ export async function mcpCall(url, headers, method, params: any = {}, transportT
 }
 
 // —— OAuth：受保护资源元数据 → 授权服务器元数据 → 动态注册 → PKCE ——
-async function discover(url, www) {
+async function discover(url: any, www: any) {
   const u = new URL(url), pathPart = u.pathname === '/' ? '' : u.pathname.replace(/\/$/, '');
   const hinted = /resource_metadata="([^"]+)"/.exec(www || '')?.[1];
   const prm = (hinted && await getJSON(hinted)) || await getJSON(u.origin + '/.well-known/oauth-protected-resource' + pathPart) || await getJSON(u.origin + '/.well-known/oauth-protected-resource');
@@ -133,7 +133,7 @@ async function discover(url, www) {
   const scope = (Array.isArray(prm?.scopes_supported) ? prm.scopes_supported.join(' ') : '') || /scope="([^"]+)"/.exec(www || '')?.[1] || '';
   return { resource: prm?.resource || url, issuer: meta.issuer || issuer, meta, scope };
 }
-async function tokenRequest(endpoint, client, form) {
+async function tokenRequest(endpoint: any, client: any, form: any) {
   const headers: Record<string, string> = { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' };
   const body = { ...form, client_id: client.client_id };
   if (client.client_secret) {
@@ -147,12 +147,12 @@ async function tokenRequest(endpoint, client, form) {
   return { access_token: data.access_token, refresh_token: data.refresh_token || form.refresh_token || null, expires_at: data.expires_in ? now() + Number(data.expires_in) * 1000 : null };
 }
 
-const html = (title, text, ok) => `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title>
+const html = (title: any, text: any, ok: any) => `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title>
 <style>body{font:16px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;background:#f7f7f8;color:#1d1d1f}main{max-width:360px;padding:32px;text-align:center}
 .i{width:56px;height:56px;border-radius:50%;display:grid;place-items:center;margin:0 auto 16px;color:#fff;font-size:28px;background:${ok ? '#34c759' : '#ff9f0a'}}h1{font-size:20px;margin:0 0 8px}p{color:#6e6e73;margin:0}</style></head>
 <body><main><div class="i">${ok ? '✓' : '!'}</div><h1>${title}</h1><p>${text}</p></main></body></html>`;
-const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' } as Record<string, string>)[c]);
-const slug = v => String(v || '').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+const esc = (v: any) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' } as Record<string, string>)[c]);
+const slug = (v: any) => String(v || '').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
 
 export function createMcpConnectors({ file = process.env.SHIYAN_MCP_DB || path.join(ROOT, 'data', 'mcp-connectors.sqlite3') } = {}) {
   mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
@@ -161,15 +161,15 @@ export function createMcpConnectors({ file = process.env.SHIYAN_MCP_DB || path.j
     CREATE TABLE IF NOT EXISTS connectors(owner TEXT NOT NULL,id TEXT NOT NULL,name TEXT NOT NULL,url TEXT NOT NULL,catalog_id TEXT,auth TEXT NOT NULL,state TEXT NOT NULL,error TEXT,tools TEXT,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,PRIMARY KEY(owner,id));
     CREATE TABLE IF NOT EXISTS oauth_pending(state TEXT PRIMARY KEY,owner TEXT NOT NULL,data TEXT NOT NULL,created_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS oauth_clients(key TEXT PRIMARY KEY,data TEXT NOT NULL,created_at INTEGER NOT NULL);`);
-  const row = (owner, id) => db.prepare('SELECT * FROM connectors WHERE owner=? AND id=?').get(owner, id);
-  const save = (owner, c) => db.prepare(`INSERT INTO connectors(owner,id,name,url,catalog_id,auth,state,error,tools,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)
+  const row = (owner: any, id: any) => db.prepare('SELECT * FROM connectors WHERE owner=? AND id=?').get(owner, id);
+  const save = (owner: any, c: any) => db.prepare(`INSERT INTO connectors(owner,id,name,url,catalog_id,auth,state,error,tools,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)
     ON CONFLICT(owner,id) DO UPDATE SET name=excluded.name,url=excluded.url,catalog_id=excluded.catalog_id,auth=excluded.auth,state=excluded.state,error=excluded.error,tools=excluded.tools,updated_at=excluded.updated_at`)
     .run(owner, c.id, c.name, c.url, c.catalogId || null, JSON.stringify(c.auth || { type: 'none' }), c.state, c.error || null, JSON.stringify(c.tools || []), c.createdAt || now(), now());
-  const decode = r => ({ id: r.id, name: r.name, url: r.url, catalogId: r.catalog_id, transport: catalogEntry(r.catalog_id)?.transport || 'streamable', auth: JSON.parse(r.auth), state: r.state, error: r.error, tools: JSON.parse(r.tools || '[]'), createdAt: r.created_at, updatedAt: r.updated_at });
-  const present = c => ({ id: c.id, name: c.name, url: c.url, catalogId: c.catalogId || null, state: c.state, error: c.error || '', authType: c.auth?.type || 'none',
+  const decode = (r: any) => ({ id: r.id, name: r.name, url: r.url, catalogId: r.catalog_id, transport: catalogEntry(r.catalog_id)?.transport || 'streamable', auth: JSON.parse(r.auth), state: r.state, error: r.error, tools: JSON.parse(r.tools || '[]'), createdAt: r.created_at, updatedAt: r.updated_at });
+  const present = (c: any) => ({ id: c.id, name: c.name, url: c.url, catalogId: c.catalogId || null, state: c.state, error: c.error || '', authType: c.auth?.type || 'none',
     tools: (c.tools || []).slice(0, 60), toolCount: (c.tools || []).length, updatedAt: c.updatedAt });
 
-  async function headersFor(owner, c) {
+  async function headersFor(owner: any, c: any) {
     const auth = c.auth || {};
     if (auth.type === 'bearer') return { authorization: 'Bearer ' + auth.token };
     if (auth.type === 'query') return {};
@@ -182,14 +182,14 @@ export function createMcpConnectors({ file = process.env.SHIYAN_MCP_DB || path.j
     }
     return { authorization: 'Bearer ' + auth.token.access_token };
   }
-  async function refreshTools(owner, c) {
+  async function refreshTools(owner: any, c: any) {
     try {
       const result = await mcpCall(endpointFor(c), await headersFor(owner, c), 'tools/list', {}, c.transport || 'streamable');
-      c.tools = (result?.tools || []).slice(0, 200).map(t => String(t.name || '')).filter(Boolean); c.state = 'connected'; c.error = '';
+      c.tools = (result?.tools || []).slice(0, 200).map((t: any) => String(t.name || '')).filter(Boolean); c.state = 'connected'; c.error = '';
     } catch (error) { c.state = 'error'; c.error = String((error as any).message || error).slice(0, 200); }
     save(owner, c); return c;
   }
-  async function client(d) {
+  async function client(d: any) {
     const key = d.issuer + '|' + REDIRECT_URI, existing = db.prepare('SELECT data FROM oauth_clients WHERE key=?').get(key);
     if (existing) return JSON.parse(String(existing.data));
     if (!d.meta.registration_endpoint) throw fail('这个服务不支持自动连接，请填写访问令牌');
@@ -203,7 +203,7 @@ export function createMcpConnectors({ file = process.env.SHIYAN_MCP_DB || path.j
   }
 
   return {
-    list(owner) {
+    list(owner: any) {
       const own = db.prepare('SELECT * FROM connectors WHERE owner=? ORDER BY created_at').all(owner).map(decode);
       const byCatalog = new Map(own.filter(c => c.catalogId).map(c => [c.catalogId, c]));
       return {
@@ -211,7 +211,7 @@ export function createMcpConnectors({ file = process.env.SHIYAN_MCP_DB || path.j
         custom: own.filter(c => !c.catalogId || !catalogEntry(c.catalogId)).map(present),
       };
     },
-    async connect(owner, input: any = {}) {
+    async connect(owner: any, input: any = {}) {
       const entry = input.catalogId ? catalogEntry(String(input.catalogId)) : null;
       if (input.catalogId && !entry) throw fail('不支持的插件');
       const url = checkURL(entry ? entry.url : input.url).toString();
@@ -246,7 +246,7 @@ export function createMcpConnectors({ file = process.env.SHIYAN_MCP_DB || path.j
       return { ok: true, state: 'authorizing', authorizeUrl: d.meta.authorization_endpoint + (d.meta.authorization_endpoint.includes('?') ? '&' : '?') + q };
     },
     // 浏览器从授权页跳回：用授权码换令牌，保存后返回一个提示页面。
-    async callback(params) {
+    async callback(params: any) {
       const state = String(params.get('state') || ''), pending = state && db.prepare('SELECT * FROM oauth_pending WHERE state=?').get(state);
       if (!pending || now() - Number(pending.created_at) > PENDING_TTL) return { status: 400, html: html('授权已过期', '请回到拾燕的连接器里重新连接。', false) };
       db.prepare('DELETE FROM oauth_pending WHERE state=?').run(state);
@@ -265,21 +265,21 @@ export function createMcpConnectors({ file = process.env.SHIYAN_MCP_DB || path.j
         return { status: 502, html: html('没有完成授权', esc((error as any).message || '请稍后重试。'), false) };
       }
     },
-    async refresh(owner, id) { const r = row(owner, String(id)); if (!r) throw fail('连接不存在', 404); return { ok: true, connector: present(await refreshTools(owner, decode(r))) }; },
-    remove(owner, id) { db.prepare('DELETE FROM connectors WHERE owner=? AND id=?').run(owner, String(id)); return { ok: true }; },
+    async refresh(owner: any, id: any) { const r = row(owner, String(id)); if (!r) throw fail('连接不存在', 404); return { ok: true, connector: present(await refreshTools(owner, decode(r))) }; },
+    remove(owner: any, id: any) { db.prepare('DELETE FROM connectors WHERE owner=? AND id=?').run(owner, String(id)); return { ok: true }; },
     // 运行时：当前账号已连接的 MCP 及请求头（必要时先刷新令牌）。
-    async runtimeServers(owner) {
+    async runtimeServers(owner: any) {
       const out: Array<{id: any; name: any; url: string; headers: any; transport: string; tools: any}> = [];
       for (const c of db.prepare("SELECT * FROM connectors WHERE owner=? AND state='connected'").all(owner).map(decode)) {
         try { out.push({ id: c.id, name: c.name, url: endpointFor(c), headers: await headersFor(owner, c), transport: c.transport || 'streamable', tools: c.tools }); } catch {}
       }
       return out;
     },
-    async call(owner, id, method, params) {
+    async call(owner: any, id: any, method: any, params: any) {
       const r = row(owner, String(id)); if (!r) throw fail('当前账号没有这个连接', 404);
       const c = decode(r); return await mcpCall(endpointFor(c), await headersFor(owner, c), method, params, c.transport || 'streamable');
     },
-    has(owner, id) { return Boolean(row(owner, String(id))); },
+    has(owner: any, id: any) { return Boolean(row(owner, String(id))); },
   };
 }
 let shared: any = null;

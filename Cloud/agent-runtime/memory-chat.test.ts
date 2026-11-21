@@ -6,9 +6,9 @@ function fixture(){
   const reads: any[]=[],contexts: any[]=[],captures: any[]=[],warnings: any[]=[];
   const state={conversations:{c:{id:'conversation',owner:'owner'}}};
   const records=new Map([['conversations:conversation',{data:{projectId:'project'}}],['projects:project',{data:{id:'project'}}]]);
-  const syncStore={get(owner,kind,id){reads.push({owner,kind,id});return records.get(kind+':'+id);}};
-  const memory={context(owner,input){contexts.push({owner,input});return 'REMEMBERED_CONTEXT';},enqueue(input){captures.push(input);return true;}};
-  const bridge=createChatMemory(memory,{state,syncStore,logger:{warn:x=>warnings.push(x)}});
+  const syncStore={get(owner: any,kind: any,id: any){reads.push({owner,kind,id});return records.get(kind+':'+id);}};
+  const memory={context(owner: any,input: any){contexts.push({owner,input});return 'REMEMBERED_CONTEXT';},enqueue(input: any){captures.push(input);return true;}};
+  const bridge=createChatMemory(memory,{state,syncStore,logger:{warn:(x: any)=>warnings.push(x)}});
   const job={id:'job',owner:'owner',conversationKey:'c',prompt:'请继续拾燕项目',text:'当前进展',status:'completed',createdAt:1000,projectId:'spoofed'};
   return {state,records,reads,memory,contexts,captures,warnings,bridge,job,syncStore};
 }

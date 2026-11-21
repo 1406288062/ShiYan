@@ -8,7 +8,7 @@ export async function refreshModels(){
   const child=spawn('/home/ubuntu/.local/bin/codex',['app-server'],{stdio:['pipe','pipe','ignore']});
   let text='',finished=false,requestId=2,models: any[]=[];
   const timer=setTimeout(()=>done(new Error('模型能力读取超时')),30000);
-  const send=v=>{
+  const send=(v: any)=>{
    if(finished||!child.stdin.writable)return;
    child.stdin.write(JSON.stringify(v)+'\n',error=>{
     if(error&&!finished){
@@ -29,7 +29,7 @@ export async function refreshModels(){
     if(value.error){done(new Error(value.error.message||'模型能力读取失败'));return;}
     if(value.id===1){send({method:'initialized'});send({id:requestId,method:'model/list',params:{includeHidden:false}});}
     if(value.id===requestId&&value.result){
-     for(const m of value.result.data||[]){const levels=(m.supportedReasoningEfforts||[]).map(x=>x.reasoningEffort);if(m.hidden||!levels.length||!levels.includes(m.defaultReasoningEffort))continue;models.push({id:m.model||m.id,displayName:m.displayName,reasoningEfforts:levels,defaultReasoning:m.defaultReasoningEffort});}
+     for(const m of value.result.data||[]){const levels=(m.supportedReasoningEfforts||[]).map((x: any)=>x.reasoningEffort);if(m.hidden||!levels.length||!levels.includes(m.defaultReasoningEffort))continue;models.push({id:m.model||m.id,displayName:m.displayName,reasoningEfforts:levels,defaultReasoning:m.defaultReasoningEffort});}
      if(value.result.nextCursor){requestId++;send({id:requestId,method:'model/list',params:{includeHidden:false,cursor:value.result.nextCursor}});}
      else if(!models.length)done(new Error('未返回可用模型'));else done();
     }

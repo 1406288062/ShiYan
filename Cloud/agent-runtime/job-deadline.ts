@@ -5,7 +5,7 @@ const DEFAULT_IDLE_MS = 15 * 60 * 1000;
 const DEFAULT_RUNTIME_MS = 0;
 const MAX_TIMER_MS = 2 ** 31 - 1;
 
-function timeoutValue(value, fallback) {
+function timeoutValue(value: any, fallback: any) {
   const number = Number(value);
   return Number.isSafeInteger(number) && number > 0 && number <= MAX_TIMER_MS ? number : fallback;
 }
@@ -15,7 +15,7 @@ export function jobTimeouts(environment = process.env) {
     maxRuntimeMs: timeoutValue(environment.SHIYAN_JOB_MAX_RUNTIME_MS, DEFAULT_RUNTIME_MS) };
 }
 
-function duration(value) {
+function duration(value: any) {
   if (value % 3600000 === 0) return `${value / 3600000} 小时`;
   if (value >= 60000) return `${Math.ceil(value / 60000)} 分钟`;
   return `${Math.ceil(value / 1000)} 秒`;
@@ -26,9 +26,9 @@ export function createJobDeadline({ idleTimeoutMs = DEFAULT_IDLE_MS, maxRuntimeM
   onExpire, schedule = setTimeout, unschedule = clearTimeout }: JobDeadlineOptions = {}) {
   idleTimeoutMs = timeoutValue(idleTimeoutMs, DEFAULT_IDLE_MS);
   maxRuntimeMs = timeoutValue(maxRuntimeMs, DEFAULT_RUNTIME_MS);
-  let idleTimer, runtimeTimer, expiration: any = null, disposed = false;
+  let idleTimer: any, runtimeTimer: any, expiration: any = null, disposed = false;
   function clear() { unschedule(idleTimer); unschedule(runtimeTimer); }
-  function expire(kind, limit) {
+  function expire(kind: any, limit: any) {
     if (expiration || disposed) return;
     const error = new Error(kind === 'idle'
       ? `任务连续 ${duration(limit)} 没有新进展，处理已超时，请重试。`
@@ -54,7 +54,7 @@ export function createJobDeadline({ idleTimeoutMs = DEFAULT_IDLE_MS, maxRuntimeM
 }
 
 interface JobFailureOptions { expiration?: any; cancelRequested?: boolean; }
-export function jobFailure(error, { expiration, cancelRequested = false }: JobFailureOptions = {}) {
+export function jobFailure(error: any, { expiration, cancelRequested = false }: JobFailureOptions = {}) {
   if (cancelRequested) return { status: 'cancelled', error: '已停止处理' };
   if (expiration) return { status: 'failed', error: expiration.error.message };
   const message = String(error?.message || error);

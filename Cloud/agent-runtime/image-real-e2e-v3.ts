@@ -7,23 +7,23 @@ const file=new URL('./devices.json',import.meta.url);
 const stateFile=new URL('./data/state.json',import.meta.url);
 const report: any[]=[];
 const load=()=>JSON.parse(readFileSync(file,'utf8'));
-const save=o=>{const tmp=file.pathname+'.v3-qa-tmp';writeFileSync(tmp,JSON.stringify(o),{mode:0o600});renameSync(tmp,file.pathname)};
+const save=(o: any)=>{const tmp=file.pathname+'.v3-qa-tmp';writeFileSync(tmp,JSON.stringify(o),{mode:0o600});renameSync(tmp,file.pathname)};
 const {privateKey,publicKey}=generateKeyPairSync('ed25519');
 const raw=publicKey.export({format:'der',type:'spki'}).subarray(-32);
-const sha=v=>createHash('sha256').update(v).digest('hex');
+const sha=(v: any)=>createHash('sha256').update(v).digest('hex');
 const id=sha(raw),owner='shiyan-v3-qa-'+randomUUID();
 const base='http://127.0.0.1:4323/shiyan/v1/';
-function signed(method,route,obj?: any){
+function signed(method: any,route: any,obj?: any){
  const data=obj===undefined?'':JSON.stringify(obj),time=String(Date.now()),nonce=randomUUID(),hash=sha(data);
  return {method,headers:{'Content-Type':'application/json','X-Shiyan-Device':id,'X-Shiyan-Time':time,'X-Shiyan-Nonce':nonce,'X-Shiyan-Body-Sha':hash,'X-Shiyan-Signature':sign(null,Buffer.from([method,'/shiyan/v1/'+route,time,nonce,hash].join('\n')),privateKey).toString('base64')},body:data||undefined};
 }
-async function req(method,route,obj?: any){
+async function req(method: any,route: any,obj?: any){
  const res=await fetch(base+route,{...signed(method,route,obj),signal:AbortSignal.timeout(40000)});
  const body=await res.text();
  if(!res.ok)throw Error(method+' '+route+' '+res.status+' '+body.slice(0,250));
  return JSON.parse(body);
 }
-async function stream(job){
+async function stream(job: any){
  const route='jobs/'+job+'/events?after=0&transport=metadata',controller=new AbortController();
  const timeout=setTimeout(()=>controller.abort(),240000);
  let buf='',artifactCount=0,contradictoryAfterArtifact=0,terminal;
@@ -68,7 +68,7 @@ try {
    assert(wire.terminal,'missing terminal event');
    const snapshot=await req('GET','jobs/'+active);
    const item=JSON.parse(readFileSync(stateFile,'utf8')).jobs[active];
-   const count=(item.assets||[]).filter(a=>a.mimeType.startsWith('image/')&&a.sha256).length;
+   const count=(item.assets||[]).filter((a: any)=>a.mimeType.startsWith('image/')&&a.sha256).length;
    assert.equal(snapshot.status,wire.terminal.type,'status alignment');
    assert.equal(snapshot.text,wire.terminal.text||snapshot.text,'text alignment');
    assert.equal(wire.contradictoryAfterArtifact,0,'contradictory streaming AFTER confirmed image');

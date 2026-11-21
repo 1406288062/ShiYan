@@ -7,7 +7,7 @@ import { generatedOutputVisible, generatedPathVisible } from './generated-output
 import { SyncStore, jobMessageData } from './sync-store.ts';
 import { jobSnapshot } from './output-display.ts';
 
-const asset=filename=>({id:filename.replace(/\W/g,'_'),syncAssetId:filename.replace(/\W/g,'_'),filename,mimeType:'application/octet-stream',bytes:10});
+const asset=(filename: any)=>({id:filename.replace(/\W/g,'_'),syncAssetId:filename.replace(/\W/g,'_'),filename,mimeType:'application/octet-stream',bytes:10});
 
 test('generated transport and control directories never become deliverables even with document names',()=>{
   for(const file of ['/workspace/.shiyan/transport/snapshot.docx','/workspace/.shiyan/changes/result.pdf','/workspace/.git/report.pdf','/workspace/inputs/doc.docx','/workspace/outputs/.private.pdf'])assert.equal(generatedPathVisible(file),false,file);
@@ -23,7 +23,7 @@ test('document families and images survive but snapshots, source, archives and u
 test('job snapshots and authoritative assistant messages apply the same policy without changing user attachments',()=>{
   const assets=[asset('snapshot.b64'),asset('report.docx'),asset('photo.png')],job={id:'job',status:'completed',assets};
   assert.deepEqual(jobSnapshot(job).assets.map(a=>a.filename),['report.docx','photo.png']);
-  assert.deepEqual(jobMessageData(job,{role:'assistant'}).assets.map(a=>a.filename),['report.docx','photo.png']);
+  assert.deepEqual(jobMessageData(job,{role:'assistant'}).assets.map((a: any)=>a.filename),['report.docx','photo.png']);
   assert.deepEqual(jobMessageData(job,{role:'user',assets}).assets,assets);
 });
 test('legacy assistant helper cards create a fresh sync revision once; user uploads and on-disk assets remain unchanged',()=>{
@@ -34,7 +34,7 @@ test('legacy assistant helper cards create a fresh sync revision once; user uplo
     store.write('owner','messages','user',{id:'user',conversationId:'conversation',role:'user',assets});
     const cursor=store.list('owner').cursor;store.close();store=new SyncStore(root);
     assert.equal(store.get('owner','messages','assistant')!.revision,2);
-    assert.deepEqual(store.get('owner','messages','assistant')!.data.assets.map(a=>a.filename),['report.docx','photo.png']);
+    assert.deepEqual(store.get('owner','messages','assistant')!.data.assets.map((a: any)=>a.filename),['report.docx','photo.png']);
     assert.equal(store.get('owner','messages','assistant')!.data.text,'原文');
     assert.equal(store.get('owner','messages','user')!.revision,1);
     assert.deepEqual(store.get('owner','messages','user')!.data.assets,assets);
@@ -47,7 +47,7 @@ test('incoming assistant mutations cannot restore hidden attachments, while arbi
   try{
     const assets=[asset('snapshot.b64'),asset('document.docx')];
     for(const role of ['assistant','user'])store.putAuthoritative('owner','messages',role,{id:role,conversationId:'conversation',role,assets});
-    assert.deepEqual(store.get('owner','messages','assistant')!.data.assets.map(a=>a.filename),['document.docx']);
+    assert.deepEqual(store.get('owner','messages','assistant')!.data.assets.map((a: any)=>a.filename),['document.docx']);
     assert.equal(store.get('owner','messages','user')!.data.assets.length,2);
   }finally{store.close();rmSync(root,{recursive:true,force:true});}
 });
@@ -62,7 +62,7 @@ test('streamed startup migration preserves large execution archives and visits e
     for(let i=0;i<4;i++){
       const current=store.get('owner','messages','assistant-'+i)!;
       assert.equal(current.revision,2);assert.equal(current.data.rawResult,rawResult);assert.deepEqual(current.data.displayItems,displayItems);assert.equal(current.data.text,'原文'+i);
-      assert.deepEqual(current.data.assets.map(a=>a.filename),['report.docx']);
+      assert.deepEqual(current.data.assets.map((a: any)=>a.filename),['report.docx']);
     }
     assert.equal(store.get('owner','messages','empty')!.revision,1);
     assert.equal(store.get('owner','messages','empty')!.data.rawResult,rawResult);

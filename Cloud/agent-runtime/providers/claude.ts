@@ -49,8 +49,8 @@ export function claudeCredentialsConfigured(env = claudeEnv()) {
   return existsSync(path.join(env.CLAUDE_CONFIG_DIR || path.join(env.HOME || os.homedir(), '.claude'), '.credentials.json'));
 }
 
-export function effortOption(reasoning) { return reasoning && reasoning !== 'default' ? { effort: reasoning } : {}; }
-export function toCatalogModel(info) {
+export function effortOption(reasoning: any) { return reasoning && reasoning !== 'default' ? { effort: reasoning } : {}; }
+export function toCatalogModel(info: any) {
   if (!info || info.value === 'default') return null;
   const id = info.resolvedModel || info.value;
   if (typeof id !== 'string' || !id) return null;
@@ -77,13 +77,13 @@ function listModelsInChild(timeoutMs = 25000): Promise<any> {
   });
 }
 
-async function imageBlock(file) {
-  const type = IMAGE_TYPES[path.extname(file).toLowerCase()];
+async function imageBlock(file: any) {
+  const type = (IMAGE_TYPES as any)[path.extname(file).toLowerCase()];
   if (!type) return null;
   return { type: 'image', source: { type: 'base64', media_type: type, data: (await fs.readFile(file)).toString('base64') } };
 }
 // 统一输入（Codex UserInput：字符串或 text/local_image 数组）-> Claude content blocks。
-export async function claudeContent(input) {
+export async function claudeContent(input: any) {
   if (typeof input === 'string') return [{ type: 'text', text: input }];
   const blocks: any[] = [];
   for (const part of Array.isArray(input) ? input : []) {
@@ -111,7 +111,7 @@ export async function* streamClaude({ content, options, signal, isolatedServer, 
   const controller = new AbortController();
   const abort = () => controller.abort();
   signal?.addEventListener('abort', abort, { once: true });
-  let release; const done = new Promise(resolve => { release = resolve; });
+  let release: any; const done = new Promise(resolve => { release = resolve; });
   async function* prompt() { yield { type: 'user', message: { role: 'user', content }, parent_tool_use_id: null }; await done; }
   const mapper = createClaudeEventMapper({ isolatedServer });
   const q = query({ prompt: prompt(), options: { ...options, abortController: controller } });
@@ -128,19 +128,19 @@ export async function* streamClaude({ content, options, signal, isolatedServer, 
     if (signal?.aborted) throw signal.reason || error;
     throw new Error('Claude 处理失败：' + String((error as any)?.message || error).slice(0, 500));
   } finally {
-    release(); signal?.removeEventListener('abort', abort);
+    release?.(); signal?.removeEventListener('abort', abort);
     try { await q.return?.(); } catch {}
   }
 }
 
 // zod 形状由 MEMBER_AGENT_TOOLS 的 JSON Schema 生成：普通账号工具只维护一份定义。
-export function zodShape(z, parameters: any = {}) {
+export function zodShape(z: any, parameters: any = {}) {
   const shape = {}, required = new Set(parameters.required || []);
   for (const [key, spec] of Object.entries(parameters.properties || {}) as [string, any][]) {
     let field = spec.type === 'integer' ? z.number().int() : spec.type === 'number' ? z.number() : spec.type === 'boolean' ? z.boolean()
       : spec.type === 'object' ? z.record(z.string(), z.any()) : spec.type === 'array' ? z.array(z.any()) : z.string();
     if (spec.type === 'integer' || spec.type === 'number') { if (Number.isFinite(spec.minimum)) field = field.min(spec.minimum); if (Number.isFinite(spec.maximum)) field = field.max(spec.maximum); }
-    shape[key] = required.has(key) ? field : field.optional();
+    (shape as any)[key] = required.has(key) ? field : field.optional();
   }
   return shape;
 }
@@ -153,7 +153,7 @@ const INFER_SYSTEM = '你是拾燕的推理服务。只依据请求中提供的�
 const INFER_IMAGE_TYPES = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif' };
 
 // 运行一轮并收集文本与用量；无工具、不落盘会话。
-async function collectClaudeText({ content, options, signal, sdk }) {
+async function collectClaudeText({ content, options, signal, sdk }: any) {
   const texts: string[] = []; let usage = null;
   for await (const event of streamClaude({ content, options, signal, sdk })) {
     if (event.type === 'turn.failed') throw Object.assign(new Error(event.error?.message || 'Claude 处理失败'), { status: 503, code: 'provider_error' });
@@ -171,7 +171,7 @@ export async function inferClaude({ model, reasoning, prompt, images = [], schem
   const base = [transcriptText(history), String(prompt || '').trim(), schema ? schemaInstruction(schema) : ''].filter(Boolean).join('\n\n');
   const imageBlocks: any[] = [];
   for (const image of images) {
-    const media = INFER_IMAGE_TYPES[String(image?.suffix || '.png').toLowerCase()];
+    const media = (INFER_IMAGE_TYPES as any)[String(image?.suffix || '.png').toLowerCase()];
     if (media && image?.data) imageBlocks.push({ type: 'image', source: { type: 'base64', media_type: media, data: String(image.data) } });
   }
   if (!base && !imageBlocks.length) throw Object.assign(new Error('prompt or image is required'), { status: 400 });
@@ -212,10 +212,10 @@ export default {
   features: { images: true, files: true, imageGeneration: false },
   available: () => claudeCredentialsConfigured(),
   async listModels() { return (await listModelsInChild()).map(toCatalogModel).filter(Boolean); },
-  infer: params => inferClaude(params),
+  infer: (params: any) => inferClaude(params),
 
   // 管理员（服务器权限）：Claude Code 内置工具在会话工作区运行，等价于 Codex 的 danger-full-access。
-  async runTurn({ model, reasoning, cwd, resume, input, mcpServers, signal }) {
+  async runTurn({ model, reasoning, cwd, resume, input, mcpServers, signal }: any) {
     const content = await claudeContent(input);
     const options = {
       model, cwd, ...(resume ? { resume } : {}), ...effortOption(reasoning),
@@ -230,11 +230,11 @@ export default {
   },
 
   // 普通账号：禁用全部内置工具，只提供与 GPT 隔离路径相同的沙箱工具（经 SDK 进程内 MCP 调用 bwrap 沙箱）。
-  async runIsolatedJob(job, { history = [], memory = '', signal, onEvent = () => {}, onText = () => {}, onActivity = () => {}, root }: RunIsolatedJobOptions = {}) {
+  async runIsolatedJob(job: any, { history = [], memory = '', signal, onEvent = () => {}, onText = () => {}, onActivity = () => {}, root }: RunIsolatedJobOptions = {}) {
     const { owner, cwd, before, attachments } = await prepareIsolatedJob(job, { signal, root });
     const sdk = await loadClaudeSdk();
     const { z } = await import('zod');
-    const tools = MEMBER_AGENT_TOOLS.map(def => sdk.tool(def.name, def.description, zodShape(z, def.parameters), async args => {
+    const tools = MEMBER_AGENT_TOOLS.map(def => sdk.tool(def.name, def.description, zodShape(z, def.parameters), async (args: any) => {
       onActivity();
       try {
         const output = await executeMemberTool(owner, def.name, args || {}, { cwd, signal, root });

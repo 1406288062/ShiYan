@@ -7,8 +7,8 @@ import { AccountStore } from './accounts.ts';
 import { QRLogin } from './qr-login.ts';
 const root=mkdtempSync(path.join(os.tmpdir(),'shiyan-qr-'));
 test.after(()=>rmSync(root,{recursive:true,force:true}));
-async function setup(t){let now=Date.now();const store=new AccountStore(path.join(root,Math.random().toString()),{now:()=>now});t.after(()=>store.close());const phone=await store.register({email:'member@example.test',password:'test-password-only'});return {store,phone,qr:new QRLogin(store),advance:()=>now+=120001};}
-const scan=x=>({id:x.id,scanSecret:new URL(x.payload).searchParams.get('secret')});
+async function setup(t: any){let now=Date.now();const store=new AccountStore(path.join(root,Math.random().toString()),{now:()=>now});t.after(()=>store.close());const phone=await store.register({email:'member@example.test',password:'test-password-only'});return {store,phone,qr:new QRLogin(store),advance:()=>now+=120001};}
+const scan=(x: any)=>({id:x.id,scanSecret:new URL(x.payload).searchParams.get('secret')});
 test('scan cannot redeem; confirmation issues an independent same-user session once',async t=>{
  const {store,phone,qr}=await setup(t),c=qr.create(),auth=store.authenticate(phone.token);
  assert.equal(qr.preview(scan(c)).code,c.code);assert.equal(qr.poll({id:c.id,pollSecret:c.pollSecret}).state,'pending');
@@ -30,7 +30,7 @@ test('HTTP QR routes require phone authentication and ignore forged roles',async
  const {store,phone}=await setup(t);const handler=createAccountHandler({store});
  const server=http.createServer(async(req,res)=>{if(!await handler(req,res)){res.writeHead(404);res.end();}});
  await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',()=>resolve()));t.after(()=>new Promise(resolve=>server.close(resolve)));
- const post=async(route,body: any={},token?: any)=>{
+ const post=async(route: any,body: any={},token?: any)=>{
   const response=await fetch(`http://127.0.0.1:${(server.address() as any).port}/v1/auth/qr/${route}`,{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:JSON.stringify(body)});
   return {status:response.status,value:(await response.json()) as any};
  };

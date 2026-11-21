@@ -49,8 +49,8 @@ const ARTIFACTS = path.join(DATA, 'artifacts');
 const WORKSPACES = path.join(ROOT, 'workspaces');
 const GENERATED = path.join(os.homedir(), '.codex/generated_images');
 for (const dir of [DATA, ARTIFACTS, WORKSPACES]) mkdirSync(dir, {recursive:true,mode:0o700});
-const atomic = (file, value) => { const tmp=file+'.tmp'; writeFileSync(tmp,JSON.stringify(value),{mode:0o600}); renameSync(tmp,file); };
-const readJSON = (file, fallback) => {try {return JSON.parse(readFileSync(file,'utf8'));} catch {return fallback;}};
+const atomic = (file: any, value: any) => { const tmp=file+'.tmp'; writeFileSync(tmp,JSON.stringify(value),{mode:0o600}); renameSync(tmp,file); };
+const readJSON = (file: any, fallback: any) => {try {return JSON.parse(readFileSync(file,'utf8'));} catch {return fallback;}};
 const MEMBER_ONLY=process.env.SHIYAN_MEMBER_ONLY==='1';
 const {file:statePath,state}: any=loadRuntimeState({data:DATA,stateFile:process.env.SHIYAN_STATE_FILE,memberOnly:MEMBER_ONLY,access:accountAccess});
 for(const job of (Object.values(state.jobs) as any[]))job.assets=generatedOutputs(job.assets);
@@ -67,7 +67,7 @@ const codex = new Codex({codexPathOverride:'/home/ubuntu/.local/bin/codex'});
 const listeners=new Map(), controls=new Map(), queue: any[]=[];
 state.cancelledRequests ||= {}; // Tombstones cover cancel-before-submit races.
 let active=0;
-const diagnosticError=value=>value instanceof Error?(value.stack||value.message):String(value);
+const diagnosticError=(value: any)=>value instanceof Error?(value.stack||value.message):String(value);
 const listenerCount=()=>[...listeners.values()].reduce((sum,set)=>sum+set.size,0);
 process.on('uncaughtException',error=>{
   console.error('[FatalUncaughtException]',diagnosticError(error));
@@ -90,7 +90,7 @@ setInterval(()=>{
   console.log('[RuntimeHealth]','rssMB',Math.round(m.rss/1048576),'heapUsedMB',Math.round(m.heapUsed/1048576),'externalMB',Math.round(m.external/1048576),'active',active,'queued',queue.length,'listeners',listenerCount());
 },60000).unref();
 const PERSISTED_ACTIVE_EVENT_LIMIT=20;
-const compactJobForDisk=job=>{
+const compactJobForDisk=(job: any)=>{
   const copy={...job};
   const terminalForDisk=['completed','failed','cancelled','interrupted'].includes(copy.status);
   // Completed jobs recover from their final snapshot; replaying cumulative stream events after a restart only duplicates data.
@@ -108,10 +108,10 @@ const compactJobForDisk=job=>{
 const persistableState=()=>({...state,jobs:Object.fromEntries(Object.entries(state.jobs).map(([id,job])=>[id,compactJobForDisk(job)]))});
 const save=()=>atomic(statePath,persistableState());
 save();
-const sha=s=>createHash('sha256').update(s).digest('hex');
-const validID=s=>typeof s==='string' && /^[A-Za-z0-9_-]{8,100}$/.test(s);
-const terminal=s=>['completed','failed','cancelled','interrupted'].includes(s);
-const fail=(message,status=400)=>Object.assign(new Error(message),{status});
+const sha=(s: any)=>createHash('sha256').update(s).digest('hex');
+const validID=(s: any)=>typeof s==='string' && /^[A-Za-z0-9_-]{8,100}$/.test(s);
+const terminal=(s: any)=>['completed','failed','cancelled','interrupted'].includes(s);
+const fail=(message: any,status=400)=>Object.assign(new Error(message),{status});
 function capabilities(modelId=MODEL){
   // 模型目录由 providers/ 统一汇总；默认模型不可用时退回目录中的第一个模型。
   const models=verifiedCatalog(),model=models.find(m=>m.id===modelId)||(modelId===MODEL?models[0]:null);
@@ -120,16 +120,16 @@ function capabilities(modelId=MODEL){
 }
 // 每个 provider 的会话上下文分开保存；openai 沿用 conv.threadId 兼容旧数据。
 // 上一轮来自其它 provider 时返回 null：新开会话并带入对话记录。
-function providerSession(conv,id){
+function providerSession(conv: any,id: any){
   if(conv.lastProvider&&conv.lastProvider!==id)return null;
   return id==='openai'?(conv.threadId||null):(conv.sessions?.[id]||null);
 }
-function setProviderSession(conv,id,session){
+function setProviderSession(conv: any,id: any,session: any){
   if(id==='openai')conv.threadId=session;else (conv.sessions||={})[id]=session;
   conv.lastProvider=id;
 }
-function jobProvider(job){return getProvider(job.provider||'openai');}
-function sendEvent(res,event){
+function jobProvider(job: any){return getProvider(job.provider||'openai');}
+function sendEvent(res: any,event: any){
   if(event.type==='artifact'&&!generatedOutputVisible(event.asset))return;
   let outgoing=event;
   if(Array.isArray(event.assets))outgoing={...event,assets:generatedOutputs(event.assets)};
@@ -140,7 +140,7 @@ function sendEvent(res,event){
   // Persist only artifact metadata; inline original bytes are attached to the live/replayed wire event.
   res.write('id: '+event.seq+'\nevent: update\ndata: '+JSON.stringify(outgoing)+'\n\n');
 }
-function emit(job,type,values={}) {
+function emit(job: any,type: any,values={}) {
   const event={seq:(job.events.at(-1)?.seq||0)+1,type,at:Date.now(),...values};
   job.events.push(event);job.updatedAt=Date.now();
   if(job.events.length>12000)job.events.splice(0,job.events.length-12000);
@@ -149,7 +149,7 @@ function emit(job,type,values={}) {
   for(const res of listeners.get(job.id)||[])if(!res.destroyed)sendEvent(res,event);
 }
 // Generated image files, not language-model guesses, determine delivery status.
-function publishModelText(job, modelText, alwaysEmit=false) {
+function publishModelText(job: any, modelText: any, alwaysEmit=false) {
   const count=verifiedGeneratedImageCount(job,state.assets,existsSync);
   const corrected=reconcileImageResultText(modelText,count>0);
   if(corrected!==modelText) {
@@ -160,23 +160,23 @@ function publishModelText(job, modelText, alwaysEmit=false) {
   job.text=corrected;
   if(changed||alwaysEmit)emit(job,'text',{text:corrected,generatedImageCount:count});
 }
-function json(res,code,value){const body=JSON.stringify(value);res.writeHead(code,{'Content-Type':'application/json; charset=utf-8','Content-Length':Buffer.byteLength(body),'Cache-Control':'no-store'});res.end(body);}
-async function body(req,max=40*1024*1024){
+function json(res: any,code: any,value: any){const body=JSON.stringify(value);res.writeHead(code,{'Content-Type':'application/json; charset=utf-8','Content-Length':Buffer.byteLength(body),'Cache-Control':'no-store'});res.end(body);}
+async function body(req: any,max=40*1024*1024){
   let total=0;const chunks: Buffer[]=[];
   for await(const chunk of req){total+=chunk.length;if(total>max)throw fail('上传内容过大',413);chunks.push(chunk);}
   const data=Buffer.concat(chunks);
   if(req.headers['x-shiyan-body-sha']&&digest(data)!==req.headers['x-shiyan-body-sha'])throw fail('请求校验失败',401);
   try{return JSON.parse(data.toString()||'{}');}catch{throw fail('请求格式无效');}
 }
-function imageValid(bytes,ext){
+function imageValid(bytes: any,ext: any){
   if(ext==='.png')return bytes.length>32 && bytes.subarray(0,8).equals(Buffer.from('89504e470d0a1a0a','hex')) && bytes.subarray(-8,-4).toString()==='IEND';
   if(['.jpg','.jpeg'].includes(ext))return bytes.length>4&&bytes[0]===255&&bytes[1]===216&&bytes.at(-2)===255&&bytes.at(-1)===217;
   if(ext==='.webp')return bytes.length>12&&bytes.toString('ascii',0,4)==='RIFF'&&bytes.toString('ascii',8,12)==='WEBP'&&bytes.readUInt32LE(4)+8<=bytes.length;
   return false;
 }
-const mimeFor=ext=>({'.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.pdf':'application/pdf','.txt':'text/plain','.md':'text/markdown','.csv':'text/csv','.json':'application/json','.html':'text/html','.zip':'application/zip','.mp3':'audio/mpeg','.wav':'audio/wav','.mp4':'video/mp4'}[ext]||'application/octet-stream');
+const mimeFor=(ext: any)=>(({'.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.pdf':'application/pdf','.txt':'text/plain','.md':'text/markdown','.csv':'text/csv','.json':'application/json','.html':'text/html','.zip':'application/zip','.mp3':'audio/mpeg','.wav':'audio/wav','.mp4':'video/mp4'} as any)[ext]||'application/octet-stream');
 
-async function capture(job,file,{imageOnly=false}={}){
+async function capture(job: any,file: any,{imageOnly=false}={}){
   if(job.cancelRequested||job.status==='cancelled')return;
   const ext=path.extname(file).toLowerCase();
   const real=await fs.realpath(file).catch(()=>null);
@@ -193,7 +193,7 @@ async function capture(job,file,{imageOnly=false}={}){
   const isImage=['.png','.jpg','.jpeg','.webp'].includes(ext);
   if(isImage&&!imageValid(bytes,ext))return;
   if(imageOnly&&!isImage)return;
-  const digest=sha(bytes);if(job.assets.some(x=>x.sha256===digest)||job.uploadHashes?.includes(digest))return;
+  const digest=sha(bytes);if(job.assets.some((x: any)=>x.sha256===digest)||job.uploadHashes?.includes(digest))return;
   const id=randomUUID();const stored=path.join(ARTIFACTS,id+ext);
   await fs.writeFile(stored,bytes,{mode:0o600});
   const asset={id,filename:base,mimeType:mimeFor(ext),bytes:bytes.length,sha256:digest};
@@ -214,20 +214,20 @@ async function capture(job,file,{imageOnly=false}={}){
   // Image may arrive before OR after a contradictory model message.
   publishModelText(job,job.lastModelText??job.text);
 }
-async function scanGenerated(job){
+async function scanGenerated(job: any){
   if(!job.threadId)return;
   const dir=path.join(GENERATED,job.threadId);
   for(const entry of await fs.readdir(dir,{withFileTypes:true}).catch(()=>[]))if(entry.isFile())await capture(job,path.join(dir,entry.name),{imageOnly:true});
 }
-async function monitorGenerated(job){
+async function monitorGenerated(job: any){
   if(!job.threadId)return async()=>{};
   const dir=path.join(GENERATED,job.threadId);await fs.mkdir(dir,{recursive:true});
-  let debounce,chain=Promise.resolve();
+  let debounce: any,chain=Promise.resolve();
   const watcher=watch(dir,()=>{clearTimeout(debounce);debounce=setTimeout(()=>{chain=chain.then(()=>scanGenerated(job)).catch(()=>{});},250);});
   watcher.on('error',()=>{});
   return async()=>{watcher.close();clearTimeout(debounce);await chain;await scanGenerated(job);};
 }
-async function runJob(job){
+async function runJob(job: any){
   active++;job.status='running';job.startedAt=Date.now();
   const abort=new AbortController();controls.set(job.id,abort);
   const deadline=createJobDeadline({...jobTimeouts(),onExpire:error=>abort.abort(error)});
@@ -249,8 +249,8 @@ async function runJob(job){
       const history=conv.memberHistory||job.history||[];
       emit(job,'phase',{phase:'processing',label:'正在回复',reasoning:job.reasoning});
       const result=await jobProvider(job).runIsolatedJob(job,{history,memory:chatMemory.context(job),signal:abort.signal,
-        onActivity:()=>deadline.touch(),onText:text=>{job.text=text;emit(job,'text',{text});},
-        onEvent:event=>{
+        onActivity:()=>deadline.touch(),onText:(text: any)=>{job.text=text;emit(job,'text',{text});},
+        onEvent:(event: any)=>{
           if(event.type==='thread.started'){job.threadId=event.thread_id;emit(job,'thread',{threadId:event.thread_id,reasoning:job.reasoning});}
           if(event.item){const update=upsertDisplayItem(job.displayItems,event.item,event.type,job.displayItemOrder);job.displayItems=update.displayItems;job.displayItemOrder=update.displayItemOrder;emit(job,'output',{displayItems:job.displayItems});}
         }});
@@ -309,7 +309,7 @@ async function runJob(job){
       for(const server of connected){
         if(server.transport!=='streamable'||!server.url)continue;
         const name='connector-'+String(server.id||server.name).toLowerCase().replace(/[^a-z0-9_-]+/g,'-').slice(0,48);
-        mcpServers[name]={url:server.url,headers:server.headers||{}};
+        (mcpServers as any)[name]={url:server.url,headers:server.headers||{}};
       }
     }
     if(session){job.threadId=session;if(watchImages)stopWatch=await monitorGenerated(job);}
@@ -361,7 +361,7 @@ async function runJob(job){
           emit(job,'output',displayUpdate);
         }
         if(event.type==='item.completed'&&item.type!=='reasoning'){
-          job.items=job.items.filter(x=>x.id!==item.id);job.items.push(item);
+          job.items=job.items.filter((x: any)=>x.id!==item.id);job.items.push(item);
         }
       }
     }
@@ -397,7 +397,7 @@ function drain(){
   }
 }
 
-function cancelJob(job){
+function cancelJob(job: any){
   if(terminal(job.status))return job.status;
   job.cancelRequested=true; job.status='cancelled'; job.error='已停止处理';
   const at=queue.indexOf(job.id);if(at>=0)queue.splice(at,1);
@@ -406,9 +406,9 @@ function cancelJob(job){
   for(const res of listeners.get(job.id)||[])res.end();listeners.delete(job.id);
   save();return job.status;
 }
-function snapshot(job){return jobSnapshot(job);}
+function snapshot(job: any){return jobSnapshot(job);}
 // Fork before the edited message. The original server conversation and Codex history stay untouched.
-async function forkConversation(input,owner){
+async function forkConversation(input: any,owner: any){
   if(!validID(input.sourceConversationId)||!validID(input.targetConversationId)||input.sourceConversationId===input.targetConversationId)
     throw fail('编辑分支标识无效');
   const sourceKey=sha(owner+':'+input.sourceConversationId), targetKey=sha(owner+':'+input.targetConversationId);
@@ -470,7 +470,7 @@ async function forkConversation(input,owner){
   save();
   return {ok:true,threadId};
 }
-async function makeJob(input,owner){
+async function makeJob(input: any,owner: any){
   if(!validID(input.conversationId)||!validID(input.requestId))throw fail('会话标识无效');
   for(const key of ['syncConversationId','userMessageId','assistantMessageId'])if(input[key]!==undefined&&!validID(input[key]))throw fail('同步消息标识无效');
   if(input.projectId!==undefined&&input.projectId!==null&&!validID(input.projectId))throw fail('同步项目标识无效');
@@ -543,7 +543,7 @@ export function createServer(){return http.createServer(async(req,res)=>{
     if(req.method==='GET'&&pathname==='/v1/sync')return json(res,200,syncStore.list(owner,Number(url.searchParams.get('after')||0),Number(url.searchParams.get('limit')||200)));
     if(req.method==='POST'&&pathname==='/v1/sync'){
       const input=await body(req,32*1024*1024);if(!Array.isArray(input.mutations))throw fail('同步更新无效');
-      const result=syncStore.apply(owner,input.mutations.map(mutation=>hydrateMutation(mutation,owner,state)),input.after||0,input.limit||200,auth);
+      const result=syncStore.apply(owner,input.mutations.map((mutation: any)=>hydrateMutation(mutation,owner,state)),input.after||0,input.limit||200,auth);
       for(const job of (Object.values(state.jobs) as any[]))if(job.owner===owner)materializeJob(syncStore,job,state.conversations[job.conversationKey]);
       return json(res,200,{...result,...syncStore.list(owner,input.after||0,input.limit||200)});
     }
@@ -569,7 +569,7 @@ export function createServer(){return http.createServer(async(req,res)=>{
         const conv=state.conversations[sha(owner+':'+input.conversationId)];
         if(!conv||conv.owner!==owner)return json(res,200,{ok:true,title:null});
         if(!conv.title){
-          const history=conv.memberHistory||[],user=history.find(item=>item.role==='user')?.text?.trim()||'',assistant=history.find(item=>item.role==='assistant')?.text||'';
+          const history=conv.memberHistory||[],user=history.find((item: any)=>item.role==='user')?.text?.trim()||'',assistant=history.find((item: any)=>item.role==='assistant')?.text||'';
           try{conv.title=await memberConversationTitle({owner,user,assistant});}catch{}
           conv.title||=user.slice(0,24)||null;
         }
@@ -601,7 +601,7 @@ export function createServer(){return http.createServer(async(req,res)=>{
         const after=Number(url.searchParams.get('after')||req.headers['last-event-id']||0);
         for(const event of job.events)if(event.seq>after)sendEvent(res,event);
         if(terminal(job.status)){
-          if(!job.events.some(event=>terminal(event.type)))res.write('data: '+JSON.stringify({seq:after+1,type:job.status,error:job.error})+'\n\n');
+          if(!job.events.some((event: any)=>terminal(event.type)))res.write('data: '+JSON.stringify({seq:after+1,type:job.status,error:job.error})+'\n\n');
           res.end();return;
         }
         if(!listeners.has(job.id))listeners.set(job.id,new Set());listeners.get(job.id).add(res);
@@ -634,7 +634,7 @@ export function createServer(){return http.createServer(async(req,res)=>{
   }
 }).on('clientError',(error,socket)=>{
   const raw=(error as any).rawPacket?.toString('latin1')||'';
-  const safe=raw.split('\r\n').filter((line,i)=>i===0||/^(content-length|transfer-encoding|connection):/i.test(line)).join(' | ');
+  const safe=raw.split('\r\n').filter((line: any,i: any)=>i===0||/^(content-length|transfer-encoding|connection):/i.test(line)).join(' | ');
   console.error('[ShiyanHTTPParse]',(error as any).code,(error as any).reason,(error as any).bytesParsed,safe.slice(0,600));
   if(socket.writable)socket.end('HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
 });}

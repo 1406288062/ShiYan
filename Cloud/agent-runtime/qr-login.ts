@@ -1,15 +1,15 @@
 import { DeviceLogin } from './device-login.ts';
 import { randomBytes, randomInt, createHash } from 'node:crypto';
-const hash = s => createHash('sha256').update(s).digest('hex');
-const fail = (message, status = 400) => Object.assign(new Error(message), { status });
-const opaque = x => typeof x === 'string' && /^[A-Za-z0-9_-]{43}$/.test(x);
+const hash = (s: any) => createHash('sha256').update(s).digest('hex');
+const fail = (message: any, status = 400) => Object.assign(new Error(message), { status });
+const opaque = (x: any) => typeof x === 'string' && /^[A-Za-z0-9_-]{43}$/.test(x);
 
 // A scan grants no session. Only the creating desktop can exchange an approved
 // challenge, and approval remains bound to a currently valid phone session.
 export class QRLogin {
   accounts: any;
   devices: DeviceLogin;
-  constructor(accounts) {
+  constructor(accounts: any) {
     this.accounts = accounts;
     this.devices = new DeviceLogin(accounts);
     accounts.db.exec(`CREATE TABLE IF NOT EXISTS account_qr_login (
@@ -37,20 +37,20 @@ export class QRLogin {
         payload: `shiyan://login?v=1&id=${id}&secret=${scanSecret}` };
     });
   }
-  get(input, kind) {
+  get(input: any, kind: any) {
     if (!opaque(input?.id) || !opaque(input?.[kind])) throw fail('二维码无效，请重新扫码');
     const row = this.accounts.db.prepare('SELECT * FROM account_qr_login WHERE id=?').get(input.id);
     if (!row || row[kind === 'scanSecret' ? 'scan_hash' : 'poll_hash'] !== hash(input[kind])) throw fail('二维码无效，请重新扫码', 404);
     if (row.expires_at <= this.accounts.now()) throw fail('二维码已过期，请在电脑上刷新', 410);
     return row;
   }
-  preview(input) {
+  preview(input: any) {
     const row = this.get(input, 'scanSecret');
     if (row.state !== 'pending') throw fail('二维码已处理，请在电脑上刷新', 409);
     const platform=this.accounts.db.prepare('SELECT platform FROM account_qr_login_context WHERE request_id=?').get(row.id)?.platform;
     return { ok: true, code: row.code, expiresAt: Number(row.expires_at), device: platform==='web'?'拾燕网页版':'拾燕 Mac 桌面端' };
   }
-  approve(auth, input) {
+  approve(auth: any, input: any) {
     const a = this.accounts;
     return a.transaction(() => {
       const row = this.get(input, 'scanSecret');
@@ -65,7 +65,7 @@ export class QRLogin {
       return { ok: true };
     });
   }
-  poll(input) {
+  poll(input: any) {
     const a = this.accounts;
     return a.transaction(() => {
       const row = this.get(input, 'pollSecret');

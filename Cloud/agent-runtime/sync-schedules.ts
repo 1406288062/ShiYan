@@ -4,17 +4,17 @@ import { verifiedCatalog } from './providers/index.ts';
 
 export const SCHEDULE_CONFIG = ['title','instruction','emoji','enabled','repeat','time','timezone','startDate','endDate','runLocally','notificationMode','newChatEachRun','model','reasoning','projectId'];
 export const SCHEDULE_REPORT = ['executorDeviceId','executionMode','status','nextRunAt','lastRunAt','lastRunState','lastError','conversationId','createdAt','updatedAt','source'];
-const fail = (message,status=400) => Object.assign(new Error(message),{status});
-const configHash = value => createHash('sha256').update(JSON.stringify(SCHEDULE_CONFIG.map(k=>[k,value[k]??null]))).digest('hex');
-const id = value => typeof value==='string' && /^[A-Za-z0-9_-]{8,128}$/.test(value);
-const date = value => typeof value==='string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value+'T12:00:00Z')) && new Date(value+'T12:00:00Z').toISOString().slice(0,10)===value;
+const fail = (message: any,status=400) => Object.assign(new Error(message),{status});
+const configHash = (value: any) => createHash('sha256').update(JSON.stringify(SCHEDULE_CONFIG.map(k=>[k,value[k]??null]))).digest('hex');
+const id = (value: any) => typeof value==='string' && /^[A-Za-z0-9_-]{8,128}$/.test(value);
+const date = (value: any) => typeof value==='string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value+'T12:00:00Z')) && new Date(value+'T12:00:00Z').toISOString().slice(0,10)===value;
 // Account session IDs rotate at login. Schedules belong to the registered Mac,
 // whose physical identity stays stable across those sessions.
-const canonicalDevice = (store,owner,device) => typeof device==='string'
+const canonicalDevice = (store: any,owner: any,device: any) => typeof device==='string'
   ? store.db.prepare('SELECT device FROM schedule_host_sessions WHERE owner=? AND session_id=?').get(owner,device)?.device||device
   : device;
-const executionDevice = (store,auth) => auth.accountSession ? canonicalDevice(store,auth.owner,auth.sessionId||auth.deviceID) : auth.deviceID;
-function verifyHostProof(auth,input,device){
+const executionDevice = (store: any,auth: any) => auth.accountSession ? canonicalDevice(store,auth.owner,auth.sessionId||auth.deviceID) : auth.deviceID;
+function verifyHostProof(auth: any,input: any,device: any){
   try{
     const publicKey=Buffer.from(String(input.devicePublicKey||''),'base64'),signature=Buffer.from(String(input.deviceSignature||''),'base64');
     if(publicKey.length!==32||signature.length!==64||createHash('sha256').update(publicKey).digest('hex')!==device
@@ -27,7 +27,7 @@ function verifyHostProof(auth,input,device){
   }catch{throw fail('执行 Mac 身份校验失败',403);}
 }
 
-export function validateSchedule(data) {
+export function validateSchedule(data: any) {
   if(typeof data.title!=='string'||!data.title.trim()||data.title.length>200||typeof data.instruction!=='string'||!data.instruction.trim()||data.instruction.length>20000)throw fail('请输入有效的任务名称和说明');
   if(typeof data.enabled!=='boolean'||!['once','hourly','daily','weekdays','weekly','monthly'].includes(data.repeat)||typeof data.time!=='string'||!/^([01]\d|2[0-3]):[0-5]\d$/.test(data.time))throw fail('执行频率或时间无效');
   try{if(typeof data.timezone!=='string'||data.timezone.length>100)throw Error();new Intl.DateTimeFormat('en',{timeZone:data.timezone});}catch{throw fail('时区无效');}
@@ -39,7 +39,7 @@ export function validateSchedule(data) {
   return data;
 }
 
-export function prepareScheduleMutation(store,owner,mutation,auth) {
+export function prepareScheduleMutation(store: any,owner: any,mutation: any,auth: any) {
   if(mutation.kind!=='scheduledTasks'||mutation.deleted)return mutation;
   const current=store.get(owner,'scheduledTasks',mutation.id)?.data||{},input=mutation.data||{};
   const mobile=auth.platform==='ios'||auth.mobile===true;
@@ -75,13 +75,13 @@ export function prepareScheduleMutation(store,owner,mutation,auth) {
 
 export class SyncedSchedules {
   store: any;
-  constructor(store){
+  constructor(store: any){
     this.store=store;store.db.exec(`CREATE TABLE IF NOT EXISTS schedule_hosts(owner TEXT NOT NULL,device TEXT NOT NULL,seen_at INTEGER NOT NULL,data TEXT NOT NULL,PRIMARY KEY(owner,device));
       CREATE TABLE IF NOT EXISTS schedule_host_sessions(owner TEXT NOT NULL,session_id TEXT NOT NULL,device TEXT NOT NULL,PRIMARY KEY(owner,session_id));
       CREATE TABLE IF NOT EXISTS schedule_host_proofs(owner TEXT NOT NULL,device TEXT NOT NULL,nonce TEXT NOT NULL,session_id TEXT NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(owner,device,nonce));
       CREATE TABLE IF NOT EXISTS schedule_claims(owner TEXT NOT NULL,task_id TEXT NOT NULL,due_at TEXT NOT NULL,device TEXT NOT NULL,request_id TEXT NOT NULL,revision INTEGER NOT NULL,created_at INTEGER NOT NULL,config_hash TEXT NOT NULL,PRIMARY KEY(owner,task_id,due_at));`);
   }
-  host(auth,input){
+  host(auth: any,input: any){
     if(memberExecution(auth))return {ok:true,executionMode:'isolated'};
     if(auth.platform&&!['macos','mac','darwin'].includes(auth.platform))throw fail('执行设备无效',403);
     let device=executionDevice(this.store,auth),proofNonce=null;
@@ -93,7 +93,7 @@ export class SyncedSchedules {
       device=input.deviceId;
       if(auth.accountSession&&!existing&&device!==auth.deviceID)proofNonce=verifyHostProof(auth,input,device);
     }
-    const clean=value=>(Array.isArray(value)?value:[]).slice(0,100).map(x=>({id:String(x.id||'').slice(0,160),name:String(x.name||x.id||'').slice(0,160),reasoningEfforts:(x.reasoningEfforts||[]).filter(v=>typeof v==='string').slice(0,10),defaultReasoning:String(x.defaultReasoning||'medium').slice(0,30)})).filter(x=>x.id);
+    const clean=(value: any)=>(Array.isArray(value)?value:[]).slice(0,100).map(x=>({id:String(x.id||'').slice(0,160),name:String(x.name||x.id||'').slice(0,160),reasoningEfforts:(x.reasoningEfforts||[]).filter((v: any)=>typeof v==='string').slice(0,10),defaultReasoning:String(x.defaultReasoning||'medium').slice(0,30)})).filter(x=>x.id);
     const data={local:clean(input.local),cloud:clean(input.cloud),deviceName:'Mac',defaultModel:input.defaultModel||null};
     const db=this.store.db;db.exec('BEGIN IMMEDIATE');
     try{
@@ -116,12 +116,12 @@ export class SyncedSchedules {
     }catch(error){db.exec('ROLLBACK');throw error;}
     return {ok:true};
   }
-  listing(auth){
+  listing(auth: any){
     const rows=this.store.db.prepare("SELECT * FROM sync_entities WHERE owner=? AND kind='scheduledTasks' AND deleted=0").all(auth.owner);
     const host=this.store.db.prepare('SELECT * FROM schedule_hosts WHERE owner=? ORDER BY seen_at DESC LIMIT 1').get(auth.owner);
-    return {ok:true,tasks:rows.map(r=>({...JSON.parse(r.data),revision:Number(r.revision)})),host:memberExecution(auth)?{deviceId:'isolated',deviceName:'独立工作区',online:true,local:[],cloud:verifiedCatalog(),executionMode:'isolated'}:host?{deviceId:host.device,online:Date.now()-host.seen_at<45000,...JSON.parse(host.data)}:null};
+    return {ok:true,tasks:rows.map((r: any)=>({...JSON.parse(r.data),revision:Number(r.revision)})),host:memberExecution(auth)?{deviceId:'isolated',deviceName:'独立工作区',online:true,local:[],cloud:verifiedCatalog(),executionMode:'isolated'}:host?{deviceId:host.device,online:Date.now()-host.seen_at<45000,...JSON.parse(host.data)}:null};
   }
-  mutate(auth,input,taskId: any=null,remove=false){
+  mutate(auth: any,input: any,taskId: any=null,remove=false){
     if(!id(input.requestId)||!id(input.id||taskId)||!Number.isSafeInteger(input.revision)||input.revision<0)throw fail('缺少有效请求标识或版本');
     const identifier=taskId||input.id;
     const data=input.task||{};
@@ -133,7 +133,7 @@ export class SyncedSchedules {
     const current=this.store.get(auth.owner,'scheduledTasks',identifier);
     return {ok:true,...(current?.deleted?{id:identifier,deleted:true}:{task:{...current.data,revision:current.revision}})};
   }
-  claim(auth,taskId,input){
+  claim(auth: any,taskId: any,input: any){
     if(memberExecution(auth))throw fail('此任务由独立工作区调度执行',403);
     if((auth.platform&&!['macos','mac','darwin'].includes(auth.platform))||!id(input.requestId)||!Number.isSafeInteger(input.revision)||typeof input.dueAt!=='string'||!Number.isFinite(Date.parse(input.dueAt)))throw fail('执行声明无效',403);
     const device=executionDevice(this.store,auth),db=this.store.db;db.exec('BEGIN IMMEDIATE');

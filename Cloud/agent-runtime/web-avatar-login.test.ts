@@ -10,7 +10,7 @@ import {createAccountHandler} from './account-http.ts';
 import {DeviceLogin} from './device-login.ts';
 
 const password='fixture-password-42';
-async function fixture(t) {
+async function fixture(t: any) {
   const directory=mkdtempSync(path.join(os.tmpdir(),'shiyan-web-avatar-'));
   const accounts=new AccountStore(directory,{registrationSocketPath:false});
   const phone=await accounts.register({email:'avatar@example.test',password});
@@ -57,7 +57,7 @@ test('browser QR pairing retains its browser label through later avatar sign-in'
   await call('qr/approve',{...scan,approve:true},phone.token);
   const pair=(await call('qr/poll',{id:qr.id,pollSecret:qr.pollSecret})).value.device;
   const request=(await call('device/request',{deviceId:pair.id,deviceSecret:pair.secret})).value;
-  assert.equal((await call('device/requests',undefined,phone.token)).value.requests.find(x=>x.id===request.id).device,'拾燕网页版');
+  assert.equal((await call('device/requests',undefined,phone.token)).value.requests.find((x: any)=>x.id===request.id).device,'拾燕网页版');
 });
 
 test('web registration also remembers the new account without changing its permissions',async t=>{

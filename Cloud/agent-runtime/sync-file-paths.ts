@@ -3,7 +3,7 @@ import { readFileSync, statSync, existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 
 // Cache only workspace identities, never the large execution archive.
-export function createFilePathResolver(root,store,{stateFallback=true}={}){
+export function createFilePathResolver(root: any,store: any,{stateFallback=true}={}){
   const jobs=new Map(),conversations=new Map();let version='';
   function refresh(){
     const file=path.join(root,'data/state.json');let info;
@@ -20,10 +20,10 @@ export function createFilePathResolver(root,store,{stateFallback=true}={}){
     }
     version=next;
   }
-  return function resolve(change,owner){
+  return function resolve(change: any,owner: any){
     if(change.kind!=='messages'||change.deleted||!change.data)return change;
     const data=change.data;
-    const groups=[data.fileChanges,...(data.displayItems||[]).filter(item=>item.type==='file_change').map(item=>item.changes)];
+    const groups=[data.fileChanges,...(data.displayItems||[]).filter((item: any)=>item.type==='file_change').map((item: any)=>item.changes)];
     if(!groups.some(files=>Array.isArray(files)&&files.some(file=>typeof file?.path==='string'&&!path.isAbsolute(file.path))))return change;
     const registered=store.jobWorkspace?.(owner,data.remoteJobId,data.conversationId);
     const parent=store.get(owner,'conversations',data.conversationId)?.data;
@@ -35,9 +35,9 @@ export function createFilePathResolver(root,store,{stateFallback=true}={}){
     const inferred=path.join(root,'workspaces',key);
     if(!workspace&&stateFallback&&existsSync(inferred))workspace=inferred;
     if(!workspace)return change; // Do not invent an absolute path when the origin is unknown.
-    const files=values=>values?.map(file=>typeof file?.path==='string'&&!path.isAbsolute(file.path)?{...file,path:path.resolve(workspace,file.path)}:file);
+    const files=(values: any)=>values?.map((file: any)=>typeof file?.path==='string'&&!path.isAbsolute(file.path)?{...file,path:path.resolve(workspace,file.path)}:file);
     return {...change,data:{...data,
       ...(Array.isArray(data.fileChanges)?{fileChanges:files(data.fileChanges)}:{}),
-      ...(Array.isArray(data.displayItems)?{displayItems:data.displayItems.map(item=>item.type==='file_change'?{...item,changes:files(item.changes)}:item)}:{})}};
+      ...(Array.isArray(data.displayItems)?{displayItems:data.displayItems.map((item: any)=>item.type==='file_change'?{...item,changes:files(item.changes)}:item)}:{})}};
   };
 }

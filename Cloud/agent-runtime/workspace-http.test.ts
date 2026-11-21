@@ -5,10 +5,10 @@ import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import { createWorkspaceHandler, virtualPath } from './workspace-http.ts';
 
-async function fixture(t) {
+async function fixture(t: any) {
   const files = new Map(), spawned: any[] = [];
   const handler = createWorkspaceHandler({ operations: async () => ({
-    workspaceOperation: async (owner, input) => {
+    workspaceOperation: async (owner: any, input: any) => {
       const key = owner + ':' + virtualPath(input.path);
       if (input.operation === 'mkdir') return {};
       if (input.operation === 'write') { files.set(key, input.data || Buffer.from(input.content).toString('base64')); return {}; }
@@ -18,7 +18,7 @@ async function fixture(t) {
       }
       return { entries: [] };
     },
-    spawnSandbox: async (owner, options) => {
+    spawnSandbox: async (owner: any, options: any) => {
       const child = new EventEmitter();
       Object.assign(child, { stdout: new PassThrough(), stderr: new PassThrough(), stdin: new PassThrough(), kill() { child.emit('close', 0); } });
       spawned.push({ owner, options, child }); return child;
@@ -27,12 +27,12 @@ async function fixture(t) {
   const server = http.createServer(async (req, res) => {
     try {
       const auth = req.headers['x-test-owner'] ? { owner: req.headers['x-test-owner'], role: 'user', serverAccess: false } : null;
-      await handler(req, res, auth, async req => { const chunks: any[] = []; for await (const c of req) chunks.push(c); return JSON.parse(Buffer.concat(chunks).toString() || '{}'); });
+      await handler(req, res, auth, async (req: any) => { const chunks: any[] = []; for await (const c of req) chunks.push(c); return JSON.parse(Buffer.concat(chunks).toString() || '{}'); });
     } catch (e) { res.writeHead((e as any).status || 500, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: (e as any).message })); }
   });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', () => resolve()));
   t.after(() => { server.closeAllConnections(); server.close(); });
-  const request = (owner, route, method = 'GET', body?: any) => fetch(`http://127.0.0.1:${(server.address() as any).port}/shiyan/v1/workspace${route}`, {
+  const request = (owner: any, route: any, method = 'GET', body?: any) => fetch(`http://127.0.0.1:${(server.address() as any).port}/shiyan/v1/workspace${route}`, {
     method, headers: { ...(owner ? { 'x-test-owner': owner } : {}), 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   return { request, spawned, files };

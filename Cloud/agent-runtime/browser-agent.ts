@@ -19,10 +19,10 @@ import type { BrowserSessionManager } from './browser-session.ts';
 import type { BrowserStore } from './browser-store.ts';
 import type { DotsAttachments } from './dots-attachments.ts';
 
-const fail = (message, status = 400, code: any = undefined) => Object.assign(new Error(message), { status }, code ? { code } : {});
-const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
-const clip = (value, max) => { const s = String(value ?? ''); return s.length > max ? s.slice(0, max) + '…' : s; };
-const originOf = url => { try { const u = new URL(url); return /^https?:$/.test(u.protocol) ? u.origin.toLowerCase() : ''; } catch { return ''; } };
+const fail = (message: any, status = 400, code: any = undefined) => Object.assign(new Error(message), { status }, code ? { code } : {});
+const delay = (ms: any) => new Promise(resolve => setTimeout(resolve, ms));
+const clip = (value: any, max: any) => { const s = String(value ?? ''); return s.length > max ? s.slice(0, max) + '…' : s; };
+const originOf = (url: any) => { try { const u = new URL(url); return /^https?:$/.test(u.protocol) ? u.origin.toLowerCase() : ''; } catch { return ''; } };
 const AGENT_MARK = 'about:blank#shiyan-agent-';
 const WINDOW_IDLE_MS = 20 * 60_000;
 const MAX_TASK_TABS = 6;
@@ -126,7 +126,7 @@ export class BrowserAgentHost {
   close() { clearInterval(this.sweeper); }
 
   // ================================================================ BrowserSessionManager hooks
-  claimTarget(session, info, method) {
+  claimTarget(session: any, info: any, method: any) {
     if (String(info.url || '').startsWith(AGENT_MARK)) return true;
     const known = this.byTarget.get(info.targetId);
     if (known) { known.tab.url = String(info.url || known.tab.url); if (info.title) known.tab.title = String(info.title); return true; }
@@ -134,7 +134,7 @@ export class BrowserAgentHost {
     if (opener && opener.taskId && method === 'Target.targetCreated') { void this.#adoptPopup(session, opener, info).catch(error => this.log(`[browser-agent] popup adopt failed: ${error?.message || error}`)); return true; }
     return false;
   }
-  cdpEvent(session, message) {
+  cdpEvent(session: any, message: any) {
     const method = message.method || '';
     if (!message.sessionId && method.startsWith('Browser.download')) { this.#downloadEvent(message); return true; }
     if (!message.sessionId && method === 'Target.targetDestroyed') {
@@ -161,33 +161,33 @@ export class BrowserAgentHost {
     }
     return message.sessionId !== session.targetSessionId;
   }
-  async onViewerAttached(session) {
+  async onViewerAttached(session: any) {
     const takeover = this.takeover;
     if (!takeover || takeover.owner !== session.owner) return;
     const win = this.windows.get(takeover.taskId);
     if (win && win.session === session) await this.manager.showAgentTargets(session, [...win.tabs.values()].map(tab => ({ targetId: tab.targetId, sessionId: tab.sessionId })));
   }
-  async onViewerDetached(session) {
+  async onViewerDetached(session: any) {
     const takeover = this.takeover;
     if (takeover && takeover.owner === session.owner) await this.handback(session.owner, takeover.taskId, { note: '用户关闭了接管窗口。' }).catch(() => {});
   }
-  onSessionDestroyed(session) {
+  onSessionDestroyed(session: any) {
     for (const [taskId, win] of this.windows) if (win.session === session) { for (const tab of win.tabs.values()) this.#unindex(tab); this.windows.delete(taskId); }
     for (const [owner, reader] of this.readers) if (reader.session === session) { if (reader.tab) this.#unindex(reader.tab); this.readers.delete(owner); }
     if (this.takeover && this.takeover.owner === session.owner) this.takeover = null;
   }
 
   // ================================================================ windows and tabs
-  #index(owner, taskId, tab) { const entry = { owner, taskId, tab }; this.byTarget.set(tab.targetId, entry); this.bySession.set(tab.sessionId, entry); return entry; }
-  #unindex(tab) { this.byTarget.delete(tab.targetId); this.bySession.delete(tab.sessionId); for (const wake of tab.loadWaiters?.splice(0) || []) wake(); }
-  #forgetTab(entry) {
+  #index(owner: any, taskId: any, tab: any) { const entry = { owner, taskId, tab }; this.byTarget.set(tab.targetId, entry); this.bySession.set(tab.sessionId, entry); return entry; }
+  #unindex(tab: any) { this.byTarget.delete(tab.targetId); this.bySession.delete(tab.sessionId); for (const wake of tab.loadWaiters?.splice(0) || []) wake(); }
+  #forgetTab(entry: any) {
     this.#unindex(entry.tab);
     if (entry.taskId) {
       const win = this.windows.get(entry.taskId);
       if (win) { win.tabs.delete(entry.tab.id); if (win.active === entry.tab.id) win.active = [...win.tabs.keys()].at(-1) || null; }
     } else if (this.readers.get(entry.owner)?.tab === entry.tab) this.readers.delete(entry.owner);
   }
-  async #prepareTab(session, sessionId, { gate = true } = {}) {
+  async #prepareTab(session: any, sessionId: any, { gate = true } = {}) {
     const cdp = session.cdp;
     try { await cdp.send('Page.setInterceptFileChooserDialog', { enabled: true }, sessionId); } catch {}
     await cdp.send('Page.enable', {}, sessionId);
@@ -195,7 +195,7 @@ export class BrowserAgentHost {
     if (gate) await cdp.send('Fetch.enable', { patterns: [{ resourceType: 'Document', requestStage: 'Request' }] }, sessionId).catch(() => {});
     await cdp.send('Emulation.clearDeviceMetricsOverride', {}, sessionId).catch(() => {});
   }
-  async #newTarget(session, owner, taskId, url = 'about:blank') {
+  async #newTarget(session: any, owner: any, taskId: any, url = 'about:blank') {
     const cdp = session.cdp;
     const created = await cdp.send('Target.createTarget', { url: AGENT_MARK + randomBytes(6).toString('hex'), newWindow: true, background: true });
     try {
@@ -209,7 +209,7 @@ export class BrowserAgentHost {
     if (url && url !== 'about:blank') await this.#navigate(session, tab, url, { taskId });
     return tab;
   }
-  async #adoptPopup(session, opener, info) {
+  async #adoptPopup(session: any, opener: any, info: any) {
     const win = this.windows.get(opener.taskId);
     if (!win || win.tabs.size >= MAX_TASK_TABS) { await session.cdp.send('Target.closeTarget', { targetId: info.targetId }).catch(() => {}); return; }
     const attached = await session.cdp.send('Target.attachToTarget', { targetId: info.targetId, flatten: true });
@@ -221,7 +221,7 @@ export class BrowserAgentHost {
   }
   // The task's window, (re)opened on demand. A window outlives a single executor run so the
   // conversation can continue in it; it closes after a quiet period and reopens at its last URL.
-  async #window(task) {
+  async #window(task: any) {
     let win = this.windows.get(task.id);
     if (win && !win.session.closing && win.session === this.manager.activeSession && win.tabs.size) { win.lastUsed = Date.now(); return win; }
     if (win) { this.windows.delete(task.id); if (!win.session.closing) this.manager.releaseAgent(win.session); }
@@ -238,7 +238,7 @@ export class BrowserAgentHost {
     } catch (error) { this.windows.delete(task.id); this.manager.releaseAgent(session); throw error; }
     return win;
   }
-  async closeWindow(taskId) {
+  async closeWindow(taskId: any) {
     const win = this.windows.get(taskId);
     if (!win) return;
     this.windows.delete(taskId);
@@ -253,16 +253,16 @@ export class BrowserAgentHost {
       if (Date.now() - win.lastUsed > this.windowIdleMs) await this.closeWindow(taskId).catch(() => {});
     }
   }
-  #activeTab(win) { const tab = win.tabs.get(win.active) || [...win.tabs.values()].at(-1); if (!tab) throw fail('任务窗口没有打开的标签页', 409); return tab; }
-  async #eval(session, tab, expression, { awaitPromise = false, timeoutMs = 8000 } = {}) {
+  #activeTab(win: any) { const tab = win.tabs.get(win.active) || [...win.tabs.values()].at(-1); if (!tab) throw fail('任务窗口没有打开的标签页', 409); return tab; }
+  async #eval(session: any, tab: any, expression: any, { awaitPromise = false, timeoutMs = 8000 } = {}) {
     const result = await session.cdp.send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise, userGesture: true }, tab.sessionId, timeoutMs);
     if (result.exceptionDetails) throw fail('页面脚本执行失败：' + clip(result.exceptionDetails.exception?.description || result.exceptionDetails.text, 200), 502);
     return result.result?.value;
   }
-  async #waitLoad(tab, timeoutMs = 15_000) {
+  async #waitLoad(tab: any, timeoutMs = 15_000) {
     await new Promise<void>(resolve => { const timer = setTimeout(resolve, timeoutMs); tab.loadWaiters.push(() => { clearTimeout(timer); resolve(); }); });
   }
-  async #navigate(session, tab, raw, { taskId = null, owner = null } = {}) {
+  async #navigate(session: any, tab: any, raw: any, { taskId = null, owner = null } = {}) {
     const url = normalizeBrowserURL(raw);
     tab.blocked = null;
     const waiting = this.#waitLoad(tab);
@@ -275,7 +275,7 @@ export class BrowserAgentHost {
     return { url };
   }
   // Site-access gate for main-frame documents (subframes such as payment iframes are not gated).
-  async #gateRequest(session, entry, params) {
+  async #gateRequest(session: any, entry: any, params: any) {
     const cdp = session.cdp, sid = entry.tab.sessionId;
     const url = params.request?.url || '', origin = originOf(url);
     const mainFrame = !params.frameId || params.frameId === entry.tab.targetId;
@@ -293,7 +293,7 @@ export class BrowserAgentHost {
   }
 
   // ================================================================ questions and waiting
-  #ask(task, { kind, prompt, options = [], data = {} }: {kind: string; prompt: string; options?: string[]; data?: any}, { block = true }: {block?: boolean} = {}) {
+  #ask(task: any, { kind, prompt, options = [], data = {} }: {kind: string; prompt: string; options?: string[]; data?: any}, { block = true }: {block?: boolean} = {}) {
     const question = this.store.createQuestion(task.owner, task.id, { kind, prompt, options, data })!;
     const userOnly = USER_ONLY.includes(kind);
     // An executor waiting on this answer shows the task as waiting for the user; an approval asked
@@ -305,8 +305,8 @@ export class BrowserAgentHost {
     });
     return question;
   }
-  #wake(questionId) { const set = this.waiters.get(questionId); if (set) { this.waiters.delete(questionId); for (const wake of set) wake(); } }
-  async waitAnswer(questionId, timeoutMs = 25 * 60_000) {
+  #wake(questionId: any) { const set = this.waiters.get(questionId); if (set) { this.waiters.delete(questionId); for (const wake of set) wake(); } }
+  async waitAnswer(questionId: any, timeoutMs = 25 * 60_000) {
     const deadline = Date.now() + timeoutMs;
     for (;;) {
       const question = this.store.question(questionId);
@@ -324,7 +324,7 @@ export class BrowserAgentHost {
       });
     }
   }
-  #resumeAfterAnswer(task) {
+  #resumeAfterAnswer(task: any) {
     const fresh = this.store.row(task.id)!;
     if (!fresh || !['waiting_user', 'running', 'queued'].includes(fresh.status)) return;
     if (this.store.pendingQuestions(fresh.owner, fresh.id).length) return;
@@ -334,7 +334,7 @@ export class BrowserAgentHost {
   }
 
   // ================================================================ Dots-facing tools
-  async dotsCall(owner, origin, tool, args = {}) {
+  async dotsCall(owner: any, origin: any, tool: any, args = {}) {
     owner = String(owner || ''); if (!owner) throw fail('账号身份无效', 401);
     switch (tool) {
       case 'browse': return this.browse(owner, origin, args);
@@ -345,7 +345,7 @@ export class BrowserAgentHost {
       default: throw fail('未知的浏览器工具', 404);
     }
   }
-  #grantFiles(owner, ids) {
+  #grantFiles(owner: any, ids: any) {
     const out: any[] = [];
     for (const fileId of (Array.isArray(ids) ? ids : []).slice(0, 10)) {
       const value = String(fileId || '');
@@ -355,7 +355,7 @@ export class BrowserAgentHost {
     }
     return out;
   }
-  async browse(owner, origin, { task_id: taskId, task: instruction = '', answer_to: answerTo = null, verification_code: codeRef = null, files = [], identity = 'default', title = '' }: {task_id?: string; task?: string; answer_to?: string | null; verification_code?: string | null; files?: any[]; identity?: string; title?: string} = {}) {
+  async browse(owner: any, origin: any, { task_id: taskId, task: instruction = '', answer_to: answerTo = null, verification_code: codeRef = null, files = [], identity = 'default', title = '' }: {task_id?: string; task?: string; answer_to?: string | null; verification_code?: string | null; files?: any[]; identity?: string; title?: string} = {}) {
     instruction = String(instruction || '').trim();
     if (!taskId) throw fail('请提供 task_id：继续已有窗口传它的 task_id，开新活传 "new"');
     if (answerTo) {
@@ -381,18 +381,18 @@ export class BrowserAgentHost {
     const task = this.store.task(owner, taskId);
     if (task.status === 'cancelled') throw fail('这个任务窗口已关闭。需要继续请用 task_id: "new" 开新任务。', 409);
     if (!instruction && !codeRef && !files?.length) throw fail('请在 task 里写明新的要求');
-    if (files?.length) { const granted = JSON.parse(task.granted_files || '[]'); for (const file of this.#grantFiles(owner, files)) if (!granted.some(item => item.id === file.id)) granted.push(file); this.store.updateTask(task.id, { granted_files: JSON.stringify(granted) }); }
+    if (files?.length) { const granted = JSON.parse(task.granted_files || '[]'); for (const file of this.#grantFiles(owner, files)) if (!granted.some((item: any) => item.id === file.id)) granted.push(file); this.store.updateTask(task.id, { granted_files: JSON.stringify(granted) }); }
     if (codeRef) this.#attachCode(owner, task, codeRef);
     if (instruction) this.store.addInput(task.id, 'instruction', instruction);
     let status = task.status;
     if (!task.claim_token && !['taken_over', 'waiting_user'].includes(task.status)) { status = 'queued'; this.store.updateTask(task.id, { status, error: '', finished_at: null }); }
     return { ok: true, task_id: task.id, status: status === 'taken_over' ? 'queued_until_handback' : 'accepted', note: status === 'taken_over' ? '用户正在接管这个浏览器，交还后任务会先查看变化再继续。' : '已受理（受理不等于完成），结果会自动回到对话。' };
   }
-  #attachCode(owner, task, ref) {
+  #attachCode(owner: any, task: any, ref: any) {
     const code = this.store.bindCode(owner, ref, task.id);
     if (code.status === 'pending_approval') this.#ask(task, { kind: 'verification_share', prompt: `是否允许把验证码${code.label ? '（' + code.label + '）' : ''}分享给这个浏览器任务？仅用于本次验证。`, options: ['允许', '拒绝'], data: { code_ref: code.id } }, { block: false });
   }
-  windowSummary(task, { detail = false } = {}) {
+  windowSummary(task: any, { detail = false } = {}) {
     const win = this.windows.get(task.id);
     const out: any = { task_id: task.id, title: task.title, status: task.status, identity: task.identity, origin: task.origin, updated_at: task.updated_at,
       window_open: Boolean(win), tabs: win ? [...win.tabs.values()].map(tab => ({ tab_id: tab.id, url: clip(tab.url, 300), title: clip(tab.title, 120), active: tab.id === win.active })) : [],
@@ -401,7 +401,7 @@ export class BrowserAgentHost {
     if (detail) { out.progress = this.store.progressList(task.id, 20); out.files = this.store.files(task.owner, task.id); }
     return out;
   }
-  async windowsTool(owner, origin, { action = 'list', task_id: taskId = null, tab_id: tabId = null, url = '', identity = 'default', title = '' } = {}) {
+  async windowsTool(owner: any, origin: any, { action = 'list', task_id: taskId = null, tab_id: tabId = null, url = '', identity = 'default', title = '' } = {}) {
     if (action === 'list') {
       const tasks = taskId ? [this.store.task(owner, taskId)] : this.store.listTasks(owner, { limit: 30 });
       return { ok: true, identities: this.store.identities(owner).map(item => ({ id: item.id, label: item.label })), windows: tasks.map(task => this.windowSummary(task, { detail: Boolean(taskId) })) };
@@ -446,7 +446,7 @@ export class BrowserAgentHost {
 
   // ---- reader: search / open / find (page text only; failures are reported as they happened)
   // The reader window holds a runtime lease only while an operation runs.
-  async #withReader(owner, fn) {
+  async #withReader(owner: any, fn: any) {
     const session = await this.manager.acquireAgent(owner, { identity: 'default' });
     try {
       return await this.#serial('reader:' + owner, async () => {
@@ -460,20 +460,20 @@ export class BrowserAgentHost {
       });
     } finally { this.manager.releaseAgent(session); }
   }
-  async #readerLoad(owner, url) {
-    return this.#withReader(owner, async reader => {
+  async #readerLoad(owner: any, url: any) {
+    return this.#withReader(owner, async (reader: any) => {
       const nav = await this.#navigate(reader.session, reader.tab, url, { owner });
       if (nav.blocked) throw fail(nav.blocked.decision === 'deny' ? `浏览器权限设置拒绝访问 ${nav.blocked.origin}` : `访问 ${nav.blocked.origin} 需要用户许可（设置 > 连接器 > 浏览器 中为“询问”）；读取工具不能发起询问，可改用 browse 任务。`, 403, 'site_blocked');
       return { reader, page: await this.#eval(reader.session, reader.tab, READ_JS, { timeoutMs: 10_000 }) };
     });
   }
-  async search(owner, { query = '', max_results: max = 8 } = {}) {
+  async search(owner: any, { query = '', max_results: max = 8 } = {}) {
     query = String(query || '').trim(); if (!query) throw fail('请提供搜索内容');
     const engines = [`https://www.bing.com/search?q=${encodeURIComponent(query)}&setlang=zh-Hans`, `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`];
     const failures: string[] = [];
     for (const url of engines) {
       try {
-        const value = await this.#withReader(owner, async reader => {
+        const value = await this.#withReader(owner, async (reader: any) => {
           const nav = await this.#navigate(reader.session, reader.tab, url, { owner });
           if (nav.blocked) throw fail(`搜索引擎 ${nav.blocked.origin} 被浏览器权限设置拦截`, 403);
           return this.#eval(reader.session, reader.tab, SEARCH_JS, { timeoutMs: 10_000 });
@@ -484,7 +484,7 @@ export class BrowserAgentHost {
     }
     return { ok: false, query, results: [], error: '搜索没有拿到结果：' + failures.join('；') + '。这只说明读取失败，不代表真实浏览器被拦截或网站需要登录。' };
   }
-  async open(owner, { url = '', cursor = 0 } = {}) {
+  async open(owner: any, { url = '', cursor = 0 } = {}) {
     if (!url) throw fail('请提供网址');
     cursor = Math.max(0, Number(cursor) || 0);
     const target = normalizeBrowserURL(url);
@@ -497,7 +497,7 @@ export class BrowserAgentHost {
     const next = cursor + PAGE_CHUNK < textValue.length ? cursor + PAGE_CHUNK : null;
     return { ok: true, url: page.url, title: page.title, total_chars: textValue.length, cursor, next_cursor: next, text: textValue.slice(cursor, cursor + PAGE_CHUNK), links: cursor === 0 ? page.links.slice(0, 40) : undefined };
   }
-  async find(owner, { query = '', url = '' } = {}) {
+  async find(owner: any, { query = '', url = '' } = {}) {
     query = String(query || '').trim(); if (!query) throw fail('请提供要查找的文字');
     const reader = this.readers.get(owner);
     let key = url ? normalizeBrowserURL(url) : reader?.last;
@@ -510,7 +510,7 @@ export class BrowserAgentHost {
   }
 
   // ================================================================ executor tools
-  async execCall(taskId, token, tool, args = {}) {
+  async execCall(taskId: any, token: any, tool: any, args = {}) {
     const task = this.store.verifyClaim(taskId, token);
     if (task.status === 'cancelled') throw fail('这个任务窗口已被关闭，请停止执行并结束。', 410, 'task_cancelled');
     const passive = ['get_task', 'report_progress', 'wait', 'wait_for_answer', 'finish'];
@@ -525,7 +525,7 @@ export class BrowserAgentHost {
     const quick = ['snapshot', 'screenshot', 'navigate', 'back', 'forward', 'reload', 'click', 'type', 'press', 'select', 'scroll', 'switch_tab', 'read_text', 'find_text', 'place_order', 'save_screenshot'];
     return quick.includes(tool) ? this.#serial(task.id, run) : run();
   }
-  #piggyback(taskId) {
+  #piggyback(taskId: any) {
     const inputs = this.store.pendingInputs(taskId).filter(item => item.kind === 'instruction');
     const win = this.windows.get(taskId);
     const notes = win?.notes.splice(0) || [];
@@ -533,13 +533,13 @@ export class BrowserAgentHost {
     if (inputs.length) this.store.consumeInputs(taskId, inputs.at(-1)!.id);
     return { new_instructions: inputs.length ? inputs.map(item => item.text) : undefined, browser_notes: notes.length ? notes : undefined };
   }
-  async #serial(key, fn) {
+  async #serial(key: any, fn: any) {
     const prior = this.locks.get(key) || Promise.resolve();
     const next = prior.catch(() => {}).then(fn);
     this.locks.set(key, next.catch(() => {}));
     try { return await next; } finally { if (this.locks.get(key) === next) this.locks.delete(key); }
   }
-  async #ref(session, tab, ref, { scroll = true } = {}) {
+  async #ref(session: any, tab: any, ref: any, { scroll = true } = {}) {
     const value = await this.#eval(session, tab, `(() => { const el = document.querySelector('[data-shiyan-ref="' + ${JSON.stringify(String(ref))} + '"]'); if (!el) return null;
       ${scroll ? "el.scrollIntoView({ block: 'center', inline: 'center' });" : ''} const r = el.getBoundingClientRect(); const type = (el.getAttribute('type') || '').toLowerCase();
       const name = String(el.getAttribute('aria-label') || el.innerText || el.value || el.getAttribute('title') || '').replace(/\\s+/g, ' ').trim().slice(0, 120);
@@ -547,26 +547,26 @@ export class BrowserAgentHost {
     if (!value) throw fail(`元素引用 ${ref} 已失效（页面可能已变化），请重新 snapshot`, 409, 'stale_ref');
     return value;
   }
-  async #clickAt(session, tab, x, y, { clickCount = 1, button = 'left' } = {}) {
+  async #clickAt(session: any, tab: any, x: any, y: any, { clickCount = 1, button = 'left' } = {}) {
     const sid = tab.sessionId;
     await session.cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none' }, sid);
     await session.cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button, clickCount }, sid);
     await session.cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button, clickCount }, sid);
   }
-  async #typeInto(session, tab, ref, value, { clear = true } = {}) {
+  async #typeInto(session: any, tab: any, ref: any, value: any, { clear = true } = {}) {
     const el = await this.#ref(session, tab, ref);
     await this.#clickAt(session, tab, el.x, el.y);
     await this.#eval(session, tab, `(() => { const el = document.querySelector('[data-shiyan-ref="' + ${JSON.stringify(String(ref))} + '"]'); if (!el) return false; el.focus();
       ${clear ? "if (typeof el.select === 'function' && ['INPUT','TEXTAREA'].includes(el.tagName)) el.select(); else if (el.isContentEditable) document.execCommand('selectAll');" : ''} return true; })()`);
     if (value) await session.cdp.send('Input.insertText', { text: value }, tab.sessionId);
   }
-  async #key(session, tab, key, modifiers = 0) {
-    const [code, textValue] = KEYS[key] || [0, key.length === 1 ? key : undefined];
+  async #key(session: any, tab: any, key: any, modifiers = 0) {
+    const [code, textValue] = (KEYS as any)[key] || [0, key.length === 1 ? key : undefined];
     const base = { key: key === 'Space' ? ' ' : key, code: key.length === 1 ? 'Key' + key.toUpperCase() : key, windowsVirtualKeyCode: code || (key.length === 1 ? key.toUpperCase().charCodeAt(0) : 0), modifiers };
     await session.cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', ...base, ...(textValue && !modifiers ? { text: textValue } : {}) }, tab.sessionId);
     await session.cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base }, tab.sessionId);
   }
-  #snapshotResult(tab, value, win) {
+  #snapshotResult(tab: any, value: any, win: any) {
     tab.gen = value.gen; tab.url = value.url; tab.title = value.title;
     const out: any = { url: value.url, title: clip(value.title, 200), tab_id: tab.id, tabs: [...win.tabs.values()].map(t => ({ tab_id: t.id, url: clip(t.url, 200), title: clip(t.title, 80), active: t.id === win.active })),
       elements: value.items, more_elements: value.more || undefined, text: value.text, scroll: value.scroll };
@@ -576,7 +576,7 @@ export class BrowserAgentHost {
     if (tab.dialog) { out.dialog = tab.dialog; tab.dialog = null; }
     return out;
   }
-  async #exec(task, tool, args) {
+  async #exec(task: any, tool: any, args: any) {
     const owner = task.owner;
     switch (tool) {
       case 'get_task': {
@@ -648,8 +648,8 @@ export class BrowserAgentHost {
       }
       case 'press': {
         const win = await this.#window(task), tab = this.#activeTab(win);
-        const key = String(args.key || ''); if (!KEYS[key] && key.length !== 1) throw fail('不支持的按键');
-        const mods = (args.modifiers || []).reduce((sum, item) => sum | ({ alt: 1, ctrl: 2, meta: 4, shift: 8 }[item] || 0), 0);
+        const key = String(args.key || ''); if (!(KEYS as any)[key] && key.length !== 1) throw fail('不支持的按键');
+        const mods = (args.modifiers || []).reduce((sum: any, item: any) => sum | (({ alt: 1, ctrl: 2, meta: 4, shift: 8 } as any)[item] || 0), 0);
         await this.#key(win.session, tab, key, mods); await delay(250); return { ok: true };
       }
       case 'select': {
@@ -692,7 +692,7 @@ export class BrowserAgentHost {
       case 'ask': {
         const kind = args.kind === 'cart_confirmation' ? 'cart_confirmation' : 'choice';
         if (kind === 'cart_confirmation' && this.store.pendingQuestions(owner, task.id).some(q => q.kind === 'cart_confirmation')) throw fail('这个窗口已有一个待确认的购物车；一个窗口一次只跑一个结账。', 409);
-        const question = this.#ask(task, { kind, prompt: String(args.question || '').slice(0, 1500), options: (args.options || []).slice(0, 8).map(item => String(item).slice(0, 120)), data: kind === 'cart_confirmation' ? { cart: args.cart || {} } : {} });
+        const question = this.#ask(task, { kind, prompt: String(args.question || '').slice(0, 1500), options: (args.options || []).slice(0, 8).map((item: any) => String(item).slice(0, 120)), data: kind === 'cart_confirmation' ? { cart: args.cart || {} } : {} });
         if (kind === 'cart_confirmation') this.store.updateTask(task.id, { checkout: JSON.stringify({ stage: 'cart_pending', cart_question: question.id }) });
         const done = await this.waitAnswer(question.id);
         this.#afterWait(task);
@@ -748,7 +748,7 @@ export class BrowserAgentHost {
         const checkout = JSON.parse(task.checkout || 'null');
         if (checkout?.stage === 'authorized' && !checkout.used) return { ok: true, authorization_id: checkout.authorization_id, note: '已有一个未使用的付款授权。' };
         if (this.store.pendingQuestions(owner, task.id).some(q => q.kind === 'payment_authorization')) throw fail('已有一个待用户处理的付款授权', 409);
-        const data = { merchant: clip(args.merchant, 120), amount: clip(args.amount, 40), currency: clip(args.currency || 'CNY', 8), items: (args.items || []).slice(0, 30).map(item => clip(typeof item === 'string' ? item : JSON.stringify(item), 200)), payment_method: clip(args.payment_method, 80), url: clip(this.windows.get(task.id) ? this.#activeTab(this.windows.get(task.id)).url : task.last_url, 300) };
+        const data = { merchant: clip(args.merchant, 120), amount: clip(args.amount, 40), currency: clip(args.currency || 'CNY', 8), items: (args.items || []).slice(0, 30).map((item: any) => clip(typeof item === 'string' ? item : JSON.stringify(item), 200)), payment_method: clip(args.payment_method, 80), url: clip(this.windows.get(task.id) ? this.#activeTab(this.windows.get(task.id)).url : task.last_url, 300) };
         const question = this.#ask(task, { kind: 'payment_authorization', prompt: `付款授权：${data.merchant} ${data.amount} ${data.currency}`, data });
         const done = await this.waitAnswer(question.id); this.#afterWait(task);
         if (done.status !== 'answered') return { status: done.status, note: '用户还没有处理付款授权。' };
@@ -789,7 +789,7 @@ export class BrowserAgentHost {
       case 'upload_file': {
         const setting = this.store.permissions(owner).uploads;
         if (setting === 'deny') return { ok: false, note: '用户的浏览器权限禁止上传文件。' };
-        const granted = JSON.parse(task.granted_files || '[]').find(item => item.id === args.file_id);
+        const granted = JSON.parse(task.granted_files || '[]').find((item: any) => item.id === args.file_id);
         if (!granted) throw fail('这个文件没有授权给本任务。需要的文件要由 Dots 在 browse 的 files 里授权。', 403);
         const win = await this.#window(task), tab = this.#activeTab(win);
         const question = this.#ask(task, { kind: 'upload', prompt: `是否允许把文件“${granted.filename}”上传到 ${originOf(tab.url) || '当前网站'}？`, options: ['允许', '拒绝'], data: { file: granted.filename, origin: originOf(tab.url) } });
@@ -819,10 +819,10 @@ export class BrowserAgentHost {
       default: throw fail('未知的浏览器操作：' + tool, 404);
     }
   }
-  #afterWait(task) { const fresh = this.store.row(task.id); if (fresh && ['waiting_user'].includes(fresh.status) && !this.store.pendingQuestions(fresh.owner, fresh.id).length) this.store.updateTask(fresh.id, { status: 'running' }); }
+  #afterWait(task: any) { const fresh = this.store.row(task.id); if (fresh && ['waiting_user'].includes(fresh.status) && !this.store.pendingQuestions(fresh.owner, fresh.id).length) this.store.updateTask(fresh.id, { status: 'running' }); }
 
   // ---- files
-  #deliver(task, { kind, filename, mime, data }) {
+  #deliver(task: any, { kind, filename, mime, data }: any) {
     const sha256 = createHash('sha256').update(data).digest('hex');
     let attachmentId: string | null = null;
     if (this.attachments) {
@@ -832,7 +832,7 @@ export class BrowserAgentHost {
     }
     return this.store.addFile(task.owner, task.id, { kind, filename, mime, size: data.length, sha256, attachmentId });
   }
-  #downloadEvent(message) {
+  #downloadEvent(message: any) {
     const params = message.params || {};
     if (message.method === 'Browser.downloadWillBegin') {
       const pending = [...this.downloads.values()].find(item => !item.guid);
@@ -842,10 +842,10 @@ export class BrowserAgentHost {
       if (item && ['completed', 'canceled'].includes(params.state)) item.resolve(params.state);
     }
   }
-  async #download(task, win, tab, args) {
+  async #download(task: any, win: any, tab: any, args: any) {
     const session = win.session, dir = `/home/browser/downloads/${task.id}`;
     await this.lxc(['exec', this.container, '--', 'bash', '-lc', `mkdir -p '${dir}' && chown browser:browser '${dir}'`]);
-    let resolveDone;
+    let resolveDone: any;
     const done = new Promise(resolve => { resolveDone = resolve; });
     const key = 'pending:' + task.id;
     this.downloads.set(key, { resolve: resolveDone, taskId: task.id });
@@ -869,7 +869,7 @@ export class BrowserAgentHost {
       await session.cdp.send('Browser.setDownloadBehavior', { behavior: 'deny' }).catch(() => {});
     }
   }
-  async #upload(task, win, tab, ref, granted) {
+  async #upload(task: any, win: any, tab: any, ref: any, granted: any) {
     const session = win.session, file = this.attachments!.download(task.owner, granted.id);
     const safe = path.basename(file.filename).replace(/[^\w.\-一-鿿]/g, '_').slice(0, 120) || 'upload.bin';
     const dir = `/home/browser/uploads/${task.id}`, remote = `${dir}/${safe}`;
@@ -894,7 +894,7 @@ export class BrowserAgentHost {
   }
 
   // ================================================================ user-side actions (frontend)
-  async userAnswer(owner, questionId, input: any = {}) {
+  async userAnswer(owner: any, questionId: any, input: any = {}) {
     const question = this.store.ownedQuestion(owner, questionId);
     if (question.status !== 'pending') throw fail('这个问题已经处理过', 409);
     const task = this.store.task(owner, question.task_id);
@@ -930,7 +930,7 @@ export class BrowserAgentHost {
     return { ok: true, question_id: question.id };
   }
   // Secure input: the value goes straight into the page and is never stored or returned.
-  async submitSecureInput(owner, questionId, value) {
+  async submitSecureInput(owner: any, questionId: any, value: any) {
     const question = this.store.ownedQuestion(owner, questionId);
     if (question.kind !== 'secure_input' || question.status !== 'pending') throw fail('这个加密输入已处理或无效', 409);
     if (typeof value !== 'string' || !value || value.length > 1024) throw fail('请填写内容');
@@ -953,7 +953,7 @@ export class BrowserAgentHost {
     if (!answer.entered) throw fail(answer.error || '没有填入页面', 409);
     return { ok: true };
   }
-  async startTakeover(owner, taskId, { accountToken = null }: { accountToken?: string | null } = {}) {
+  async startTakeover(owner: any, taskId: any, { accountToken = null }: { accountToken?: string | null } = {}) {
     const task = this.store.task(owner, taskId);
     if (task.origin !== 'chat') throw fail('定时任务、主动推送和网页应用发起的浏览器任务不提供接管', 403);
     if (this.takeover && this.takeover.taskId !== task.id && this.takeover.owner === owner) await this.handback(owner, this.takeover.taskId, { note: '用户转去接管另一个窗口。' }).catch(() => {});
@@ -964,7 +964,7 @@ export class BrowserAgentHost {
     const ticket = await this.manager.createTicket(owner, { accountToken });
     return { ok: true, task_id: task.id, ...ticket };
   }
-  async handback(owner, taskId, { note = '' } = {}) {
+  async handback(owner: any, taskId: any, { note = '' } = {}) {
     const task = this.store.task(owner, taskId);
     const previous = this.takeover?.taskId === task.id ? this.takeover!.previousStatus : null;
     if (this.takeover?.taskId === task.id) {
@@ -985,11 +985,11 @@ export class BrowserAgentHost {
     this.store.updateTask(task.id, { status });
     return { ok: true, task_id: task.id, status };
   }
-  async userClose(owner, taskId) { return this.windowsTool(owner, 'chat', { action: 'close', task_id: taskId }); }
-  publicTask(task) { return { ...this.windowSummary(task, { detail: true }), created_at: task.created_at, finished_at: task.finished_at, checkout: JSON.parse(task.checkout || 'null'), result: JSON.parse(task.result || 'null') }; }
+  async userClose(owner: any, taskId: any) { return this.windowsTool(owner, 'chat', { action: 'close', task_id: taskId }); }
+  publicTask(task: any) { return { ...this.windowSummary(task, { detail: true }), created_at: task.created_at, finished_at: task.finished_at, checkout: JSON.parse(task.checkout || 'null'), result: JSON.parse(task.result || 'null') }; }
 
   // ================================================================ executor runtime coordination
-  claim(workerId, { exclude = [] }: {exclude?: string[]} = {}) {
+  claim(workerId: any, { exclude = [] }: {exclude?: string[]} = {}) {
     // Owners whose browser is held by another account wait: skip them instead of failing the task.
     const busy = new Set(exclude);
     const active = this.manager.activeSession;
@@ -1001,9 +1001,9 @@ export class BrowserAgentHost {
     return { task: { task_id: task.id, owner: task.owner, origin: task.origin, identity: task.identity, title: task.title, thread_id: task.thread_id || null, resumed: Boolean(task.thread_id) },
       token: claimed.token, new_inputs: inputs.map(item => ({ kind: item.kind, text: item.text })) };
   }
-  renew(taskId, token) { this.store.renewClaim(taskId, token); return { ok: true, status: this.store.row(taskId)!.status }; }
-  checkpoint(taskId, token, threadId) { this.store.verifyClaim(taskId, token); this.store.updateTask(taskId, { thread_id: String(threadId || '').slice(0, 200) }); return { ok: true }; }
-  complete(taskId, token, { error = '' } = {}) {
+  renew(taskId: any, token: any) { this.store.renewClaim(taskId, token); return { ok: true, status: this.store.row(taskId)!.status }; }
+  checkpoint(taskId: any, token: any, threadId: any) { this.store.verifyClaim(taskId, token); this.store.updateTask(taskId, { thread_id: String(threadId || '').slice(0, 200) }); return { ok: true }; }
+  complete(taskId: any, token: any, { error = '' } = {}) {
     const task = this.store.verifyClaim(taskId, token);
     this.store.releaseClaim(task.id);
     const fresh = this.store.row(task.id)!;
@@ -1019,7 +1019,7 @@ export class BrowserAgentHost {
     this.store.event(task.owner, task.id, 'browser_task_update', { task_id: task.id, status: 'failed', summary: '浏览器任务没有完成：' + message });
     return { ok: true, status: 'failed' };
   }
-  requeueBusy(taskId, token, reason) {
+  requeueBusy(taskId: any, token: any, reason: any) {
     this.store.verifyClaim(taskId, token); this.store.releaseClaim(taskId);
     this.store.updateTask(taskId, { status: 'queued', error: clip(reason, 300) });
   }
@@ -1028,8 +1028,8 @@ export class BrowserAgentHost {
 // ---------------------------------------------------------------------------------- private socket
 // Only local processes of the service user can reach it (0600). The Dots bridge passes its owner
 // from the runtime environment (never from model arguments); executor calls carry a claim token.
-export function startBrowserAgentSocket(host, socketPath) {
-  const send = (res, status, value) => { const data = JSON.stringify(value); res.writeHead(status, { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) }); res.end(data); };
+export function startBrowserAgentSocket(host: any, socketPath: any) {
+  const send = (res: any, status: any, value: any) => { const data = JSON.stringify(value); res.writeHead(status, { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) }); res.end(data); };
   const server = http.createServer(async (req, res) => {
     try {
       let size = 0; const chunks: any[] = [];
@@ -1058,7 +1058,7 @@ export function startBrowserAgentSocket(host, socketPath) {
 }
 
 // Shared client used by the MCP bridges and the Dots runtime executor.
-export function browserAgentRequest(socketPath, route, body, { timeoutMs = 30 * 60_000 } = {}) {
+export function browserAgentRequest(socketPath: any, route: any, body: any, { timeoutMs = 30 * 60_000 } = {}) {
   const payload = Buffer.from(JSON.stringify(body || {}));
   return new Promise<any>((resolve, reject) => {
     const req = http.request({ socketPath, path: route, method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': payload.length } }, res => {
@@ -1070,5 +1070,5 @@ export function browserAgentRequest(socketPath, route, body, { timeoutMs = 30 * 
     req.end(payload);
   });
 }
-export const defaultBrowserSocket = root => path.join(root, 'data', 'browser', 'agent.sock');
+export const defaultBrowserSocket = (root: any) => path.join(root, 'data', 'browser', 'agent.sock');
 export { originMatches };

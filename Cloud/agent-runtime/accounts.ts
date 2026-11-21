@@ -10,19 +10,19 @@ export const PRIVATE_OWNER = 'shiyan-private-owner';
 const ROOT = process.env.SHIYAN_ROOT || '/home/ubuntu/boss-codex-service/shiyan-v2';
 const DAY = 86400000;
 const derive: any = promisify(scrypt);
-const hash = value => createHash('sha256').update(value).digest('hex');
-const failure = (message, status = 400) => Object.assign(new Error(message), { status });
-const normalized = value => typeof value === 'string' ? value.normalize('NFKC').trim().toLowerCase() : '';
-const passwordValid = value => typeof value === 'string' && value.length >= 8 && value.length <= 128 && Buffer.byteLength(value) <= 512;
+const hash = (value: any) => createHash('sha256').update(value).digest('hex');
+const failure = (message: any, status = 400) => Object.assign(new Error(message), { status });
+const normalized = (value: any) => typeof value === 'string' ? value.normalize('NFKC').trim().toLowerCase() : '';
+const passwordValid = (value: any) => typeof value === 'string' && value.length >= 8 && value.length <= 128 && Buffer.byteLength(value) <= 512;
 const dummySalt = Buffer.alloc(16, 19).toString('hex');
 let deriving = 0;
-async function passwordHash(password, salt) {
+async function passwordHash(password: any, salt: any) {
   if (deriving >= 4) throw failure('登录请求较多，请稍后再试', 429);
   deriving++;
   try { return (await derive(password, salt, 64, { N: 32768, r: 8, p: 1, maxmem: 64 * 1024 * 1024 })).toString('hex'); }
   finally { deriving--; }
 }
-const fields = input => {
+const fields = (input: any) => {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw failure('账户信息无效');
   const email = normalized(input.email);
   if (email && (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) throw failure('请输入有效邮箱');
@@ -70,23 +70,23 @@ export class AccountStore {
     this.registrationEvents = accountRegistrationOutbox(this, registrationSocketPath);
   }
   close() { if (!this.closed) { this.closed = true; this.registrationEvents.close(); this.db.close(); } }
-  transaction(action) {
+  transaction(action: any) {
     this.db.exec('BEGIN IMMEDIATE');
     try { const result = action(); this.db.exec('COMMIT'); return result; }
     catch (error) { this.db.exec('ROLLBACK'); throw error; }
   }
-  public(row) {
+  public(row: any) {
     return { id: row.id, owner: row.owner, username: row.username, email: row.email,
       displayName: row.display_name, role: row.role, status: row.status, serverAccess: Boolean(row.server_access),
       createdAt: Number(row.created_at), updatedAt: Number(row.updated_at), revision: Number(row.revision),
       protected: row.owner === PRIVATE_OWNER };
   }
   bootstrapRequired() { return !this.db.prepare('SELECT id FROM account_users WHERE owner=?').get(PRIVATE_OWNER); }
-  audit(actor, subject, action, details = {}) {
+  audit(actor: any, subject: any, action: any, details = {}) {
     this.db.prepare('INSERT INTO account_audit(actor_id,subject_id,action,details,created_at) VALUES(?,?,?,?,?)')
       .run(actor, subject, action, JSON.stringify(details), this.now());
   }
-  consumeLimit(key, limit = 20, windowMs = 15 * 60000) {
+  consumeLimit(key: any, limit = 20, windowMs = 15 * 60000) {
     return this.transaction(() => {
       const now = this.now();
       this.db.prepare('DELETE FROM account_limits WHERE reset_at<=?').run(now);
@@ -95,8 +95,8 @@ export class AccountStore {
       this.db.prepare('INSERT INTO account_limits(key,count,reset_at) VALUES(?,1,?) ON CONFLICT(key) DO UPDATE SET count=count+1').run(opaque, now + windowMs);
     });
   }
-  clearLimit(key) { this.db.prepare('DELETE FROM account_limits WHERE key=?').run(hash(key)); }
-  newSession(row) {
+  clearLimit(key: any) { this.db.prepare('DELETE FROM account_limits WHERE key=?').run(hash(key)); }
+  newSession(row: any) {
     const token = randomBytes(32).toString('base64url'), now = this.now(), expiresAt = now + this.sessionDays * DAY;
     this.db.prepare('DELETE FROM account_sessions WHERE expires_at<=?').run(now);
     // Keep bounded sessions per account. Every session remains independently revocable.
@@ -105,7 +105,7 @@ export class AccountStore {
     this.db.prepare('INSERT INTO account_sessions VALUES(?,?,?,?,?,?)').run(randomUUID(), hash(token), row.id, now, expiresAt, now);
     return { ok: true, token, expiresAt, user: this.public(row) };
   }
-  async register(input, { bootstrap = false, trustedOwner = null, verifyEmail = null }: { bootstrap?: boolean; trustedOwner?: string | null; verifyEmail?: (() => void) | null } = {}) {
+  async register(input: any, { bootstrap = false, trustedOwner = null, verifyEmail = null }: { bootstrap?: boolean; trustedOwner?: string | null; verifyEmail?: (() => void) | null } = {}) {
     const value = fields(input);
     if (bootstrap && trustedOwner !== PRIVATE_OWNER) throw failure('仅原管理员设备可以绑定管理账户', 403);
     const salt = randomBytes(16).toString('hex'), password = await passwordHash(value.password, salt);
@@ -125,7 +125,7 @@ export class AccountStore {
     this.registrationEvents.notify();
     return result;
   }
-  async resetPassword(input, { verifyEmail }: { verifyEmail?: () => void } = {}) {
+  async resetPassword(input: any, { verifyEmail }: { verifyEmail?: () => void } = {}) {
     const email = normalized(input?.email);
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw failure('请输入有效邮箱');
     if (!passwordValid(input?.password)) throw failure('密码须为8至128位');
@@ -145,7 +145,7 @@ export class AccountStore {
       return { ok: true };
     });
   }
-  async login(input) {
+  async login(input: any) {
     const identifier = normalized(input?.identifier ?? input?.email ?? input?.username);
     const password = input?.password;
     if (!identifier || identifier.length > 254 || typeof password !== 'string' || password.length > 128 || Buffer.byteLength(password) > 512)
@@ -163,7 +163,7 @@ export class AccountStore {
       return this.newSession(current);
     });
   }
-  authenticate(token) {
+  authenticate(token: any) {
     if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(token)) return null;
     const row = this.db.prepare(`SELECT u.*,s.id AS session_id,s.expires_at,s.last_seen_at
       FROM account_sessions s JOIN account_users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND u.status='active'`).get(hash(token), this.now());
@@ -172,27 +172,27 @@ export class AccountStore {
     return { owner: row.owner, userId: row.id, role: row.role, serverAccess: Boolean(row.server_access),
       deviceID: row.session_id, sessionId: row.session_id, expiresAt: Number(row.expires_at), user: this.public(row), accountSession: true };
   }
-  logout(token) {
+  logout(token: any) {
     if (typeof token === 'string') this.db.prepare('DELETE FROM account_sessions WHERE token_hash=?').run(hash(token));
     return { ok: true };
   }
-  access(owner) {
+  access(owner: any) {
     const row = this.db.prepare('SELECT * FROM account_users WHERE owner=?').get(owner);
     if (row) return { owner, userId: row.id, role: row.role, status: row.status, serverAccess: row.status === 'active' && Boolean(row.server_access) };
     if (owner === PRIVATE_OWNER && this.bootstrapRequired()) return { owner, role: 'admin', status: 'active', serverAccess: true, legacy: true };
     return { owner, role: 'user', status: 'disabled', serverAccess: false };
   }
-  requireAdmin(auth) {
+  requireAdmin(auth: any) {
     // Recheck the database, never trust role flags from a prior request or a caller's JSON.
     const current = auth?.userId && this.db.prepare('SELECT * FROM account_users WHERE id=?').get(auth.userId);
     if (!auth?.accountSession || !current || current.status !== 'active' || current.role !== 'admin') throw failure('需要管理员权限', 403);
     return current;
   }
-  listUsers(auth) {
+  listUsers(auth: any) {
     this.requireAdmin(auth);
     return { ok: true, users: this.db.prepare('SELECT * FROM account_users ORDER BY created_at,id LIMIT 1000').all().map(row => this.public(row)) };
   }
-  updateUser(auth, id, input) {
+  updateUser(auth: any, id: any, input: any) {
     if (!input || typeof input !== 'object' || Array.isArray(input) || !Object.keys(input).length || Object.keys(input).some(key => !['role','status','serverAccess','displayName','revision'].includes(key))) throw failure('权限更新无效');
     if (input.role !== undefined && !['admin','user'].includes(input.role) || input.status !== undefined && !['active','disabled'].includes(input.status) || input.serverAccess !== undefined && typeof input.serverAccess !== 'boolean') throw failure('权限更新无效');
     if (input.displayName !== undefined && (typeof input.displayName !== 'string' || !input.displayName.trim() || input.displayName.trim().length > 80 || /[\x00-\x1f\x7f]/.test(input.displayName))) throw failure('显示名称无效');
@@ -218,8 +218,8 @@ export class AccountStore {
 
 let defaultStore;
 export const getAccountStore = () => defaultStore ||= new AccountStore();
-export const accountAccess = owner => getAccountStore().access(owner);
-export function requestBearer(req) {
+export const accountAccess = (owner: any) => getAccountStore().access(owner);
+export function requestBearer(req: any) {
   const value = req.headers.authorization;
   return typeof value === 'string' && /^Bearer [A-Za-z0-9_-]{43}$/i.test(value) ? value.slice(7) : null;
 }

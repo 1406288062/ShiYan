@@ -19,20 +19,20 @@ const { SpongeConnector, createSpongeServer, prepareSpongeSocket, removeOwnedSpo
 after(() => rm(bundle, { recursive: true, force: true }));
 const issuer = 'https://mcp.yandot.ai';
 const callback = issuer + '/shiyan/callback';
-const sha = value => createHash('sha256').update(value).digest('hex');
+const sha = (value: any) => createHash('sha256').update(value).digest('hex');
 const secret = Buffer.alloc(32, 7);
-const response = value => new Response(JSON.stringify(value), { headers: { 'Content-Type': 'application/json' } });
+const response = (value: any) => new Response(JSON.stringify(value), { headers: { 'Content-Type': 'application/json' } });
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 
-async function fixture(t) {
+async function fixture(t: any) {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'sponge-connector-audit-'));
   const time = { value: 1800000000000 };
   const accounts = new Map(['A', 'B'].map(owner => [owner, { userId: 'subject-' + owner, owner, status: 'active' }]));
   const sessions = new Set(['session-A', 'session-B']);
-  const accountStore = { access: owner => accounts.get(owner), db: { prepare: () => ({ get: (id, subject) => sessions.has(id) && id === 'session-' + subject.slice(-1) ? { id } : undefined }) } };
+  const accountStore = { access: (owner: any) => accounts.get(owner), db: { prepare: () => ({ get: (id: any, subject: any) => sessions.has(id) && id === 'session-' + subject.slice(-1) ? { id } : undefined }) } };
   const f: any = { directory, time, accounts, sessions, calls: [], intercept: null, nextClient: 0, nextToken: 0, identityOverride: null };
   const access = new Map(), refresh = new Map();
-  const normal = (route, body, options) => {
+  const normal = (route: any, body: any, options: any) => {
     if (route === '/oauth/register') return response({ client_id: 'client-' + (++f.nextClient), redirect_uris: [callback] });
     if (route === '/oauth/revoke') return response({});
     if (route === '/oauth/token') {
@@ -50,20 +50,20 @@ async function fixture(t) {
     throw Error('Unexpected fixture route: ' + route);
   };
   f.connector = new SpongeConnector({ directory, secret, accountStore, now: () => time.value,
-    fetchImpl: async (url, options) => {
+    fetchImpl: async (url: any, options: any) => {
       const route = new URL(url).pathname, body = JSON.parse(options.body);
       f.calls.push({ route, body, authorization: options.headers.Authorization });
       const intercepted = f.intercept ? await f.intercept(route, body, options, () => normal(route, body, options)) : undefined;
       return intercepted === undefined ? normal(route, body, options) : intercepted;
     },
   });
-  f.auth = owner => ({ owner, userId: 'subject-' + owner, sessionId: 'session-' + owner, accountSession: true });
+  f.auth = (owner: any) => ({ owner, userId: 'subject-' + owner, sessionId: 'session-' + owner, accountSession: true });
   f.begin = async (owner = 'A') => {
     const started = await f.connector.start(f.auth(owner)), url = new URL(started.authorizeUrl);
     return { url, state: url.searchParams.get('state'), code: 'code-' + owner, iss: issuer };
   };
   f.connect = async (owner = 'A') => { const flow = await f.begin(owner); await f.connector.complete(flow); return flow; };
-  f.expire = owner => f.connector.db.prepare('UPDATE connections SET expires_at=? WHERE owner=?').run(time.value, owner);
+  f.expire = (owner: any) => f.connector.db.prepare('UPDATE connections SET expires_at=? WHERE owner=?').run(time.value, owner);
   t.after(async () => { f.connector.close(); await rm(directory, { recursive: true, force: true }); });
   return f;
 }
@@ -90,16 +90,16 @@ test('standalone Sponge identities cannot associate, and their issued grant is r
   f.identityOverride = 'account_independent';
   await assert.rejects(f.connector.complete(flow), { status: 403 });
   assert.equal(f.connector._row('A').token_json, null);
-  assert.equal(f.calls.filter(call => call.route === '/oauth/revoke').length, 1);
+  assert.equal(f.calls.filter((call: any) => call.route === '/oauth/revoke').length, 1);
 });
 
 test('logging out invalidates both pending callback and a start delayed in registration', async t => {
   const f = await fixture(t), registered = deferred(), release = deferred();
-  f.intercept = async (route, body, options, normal) => {
-    if (route === '/oauth/register') { registered.resolve(); await release.promise; return normal(); }
+  f.intercept = async (route: any, body: any, options: any, normal: any) => {
+    if (route === '/oauth/register') { (registered.resolve as any)?.(); await release.promise; return normal(); }
   };
   const pending = f.connector.start(f.auth('A'));
-  await registered.promise; f.sessions.delete('session-A'); release.resolve();
+  await registered.promise; f.sessions.delete('session-A'); (release.resolve as any)?.();
   await assert.rejects(pending, { status: 401 });
   assert.equal(f.connector.db.prepare('SELECT COUNT(*) AS n FROM flows').get().n, 0);
   f.intercept = null; f.sessions.add('session-A'); const flow = await f.begin();
@@ -110,33 +110,33 @@ test('logging out invalidates both pending callback and a start delayed in regis
 
 test('disconnect during callback prevents a late token response restoring credentials', async t => {
   const f = await fixture(t), flow = await f.begin(), exchanged = deferred(), release = deferred();
-  f.intercept = async (route, body, options, normal) => {
-    if (route === '/oauth/token') { exchanged.resolve(); await release.promise; return normal(); }
+  f.intercept = async (route: any, body: any, options: any, normal: any) => {
+    if (route === '/oauth/token') { (exchanged.resolve as any)?.(); await release.promise; return normal(); }
   };
   const completing = f.connector.complete(flow);
-  await exchanged.promise; await f.connector.disconnect('A'); release.resolve();
+  await exchanged.promise; await f.connector.disconnect('A'); (release.resolve as any)?.();
   await assert.rejects(completing, { status: 409 });
   assert.equal(f.connector._row('A').token_json, null);
-  assert.equal(f.calls.filter(call => call.route === '/oauth/revoke').length, 1);
+  assert.equal(f.calls.filter((call: any) => call.route === '/oauth/revoke').length, 1);
 });
 
 test('account disable blocks device execution even if it occurs during identity verification', async t => {
   const f = await fixture(t); await f.connect();
   const identity = deferred(), release = deferred();
-  f.intercept = async (route, body, options, normal) => {
-    if (route === '/mcp' && body.params.name === 'who_am_i') { identity.resolve(); await release.promise; return normal(); }
+  f.intercept = async (route: any, body: any, options: any, normal: any) => {
+    if (route === '/mcp' && body.params.name === 'who_am_i') { (identity.resolve as any)?.(); await release.promise; return normal(); }
   };
   const executing = f.connector.rpc('A', 'tools/call', { name: 'start_process', arguments: {} });
-  await identity.promise; f.accounts.get('A').status = 'disabled'; release.resolve();
+  await identity.promise; f.accounts.get('A').status = 'disabled'; (release.resolve as any)?.();
   await assert.rejects(executing, { status: 403 });
-  assert.equal(f.calls.some(call => call.body.params?.name === 'start_process'), false);
+  assert.equal(f.calls.some((call: any) => call.body.params?.name === 'start_process'), false);
 });
 
 test('parallel operations share one refresh rotation and owner B cannot reuse owner A state', async t => {
   const f = await fixture(t); await f.connect('A'); await f.connect('B'); f.expire('A');
   const results = await Promise.all([f.connector.rpc('A', 'tools/list'), f.connector.rpc('A', 'tools/list')]);
   assert.equal(results.length, 2);
-  assert.equal(f.calls.filter(call => call.route === '/oauth/token' && call.body.grant_type === 'refresh_token').length, 1);
+  assert.equal(f.calls.filter((call: any) => call.route === '/oauth/token' && call.body.grant_type === 'refresh_token').length, 1);
   assert.equal(f.connector._row('B').revision, 2);
   await f.connector.disconnect('A');
   assert.equal((await f.connector.status('B')).connected, true);
@@ -144,24 +144,24 @@ test('parallel operations share one refresh rotation and owner B cannot reuse ow
 
 test('an uncertain refresh response clears the old refresh token instead of replaying it', async t => {
   const f = await fixture(t); await f.connect(); f.expire('A');
-  f.intercept = async (route, body) => { if (route === '/oauth/token' && body.grant_type === 'refresh_token') throw Error('connection lost after rotation'); };
+  f.intercept = async (route: any, body: any) => { if (route === '/oauth/token' && body.grant_type === 'refresh_token') throw Error('connection lost after rotation'); };
   await assert.rejects(f.connector.rpc('A', 'tools/list'), { status: 503 });
   assert.equal(f.connector._row('A').token_json, null);
   await assert.rejects(f.connector.rpc('A', 'tools/list'), { status: 409 });
-  assert.equal(f.calls.filter(call => call.route === '/oauth/token' && call.body.grant_type === 'refresh_token').length, 1);
+  assert.equal(f.calls.filter((call: any) => call.route === '/oauth/token' && call.body.grant_type === 'refresh_token').length, 1);
 });
 
 test('disconnect during refresh rejects late credentials and revokes the newly issued family token', async t => {
   const f = await fixture(t); await f.connect(); f.expire('A');
   const rotating = deferred(), release = deferred();
-  f.intercept = async (route, body, options, normal) => {
-    if (route === '/oauth/token' && body.grant_type === 'refresh_token') { rotating.resolve(); await release.promise; return normal(); }
+  f.intercept = async (route: any, body: any, options: any, normal: any) => {
+    if (route === '/oauth/token' && body.grant_type === 'refresh_token') { (rotating.resolve as any)?.(); await release.promise; return normal(); }
   };
   const pending = f.connector.rpc('A', 'tools/list');
-  await rotating.promise; await f.connector.disconnect('A'); release.resolve();
+  await rotating.promise; await f.connector.disconnect('A'); (release.resolve as any)?.();
   await assert.rejects(pending, { status: 409 });
   assert.equal(f.connector._row('A').token_json, null);
-  const revoked = f.calls.filter(call => call.route === '/oauth/revoke').map(call => call.body.token);
+  const revoked = f.calls.filter((call: any) => call.route === '/oauth/revoke').map((call: any) => call.body.token);
   assert.deepEqual(revoked, ['refresh-1', 'refresh-2']);
 });
 
@@ -185,7 +185,7 @@ test('new DCR registration revokes existing connection using that grant’s orig
   f.time.value += 21 * 3600000;
   const flow = await f.begin();
   assert.notEqual(flow.url.searchParams.get('client_id'), old.client_id);
-  const revoke = f.calls.filter(call => call.route === '/oauth/revoke').at(-1);
+  const revoke = f.calls.filter((call: any) => call.route === '/oauth/revoke').at(-1);
   assert.equal(revoke.body.client_id, old.client_id); assert.equal(revoke.body.token, old.refresh_token);
 });
 
@@ -196,7 +196,7 @@ test('global DCR rotation leaves another owner’s refresh bound to its original
   const newer = await f.begin('B');
   assert.notEqual(newer.url.searchParams.get('client_id'), old.client_id);
   await f.connector.rpc('A', 'tools/list');
-  const rotated = f.calls.filter(call => call.route === '/oauth/token' && call.body.grant_type === 'refresh_token').at(-1);
+  const rotated = f.calls.filter((call: any) => call.route === '/oauth/token' && call.body.grant_type === 'refresh_token').at(-1);
   assert.equal(rotated.body.client_id, old.client_id);
   assert.equal(JSON.parse(f.connector._row('A').token_json).client_id, old.client_id);
 });
@@ -207,13 +207,13 @@ test('fixed transport disallows public/custom targets and Unix start/disconnect 
   const server = createSpongeServer(connector);
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); });
-  const post = async route => await (await fetch('http://127.0.0.1:' + server.address().port + route, { method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' } })).json();
+  const post = async (route: any) => await (await fetch('http://127.0.0.1:' + server.address().port + route, { method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' } })).json();
   assert.deepEqual(await post('/start'), { ok: true, result: { ok: true, authorizeUrl: issuer + '/oauth/authorize' } });
   assert.deepEqual(await post('/disconnect'), { ok: true, result: { ok: true, connected: false } });
   assert.deepEqual(await post('/complete'), { ok: true, connected: true });
 });
 
-const staleSocket = socketPath => promisify(execFile)('/usr/bin/python3', ['-c', 'import socket,sys; s=socket.socket(socket.AF_UNIX); s.bind(sys.argv[1]); s.close()', socketPath]);
+const staleSocket = (socketPath: any) => promisify(execFile)('/usr/bin/python3', ['-c', 'import socket,sys; s=socket.socket(socket.AF_UNIX); s.bind(sys.argv[1]); s.close()', socketPath]);
 
 test('startup refuses a live socket and preserves its usable listener', async t => {
   const f = await fixture(t), socketPath = path.join(f.directory, 'live.sock');

@@ -2,7 +2,7 @@ import http from 'node:http';
 import {buildConnectors} from './dots-connectors.ts';
 import {createSpongeClient} from './sponge-client.ts';
 const spongeClient=createSpongeClient({timeoutMs:5000});
-const spongeStatus=owner=>spongeClient.status(owner,{signal:AbortSignal.timeout(5000)});
+const spongeStatus=(owner: any)=>spongeClient.status(owner,{signal:AbortSignal.timeout(5000)});
 import path from 'node:path';
 import { readFileSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -19,22 +19,32 @@ import { BrowserStore } from './browser-store.ts';
 import { BrowserAgentHost, startBrowserAgentSocket, defaultBrowserSocket } from './browser-agent.ts';
 
 const ROOT=process.env.SHIYAN_ROOT||'/home/ubuntu/boss-codex-service/shiyan-v2';
-const json=(res,status,value)=>{const data=JSON.stringify(value);res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Content-Length':Buffer.byteLength(data)});res.end(data);};
-const failure=(message,status=400)=>Object.assign(new Error(message),{status});
-const download=(res,file)=>{res.writeHead(200,{'Content-Type':file.mimeType||'application/octet-stream','Content-Disposition':"attachment; filename*=UTF-8''"+encodeURIComponent(file.filename),'X-Content-SHA256':file.sha256,'Cache-Control':'no-store','Content-Length':file.data.length});res.end(file.data);};
-async function bytes(req,max=256*1024){let size=0;const chunks: Buffer[]=[];for await(const chunk of req){size+=chunk.length;if(size>max)throw failure('请求内容过大',413);chunks.push(chunk);}return Buffer.concat(chunks);}
-async function body(req,max=256*1024){const raw=await bytes(req,max);if(digest(raw)!==req.headers['x-shiyan-body-sha'])throw failure('请求校验失败',401);try{return JSON.parse(raw.toString()||'{}');}catch{throw failure('请求格式无效');}}
+const json=(res: any,status: any,value: any)=>{const data=JSON.stringify(value);res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Content-Length':Buffer.byteLength(data)});res.end(data);};
+const failure=(message: any,status=400)=>Object.assign(new Error(message),{status});
+const download=(res: any,file: any)=>{res.writeHead(200,{'Content-Type':file.mimeType||'application/octet-stream','Content-Disposition':"attachment; filename*=UTF-8''"+encodeURIComponent(file.filename),'X-Content-SHA256':file.sha256,'Cache-Control':'no-store','Content-Length':file.data.length});res.end(file.data);};
+async function bytes(req: any,max=256*1024){let size=0;const chunks: Buffer[]=[];for await(const chunk of req){size+=chunk.length;if(size>max)throw failure('请求内容过大',413);chunks.push(chunk);}return Buffer.concat(chunks);}
+async function body(req: any,max=256*1024){const raw=await bytes(req,max);if(digest(raw)!==req.headers['x-shiyan-body-sha'])throw failure('请求校验失败',401);try{return JSON.parse(raw.toString()||'{}');}catch{throw failure('请求格式无效');}}
+interface DotsSidecarOptions {
+  root?: string;
+  authenticate?: (req: any) => any;
+  adapter?: any;
+  recover?: boolean;
+  registrationSocket?: any;
+  browser?: any;
+  browserStore?: any;
+  browserSocket?: any;
+}
 
-export function createDotsSidecar({root=ROOT,authenticate=authenticateDevice,adapter=new DotsAdapter({root:path.join(root,'data'),allowedOwner:process.env.SHIYAN_DOTS_OWNER||'shiyan-private-owner',callbackURL:process.env.SHIYAN_DOTS_CALLBACK_URL||'',importPrivateGoals:process.env.SHIYAN_DOTS_IMPORT_PRIVATE_GOALS==='1'}),recover=true,registrationSocket=recover?(process.env.DOTS_REGISTRATION_SOCKET||path.join(root,'data','registration-events.sock')):null,browser=new BrowserSessionManager({validateAccountToken:token=>Boolean(getAccountStore().authenticate(token))}),browserStore=null,browserSocket=recover?(process.env.SHIYAN_BROWSER_SOCKET||defaultBrowserSocket(root)):null}={}) {
+export function createDotsSidecar({root=ROOT,authenticate=authenticateDevice,adapter=new DotsAdapter({root:path.join(root,'data'),allowedOwner:process.env.SHIYAN_DOTS_OWNER||'shiyan-private-owner',callbackURL:process.env.SHIYAN_DOTS_CALLBACK_URL||'',importPrivateGoals:process.env.SHIYAN_DOTS_IMPORT_PRIVATE_GOALS==='1'}),recover=true,registrationSocket=recover?(process.env.DOTS_REGISTRATION_SOCKET||path.join(root,'data','registration-events.sock')):null,browser=new BrowserSessionManager({validateAccountToken:token=>Boolean(getAccountStore().authenticate(token))}),browserStore=null,browserSocket=recover?(process.env.SHIYAN_BROWSER_SOCKET||defaultBrowserSocket(root)):null}: DotsSidecarOptions={}) {
   const profile=createDotsProfile(adapter,root);
   // Dots browser tasks: durable task/question/permission/vault state plus the agent host that drives
   // the same isolated Chrome. Its private socket serves the MCP bridges and the Dots executor.
   const browserTasks=browserStore||new BrowserStore(path.join(root,'data','browser'));
   const browserAgent=new BrowserAgentHost({manager:browser,store:browserTasks,attachments:adapter.attachments});
-  const browserRoutes=async(req,res,pathname,owner,auth)=>{
+  const browserRoutes=async(req: any,res: any,pathname: any,owner: any,auth: any)=>{
     const m=pathname.match(/^\/v1\/dots\/browser\/(tasks|questions|permissions|site-rules|identities|vault)(?:\/([A-Za-z0-9_-]{1,64}))?(?:\/(answer|secure|takeover|handback|close))?$/);
     if(!m)return false;const [,kind,id,action]=m;
-    if(kind==='tasks'&&!id&&req.method==='GET'){json(res,200,{ok:true,tasks:browserTasks.listTasks(owner,{limit:40}).map(task=>browserAgent.publicTask(task)),takeover:browserAgent.takeover?.owner===owner?browserAgent.takeover!.taskId:null});return true;}
+    if(kind==='tasks'&&!id&&req.method==='GET'){json(res,200,{ok:true,tasks:browserTasks.listTasks(owner,{limit:40}).map((task: any)=>browserAgent.publicTask(task)),takeover:browserAgent.takeover?.owner===owner?browserAgent.takeover!.taskId:null});return true;}
     if(kind==='tasks'&&id&&!action&&req.method==='GET'){json(res,200,{ok:true,task:browserAgent.publicTask(browserTasks.task(owner,id))});return true;}
     if(kind==='tasks'&&id&&action==='takeover'&&req.method==='POST'){await body(req,1024);const accountToken=auth.accountSession?requestBearer(req):null;json(res,201,await browserAgent.startTakeover(owner,id,{accountToken}));return true;}
     if(kind==='tasks'&&id&&action==='handback'&&req.method==='POST'){const input=await body(req,4096);json(res,200,await browserAgent.handback(owner,id,{note:typeof input.note==='string'?input.note:''}));return true;}
@@ -77,7 +87,7 @@ export function createDotsSidecar({root=ROOT,authenticate=authenticateDevice,ada
         const base=buildConnectors({weixin:weixin.status==='fulfilled'?weixin.value:null});
         const mcp=mcpConnectors().list(owner);
         const connectors=base.connectors.filter(c=>c.kind==='weixin');
-        const connected=connectors.filter(c=>c.state==='connected').length+mcp.plugins.filter(p=>p.state==='connected').length+mcp.custom.filter(c=>c.state==='connected').length;
+        const connected=connectors.filter(c=>c.state==='connected').length+mcp.plugins.filter((p: any)=>p.state==='connected').length+mcp.custom.filter((c: any)=>c.state==='connected').length;
         return json(res,200,{ok:true,connectors,plugins:mcp.plugins,custom:mcp.custom,summary:{connected}});
       }
       if(req.method==='POST'&&pathname==='/v1/dots/connectors/mcp')return json(res,200,await mcpConnectors().connect(owner,await body(req)));
@@ -177,10 +187,10 @@ export function createDotsSidecar({root=ROOT,authenticate=authenticateDevice,ada
       return json(res,404,{ok:false,error:'接口不存在',code:'not_found'});
     }catch(error){if(!res.headersSent)json(res,(error as any).status||500,{ok:false,error:(error as any).status?(error as any).message:'Dots 操作未完成，请刷新后重试',code:(error as any).code||'request_failed'});else res.end();}
   });
-  let registrationReceiver;
+  let registrationReceiver: any;
   (server as any).registrationReady=Promise.resolve();
   if(registrationSocket)server.on('listening',()=>{
-    (server as any).registrationReady=startRegistrationReceiver({socketPath:registrationSocket,ingest:event=>adapter.registrationNotice(event)}).then(async receiver=>{if(!server.listening){await receiver.close();return null;}registrationReceiver=receiver;return receiver;});
+    (server as any).registrationReady=startRegistrationReceiver({socketPath:registrationSocket,ingest:(event: any)=>adapter.registrationNotice(event)}).then(async receiver=>{if(!server.listening){await receiver.close();return null;}registrationReceiver=receiver;return receiver;});
     (server as any).registrationReady.catch(()=>console.error('[registration-notices] private receiver unavailable; durable outboxes retain events'));
   });
   server.on('upgrade',(req,socket,head)=>{let pathname='';try{pathname=new URL(req.url||'/', 'http://localhost').pathname.replace(/^\/shiyan/,'');}catch{}if(pathname==='/v1/dots/browser/stream')return browser.acceptWebSocket(req,socket,head);socket.destroy();});

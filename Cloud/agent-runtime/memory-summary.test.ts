@@ -20,15 +20,15 @@ test('memory summary is deterministic, cached by revision, and never needs an LL
   const first = summary.get(owner);
   assert.equal(first.state, 'ready');
   assert.equal(first.generatedAt, 123456);
-  assert.deepEqual(first.sections.map(section => section.id), ['profile', 'preference', 'project']);
-  assert.equal(first.sections.find(section => section.id === 'preference').points.length, 1);
+  assert.deepEqual(first.sections.map((section: any) => section.id), ['profile', 'preference', 'project']);
+  assert.equal(first.sections.find((section: any) => section.id === 'preference').points.length, 1);
 
   const second = summary.get(owner);
   assert.deepEqual(second, first);
   store.create(owner, { category: 'context', content: '正在优化记忆页面' });
   const updated = summary.get(owner);
   assert.equal(updated.generatedAt, 123456);
-  assert.deepEqual(updated.sections.map(section => section.id), ['profile', 'preference', 'project', 'context']);
+  assert.deepEqual(updated.sections.map((section: any) => section.id), ['profile', 'preference', 'project', 'context']);
 });
 
 test('summary builder preserves category order and limits each section', () => {

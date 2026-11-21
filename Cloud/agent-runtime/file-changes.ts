@@ -5,9 +5,9 @@ import {textFileChange} from './text-file-diff.ts';
 import {readRemoteFileChanges,mergeFileChanges} from './remote-file-changes.ts';
 const skip=new Set(['.git','.shiyan','node_modules','.venv','venv','__pycache__','inputs','.next','dist','build']);
 const binary=/\.(?:png|jpe?g|webp|gif|ico|heic|pdf|zip|gz|tar|mp[34]|mov|woff2?|ttf|sqlite3?|db|pt|pth|safetensors)$/i;
-export async function snapshotWorkspace(root){
+export async function snapshotWorkspace(root: any){
  const files=new Map(),omitted=new Set();let bytes=0,visited=0,truncated=false;
- async function walk(dir){
+ async function walk(dir: any){
   let entries;try{entries=await fs.readdir(dir,{withFileTypes:true});}catch{return;}
   for(const entry of entries.sort((a,b)=>a.name.localeCompare(b.name))){
    if(++visited>30000){truncated=true;return;}
@@ -23,7 +23,7 @@ export async function snapshotWorkspace(root){
  }
  await walk(root);return {files,omitted,truncated};
 }
-export async function collectFileChanges(root,before,items: any[]=[],{jobId=null}: {jobId?: string | null}={}){
+export async function collectFileChanges(root: any,before: any,items: any[]=[],{jobId=null}: {jobId?: string | null}={}){
  const after=await snapshotWorkspace(root),names=new Set([...before.files.keys(),...after.files.keys()]);
  const changes: any[]=[];
   for(const name of [...names].sort()){

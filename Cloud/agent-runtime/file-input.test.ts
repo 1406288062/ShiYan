@@ -3,7 +3,7 @@ import {mkdtemp,readFile,rm} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {normalizeFiles,writeFileInputs} from './file-input.ts';
-const encode=text=>Buffer.from(text).toString('base64');
+const encode=(text: any)=>Buffer.from(text).toString('base64');
 const files=normalizeFiles([{filename:'../../notes.txt',data:encode('完整内容\n第二行')},{filename:'notes.txt',data:encode('second')}]);
 assert.equal(files[0].filename,'notes.txt');
 assert.throws(()=>normalizeFiles([{filename:'a',data:'not base64!'}]),/格式/);
@@ -17,7 +17,7 @@ try {
  const reference=await writeFileInputs(files,dir);
  const records=JSON.parse(reference.slice(reference.indexOf('\n')+1));
  assert.notEqual(records[0].path,records[1].path);
- assert(records.every(x=>path.dirname(x.path)===dir));
+ assert(records.every((x: any)=>path.dirname(x.path)===dir));
  assert.equal(await readFile(records[0].path,'utf8'),'完整内容\n第二行');
  assert.equal(await readFile(records[1].path,'utf8'),'second');
  console.log('PASS: files preserved, attachment paths supplied, duplicate names isolated, traversal and size limits checked');

@@ -48,16 +48,16 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
       for (const term of [...terms]) if (/[\u4e00-\u9fff]/.test(term) && term.length > 2) {
         for (let i = 0; i < term.length - 1; i++) terms.add(term.slice(i, i + 2));
       }
-      const ranked = all.map(tool => {
+      const ranked = all.map((tool: any) => {
         const haystack = (String(tool.name || '') + ' ' + String(tool.description || '')).toLowerCase();
         let score = 0;
         if (haystack.includes(query)) score += 20;
         for (const term of terms) if (term.length > 1 && haystack.includes(term)) score += term.length > 3 ? 3 : 2;
         if (String(tool.name || '').toLowerCase().includes(query)) score += 12;
         return { tool, score };
-      }).filter(item => item.score > 0).sort((a, b) => b.score - a.score || String(a.tool.name).localeCompare(String(b.tool.name)));
+      }).filter((item: any) => item.score > 0).sort((a: any, b: any) => b.score - a.score || String(a.tool.name).localeCompare(String(b.tool.name)));
       const limit = Math.max(1, Math.min(20, Number(args.limit) || 12));
-      const tools = ranked.slice(0, limit).map(({ tool }) => ({ name: tool.name, description: String(tool.description || '').slice(0, 12000), inputSchema: tool.inputSchema || { type: 'object', properties: {} } }));
+      const tools = ranked.slice(0, limit).map(({ tool }: any) => ({ name: tool.name, description: String(tool.description || '').slice(0, 12000), inputSchema: tool.inputSchema || { type: 'object', properties: {} } }));
       return { content: [{ type: 'text', text: JSON.stringify({ connector: connectorId, totalAvailable: all.length, matched: tools.length, tools }) }] };
     }
     if (name === 'mcp_call_tool') {

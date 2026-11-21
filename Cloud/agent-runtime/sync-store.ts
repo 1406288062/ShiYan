@@ -16,27 +16,27 @@ const KEYS = {
   messages:['id','conversationId','role','text','assets','createdAt','completedAt','state','phase','error','requestId','remoteJobId','reasoning','model','fileChanges','rawResult','displayItems','usage','requestStartedAt','updatedAt'],
 };
 const ASSET_KEYS=['id','syncAssetId','filename','mimeType','bytes','sha256','width','height'];
-const hash = value => createHash('sha256').update(value).digest('hex');
-const failure = (message,status=400) => Object.assign(new Error(message),{status});
-const validId = value => typeof value==='string' && /^[A-Za-z0-9_-]{1,120}$/.test(value);
-const stable = value => Array.isArray(value)?value.map(stable):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().map(key=>[key,stable(value[key])])):value;
-const canonical = value => JSON.stringify(stable(value));
+const hash = (value: any) => createHash('sha256').update(value).digest('hex');
+const failure = (message: any,status=400) => Object.assign(new Error(message),{status});
+const validId = (value: any) => typeof value==='string' && /^[A-Za-z0-9_-]{1,120}$/.test(value);
+const stable = (value: any): any => Array.isArray(value)?value.map(stable):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().map(key=>[key,stable(value[key])])):value;
+const canonical = (value: any) => JSON.stringify(stable(value));
 const SOURCE_FINGERPRINT = Symbol('sourceFingerprint');
-const iso = value => typeof value==='number'?new Date(value).toISOString():value;
+const iso = (value: any) => typeof value==='number'?new Date(value).toISOString():value;
 
-export function cleanSyncData(kind,id,input) {
+export function cleanSyncData(kind: any,id: any,input: any) {
   if(!KINDS.has(kind)||!validId(id)||!input||typeof input!=='object'||Array.isArray(input))throw failure('同步记录无效');
   const data: any={id};
-  for(const key of KEYS[kind])if(key!=='id'&&!LOCAL.has(key)&&Object.hasOwn(input,key))data[key]=input[key];
+  for(const key of (KEYS as any)[kind])if(key!=='id'&&!LOCAL.has(key)&&Object.hasOwn(input,key))data[key]=input[key];
   if(kind==='messages'){
     if(!validId(data.conversationId)||!['user','assistant','system'].includes(data.role))throw failure('消息同步记录无效');
     if(data.text!==undefined&&(typeof data.text!=='string'||data.text.length>2_000_000))throw failure('消息同步内容过大');
     if(data.displayItems!==undefined){
       if(!Array.isArray(data.displayItems))throw failure('输出显示记录无效');
-      data.displayItems=displayItemsForJob({displayItems:data.displayItems.map(item=>projectDisplayItem(item)).filter(Boolean)});
+      data.displayItems=displayItemsForJob({displayItems:data.displayItems.map((item: any)=>projectDisplayItem(item)).filter(Boolean)});
     }
     if(data.usage!==undefined)data.usage=projectUsage(data.usage);
-    data.assets=(data.role==='assistant'?generatedOutputs(data.assets):(Array.isArray(data.assets)?data.assets:[])).map(asset=>{
+    data.assets=(data.role==='assistant'?generatedOutputs(data.assets):(Array.isArray(data.assets)?data.assets:[])).map((asset: any)=>{
       if(!asset||typeof asset!=='object')return null;
       const identifier=asset.syncAssetId||asset.remoteId;
       if(!validId(identifier))return null;
@@ -53,7 +53,7 @@ export class SyncStore {
   root: string;
   assetRoot: string;
   db: DatabaseSync;
-  constructor(root,{databasePath=path.join(root,'sync.sqlite3')}={}) {
+  constructor(root: any,{databasePath=path.join(root,'sync.sqlite3')}={}) {
     mkdirSync(root,{recursive:true,mode:0o700});
     this.root=root;this.assetRoot=path.join(root,'sync-assets');mkdirSync(this.assetRoot,{recursive:true,mode:0o700});
     this.db=new DatabaseSync(databasePath);
@@ -88,18 +88,18 @@ export class SyncStore {
     }catch(error){this.db.exec('ROLLBACK');throw error;}
   }
   close(){this.db.close();}
-  change(row){return row?{kind:row.kind,id:row.id,revision:Number(row.revision),deleted:Boolean(row.deleted),data:JSON.parse(row.data)}:null;}
-  get(owner,kind,id){return this.change(this.db.prepare('SELECT * FROM sync_entities WHERE owner=? AND kind=? AND id=?').get(owner,kind,id));}
-  recordJobWorkspace(owner,jobId,conversationId,workspaceKey){
+  change(row: any){return row?{kind:row.kind,id:row.id,revision:Number(row.revision),deleted:Boolean(row.deleted),data:JSON.parse(row.data)}:null;}
+  get(owner: any,kind: any,id: any){return this.change(this.db.prepare('SELECT * FROM sync_entities WHERE owner=? AND kind=? AND id=?').get(owner,kind,id));}
+  recordJobWorkspace(owner: any,jobId: any,conversationId: any,workspaceKey: any){
     if(typeof owner!=='string'||!owner||!validId(jobId)||!validId(conversationId)||!/^[a-f0-9]{64}$/.test(workspaceKey||''))return false;
     this.db.prepare('INSERT OR IGNORE INTO sync_job_workspaces(owner,job_id,conversation_id,workspace_key) VALUES(?,?,?,?)').run(owner,jobId,conversationId,workspaceKey);
     return this.jobWorkspace(owner,jobId,conversationId)===workspaceKey;
   }
-  jobWorkspace(owner,jobId,conversationId){
+  jobWorkspace(owner: any,jobId: any,conversationId: any){
     if(!validId(jobId)||!validId(conversationId))return null;
     return this.db.prepare('SELECT workspace_key FROM sync_job_workspaces WHERE owner=? AND job_id=? AND conversation_id=?').get(owner,jobId,conversationId)?.workspace_key||null;
   }
-  write(owner,kind,id,data,deleted=false){
+  write(owner: any,kind: any,id: any,data: any,deleted=false){
     const current=this.get(owner,kind,id);
     const before=current?.data;
     const sameJob=before?.remoteJobId&&data.remoteJobId?before.remoteJobId===data.remoteJobId:before?.requestId&&before.requestId===data.requestId;
@@ -123,10 +123,10 @@ export class SyncStore {
     this.db.prepare('INSERT INTO sync_changes(owner,kind,id,revision,deleted,data) VALUES(?,?,?,?,?,?)').run(owner,kind,id,revision,deleted?1:0,encoded);
     return {kind,id,revision,deleted,data:JSON.parse(encoded)};
   }
-  putAuthoritative(owner,kind,id,input){
+  putAuthoritative(owner: any,kind: any,id: any,input: any){
     this.db.exec('BEGIN IMMEDIATE');try{const current=this.get(owner,kind,id);if(current?.deleted){this.db.exec('COMMIT');return current;}const data=cleanSyncData(kind,id,{...(current?.data||{}),...input});const result=this.write(owner,kind,id,data);this.db.exec('COMMIT');return result;}catch(error){this.db.exec('ROLLBACK');throw error;}
   }
-  list(owner,after=0,limit=200,{mobile=false,projectChange=null,includeOrder=false}: { mobile?: boolean; projectChange?: ((change: any) => any) | null; includeOrder?: boolean }={}){
+  list(owner: any,after=0,limit=200,{mobile=false,projectChange=null,includeOrder=false}: { mobile?: boolean; projectChange?: ((change: any) => any) | null; includeOrder?: boolean }={}){
     after=Number(after);limit=Number(limit);
     if(!Number.isSafeInteger(after)||after<0||!Number.isSafeInteger(limit)||limit<1||limit>500)throw failure('同步游标无效');
     // A sync cursor tracks entity snapshots, not every intermediate tool update.
@@ -158,7 +158,7 @@ export class SyncStore {
   }
   // Check the original wire fingerprint before hydration or archive fallback.
   // A replay still goes through apply() so receipt/conflict semantics stay intact.
-  hasMutation(owner,mutation){
+  hasMutation(owner: any,mutation: any){
     if(!mutation||typeof mutation!=='object'||!validId(mutation.mutationId)||!KINDS.has(mutation.kind)||!validId(mutation.id)||!Number.isSafeInteger(mutation.baseRevision)||mutation.baseRevision<0||typeof mutation.deleted!=='boolean')throw failure('同步更新无效');
     const prior=this.db.prepare('SELECT fingerprint FROM sync_mutations WHERE owner=? AND id=?').get(owner,mutation.mutationId);
     if(!prior)return false;
@@ -166,7 +166,7 @@ export class SyncStore {
     if(prior.fingerprint!==fingerprint)throw failure('同步更新标识已使用',409);
     return true;
   }
-  apply(owner,mutations,after=0,limit=200,auth={},options: { includeDelta?: boolean }={}){
+  apply(owner: any,mutations: any,after=0,limit=200,auth={},options: { includeDelta?: boolean }={}){
     if(!Array.isArray(mutations)||mutations.length>200)throw failure('同步更新数量无效');
     // Validate before committing even when the HTTP layer will read the delta.
     after=Number(after);limit=Number(limit);
@@ -198,7 +198,7 @@ export class SyncStore {
       const delta=this.list(owner,after,limit);const response=withAcceptedSnapshots({...delta,accepted,conflicts},this,owner);this.db.exec('COMMIT');return response;
     }catch(error){this.db.exec('ROLLBACK');throw error;}
   }
-  matchingMessages(owner,requestId,jobId){
+  matchingMessages(owner: any,requestId: any,jobId: any){
     // Two exact index lookups preserve OR semantics without parsing every
     // message JSON. Deduplicate records that match both identifiers.
     const rows=new Map();
@@ -206,19 +206,19 @@ export class SyncStore {
     if(jobId!=null)for(const row of this.db.prepare("SELECT * FROM sync_entities WHERE owner=? AND kind='messages' AND deleted=0 AND json_extract(data,'$.remoteJobId')=?").all(owner,jobId))rows.set(row.id,row);
     return [...rows.values()].map(row=>this.change(row));
   }
-  asset(owner,id){
+  asset(owner: any,id: any){
     const row=this.db.prepare('SELECT * FROM sync_assets WHERE owner=? AND id=?').get(owner,id);
     if(!row){const generated=this.db.prepare('SELECT data FROM sync_generated_assets WHERE owner=? AND id=?').get(owner,id);return generated?JSON.parse(String(generated.data)):null;}
     return {id:row.id,syncAssetId:row.id,filename:row.filename,mimeType:row.mime_type,bytes:Number(row.bytes),sha256:row.sha256};
   }
-  assetFile(owner,id){const row=this.db.prepare('SELECT file_name FROM sync_assets WHERE owner=? AND id=?').get(owner,id);if(row)return path.join(this.assetRoot,String(row.file_name));return this.db.prepare('SELECT file FROM sync_generated_assets WHERE owner=? AND id=?').get(owner,id)?.file||null;}
-  registerGeneratedAsset(asset){
+  assetFile(owner: any,id: any){const row=this.db.prepare('SELECT file_name FROM sync_assets WHERE owner=? AND id=?').get(owner,id);if(row)return path.join(this.assetRoot,String(row.file_name));return this.db.prepare('SELECT file FROM sync_generated_assets WHERE owner=? AND id=?').get(owner,id)?.file||null;}
+  registerGeneratedAsset(asset: any){
     if(!asset?.owner||!validId(asset.id)||typeof asset.file!=='string'||!path.resolve(asset.file).startsWith(path.resolve(this.root,'artifacts')+path.sep))return null;
     const metadata={id:asset.id,syncAssetId:asset.id,filename:asset.filename,mimeType:asset.mimeType,bytes:asset.bytes,sha256:asset.sha256};
     this.db.prepare('INSERT OR IGNORE INTO sync_generated_assets(owner,id,data,file) VALUES(?,?,?,?)').run(asset.owner,asset.id,JSON.stringify(metadata),asset.file);
     return metadata;
   }
-  saveAsset(owner,input){
+  saveAsset(owner: any,input: any){
     if(!validId(input.id)||typeof input.filename!=='string'||input.filename.length>255||typeof input.mimeType!=='string'||! /^[a-zA-Z0-9!#$&^_.+-]+\/[a-zA-Z0-9!#$&^_.+-]+(?:;[a-zA-Z0-9= ._-]+)?$/.test(input.mimeType)||input.mimeType.length>120||typeof input.data!=='string'||input.data.length>90*1024*1024||!/^[A-Za-z0-9+/]*={0,2}$/.test(input.data))throw failure('同步附件无效');
     const bytes=Buffer.from(input.data,'base64');if(!bytes.length||bytes.length>64*1024*1024)throw failure('同步附件过大',413);
     const digest=hash(bytes),existing=this.asset(owner,input.id);if(existing){if(existing.sha256!==digest)throw failure('同步附件标识已使用',409);return existing;}
@@ -237,10 +237,10 @@ export class SyncStore {
   }
 }
 
-export function withAcceptedSnapshots(response,store,owner){
+export function withAcceptedSnapshots(response: any,store: any,owner: any){
   // A hydrated mutation may be accepted without creating a new revision. Its
   // receipt alone cannot tell a legacy client that its stale output was replaced.
-  const changes=new Map(response.changes.map(change=>[change.kind+':'+change.id,change]));
+  const changes=new Map(response.changes.map((change: any)=>[change.kind+':'+change.id,change]));
   for(const receipt of response.accepted||[]){
     const current=store.get(owner,receipt.kind,receipt.id);if(!current)continue;
     if(current.kind==='messages'&&validId(current.data.conversationId)){
@@ -250,10 +250,10 @@ export function withAcceptedSnapshots(response,store,owner){
     changes.set(current.kind+':'+current.id,current);
   }
   const rank={projects:0,conversations:1,messages:2,scheduledTasks:3};
-  return {...response,changes:[...changes.values()].sort((a: any,b: any)=>rank[a.kind]-rank[b.kind])};
+  return {...response,changes:[...changes.values()].sort((a: any,b: any)=>(rank as any)[a.kind]-(rank as any)[b.kind])};
 }
 
-export function jobMessageData(job,base){
+export function jobMessageData(job: any,base: any){
   const assistant=base.role==='assistant';
   const state=job.status==='completed'?'completed':job.status==='cancelled'?'cancelled':['failed','interrupted'].includes(job.status)?'failed':'running';
   const phase=[...(job.events||[])].reverse().find(event=>event.type==='phase');
@@ -265,7 +265,7 @@ export function jobMessageData(job,base){
     ...(assistant?{updatedAt:iso(job.updatedAt)}:{})};
 }
 
-export function materializeJob(store,job,conversation){
+export function materializeJob(store: any,job: any,conversation: any){
   if(!job?.owner||!job.requestId)return;
   // A legacy phone can publish its empty conversation before its message batch.
   // Refresh that existing record independently; never invent message IDs or
@@ -284,7 +284,7 @@ export function materializeJob(store,job,conversation){
   const found=store.matchingMessages(job.owner,job.requestId,job.id);
   if(validId(job.syncConversationId)){
     for(const [role,id] of [['user',job.userMessageId],['assistant',job.assistantMessageId]]){
-      if(!validId(id)||store.get(job.owner,'messages',id)?.deleted||found.some(message=>message.id===id))continue;
+      if(!validId(id)||store.get(job.owner,'messages',id)?.deleted||found.some((message: any)=>message.id===id))continue;
       found.push({id,data:{id,conversationId:job.syncConversationId,role,text:role==='user'?job.prompt:'',createdAt:iso(job.createdAt),assets:[]}});
     }
   }
@@ -302,7 +302,7 @@ export function materializeJob(store,job,conversation){
   }
 }
 
-export function hydrateMutation(mutation,owner,state){
+export function hydrateMutation(mutation: any,owner: any,state: any){
   if(mutation.kind!=='messages'||mutation.deleted||!mutation.data)return mutation;
   const data=mutation.data;
   const job=state.jobs?.[data.remoteJobId]||state.jobs?.[state.requests?.[owner+':'+data.requestId]];
@@ -312,7 +312,7 @@ export function hydrateMutation(mutation,owner,state){
 
 // Compact clients edit message metadata without holding full execution records.
 // Restore those records from this exact account/message before replacing it.
-export function hydrateCompactMutation(mutation,owner,store){
+export function hydrateCompactMutation(mutation: any,owner: any,store: any){
   if(mutation.kind!=='messages'||mutation.deleted||!mutation.data)return mutation;
   const changed=mutation.data.executionDetailsChanged;
   if(changed!==undefined&&(!Array.isArray(changed)||new Set(changed).size!==changed.length
@@ -340,14 +340,14 @@ export function hydrateCompactMutation(mutation,owner,store){
   return {...mutation,data:restored,[SOURCE_FINGERPRINT]:mutation[SOURCE_FINGERPRINT]||hash(canonical(mutation))};
 }
 
-export function hydrateStoredMutation(mutation,owner,store){
+export function hydrateStoredMutation(mutation: any,owner: any,store: any){
   if(mutation.kind!=='messages'||mutation.deleted||!mutation.data)return mutation;
   const data=mutation.data;
   if(!data.requestId&&!data.remoteJobId)return mutation;
   const authoritative=store.matchingMessages(owner,data.requestId||null,data.remoteJobId||null)
-    .filter(message=>message.data.role===data.role&&message.data.remoteJobId
+    .filter((message: any)=>message.data.role===data.role&&message.data.remoteJobId
       &&(!data.remoteJobId||message.data.remoteJobId===data.remoteJobId))
-    .sort((a,b)=>{
+    .sort((a: any,b: any)=>{
       const updated=(Date.parse(b.data.updatedAt||'')||0)-(Date.parse(a.data.updatedAt||'')||0);
       if(updated)return updated;
       const completed=Number(b.data.state==='completed')-Number(a.data.state==='completed');
@@ -360,7 +360,7 @@ export function hydrateStoredMutation(mutation,owner,store){
     [SOURCE_FINGERPRINT]:mutation[SOURCE_FINGERPRINT]||hash(canonical(mutation))};
 }
 
-export function readSyncAsset(store,state,owner,id){
+export function readSyncAsset(store: any,state: any,owner: any,id: any){
   const metadata=store.asset(owner,id);if(metadata)return {metadata,file:store.assetFile(owner,id)};
   const asset=state.assets?.[id];if(asset?.owner!==owner)return null;
   return {metadata:{id,syncAssetId:id,filename:asset.filename,mimeType:asset.mimeType,bytes:asset.bytes,sha256:asset.sha256},file:asset.file};

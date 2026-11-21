@@ -11,7 +11,7 @@ const originalRoot = process.env.SHIYAN_ROOT;
 process.env.SHIYAN_ROOT = root;
 const { createQuotaSidecar } = await import('./account-quota-sidecar.ts');
 const { createQuotaReader } = await import('./account-quota.ts');
-const hash = bytes => createHash('sha256').update(bytes).digest('hex');
+const hash = (bytes: any) => createHash('sha256').update(bytes).digest('hex');
 const emptyHash = hash(Buffer.alloc(0));
 function makeDevice() {
   const { privateKey, publicKey } = generateKeyPairSync('ed25519');
@@ -35,7 +35,7 @@ function headers(device = first, { method = 'GET', url = endpoint, nonce = rando
   };
 }
 interface QuotaRequestOptions { method?: string; url?: string; signed?: any; body?: string; chunked?: boolean; }
-function request(server, { method = 'GET', url = endpoint, signed = headers(first, { method, url }), body, chunked = false }: QuotaRequestOptions = {}): Promise<any> {
+function request(server: any, { method = 'GET', url = endpoint, signed = headers(first, { method, url }), body, chunked = false }: QuotaRequestOptions = {}): Promise<any> {
   return new Promise<any>((resolve, reject) => {
     const req = http.request({ host: '127.0.0.1', port: server.address().port, path: url, method, headers: { ...signed, ...(chunked ? { 'Transfer-Encoding': 'chunked' } : body ? { 'Content-Length': Buffer.byteLength(body) } : {}) } }, res => {
       const chunks: Buffer[] = [];
@@ -50,7 +50,7 @@ function request(server, { method = 'GET', url = endpoint, signed = headers(firs
     req.end(body);
   });
 }
-async function withServer(readQuota, callback) {
+async function withServer(readQuota: any, callback: any) {
   const server = createQuotaSidecar({ readQuota });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', () => resolve()));
   try { await callback(server); }
@@ -63,7 +63,7 @@ const upstream = {
 
 test('real signed GET returns normalized weekly quota and three reset credits', async () => {
   let reads = 0;
-  await withServer(createQuotaReader(async () => { reads++; return upstream; }), async server => {
+  await withServer(createQuotaReader(async () => { reads++; return upstream; }), async (server: any) => {
     const response = await request(server);
     assert.equal(response.status, 200);
     assert.equal(response.headers['cache-control'], 'no-store');
@@ -81,7 +81,7 @@ test('real signed GET returns normalized weekly quota and three reset credits', 
 
 test('signature covers complete original URL and method; unauthenticated requests do not call upstream', async () => {
   let reads = 0;
-  await withServer(async () => { reads++; return {}; }, async server => {
+  await withServer(async () => { reads++; return {}; }, async (server: any) => {
     for (const options of [
       { signed: {} },
       { signed: headers(unapproved) },
@@ -100,7 +100,7 @@ test('signature covers complete original URL and method; unauthenticated request
 
 test('same signed request cannot be replayed on the sidecar', async () => {
   let reads = 0;
-  await withServer(async () => { reads++; return { available: true }; }, async server => {
+  await withServer(async () => { reads++; return { available: true }; }, async (server: any) => {
     const signed = headers();
     assert.equal((await request(server, { signed })).status, 200);
     assert.equal((await request(server, { signed })).status, 401);
@@ -110,7 +110,7 @@ test('same signed request cannot be replayed on the sidecar', async () => {
 
 test('device revocation takes effect after registry update, without restarting service', async () => {
   let reads = 0;
-  await withServer(async () => { reads++; return {}; }, async server => {
+  await withServer(async () => { reads++; return {}; }, async (server: any) => {
     assert.equal((await request(server)).status, 200);
     registry[first.id] = { ...first.entry, revoked: true };
     await saveRegistry();
@@ -123,7 +123,7 @@ test('device revocation takes effect after registry update, without restarting s
 
 test('authenticated wrong method, wrong route and signed nonempty body are rejected before upstream', async () => {
   let reads = 0;
-  await withServer(async () => { reads++; return {}; }, async server => {
+  await withServer(async () => { reads++; return {}; }, async (server: any) => {
     const method = await request(server, { method: 'POST' });
     assert.equal(method.status, 405);
     assert.equal(method.headers.allow, 'GET');
@@ -137,7 +137,7 @@ test('authenticated wrong method, wrong route and signed nonempty body are rejec
 });
 
 test('upstream failure returns generic unavailable result and never exception details', async () => {
-  await withServer(async () => { throw new Error('secret-token: private upstream stack'); }, async server => {
+  await withServer(async () => { throw new Error('secret-token: private upstream stack'); }, async (server: any) => {
     const response = await request(server);
     assert.equal(response.status, 200);
     assert.deepEqual(response.json, { ok: true, quota: { available: false, windows: [], resetCredits: null, error: '暂时无法获取账户额度与重置卡信息' } });
@@ -146,11 +146,11 @@ test('upstream failure returns generic unavailable result and never exception de
 });
 
 test('concurrent requests share one upstream read and cached account snapshot across approved devices', async () => {
-  let reads = 0, enteredResolve, release;
+  let reads = 0, enteredResolve: any, release: any;
   const entered = new Promise(resolve => { enteredResolve = resolve; });
   const gate = new Promise(resolve => { release = resolve; });
   const readQuota = createQuotaReader(async () => { reads++; enteredResolve(); await gate; return upstream; });
-  await withServer(readQuota, async server => {
+  await withServer(readQuota, async (server: any) => {
     const one = request(server);
     await entered;
     const two = request(server, { signed: headers(second) });

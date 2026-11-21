@@ -6,20 +6,20 @@ import os from 'node:os';
 import path from 'node:path';
 import {JobImageUploads} from './job-image-uploads.ts';
 
-const sha = bytes => createHash('sha256').update(bytes).digest('hex');
-async function fixture(run) {
+const sha = (bytes: any) => createHash('sha256').update(bytes).digest('hex');
+async function fixture(run: any) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'shiyan-job-images-'));
   try { await run(new JobImageUploads(root), root); }
   finally { await rm(root, {recursive: true, force: true}); }
 }
-const part = (bytes, offset = 0, end = bytes.length, overrides = {}) => ({
+const part = (bytes: any, offset = 0, end = bytes.length, overrides = {}) => ({
   offset, total: bytes.length, suffix: '.png', sha256: sha(bytes),
   data: bytes.subarray(offset, end).toString('base64'), ...overrides,
 });
-const reference = bytes => ({uploadId: sha(bytes), suffix: '.png', sha256: sha(bytes)});
-const rejects = (action, status) => assert.rejects(action, error => (error as any).status === status);
+const reference = (bytes: any) => ({uploadId: sha(bytes), suffix: '.png', sha256: sha(bytes)});
+const rejects = (action: any, status: any) => assert.rejects(action, error => (error as any).status === status);
 
-test('resumes after recreation, accepts identical duplicate chunks and preserves ordered inline inputs', async () => fixture(async (uploads, root) => {
+test('resumes after recreation, accepts identical duplicate chunks and preserves ordered inline inputs', async () => fixture(async (uploads: any, root: any) => {
   const bytes = Buffer.alloc(100000, 42), id = sha(bytes);
   await rejects(() => uploads.inspect('owner', id), 404);
   const first = part(bytes, 0, 49152);
@@ -41,7 +41,7 @@ test('resumes after recreation, accepts identical duplicate chunks and preserves
   for (const file of ['data', 'metadata.json']) assert.equal((await stat(path.join(directory, file))).mode & 0o777, 0o600);
 }));
 
-test('isolates owners and rejects missing, unfinished or corrupted references', async () => fixture(async (uploads, root) => {
+test('isolates owners and rejects missing, unfinished or corrupted references', async () => fixture(async (uploads: any, root: any) => {
   const bytes = Buffer.from('the complete original image bytes'), id = sha(bytes);
   await uploads.append('alice', id, part(bytes, 0, 8));
   await rejects(() => uploads.resolve('alice', [reference(bytes)]), 409);
@@ -55,7 +55,7 @@ test('isolates owners and rejects missing, unfinished or corrupted references', 
   await rejects(() => uploads.resolve('alice', [reference(bytes)]), 409);
 }));
 
-test('rejects altered offsets, metadata, content, invalid base64 and oversized chunks', async () => fixture(async uploads => {
+test('rejects altered offsets, metadata, content, invalid base64 and oversized chunks', async () => fixture(async (uploads: any) => {
   const bytes = Buffer.alloc(50000, 7), id = sha(bytes);
   await rejects(() => uploads.append('owner', '../escape', part(bytes, 0, 1)), 400);
   await rejects(() => uploads.append('owner', id, part(bytes, 0, 49153)), 400);
@@ -75,7 +75,7 @@ test('rejects altered offsets, metadata, content, invalid base64 and oversized c
   assert.equal((await uploads.inspect('owner', id)).upload.complete, true);
 }));
 
-test('serializes competing appends across instances without duplicating committed bytes', async () => fixture(async (uploads, root) => {
+test('serializes competing appends across instances without duplicating committed bytes', async () => fixture(async (uploads: any, root: any) => {
   const bytes = Buffer.alloc(3000, 3), id = sha(bytes), other = new JobImageUploads(root);
   const results = await Promise.all([
     uploads.append('owner', id, part(bytes, 0, 1000)),

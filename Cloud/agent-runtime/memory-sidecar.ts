@@ -7,11 +7,11 @@ import { createMemoryWorker } from './memory-extractor.ts';
 import { createMemorySummary } from './memory-summary.ts';
 
 const ROOT=process.env.SHIYAN_ROOT||'/home/ubuntu/boss-codex-service/shiyan-v2';
-const fail=(message,status=400)=>Object.assign(new Error(message),{status});
-const json=(res,status,value)=>{const body=JSON.stringify(value);res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Content-Length':Buffer.byteLength(body)});res.end(body);};
-async function body(req){let size=0;const chunks: Buffer[]=[];for await(const chunk of req){size+=chunk.length;if(size>16384)throw fail('请求内容过大',413);chunks.push(chunk);}const bytes=Buffer.concat(chunks);if(digest(bytes)!==req.headers['x-shiyan-body-sha'])throw fail('请求校验失败',401);try{const data=JSON.parse(bytes.toString()||'{}');if(!data||typeof data!=='object'||Array.isArray(data))throw Error();return data;}catch{throw fail('请求格式无效');}}
-function only(input,keys){if(Object.keys(input).some(key=>!keys.includes(key)))throw fail('记忆参数无效');}
-const settingsResponse=({enabled,revision})=>({ok:true,enabled,revision});
+const fail=(message: any,status=400)=>Object.assign(new Error(message),{status});
+const json=(res: any,status: any,value: any)=>{const body=JSON.stringify(value);res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Content-Length':Buffer.byteLength(body)});res.end(body);};
+async function body(req: any){let size=0;const chunks: Buffer[]=[];for await(const chunk of req){size+=chunk.length;if(size>16384)throw fail('请求内容过大',413);chunks.push(chunk);}const bytes=Buffer.concat(chunks);if(digest(bytes)!==req.headers['x-shiyan-body-sha'])throw fail('请求校验失败',401);try{const data=JSON.parse(bytes.toString()||'{}');if(!data||typeof data!=='object'||Array.isArray(data))throw Error();return data;}catch{throw fail('请求格式无效');}}
+function only(input: any,keys: any){if(Object.keys(input).some(key=>!keys.includes(key)))throw fail('记忆参数无效');}
+const settingsResponse=({enabled,revision}: any)=>({ok:true,enabled,revision});
 interface MemorySidecarOptions { root?: string; store?: MemoryStore; authenticate?: (req: any) => any; worker?: boolean; extract?: any; summaryOptions?: any; }
 export function createMemorySidecar({root=ROOT,store=new MemoryStore(path.join(root,'data')),authenticate=authenticateDevice,worker=true,extract,summaryOptions={}}: MemorySidecarOptions={}){
   const background=worker?createMemoryWorker(store,{...(extract?{extract}:{})}):null;

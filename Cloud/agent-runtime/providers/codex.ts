@@ -13,11 +13,11 @@ export function codexMcpConfig(mcpServers: Record<string, any> = {}) {
   const secret = {}, servers = {};
   for (const [name, spec] of Object.entries(mcpServers)) {
     if (spec.url) {
-      servers[name] = { url: spec.url, ...(spec.headers && Object.keys(spec.headers).length ? { http_headers: spec.headers } : {}) };
+      (servers as any)[name] = { url: spec.url, ...(spec.headers && Object.keys(spec.headers).length ? { http_headers: spec.headers } : {}) };
       continue;
     }
     Object.assign(secret, spec.secretEnv || {});
-    servers[name] = { command: spec.command, args: spec.args || [], env: spec.env || {},
+    (servers as any)[name] = { command: spec.command, args: spec.args || [], env: spec.env || {},
       env_vars: Object.keys(spec.secretEnv || {}), ...(spec.timeoutSec ? { tool_timeout_sec: spec.timeoutSec } : {}) };
   }
   return { secret, servers };
@@ -32,7 +32,7 @@ export default {
   features: { images: true, files: true, imageGeneration: true },
   available: () => true,
   listModels: () => refreshModels(),
-  async runTurn({ model, reasoning, cwd, resume, input, mcpServers, signal }) {
+  async runTurn({ model, reasoning, cwd, resume, input, mcpServers, signal }: any) {
     const { secret, servers } = codexMcpConfig(mcpServers);
     const codex = new Codex({ codexPathOverride: CODEX_BIN, env: { ...process.env, ...secret }, config: { mcp_servers: servers } });
     const options: any = { model, workingDirectory: cwd, skipGitRepoCheck: true, sandboxMode: 'danger-full-access', approvalPolicy: 'never',

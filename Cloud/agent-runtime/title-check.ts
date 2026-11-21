@@ -5,8 +5,8 @@ const job=(Object.values(state.jobs) as any[]).find(j=>j.prompt.startsWith('Repl
 if(!job)throw new Error('No QA text conversation');
 const conversation=state.conversations[job.conversationKey];
 const file='devices.json',load=()=>JSON.parse(readFileSync(file,'utf8'));
-const save=x=>{writeFileSync(file+'.tmp',JSON.stringify(x),{mode:0o600});renameSync(file+'.tmp',file);};
-const hash=x=>createHash('sha256').update(x).digest('hex');
+const save=(x: any)=>{writeFileSync(file+'.tmp',JSON.stringify(x),{mode:0o600});renameSync(file+'.tmp',file);};
+const hash=(x: any)=>createHash('sha256').update(x).digest('hex');
 const keys=generateKeyPairSync('ed25519'),raw=keys.publicKey.export({format:'der',type:'spki'}).subarray(-32),id=hash(raw);
 const devices=load();devices[id]={publicKey:raw.toString('base64'),approved:true,owner:job.owner};save(devices);
 const route='/shiyan/v1/title',body=JSON.stringify({conversationId:conversation.id});

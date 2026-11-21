@@ -7,7 +7,7 @@ import path from 'node:path';
 
 const ROOT = process.env.SHIYAN_ROOT || '/home/ubuntu/boss-codex-service/shiyan-v2';
 export const REGISTRATION_SOCKET = process.env.DOTS_REGISTRATION_SOCKET || path.join(ROOT, 'data', 'registration-events.sock');
-export function validateRegistrationEvent(value) {
+export function validateRegistrationEvent(value: any) {
   if (!value || typeof value !== 'object' || Array.isArray(value) ||
       !['id,registeredAt,source,username', 'email,id,registeredAt,source,username'].includes(Object.keys(value).sort().join(',')) ||
       !['shiyan_web', 'spongebob_mcp_web'].includes(value.source) ||
@@ -21,7 +21,7 @@ export function validateRegistrationEvent(value) {
   return { id: value.id, source: value.source, username: value.username, email: value.email ?? '', registeredAt: value.registeredAt };
 }
 
-export function postRegistrationEvent(socketPath, event) {
+export function postRegistrationEvent(socketPath: any, event: any) {
   const bytes = Buffer.from(JSON.stringify(validateRegistrationEvent(event)));
   return new Promise<void>((resolve, reject) => {
     const req = http.request({ socketPath, method: 'POST', path: '/registration-events',
@@ -84,11 +84,11 @@ export class RegistrationEventSender {
   close() { this.stopped = true; clearTimeout(this.timer); }
 }
 
-export function accountRegistrationOutbox(store, socketPath) {
+export function accountRegistrationOutbox(store: any, socketPath: any) {
   store.db.exec(`CREATE TABLE IF NOT EXISTS account_registration_outbox (
     id TEXT PRIMARY KEY, source TEXT NOT NULL, username TEXT NOT NULL, email TEXT NOT NULL DEFAULT '', registered_at INTEGER NOT NULL
   );`);
-  if (!store.db.prepare('PRAGMA table_info(account_registration_outbox)').all().some(column => column.name === 'email')) {
+  if (!store.db.prepare('PRAGMA table_info(account_registration_outbox)').all().some((column: any) => column.name === 'email')) {
     store.db.exec("ALTER TABLE account_registration_outbox ADD COLUMN email TEXT NOT NULL DEFAULT ''");
     // Upgrade queued notices once; normal delivery reads only the outbox.
     store.db.exec(`UPDATE account_registration_outbox SET email=COALESCE((
@@ -100,12 +100,12 @@ export function accountRegistrationOutbox(store, socketPath) {
     acknowledge: id => store.db.prepare('DELETE FROM account_registration_outbox WHERE id=?').run(id) });
   sender.notify(); return sender;
 }
-export function enqueueAccountRegistration(store, user) {
+export function enqueueAccountRegistration(store: any, user: any) {
   store.db.prepare('INSERT INTO account_registration_outbox(id,source,username,email,registered_at) VALUES(?,?,?,?,?)')
     .run('registration:shiyan_web:' + user.id, 'shiyan_web', user.username, user.email ?? '', user.createdAt);
 }
 
-export async function startRegistrationReceiver({ socketPath = REGISTRATION_SOCKET, ingest }) {
+export async function startRegistrationReceiver({ socketPath = REGISTRATION_SOCKET, ingest }: any) {
   if (typeof ingest !== 'function') throw new Error('Registration ingest is required');
   await mkdir(path.dirname(socketPath), { recursive: true, mode: 0o700 });
   try {

@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 // The server knows which generated files it received. Model prose is not proof
 // that an image was (or was not) delivered.
-export function reconcileImageResultText(raw, hasVerifiedGeneratedImage) {
+export function reconcileImageResultText(raw: any, hasVerifiedGeneratedImage: any) {
   const text = typeof raw === 'string' ? raw : '';
   if (!hasVerifiedGeneratedImage) return text;
   let changed = false;
@@ -18,17 +18,17 @@ export function reconcileImageResultText(raw, hasVerifiedGeneratedImage) {
   return kept.join('\n\n');
 }
 
-export function verifiedGeneratedImageCount(job, storedAssets, exists) {
-  return (job.assets ?? []).filter(a => {
+export function verifiedGeneratedImageCount(job: any, storedAssets: any, exists: any) {
+  return (job.assets ?? []).filter((a: any) => {
     if (!a.id || !a.mimeType?.startsWith('image/')) return false;
     const stored = storedAssets[a.id];
     return Boolean(stored?.file && stored.sha256 === a.sha256 && exists(stored.file));
   }).length;
 }
 
-export function reconcileSyncImageResult(change,owner,store){
+export function reconcileSyncImageResult(change: any,owner: any,store: any){
  if(change.kind!=='messages'||change.deleted||change.data?.role!=='assistant'||change.data.state!=='completed')return change;
- const verified=(change.data.assets||[]).some(asset=>{
+ const verified=(change.data.assets||[]).some((asset: any)=>{
   if(!asset.mimeType?.startsWith('image/')||!asset.sha256)return false;
   const row=store.db.prepare('SELECT data,file FROM sync_generated_assets WHERE owner=? AND id=?').get(owner,asset.syncAssetId||asset.id);
   if(!row)return false;const metadata=JSON.parse(row.data);

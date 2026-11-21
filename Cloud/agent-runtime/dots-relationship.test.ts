@@ -11,10 +11,10 @@ import {pathToFileURL} from 'node:url';
 import {createDotsSidecar} from './dots-sidecar.ts';
 
 const owner='shiyan-private-owner';
-function fixture(t){
+function fixture(t: any){
   const root=mkdtempSync(path.join(tmpdir(),'dots-relationship-gateway-')),calls: any[]=[];
   const relationship={revision:1,topics:[{id:'shared-topic',title:'共同产品想法',summary:'用户提出的想法',sourceMessageIds:[1],updatedAt:1000}]};
-  const client={async tool(name,args){calls.push({name,args});return {ok:true,relationship};}};
+  const client={async tool(name: any,args: any){calls.push({name,args});return {ok:true,relationship};}};
   const adapter=new DotsAdapter({root,store:new DotsStore(root),client: client as any,eventReader:{close(){}} as any,activityReader:{close(){}} as any,recoverIntervalMs:0,subscriptionRefreshMs:0,managerPollMs:0,schedulePollMs:0});
   t.after(()=>{adapter.close();rmSync(root,{recursive:true,force:true});});
   return {adapter,root,calls,relationship};
@@ -58,7 +58,7 @@ test('HTTP removes initiative and feedback controls while retaining shared topic
   await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',()=>resolve()));
   t.after(()=>new Promise(resolve=>server.close(resolve)));
   const base='http://127.0.0.1:'+(server.address() as any).port+'/v1/dots/relationship';
-  const mutate=async(url,method,input)=>{const body=JSON.stringify(input);return fetch(url,{method,headers:{'content-type':'application/json','x-shiyan-body-sha':createHash('sha256').update(body).digest('hex')},body});};
+  const mutate=async(url: any,method: any,input: any)=>{const body=JSON.stringify(input);return fetch(url,{method,headers:{'content-type':'application/json','x-shiyan-body-sha':createHash('sha256').update(body).digest('hex')},body});};
   assert.equal((await fetch(base)).status,200);
   assert.equal((await mutate(base,'PATCH',{initiative:'off'})).status,404);
   assert.equal((await mutate(base+'/feedback','POST',{messageId:9,action:'dismiss'})).status,404);
