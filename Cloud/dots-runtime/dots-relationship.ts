@@ -13,7 +13,15 @@ const unsafe=/(?:-----BEGIN .*PRIVATE KEY-----|\b(?:sk|ghp|github_pat)[-_A-Za-z0
 
 // Shared experiences are not instructions or task records. Content review and
 // publication are driven by actual content and finite unfinished thought, never clock ticks.
-export function createDotsRelationship({db,managerId,now,transaction,retireLegacyOpportunities,activityEvent}={}) {
+export interface DotsRelationshipOptions {
+  db: any;
+  managerId: string;
+  now: () => number;
+  transaction: (fn: () => any) => any;
+  retireLegacyOpportunities: () => void;
+  activityEvent: (...args: any[]) => any;
+}
+export function createDotsRelationship({db,managerId,now,transaction,retireLegacyOpportunities,activityEvent}: DotsRelationshipOptions) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS dots_relationship_state(manager_id TEXT PRIMARY KEY,revision INTEGER NOT NULL DEFAULT 1,created_at INTEGER NOT NULL,memory_revision TEXT NOT NULL DEFAULT '',migration_user_watermark INTEGER);
     CREATE TABLE IF NOT EXISTS dots_relationship_topics(id TEXT PRIMARY KEY,manager_id TEXT NOT NULL,topic_key TEXT NOT NULL,title TEXT NOT NULL,summary TEXT NOT NULL,open_question TEXT NOT NULL,source_message_ids TEXT NOT NULL,evidence TEXT NOT NULL,revision INTEGER NOT NULL DEFAULT 1,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,review_after INTEGER NOT NULL,fingerprint TEXT NOT NULL,memory_blocked INTEGER NOT NULL DEFAULT 0,UNIQUE(manager_id,topic_key));
@@ -97,13 +105,13 @@ export function createDotsRelationship({db,managerId,now,transaction,retireLegac
     db.prepare("UPDATE dots_relationship_candidates SET state='invalidated',reason='用户已开始新的交流',updated_at=? WHERE manager_id=? AND state='queued'").run(now(),managerId);
   };
   const learn=(value,sourceIds,expectedRevision)=>{
-    const changes=[];
+    const changes: any[]=[];
     if(!value||!sourceIds.length||expectedRevision!==undefined&&expectedRevision!==stateRow().revision)return changes;
     const allowed=new Set(sourceIds),source=id=>allowed.has(id)?db.prepare("SELECT id,content FROM manager_messages WHERE manager_id=? AND id=? AND role='user'").get(managerId,id):null;
     if(parse(stateRow().memory_revision,{enabled:true}).enabled===false)return changes;
     for(const item of (Array.isArray(value.topics)?value.topics:[]).slice(0,3)){
       if(!item||typeof item!=='object'||!Array.isArray(item.source_message_ids))continue;
-      const ids=[...new Set(item.source_message_ids||[])].filter(id=>source(id));
+      const ids: any[]=[...new Set(item.source_message_ids||[])].filter(id=>source(id));
       if(!ids.length||ids.length!==(item.source_message_ids||[]).length||!Array.isArray(item.evidence)||!item.evidence.length||item.evidence.some(text=>typeof text!=='string'||text.length<2||!ids.some(id=>source(id).content.includes(text))))continue;
       if(!/^[a-z0-9][a-z0-9._:-]{1,99}$/.test(item.key||'')||!bounded(item.title,200)||!item.title.trim()||!bounded(item.summary,4000)||!item.summary.trim()||!bounded(item.open_question,2000)||unsafe.test(item.title+item.summary+item.evidence.join(' ')))continue;
       if(ids.some(id=>db.prepare('SELECT 1 FROM dots_relationship_forgotten_sources WHERE manager_id=? AND message_id=?').get(managerId,id)))continue;
@@ -124,7 +132,7 @@ export function createDotsRelationship({db,managerId,now,transaction,retireLegac
   const blocked=()=>parse(stateRow().memory_revision,{enabled:true}).enabled===false||db.prepare('SELECT status FROM managers WHERE id=?').get(managerId)?.status!=='active';
   const evidenceFor=topic=>{
     if(!topic||topic.memory_blocked)return [];
-    const out=[];
+    const out: any[]=[];
     for(const id of parse(topic.source_message_ids,[])){
       if(db.prepare('SELECT 1 FROM dots_relationship_forgotten_sources WHERE manager_id=? AND message_id=?').get(managerId,id))continue;
       const original=db.prepare("SELECT content FROM manager_messages WHERE manager_id=? AND id=? AND role='user'").get(managerId,id);
@@ -137,9 +145,9 @@ export function createDotsRelationship({db,managerId,now,transaction,retireLegac
   const initializeReflection=()=>stateRow().cognition_enabled?null:reflection.initialize();
   const recordReflection=options=>stateRow().cognition_enabled?null:reflection.record(options);
   const noteConversation=options=>reflection.noteConversation(options);
-  const recordContentEvent=({runId,sourceIds,replyMessageId,changes=[],eligible})=>{
+  const recordContentEvent=({runId,sourceIds,replyMessageId,changes=[],eligible}: any={})=>{
     if(stateRow().cognition_enabled||!eligible||!sourceIds?.length||blocked())return null;
-    const accepted=new Set(sourceIds),fresh=[];
+    const accepted=new Set(sourceIds),fresh: any[]=[];
     // Short-lived observations need not be promoted to permanent memory. Only
     // real user text is fresh material; an assistant message never seeds itself.
     for(const messageId of sourceIds){
@@ -158,7 +166,7 @@ export function createDotsRelationship({db,managerId,now,transaction,retireLegac
       const before=beforeById.has(row.id)?null:row;
       return evidenceFor(before).map(item=>({...item,topicRevision:row.revision}));
     }).filter(item=>!accepted.has(item.messageId));
-    const unique=rows=>[...new Map(rows.map(row=>[row.messageId+':'+normalizedText(row.quote),row])).values()];
+    const unique=(rows: any[])=>[...new Map(rows.map(row=>[row.messageId+':'+normalizedText(row.quote),row])).values()];
     const match=matchContentOpportunity({fresh:unique(fresh).slice(-12),prior:unique(prior).slice(0,300),reply:reply.content});if(!match)return null;
     const eventId=randomUUID(),eventKey=digest(JSON.stringify(fresh.map(row=>[row.messageId,normalizedText(row.quote)]).sort()));
     const inserted=db.prepare('INSERT OR IGNORE INTO dots_relationship_content_events(id,manager_id,source_run_id,event_key,source_ids,reply_message_id,created_at) VALUES(?,?,?,?,?,?,?)').run(eventId,managerId,runId,eventKey,JSON.stringify(sourceIds),replyMessageId,now());
@@ -211,7 +219,7 @@ export function createDotsRelationship({db,managerId,now,transaction,retireLegac
     const noInput=!db.prepare('SELECT 1 FROM manager_inbox WHERE manager_id=? AND consumed_at IS NULL LIMIT 1').get(managerId);
     const noStream=!db.prepare("SELECT 1 FROM manager_messages WHERE manager_id=? AND delivery_state='streaming' LIMIT 1").get(managerId);
     const valid=live?.state==='claimed'&&live.run_id===candidate.run_id&&validCandidate(live)&&noInput&&noStream;
-    let state=valid?'discarded':'invalidated',reason=clean(decision?.reason).slice(0,500),message=null;
+    let state=valid?'discarded':'invalidated',reason=clean(decision?.reason).slice(0,500),message: any=null;
     if(valid&&decision?.action==='send'){
       const content=clean(decision.message),connection=clean(decision.new_connection),quotes=Array.isArray(decision.source_quotes)?decision.source_quotes:[];
       const exactFacts=[match.fresh,match.prior].every(fact=>quotes.some(ref=>ref?.message_id===fact.messageId&&typeof ref.quote==='string'&&normalizedText(ref.quote).length>=8&&fact.quote.includes(ref.quote)));
@@ -249,7 +257,7 @@ export function createDotsRelationship({db,managerId,now,transaction,retireLegac
     const s=snapshot();if(parse(stateRow().memory_revision,{enabled:true}).enabled===false)return {...s,topics:[]};
     const query=normalized(text),tokens=value=>new Set(Array.from({length:Math.max(0,value.length-1)},(_,i)=>value.slice(i,i+2))),queryTokens=tokens(query);
     const ranked=s.topics.filter(topic=>!topic.needsReview).map(topic=>({topic,score:[...tokens(normalized(topic.title+' '+topic.summary))].filter(token=>queryTokens.has(token)).length})).sort((a,b)=>b.score-a.score||b.topic.updatedAt-a.topic.updatedAt);
-    const topics=[];let used=0;for(const {topic} of ranked){const item={...topic,key:topicRow(topic.id).topic_key,summary:topic.summary.slice(0,1600),openQuestion:topic.openQuestion.slice(0,600)};const size=JSON.stringify(item).length;if(used+size>12000)continue;topics.push(item);used+=size;if(topics.length>=12)break;}
+    const topics: any[]=[];let used=0;for(const {topic} of ranked){const item={...topic,key:topicRow(topic.id).topic_key,summary:topic.summary.slice(0,1600),openQuestion:topic.openQuestion.slice(0,600)};const size=JSON.stringify(item).length;if(used+size>12000)continue;topics.push(item);used+=size;if(topics.length>=12)break;}
     return {revision:s.revision,topics};
   };
   return {snapshot,context,safeHistory,updateTopic,deleteTopic,observeUser,learn,recordContentEvent,initializeReflection,recordReflection,noteConversation,nextCandidate,hasPending,bindRun,forRun,cancelRun,finish,memoryChanged,invalidate};

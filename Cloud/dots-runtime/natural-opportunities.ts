@@ -35,7 +35,7 @@ const covered = (terms, reply, main) => {
   // A reply can cover a connection without repeating every adjective or camera
   // detail in its source. Require two independent distinctive spans on each
   // side, including a segmented word; overlapping grams count only once.
-  const ranges=[];let hasWord=false;
+  const ranges: any[]=[];let hasWord=false;
   for(const term of [...terms].sort((a,b)=>Number(main.has(b))-Number(main.has(a))||b.length-a.length)){
     let at=reply.indexOf(term);
     while(at>=0){
@@ -48,7 +48,13 @@ const covered = (terms, reply, main) => {
 };
 // Evidence records are authenticated original user quotations, not summaries
 // invented by the extractor. A distinct prior fact must be recoverable too.
-export function matchContentOpportunity({ fresh = [], prior = [], reply = '', latestUserText = '' } = {}) {
+export interface MatchContentOpportunityOptions {
+  fresh?: any[];
+  prior?: any[];
+  reply?: string;
+  latestUserText?: string;
+}
+export function matchContentOpportunity({ fresh = [], prior = [], reply = '', latestUserText = '' }: MatchContentOpportunityOptions = {}) {
   const eligible = row => row && Number.isSafeInteger(row.messageId) && normalizedText(row.quote).length >= 8 && contentTerms(row.quote).size >= 3;
   fresh = fresh.filter(eligible); prior = prior.filter(eligible);
   if (!fresh.length || !prior.length) return null;
@@ -60,11 +66,11 @@ export function matchContentOpportunity({ fresh = [], prior = [], reply = '', la
   const weight = term => (lexical.has(term) ? 2 : .35) * (1 + Math.log(1 + documents.length / (1 + (df.get(term) || 0))));
   const total = terms => [...terms].reduce((sum, term) => sum + weight(term), 0);
   const replyText = normalizedText(reply);
-  let best = null;
+  let best: any = null;
   for (const incoming of fresh) {
     const current = cached.get(incoming);
     // Repeating an old fact under a new message or topic ID is not a new event.
-    if (prior.some(old => { const previous = cached.get(old), main=lexicalCache.get(incoming), oldMain=lexicalCache.get(old); return normalizedText(old.quote) === normalizedText(incoming.quote) || total(intersection(current, previous)) / total(current) >= .82 || main.size>=3&&difference(main,oldMain).length<=1&&intersection(main,oldMain).length/main.size>=.75; })) continue;
+    if (prior.some(old => { const previous = cached.get(old), main=lexicalCache.get(incoming), oldMain=lexicalCache.get(old); return normalizedText(old.quote) === normalizedText(incoming.quote) || total(intersection(current, previous)) / total(current) >= .82 || main!.size>=3&&difference(main,oldMain).length<=1&&intersection(main,oldMain).length/main!.size>=.75; })) continue;
     for (const previous of prior) {
       if (previous.messageId >= incoming.messageId || previous.messageId === incoming.messageId) continue;
       const old = cached.get(previous), shared = intersection(current, old);
