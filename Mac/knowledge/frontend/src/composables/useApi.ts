@@ -3,7 +3,7 @@ export const isShiYanEmbedded = () => import.meta.env.VITE_SHIYAN_EMBEDDED === '
 
 const API_BASE = String(import.meta.env.VITE_API_BASE || '').replace(/\/+$/, '')
 
-function makeUrl(path) {
+function makeUrl(path: any) {
   if (isShiYanEmbedded() && path.startsWith('/api/')) {
     return path.startsWith('/api/auth/') ? path : '/api/knowledge/' + path.slice(5)
   }

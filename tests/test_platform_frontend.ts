@@ -4,10 +4,10 @@ import test from 'node:test';
 import vm from 'node:vm';
 
 const source=fs.readFileSync(new URL('../shared/frontend/assets/platform.js',import.meta.url),'utf8');
-function platform(mode,config={},withBridge=false): any {
+function platform(mode: any,config={},withBridge=false): any {
   const calls: any[] = [];
   const window: any = {__SHIYAN_PLATFORM__:{mode,config}};
-  if(withBridge)window.webkit={messageHandlers:{native:{postMessage:value=>calls.push(value)}}};
+  if(withBridge)window.webkit={messageHandlers:{native:{postMessage:(value: any)=>calls.push(value)}}};
   vm.runInNewContext(source,{window});
   return {p:window.ShiYanPlatform,window,calls};
 }
@@ -67,7 +67,7 @@ test('a desktop adapter override does not replace the shared implementation of o
 test('an explicit native adapter is used even without a built-in bridge',()=>{
   const {p}=platform('web');
   const calls: any[] = [];
-  p.registerAdapter('native',{available:()=>true,post:(action,detail)=>{calls.push({action,detail});return true;}},'web');
+  p.registerAdapter('native',{available:()=>true,post:(action: any,detail: any)=>{calls.push({action,detail});return true;}},'web');
   assert.equal(p.postNative('workbench',{op:'chooseFile'}),true);
   assert.equal(calls[0].action,'workbench');
   assert.equal(calls[0].detail.op,'chooseFile');
@@ -76,7 +76,7 @@ test('an explicit native adapter is used even without a built-in bridge',()=>{
 test('bridge detection stays live when a bridge is installed after startup',()=>{
   const {p,window}=platform('desktop');
   const calls: any[] = [];
-  window.webkit={messageHandlers:{native:{postMessage:value=>calls.push(value)}}};
+  window.webkit={messageHandlers:{native:{postMessage:(value: any)=>calls.push(value)}}};
   assert.equal(p.adapter('native').available(),true);
   assert.equal(p.postNative('late'),true);
   assert.equal(calls[0].action,'late');

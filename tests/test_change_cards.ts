@@ -9,8 +9,8 @@ function changeCards() {
   vm.runInNewContext(source, { window, TextEncoder });
   return window.ShiYanChanges;
 }
-const file = (index) => ({ path: `/project/file-${index}.swift`, kind: 'update', added: index + 1, removed: 2 });
-const change = (changes, status = 'completed') => ({ type: 'file_change', status, changes });
+const file = (index: any) => ({ path: `/project/file-${index}.swift`, kind: 'update', added: index + 1, removed: 2 });
+const change = (changes: any, status = 'completed') => ({ type: 'file_change', status, changes });
 const commands = () => Array.from({ length: 80 }, (_, index) => ({ id: `command-${index}`, type: 'command_execution', status: 'completed' }));
 
 test('all 199 canonical files contribute to the card count and line totals', () => {
@@ -85,8 +85,8 @@ test('legacy raw arrays and item envelopes retain late file records and complete
     const files = changeCards().filesFor({ rawResult: JSON.stringify(value) });
     assert.equal(files.length, 200);
     assert.equal(files[199].path, '/project/file-202.swift');
-    assert.equal(files.some(value => value.path === '/project/file-200.swift'), false);
-    assert.equal(files.some(value => value.path === '/project/file-201.swift'), false);
+    assert.equal(files.some((value: any) => value.path === '/project/file-200.swift'), false);
+    assert.equal(files.some((value: any) => value.path === '/project/file-201.swift'), false);
   }
 });
 

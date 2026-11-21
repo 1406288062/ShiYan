@@ -18,11 +18,11 @@ const validUrl = () => {
 };
 function setup(startResult = {authorizeUrl:validUrl()}) {
   const calls: any[] = [], opened: any[] = [];
-  const popup: any = {closed:false, opener:{}, location:{url:'',replace(url){this.url=url;}}, close(){this.closed=true;}};
+  const popup: any = {closed:false, opener:{}, location:{url:'',replace(url: any){this.url=url;}}, close(){this.closed=true;}};
   const window: any = {
-    ShiYanAccount:{request:async(...args)=>{calls.push(args);if(args[0].endsWith('/start'))return startResult;return {ok:true,connected:true,devices:[]};}},
+    ShiYanAccount:{request:async(...args: any[])=>{calls.push(args);if(args[0].endsWith('/start'))return startResult;return {ok:true,connected:true,devices:[]};}},
     ShiYanPlatform:{adapter:()=>({available:()=>false})},
-    open:(...args)=>{opened.push(args);return popup;}
+    open:(...args: any[])=>{opened.push(args);return popup;}
   };
   vm.runInNewContext(source,{window,URL,Error});
   return {service:window.ShiYanSpongeIntegration,calls,opened,popup};

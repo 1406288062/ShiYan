@@ -6,30 +6,30 @@ const script = readFileSync(new URL('../shared/frontend/assets/account-avatar.js
 function launch({userId = 'owner-A', store = new Map(), legacy = 'old-asset-id', storageFails = false} = {}): any {
   const requests: any[] = [], listeners = new Map(), streams: any[] = [];
   const storage = {
-    getItem(key) { return store.get(key) ?? null; },
-    setItem(key, value) { if (storageFails) throw new Error('QuotaExceededError'); store.set(key, String(value)); },
-    removeItem(key) { store.delete(key); }
+    getItem(key: any) { return store.get(key) ?? null; },
+    setItem(key: any, value: any) { if (storageFails) throw new Error('QuotaExceededError'); store.set(key, String(value)); },
+    removeItem(key: any) { store.delete(key); }
   };
   const image = {
     isConnected: true, hidden: true, src: '',
-    removeAttribute(name) { if (name === 'src') this.src = ''; }
+    removeAttribute(name: any) { if (name === 'src') this.src = ''; }
   };
   const placeholder = {
     hidden: false,
-    toggleAttribute(name, enabled) { if (name === 'hidden') this.hidden = !!enabled; },
-    removeAttribute(name) { if (name === 'hidden') this.hidden = false; }
+    toggleAttribute(name: any, enabled: any) { if (name === 'hidden') this.hidden = !!enabled; },
+    removeAttribute(name: any) { if (name === 'hidden') this.hidden = false; }
   };
   class EventSourceFake { [key: string]: any;
     static CLOSED = 2;
-    constructor(url) { this.url = url; this.handlers = {}; this.readyState = 1; streams.push(this); }
-    addEventListener(type, callback) { this.handlers[type] = callback; }
-    emit(type, body) { this.handlers[type]?.({data: JSON.stringify(body)}); }
+    constructor(url: any) { this.url = url; this.handlers = {}; this.readyState = 1; streams.push(this); }
+    addEventListener(type: any, callback: any) { this.handlers[type] = callback; }
+    emit(type: any, body: any) { this.handlers[type]?.({data: JSON.stringify(body)}); }
     close() { this.readyState = EventSourceFake.CLOSED; }
   }
   const user = {id:userId, username:userId};
   const account = {
     user, ready: Promise.resolve(),
-    request(path, method = 'GET') {
+    request(path: any, method = 'GET') {
       assert.equal(path, '/account/avatar');
       assert.equal(method, 'GET');
       return new Promise((resolve, reject) => requests.push({resolve, reject}));
@@ -38,14 +38,14 @@ function launch({userId = 'owner-A', store = new Map(), legacy = 'old-asset-id',
   const window: any = {
     ShiYanAccount: account,
     shiyan: {getState:()=>({settings:{avatarAssetId:legacy}}), toast:()=>{}},
-    addEventListener(type, callback) { listeners.set(type, callback); }
+    addEventListener(type: any, callback: any) { listeners.set(type, callback); }
   };
   const document = {
     body: {append(){}}, hidden:false,
-    createElement(type) { assert.equal(type, 'input'); return {}; },
+    createElement(type: any) { assert.equal(type, 'input'); return {}; },
     querySelectorAll() { return []; },
     querySelector() { return null; },
-    addEventListener(type, handler) {listeners.set('document:'+type,handler);}
+    addEventListener(type: any, handler: any) {listeners.set('document:'+type,handler);}
   };
   const context = vm.createContext({
     window, document, localStorage: storage, EventSource: EventSourceFake,
@@ -57,17 +57,17 @@ function launch({userId = 'owner-A', store = new Map(), legacy = 'old-asset-id',
   window.ShiYanAvatar.bind(image,placeholder);
   return {
     image,placeholder,store,requests,streams,account,
-    fire(type) {listeners.get(type)?.();},
+    fire(type: any) {listeners.get(type)?.();},
     key:'shiyan.account.'+encodeURIComponent(userId)+'.avatar.snapshot.v1',
     async ready() { await Promise.resolve(); },
-    async respond(avatar) {
+    async respond(avatar: any) {
       assert(requests.length,'No pending GET');
       requests.shift().resolve({avatar}); await Promise.resolve(); await Promise.resolve();
     },
-    send(avatar) {assert(streams.length,'No event stream'); streams.at(-1).emit('avatar',{avatar});}
+    send(avatar: any) {assert(streams.length,'No event stream'); streams.at(-1).emit('avatar',{avatar});}
   };
 }
-const avatar=(revision,data)=>({revision,data});
+const avatar=(revision: any,data: any)=>({revision,data});
 const logo='UkVDRU5U', latest='TEFURVNU', old='T0xE';
 {
   const boot=launch();

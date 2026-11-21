@@ -16,7 +16,7 @@ function browser({mode = 'web', recognition = true, webkit = false, withAudio = 
     constructor() { this.state = 'suspended'; this.destination = {}; this.resumes = 0; this.decodes = []; contexts.push(this); }
     resume() { this.resumes++; this.state = 'running'; return Promise.resolve(); }
     close() { this.state = 'closed'; return Promise.resolve(); }
-    decodeAudioData(bytes) { const job = deferred(); this.decodes.push({bytes, ...job}); if (!delayDecode) job.resolve({duration: 1}); return job.promise; }
+    decodeAudioData(bytes: any) { const job = deferred(); this.decodes.push({bytes, ...job}); if (!delayDecode) (job.resolve as any)?.({duration: 1}); return job.promise; }
     createBufferSource() {
       const item = {started: false, stopped: false, disconnected: false, onended: () => {},
         connect: () => {}, disconnect() { this.disconnected = true; },
@@ -26,19 +26,19 @@ function browser({mode = 'web', recognition = true, webkit = false, withAudio = 
     }
   }
   let adapter;
-  const window: any = {ShiYanPlatform: {mode, registerAdapter: (name, value) => { assert.equal(name, 'voice'); adapter = value; }},
-    addEventListener: (name, fn) => { listeners[name] = fn; }, dispatchEvent: event => { events.push(event.detail); }};
+  const window: any = {ShiYanPlatform: {mode, registerAdapter: (name: any, value: any) => { assert.equal(name, 'voice'); adapter = value; }},
+    addEventListener: (name: any, fn: any) => { listeners[name] = fn; }, dispatchEvent: (event: any) => { events.push(event.detail); }};
   if (withAudio) window[webkit ? 'webkitAudioContext' : 'AudioContext'] = Context;
   if (recognition) window.SpeechRecognition = class { constructor() { recognitions.push(this); } start() {} abort() {} };
-  const fetch = (url, options) => {
+  const fetch = (url: any, options: any) => {
     const job = deferred(); requests.push({url, options, ...job});
-    if (autoFetch) job.resolve(response());
+    if (autoFetch) (job.resolve as any)?.(response());
     return job.promise;
   };
-  vm.runInNewContext(source, {window, fetch, AbortController, ArrayBuffer, CustomEvent: class {type: any; detail: any; constructor(type, {detail}) {this.type = type; this.detail = detail;}}, setTimeout, clearTimeout, queueMicrotask});
+  vm.runInNewContext(source, {window, fetch, AbortController, ArrayBuffer, CustomEvent: class {type: any; detail: any; constructor(type: any, {detail}: any) {this.type = type; this.detail = detail;}}, setTimeout, clearTimeout, queueMicrotask});
   return {adapter, events, requests, sources, contexts, recognitions, listeners, window};
 }
-const states = b => b.events.filter(event => event.type === 'voicePlaybackState').map(event => [event.sessionId, event.state]);
+const states = (b: any) => b.events.filter((event: any) => event.type === 'voicePlaybackState').map((event: any) => [event.sessionId, event.state]);
 
 test('Only web registers the replacement voice adapter', () => {
   assert.equal(browser({mode: 'desktop'}).adapter, undefined);
@@ -68,7 +68,7 @@ test('The call gesture unlocks audio and both call and read use the same authent
   assert.equal(request.options.headers['X-Shiyan-Local'], '1');
   assert.deepEqual(JSON.parse(request.options.body), {text: '你好，我是 Dots。'});
   assert.deepEqual(states(b), [['voice', 'speaking']]);
-  assert.equal(b.events.find(event => event.state === 'speaking').provider, 'xiaoxiao-neural');
+  assert.equal(b.events.find((event: any) => event.state === 'speaking').provider, 'xiaoxiao-neural');
   b.sources[0].end(); await flush();
   assert.deepEqual(states(b), [['voice', 'speaking'], ['voice', 'finished']]);
   b.adapter.post('readMessage', {sessionId: 'read', text: '朗读同样使用自然语音。'}); await flush();
@@ -119,9 +119,9 @@ test('Long text is synthesized and played in order with only one next segment pr
   assert.equal(b.sources.length, 2); assert.equal(b.requests.length, 3);
   b.requests[2].resolve(response()); b.sources[1].end(); await flush();
   assert.equal(b.sources.length, 3);
-  const segments = b.requests.map(item => JSON.parse(item.options.body).text);
+  const segments = b.requests.map((item: any) => JSON.parse(item.options.body).text);
   assert.equal(segments.join(''), text);
-  assert.equal(segments.every(part => Array.from(part).length <= 320), true);
+  assert.equal(segments.every((part: any) => Array.from(part).length <= 320), true);
   b.sources[2].end(); await flush();
   assert.deepEqual(states(b), [['long', 'speaking'], ['long', 'finished']]);
 });
@@ -157,10 +157,10 @@ test('Empty and oversized messages do not synthesize audio', async () => {
 function panel(mode: any): any {
   const calls: any[] = [], native: any[] = [], errors: any[] = [];
   const context = {readSession: null, readingIndex: -1, readUtterance: null, currentConversation: {messages: [{role: 'assistant', content: '这条消息需要朗读。'}]},
-    conversationDialog: null, C: {showError: error => errors.push(error.message)}, crypto: {randomUUID: () => 'read-session'},
+    conversationDialog: null, C: {showError: (error: any) => errors.push(error.message)}, crypto: {randomUUID: () => 'read-session'},
     $: () => null, syncReadButtons: () => {},
-    window: {ShiYanPlatform: {mode, adapter: name => {assert.equal(name, 'voice'); return {post: (action, detail) => {calls.push({action, detail}); return true;}};}},
-      webkit: {messageHandlers: {native: {postMessage: data => native.push(data)}}}}};
+    window: {ShiYanPlatform: {mode, adapter: (name: any) => {assert.equal(name, 'voice'); return {post: (action: any, detail: any) => {calls.push({action, detail}); return true;}};}},
+      webkit: {messageHandlers: {native: {postMessage: (data: any) => native.push(data)}}}}};
   vm.createContext(context);
   vm.runInContext(panelSource.slice(panelSource.indexOf('  function stopReading()'), panelSource.indexOf('  async function openConversation(')), context);
   return {context, calls, native, errors};
@@ -194,8 +194,8 @@ for (const {name, segments, expected} of [
     const recognition = b.recognitions[0];
     recognition.onresult({results: segments.map(transcript => [{transcript}])});
     recognition.onend();
-    const speech = b.events.filter(event => event.type === 'speech');
-    assert.deepEqual(speech.map(event => [event.text, event.isFinal]), [[expected, false], [expected, true]]);
+    const speech = b.events.filter((event: any) => event.type === 'speech');
+    assert.deepEqual(speech.map((event: any) => [event.text, event.isFinal]), [[expected, false], [expected, true]]);
   });
 }
 

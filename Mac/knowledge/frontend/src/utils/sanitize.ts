@@ -9,13 +9,13 @@ const REMOVE_ENTIRELY = new Set(['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED',
  * The small browser-native allow-list keeps the prototype dependency-light
  * while stripping event handlers, URLs and executable elements.
  */
-export function sanitizeHtml(value) {
+export function sanitizeHtml(value: any) {
   const source = String(value || '')
   if (typeof document === 'undefined') return escapeHtml(source)
   const template = document.createElement('template')
   template.innerHTML = source
 
-  function clean(parent) {
+  function clean(parent: any) {
     Array.from(parent.children).forEach((element: any) => {
       const tag = element.tagName
       if (REMOVE_ENTIRELY.has(tag)) {
@@ -36,7 +36,7 @@ export function sanitizeHtml(value) {
   return template.innerHTML
 }
 
-export function escapeHtml(value) {
+export function escapeHtml(value: any) {
   return String(value || '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')

@@ -2,16 +2,16 @@
 import { createHmac, createHash } from 'node:crypto';
 import { readFileSync, lstatSync } from 'node:fs';
 
-const sha1 = value => createHash('sha1').update(value).digest('hex');
-const encode = value => encodeURIComponent(String(value)).replace(/[!'()*]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase());
-const canonical = values => Object.keys(values).sort().map(key => encode(key.toLowerCase()) + '=' + encode(values[key])).join('&');
+const sha1 = (value: any) => createHash('sha1').update(value).digest('hex');
+const encode = (value: any) => encodeURIComponent(String(value)).replace(/[!'()*]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase());
+const canonical = (values: any) => Object.keys(values).sort().map(key => encode(key.toLowerCase()) + '=' + encode(values[key])).join('&');
 
 export class CosStore {
   config: any;
   fetcher: any;
   now: any;
   host: any;
-  constructor(config, { fetcher = fetch, now = Date.now } = {}) {
+  constructor(config: any, { fetcher = fetch, now = Date.now } = {}) {
     if (!/^[a-z0-9][a-z0-9-]{0,61}-[0-9]{5,20}$/.test(config.bucket || '') ||
         !/^[a-z]{2}-[a-z0-9-]{2,32}$/.test(config.region || '') || !config.secret_id || !config.secret_key) {
       throw new Error('Invalid private COS configuration');
@@ -19,7 +19,7 @@ export class CosStore {
     this.config = config; this.fetcher = fetcher; this.now = now;
     this.host = `${config.bucket}.cos.${config.region}.myqcloud.com`;
   }
-  static fromFile(filename) {
+  static fromFile(filename: any) {
     if (!filename) return null;
     const stat = lstatSync(filename);
     if (!stat.isFile() || stat.mode & 0o077 || stat.uid !== process.getuid?.()) throw new Error('COS configuration must be private');
@@ -29,11 +29,11 @@ export class CosStore {
       if (!text || text.startsWith('#') || text.startsWith(';')) continue;
       if (text.startsWith('[')) { common = text === '[common]'; continue; }
       const match = /^([a-z_]+)\s*=\s*(.*)$/.exec(text);
-      if (common && match) values[match[1]] = match[2].trim();
+      if (common && match) (values as any)[match[1]] = match[2].trim();
     }
     return new CosStore(values);
   }
-  signed(method, key, headers = {}, ttl = 300) {
+  signed(method: any, key: any, headers = {}, ttl = 300) {
     const current = Math.floor(this.now() / 1000), keyTime = `${current - 60};${current + ttl}`;
     const values = Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), String(v)]));
     values.host = this.host;
@@ -46,7 +46,7 @@ export class CosStore {
       'q-url-param-list': '', 'q-signature': signature });
     return { url: `https://${this.host}${pathname}?${auth}`, method, headers, expiresAt: (current + ttl) * 1000 };
   }
-  async head(key, etag) {
+  async head(key: any, etag: any) {
     const headers = etag ? { 'If-Match': etag } : {};
     const plan = this.signed('HEAD', key, headers);
     // No redirects: a signed object key must never turn into an arbitrary fetch.

@@ -8,15 +8,15 @@ export function clearKnowledgeCache() {
   epoch++
   try { for (const key of Object.keys(localStorage)) if (key.startsWith(PREFIX)) localStorage.removeItem(key) } catch {}
 }
-export function setKnowledgeCacheOwner(id) {
+export function setKnowledgeCacheOwner(id: any) {
   const next = String(id || '')
   if (owner !== next) { epoch++; owner = next }
 }
 export const cacheContext = () => ({ owner, epoch })
-export const contextCurrent = ctx => ctx.owner === owner && ctx.epoch === epoch
-export const cacheable = path => /^\/api\/(spaces(?:\/[^/]+\/knowledge-bases)?|knowledge-bases\/[^/]+\/(documents|knowledge)|documents\/[^/]+)$/.test(path)
-function keyFor(path, ctx) { return PREFIX + encodeURIComponent(ctx.owner) + ':' + encodeURIComponent(path) }
-export function readKnowledgeCache(path, ctx = cacheContext()) {
+export const contextCurrent = (ctx: any) => ctx.owner === owner && ctx.epoch === epoch
+export const cacheable = (path: any) => /^\/api\/(spaces(?:\/[^/]+\/knowledge-bases)?|knowledge-bases\/[^/]+\/(documents|knowledge)|documents\/[^/]+)$/.test(path)
+function keyFor(path: any, ctx: any) { return PREFIX + encodeURIComponent(ctx.owner) + ':' + encodeURIComponent(path) }
+export function readKnowledgeCache(path: any, ctx = cacheContext()) {
   if (!ctx.owner || !contextCurrent(ctx) || !cacheable(path)) return null
   try {
     const key = keyFor(path, ctx), raw = localStorage.getItem(key)
@@ -26,7 +26,7 @@ export function readKnowledgeCache(path, ctx = cacheContext()) {
     return item.value
   } catch { return null }
 }
-export function writeKnowledgeCache(path, value, ctx) {
+export function writeKnowledgeCache(path: any, value: any, ctx: any) {
   if (!ctx.owner || !contextCurrent(ctx) || !cacheable(path)) return
   try {
     const raw = JSON.stringify({version: 1, at: Date.now(), value})

@@ -7,7 +7,7 @@ async function readStdin() {
   return JSON.parse(data || "{}");
 }
 
-function buildInput(payload) {
+function buildInput(payload: any) {
   const items: any[] = [];
   const prompt = String(payload.prompt || "").trim();
   if (prompt) items.push({ type: "text", text: prompt });

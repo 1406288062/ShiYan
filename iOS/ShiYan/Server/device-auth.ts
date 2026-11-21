@@ -8,9 +8,9 @@ mkdirSync(root,{recursive:true,mode:0o700});
 const registry=path.join(root,'devices.json');
 const usedNonces=new Map();
 const load=()=>{try{return JSON.parse(readFileSync(registry,'utf8'));}catch{return {};}};
-const save=devices=>{writeFileSync(registry+'.tmp',JSON.stringify(devices),{mode:0o600});renameSync(registry+'.tmp',registry);};
-export const digest=data=>createHash('sha256').update(data).digest('hex');
-export function enrollDevice(input){
+const save=(devices: any)=>{writeFileSync(registry+'.tmp',JSON.stringify(devices),{mode:0o600});renameSync(registry+'.tmp',registry);};
+export const digest=(data: any)=>createHash('sha256').update(data).digest('hex');
+export function enrollDevice(input: any){
   const raw=Buffer.from(String(input.publicKey||''),'base64');
   if(raw.length!==32)throw new Error('设备标识无效');
   const id=digest(raw);const devices=load();
@@ -20,7 +20,7 @@ export function enrollDevice(input){
   }
   return {ok:true,deviceID:id,approved:devices[id].approved===true};
 }
-export function authenticateDevice(req){
+export function authenticateDevice(req: any){
   const id=req.headers['x-shiyan-device'];const timestamp=Number(req.headers['x-shiyan-time']);
   const nonce=req.headers['x-shiyan-nonce'];const bodyHash=req.headers['x-shiyan-body-sha'];
   if(typeof id!=='string'||typeof nonce!=='string'||!/^[A-Za-z0-9-]{16,80}$/.test(nonce)||typeof bodyHash!=='string'||!/^[0-9a-f]{64}$/.test(bodyHash)||!Number.isFinite(timestamp)||Math.abs(Date.now()-timestamp)>300000)return null;

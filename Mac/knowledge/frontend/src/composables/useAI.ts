@@ -7,7 +7,7 @@ const welcomeMessage = {
   citations: []
 }
 
-export function useAI({ token, currentKnowledgeBaseId, currentKnowledgeBase }) {
+export function useAI({ token, currentKnowledgeBaseId, currentKnowledgeBase }: any) {
   const chatMessages = ref<any[]>([welcomeMessage])
   const loading = ref(false)
   const historyLoading = ref(false)
@@ -24,7 +24,7 @@ export function useAI({ token, currentKnowledgeBaseId, currentKnowledgeBase }) {
     }]
   }
 
-  async function loadHistory(kbId) {
+  async function loadHistory(kbId: any) {
     const currentRequestId = ++requestId
     loading.value = false
     historyLoading.value = false
@@ -61,7 +61,7 @@ export function useAI({ token, currentKnowledgeBaseId, currentKnowledgeBase }) {
     { immediate: true }
   )
 
-  async function sendAiMessage(question, allowWeb = false) {
+  async function sendAiMessage(question: any, allowWeb = false) {
     const q = question.trim()
     const kbId = currentKnowledgeBaseId.value
     if (!q || loading.value || historyLoading.value || !kbId) return

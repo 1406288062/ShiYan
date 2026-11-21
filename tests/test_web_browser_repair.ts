@@ -6,8 +6,8 @@ const platformSource=fs.readFileSync(new URL('../shared/frontend/assets/platform
 const questionSource=fs.readFileSync(new URL('../shared/frontend/assets/user-input.js',import.meta.url),'utf8');
 test('Web marks its platform and coalesces subscriptions until after window load',()=>{
  const listeners: any={},tasks: any[]=[];const document: any={readyState:'interactive',documentElement:{dataset:{}}};
- const window: any={__SHIYAN_PLATFORM__:{mode:'web'},addEventListener:(name,fn)=>listeners[name]=fn};
- vm.runInNewContext(platformSource,{window,document,setTimeout:fn=>tasks.push(fn)});
+ const window: any={__SHIYAN_PLATFORM__:{mode:'web'},addEventListener:(name: any,fn: any)=>listeners[name]=fn};
+ vm.runInNewContext(platformSource,{window,document,setTimeout:(fn: any)=>tasks.push(fn)});
  assert.equal(document.documentElement.dataset.shiyanPlatform,'web');
  let calls=0;const subscribe=()=>calls++;
  assert.equal(window.ShiYanPlatform.deferUntilLoaded(subscribe),true);
@@ -22,15 +22,15 @@ test('Desktop never defers its existing subscriptions',()=>{
  assert.equal(document.documentElement.dataset.shiyanPlatform,'desktop');
 });
 function questions(mode='web',state='running'){
- const listeners: any={},calls: any[]=[];let tick,now=100000,result={pendingQuestions:[]},failure=null;
+ const listeners: any={},calls: any[]=[];let tick: any,now=100000,result={pendingQuestions:[]},failure: any=null;
  const message={id:'m1',role:'assistant',remoteJobId:'j1',state};
  const snapshot={selectedConversationId:'c1',conversations:[{id:'c1',messages:[message]}]};
- const window={ShiYanPlatform:{mode},addEventListener:(name,fn)=>listeners[name]=fn,
-  shiyan:{getState:()=>snapshot,getView:()=> 'agent',api:async path=>{calls.push(path);if(failure)throw failure;return result;}}};
+ const window={ShiYanPlatform:{mode},addEventListener:(name: any,fn: any)=>listeners[name]=fn,
+  shiyan:{getState:()=>snapshot,getView:()=> 'agent',api:async (path: any)=>{calls.push(path);if(failure)throw failure;return result;}}};
  const document={hidden:false,addEventListener:()=>{},querySelector:()=>null};
  class Clock extends Date {static now(){return now;}}
- vm.runInNewContext(questionSource,{window,document,Date:Clock,setInterval:fn=>{tick=fn;},setTimeout:()=>1,clearTimeout:()=>{},console});
- return {poll:()=>tick(),calls,message,setResult:x=>result=x,setFailure:x=>failure=x,advance:ms=>now+=ms,document,window,listeners};
+ vm.runInNewContext(questionSource,{window,document,Date:Clock,setInterval:(fn: any)=>{tick=fn;},setTimeout:()=>1,clearTimeout:()=>{},console});
+ return {poll:()=>tick(),calls,message,setResult:(x: any)=>result=x,setFailure:(x: any)=>failure=x,advance:(ms: any)=>now+=ms,document,window,listeners};
 }
 test('Web does not poll completed, failed, cancelled or interrupted messages',async()=>{
  for(const state of ['completed','failed','cancelled','interrupted']){const p=questions('web',state);await p.poll();await p.poll();assert.equal(p.calls.length,0);}

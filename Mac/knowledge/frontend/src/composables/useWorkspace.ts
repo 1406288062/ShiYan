@@ -2,7 +2,7 @@ import {readKnowledgeCache} from './knowledgeCache.js'
 import { ref, computed, watch } from 'vue'
 import { apiFetch } from './useApi.js'
 
-export function useWorkspace({ token }) {
+export function useWorkspace({ token }: any) {
   const spaces = ref<any[]>([])
   const knowledgeBases = ref<any[]>([])
   const documents = ref<any[]>([])
@@ -21,7 +21,7 @@ export function useWorkspace({ token }) {
 
   const currentKnowledgeBase = computed(() => knowledgeBases.value.find(item => item.id === currentKnowledgeBaseId.value) || null)
 
-  function sortKnowledgeBases(items) {
+  function sortKnowledgeBases(items: any) {
     return [...items].sort((left, right) => {
       const pinOrder = Number(Boolean(right.is_pinned)) - Number(Boolean(left.is_pinned))
       if (pinOrder) return pinOrder
@@ -31,25 +31,25 @@ export function useWorkspace({ token }) {
 
   function clearError() { error.value = '' }
 
-  function cacheDocuments(kbId, items) {
+  function cacheDocuments(kbId: any, items: any) {
     documentsByKnowledgeBase.value = { ...documentsByKnowledgeBase.value, [kbId]: items }
   }
 
-  function setDocumentsLoading(kbId, value) {
+  function setDocumentsLoading(kbId: any, value: any) {
     const next = { ...documentsLoadingByKnowledgeBase.value }
     if (value) next[kbId] = true
     else delete next[kbId]
     documentsLoadingByKnowledgeBase.value = next
   }
 
-  function setDocumentsError(kbId, message) {
+  function setDocumentsError(kbId: any, message: any) {
     const next = { ...documentsErrorByKnowledgeBase.value }
     if (message) next[kbId] = message
     else delete next[kbId]
     documentsErrorByKnowledgeBase.value = next
   }
 
-  async function loadKnowledgeBaseDocuments(kbId, force = false) {
+  async function loadKnowledgeBaseDocuments(kbId: any, force = false) {
     if (!kbId) return []
     const hasCache = Object.prototype.hasOwnProperty.call(documentsByKnowledgeBase.value, kbId)
     if (hasCache && currentKnowledgeBaseId.value === kbId) documents.value = documentsByKnowledgeBase.value[kbId]
@@ -59,7 +59,7 @@ export function useWorkspace({ token }) {
     setDocumentsError(kbId, '')
 
     setDocumentsLoading(kbId, true)
-    const request = apiFetch(`/api/knowledge-bases/${kbId}/documents`, { token: token.value, onCached: items => { cacheDocuments(kbId, items); if (currentKnowledgeBaseId.value === kbId) documents.value = items } })
+    const request = apiFetch(`/api/knowledge-bases/${kbId}/documents`, { token: token.value, onCached: (items: any) => { cacheDocuments(kbId, items); if (currentKnowledgeBaseId.value === kbId) documents.value = items } })
       .then((result) => {
         if (documentsRequests.get(kbId) !== request) return result
         const stillVisible = knowledgeBases.value.some(item => item.id === kbId)
@@ -101,7 +101,7 @@ export function useWorkspace({ token }) {
       }
     }
     try {
-      const result = await apiFetch('/api/spaces', { token: token.value, onCached: items => { if (requestId === spacesRequestId) spaces.value = items } })
+      const result = await apiFetch('/api/spaces', { token: token.value, onCached: (items: any) => { if (requestId === spacesRequestId) spaces.value = items } })
       if (requestId !== spacesRequestId) return
       spaces.value = result
       const selected = spaces.value.find(item => item.id === previousSpaceId) || spaces.value[0]
@@ -116,7 +116,7 @@ export function useWorkspace({ token }) {
     }
   }
 
-  async function selectSpace(spaceId, preferredKnowledgeBaseId = '') {
+  async function selectSpace(spaceId: any, preferredKnowledgeBaseId = '') {
     const requestId = ++spaceRequestId
     ++knowledgeBaseRequestId
     ++documentsRequestId
@@ -140,7 +140,7 @@ export function useWorkspace({ token }) {
       }
     }
     try {
-      const result = await apiFetch(`/api/spaces/${spaceId}/knowledge-bases`, { token: token.value, onCached: items => { if (requestId === spaceRequestId && currentSpaceId.value === spaceId) knowledgeBases.value = sortKnowledgeBases(items) } })
+      const result = await apiFetch(`/api/spaces/${spaceId}/knowledge-bases`, { token: token.value, onCached: (items: any) => { if (requestId === spaceRequestId && currentSpaceId.value === spaceId) knowledgeBases.value = sortKnowledgeBases(items) } })
       if (requestId !== spaceRequestId || currentSpaceId.value !== spaceId) return
       knowledgeBases.value = sortKnowledgeBases(result)
       const selected = knowledgeBases.value.find(item => item.id === preferredKnowledgeBaseId) || knowledgeBases.value[0]
@@ -152,7 +152,7 @@ export function useWorkspace({ token }) {
     }
   }
 
-  async function selectKnowledgeBase(kbId, invalidateSpace = true) {
+  async function selectKnowledgeBase(kbId: any, invalidateSpace = true) {
     const requestId = ++knowledgeBaseRequestId
     const documentRequestId = ++documentsRequestId
     if (invalidateSpace) ++spaceRequestId
@@ -176,7 +176,7 @@ export function useWorkspace({ token }) {
   }
 
 
-  async function createKnowledgeBase(name, description = '') {
+  async function createKnowledgeBase(name: any, description = '') {
     const spaceId = currentSpaceId.value
     if (!spaceId) return null
     const result = await apiFetch(`/api/spaces/${spaceId}/knowledge-bases`, {
@@ -188,7 +188,7 @@ export function useWorkspace({ token }) {
     return result
   }
 
-  async function updateKnowledgeBase(kbId, payload) {
+  async function updateKnowledgeBase(kbId: any, payload: any) {
     const result = await apiFetch(`/api/knowledge-bases/${kbId}`, {
       token: token.value,
       method: 'PATCH',
@@ -200,7 +200,7 @@ export function useWorkspace({ token }) {
     return result
   }
 
-  async function deleteKnowledgeBase(kbId) {
+  async function deleteKnowledgeBase(kbId: any) {
     const result = await apiFetch(`/api/knowledge-bases/${kbId}`, {
       token: token.value,
       method: 'DELETE'
@@ -234,7 +234,7 @@ export function useWorkspace({ token }) {
     return documents.value
   }
 
-  async function deleteDocument(documentId, knowledgeBaseId = currentKnowledgeBaseId.value) {
+  async function deleteDocument(documentId: any, knowledgeBaseId = currentKnowledgeBaseId.value) {
     const result = await apiFetch(`/api/documents/${documentId}`, {
       token: token.value,
       method: 'DELETE'

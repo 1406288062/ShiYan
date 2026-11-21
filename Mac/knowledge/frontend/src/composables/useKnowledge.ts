@@ -1,7 +1,7 @@
 import { ref, watch } from 'vue'
 import { apiFetch } from './useApi.js'
 
-export function useKnowledge({ token, currentKnowledgeBaseId }) {
+export function useKnowledge({ token, currentKnowledgeBaseId }: any) {
   const knowledgeData = ref(null)
   const loading = ref(false)
   const error = ref('')
@@ -19,7 +19,7 @@ export function useKnowledge({ token, currentKnowledgeBaseId }) {
     loading.value = true
     error.value = ''
     try {
-      const result = await apiFetch(`/api/knowledge-bases/${kbId}/knowledge`, { token: token.value, onCached: value => { if (currentRequestId === requestId && currentKnowledgeBaseId.value === kbId) knowledgeData.value = value } })
+      const result = await apiFetch(`/api/knowledge-bases/${kbId}/knowledge`, { token: token.value, onCached: (value: any) => { if (currentRequestId === requestId && currentKnowledgeBaseId.value === kbId) knowledgeData.value = value } })
       if (currentRequestId !== requestId || currentKnowledgeBaseId.value !== kbId) return result
       knowledgeData.value = result
       return knowledgeData.value

@@ -11,14 +11,14 @@ function loadAdapter({install}: any = {}): any {
   const listeners = new Map();
   const account = {
     user: {id: 'account-a'},
-    request: async (path, method = 'GET', body) => {
+    request: async (path: any, method = 'GET', body: any) => {
       calls.push({path, method, body});
       if (path === '/web-workspace/projects') return {ok:true, projects:[], devices:[], connected:false};
       if (path === '/web-workspace/files/read') return {ok:true, file:{fileId:'remote-file-1', path:'src/main.py', kind:'text', text:'print(1)', contentHash:'hash-1'}};
       return {ok:true};
     }
   };
-  const nativeFetch = async (...args) => {
+  const nativeFetch = async (...args: any[]) => {
     originalApiCalls.push(args);
     return new Response(JSON.stringify({ok:true, route:String(args[0])}), {status:200, headers:{'Content-Type':'application/json'}});
   };
@@ -27,7 +27,7 @@ function loadAdapter({install}: any = {}): any {
     ShiYanAccount: account,
     crypto: {randomUUID: () => 'request-uuid'},
     fetch: nativeFetch,
-    addEventListener: (name, fn) => listeners.set(name, fn),
+    addEventListener: (name: any, fn: any) => listeners.set(name, fn),
     removeEventListener() {},
     shiyan: {toast() {}, confirmAction: async () => true},
   };
@@ -39,12 +39,12 @@ function loadAdapter({install}: any = {}): any {
     URLSearchParams,
     crypto: window.crypto,
     queueMicrotask,
-    requestAnimationFrame: callback => callback(),
+    requestAnimationFrame: (callback: any) => callback(),
     clearTimeout,
     setTimeout,
     console,
   };
-  const baseInstall = install || function(C) {
+  const baseInstall = install || function(C: any) {
     return {
       initFile() {},
       openAsset() {},
@@ -57,11 +57,11 @@ function loadAdapter({install}: any = {}): any {
   return {window, context, account, calls, originalApiCalls, nativeFetch, listeners};
 }
 
-function makeContext(window, originalApiCalls, overrides = {}): any {
+function makeContext(window: any, originalApiCalls: any, overrides = {}): any {
   const prefs = {selectedProjectId:'cloud-project-1'};
   const context = {
     prefs,
-    api: async (path, method = 'GET', body) => {
+    api: async (path: any, method = 'GET', body: any) => {
       const response = await window.fetch('/api/workspace' + path, {method, body:body === undefined ? undefined : JSON.stringify(body)});
       return response.json();
     },
@@ -93,7 +93,7 @@ test('adapter leaves native fetch and shared bootstrap/preferences/cloud routes 
   await C.api('/preferences', 'PATCH', {selectedProjectId:'cloud-project-1'});
   await C.api('/projects', 'GET');
   await C.api('/files/read', 'POST', {projectId:'cloud-project-1', path:'README.md'});
-  assert.deepEqual(nativeCalls.map(call => call[0]), [
+  assert.deepEqual(nativeCalls.map((call: any) => call[0]), [
     '/api/workspace/bootstrap', '/api/workspace/preferences', '/api/workspace/projects', '/api/workspace/files/read'
   ]);
 });
@@ -109,9 +109,9 @@ test('remote read/save/diff routes use the account API and retain one requestId'
   await C.api('/files/save-text', 'POST', {fileId:'remote-file-1', contentHash:'hash-1', text:'print(2)', confirmed:true, requestId:'stable-request-1'});
   await C.api('/files/changes', 'POST', {fileId:'remote-file-1', baselineText:'print(1)'});
 
-  const read = calls.find(call => call.path === '/web-workspace/files/read');
-  const save = calls.find(call => call.path === '/web-workspace/files/save-text');
-  const changes = calls.find(call => call.path === '/web-workspace/files/changes');
+  const read = calls.find((call: any) => call.path === '/web-workspace/files/read');
+  const save = calls.find((call: any) => call.path === '/web-workspace/files/save-text');
+  const changes = calls.find((call: any) => call.path === '/web-workspace/files/changes');
   assert.ok(read);
   assert.equal(read.body.projectId, 'web-device-123');
   assert.ok(save);
@@ -121,14 +121,14 @@ test('remote read/save/diff routes use the account API and retain one requestId'
   assert.ok(changes);
   assert.equal(changes.body.projectId, 'web-device-123');
   assert.equal(changes.body.path, 'src/main.py');
-  assert.equal(calls.filter(call => call.path.startsWith('/web-workspace/')).length, 4); // includes the bootstrap refresh
+  assert.equal(calls.filter((call: any) => call.path.startsWith('/web-workspace/')).length, 4); // includes the bootstrap refresh
   assert.equal(originalApiCalls.length, 0);
 });
 
 test('an empty device pane isolates original initFile from the cloud selectedProjectId', () => {
   let seenProjectId;
-  const {window, originalApiCalls} = loadAdapter({install: C => ({
-    initFile(tab, pane) {
+  const {window, originalApiCalls} = loadAdapter({install: (C: any) => ({
+    initFile(tab: any, pane: any) {
       seenProjectId = C.prefs.selectedProjectId;
       return {tab, pane, projectId:seenProjectId};
     },
@@ -149,7 +149,7 @@ test('left cloud project selection restores the selected remote device tab', asy
   const C = makeContext(window, originalApiCalls, {
     tabs: [{id:'device-tab', type:'files', projectId:'web-device-123', webDeviceId:'device-1'}],
     activeTab: 'device-tab',
-    selectTab: id => selected.push(id),
+    selectTab: (id: any) => selected.push(id),
     selectProject: async () => { selected.push('cloud-select'); }
   });
   window.ShiYanV2.install(C);
@@ -165,7 +165,7 @@ test('web project files and device files collapse into one remote file pane', ()
   ];
   const C = makeContext(window, originalApiCalls, {
     tabs,
-    closeTab: async id => { const index=C.tabs.findIndex(tab=>tab.id===id); if(index>=0)C.tabs.splice(index,1); },
+    closeTab: async (id: any) => { const index=C.tabs.findIndex((tab: any)=>tab.id===id); if(index>=0)C.tabs.splice(index,1); },
     selectTab() {}
   });
   window.ShiYanV2.install(C);

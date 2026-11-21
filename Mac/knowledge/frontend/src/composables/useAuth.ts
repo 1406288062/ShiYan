@@ -14,7 +14,7 @@ export function useAuth() {
   const error = ref('')
   const sessionRecoveryAvailable = ref(false)
 
-  function saveSession(result) {
+  function saveSession(result: any) {
     token.value = result.access_token
     user.value = result.user
     setKnowledgeCacheOwner(result.user.id)
@@ -69,7 +69,7 @@ export function useAuth() {
     }
   }
 
-  async function authenticate(path, payload) {
+  async function authenticate(path: any, payload: any) {
     if (embedded) throw new Error('请使用拾燕的账户登录')
     loading.value = true
     error.value = ''
@@ -90,11 +90,11 @@ export function useAuth() {
     }
   }
 
-  function login(email, password) {
+  function login(email: any, password: any) {
     return authenticate('/api/auth/login', { email, password })
   }
 
-  function register(email, password, displayName) {
+  function register(email: any, password: any, displayName: any) {
     return authenticate('/api/auth/register', { email, password, display_name: displayName })
   }
 

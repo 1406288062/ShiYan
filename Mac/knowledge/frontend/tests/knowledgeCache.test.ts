@@ -3,9 +3,9 @@ import assert from 'node:assert/strict'
 function storage(): any {
  const s = {}
  Object.defineProperties(s, {
-  getItem: {value: key => Object.hasOwn(s,key) ? s[key] : null},
-  setItem: {value: (key,value) => { s[key] = String(value) }},
-  removeItem: {value: key => { delete s[key] }}
+  getItem: {value: (key: any) => Object.hasOwn(s,key) ? (s as any)[key] : null},
+  setItem: {value: (key: any,value: any) => { (s as any)[key] = String(value) }},
+  removeItem: {value: (key: any) => { delete (s as any)[key] }}
  })
  return s
 }

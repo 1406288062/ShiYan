@@ -1,7 +1,7 @@
 import { ref, watch } from 'vue'
 import { apiFetch } from './useApi.js'
 
-export function useUpload({ token, currentKnowledgeBaseId, refreshDocuments, loadKnowledgeBaseDocuments, loadKnowledgeData }) {
+export function useUpload({ token, currentKnowledgeBaseId, refreshDocuments, loadKnowledgeBaseDocuments, loadKnowledgeData }: any) {
   const showTaskStatus = ref(false)
   const taskId = ref('')
   const documentId = ref('')
@@ -21,9 +21,9 @@ export function useUpload({ token, currentKnowledgeBaseId, refreshDocuments, loa
   let recoveryRevision = 0
   let pollingFailures = 0
 
-  const isActiveStatus = status => status === 'queued' || status === 'processing'
+  const isActiveStatus = (status: any) => status === 'queued' || status === 'processing'
 
-  function applyTask(result) {
+  function applyTask(result: any) {
     taskId.value = result.task_id || ''
     documentId.value = result.document_id || ''
     taskKnowledgeBaseId.value = result.knowledge_base_id || ''
@@ -61,7 +61,7 @@ export function useUpload({ token, currentKnowledgeBaseId, refreshDocuments, loa
     { immediate: true }
   )
 
-  async function refreshTaskKnowledgeBase(kbId) {
+  async function refreshTaskKnowledgeBase(kbId: any) {
     if (!kbId) {
       await refreshDocuments().catch(() => {})
       return
@@ -142,7 +142,7 @@ export function useUpload({ token, currentKnowledgeBaseId, refreshDocuments, loa
     pollingTimer = window.setInterval(() => pollTask().catch(() => {}), 2000)
   }
 
-  async function handleUpload(file) {
+  async function handleUpload(file: any) {
     if (!file || !file.name.toLowerCase().endsWith('.pdf')) {
       throw new Error('请选择 PDF 文件')
     }

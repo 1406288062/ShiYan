@@ -21,18 +21,18 @@ interface Window {
   const BLOCKED_TOOLS = new Set(['browser', 'terminal', 'temporary', 'history', 'bookmarks', 'downloads', 'settings']);
   const documentTypes = new Set(['pdf', 'docx']);
   const esc = (value: any) => String(value ?? '').replace(/[&<>"']/g, (c: string): string => (({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'} as Record<string,string>)[c]));
-  const id = value => String(value || '');
+  const id = (value: any) => String(value || '');
   const uuid = () => (window.crypto?.randomUUID ? window.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
   const accountId = () => (window as any).ShiYanAccount?.user?.id || null;
-  const isRemoteProjectId = value => REMOTE_ID.test(id(value));
+  const isRemoteProjectId = (value: any) => REMOTE_ID.test(id(value));
   const extension = (value: any) => id(value?.filename || value?.name || value).split('.').pop()?.toLowerCase() || '';
-  const routePath = path => {
+  const routePath = (path: any) => {
     try { return new URL(path, location.href).pathname; }
     catch { return String(path || '').split('?')[0]; }
   };
-  const isRemoteFileRoute = path => REMOTE_FILE_ROUTES.has(routePath(path));
+  const isRemoteFileRoute = (path: any) => REMOTE_FILE_ROUTES.has(routePath(path));
 
-  function safePreviewURL(file) {
+  function safePreviewURL(file: any) {
     const raw = file?.previewUrl || (file?.assetId ? `${WEB_ROOT}/preview/${encodeURIComponent(file.assetId)}` : '');
     if (!raw) throw Error('服务器没有提供文件预览地址');
     let url;
@@ -47,12 +47,12 @@ interface Window {
     return request(WEB_ROOT.replace('/api', '') + path, method, body);
   }
 
-  function queryProjectId(path) {
+  function queryProjectId(path: any) {
     try { return new URL(path, location.origin).searchParams.get('projectId') || ''; }
     catch { return ''; }
   }
 
-  function remoteRequest(path, method, body, files) {
+  function remoteRequest(path: any, method: any, body: any, files: any) {
     if (!isRemoteFileRoute(path)) return null;
     const projectId = id(body?.projectId) || queryProjectId(path) || id(body?.fileId && files.get(body.fileId)?.projectId);
     if (!isRemoteProjectId(projectId)) return null;
@@ -89,11 +89,11 @@ interface Window {
       this.formTarget = null;
     }
 
-    valid(generation, owner = this.owner) {
+    valid(generation: any, owner = this.owner) {
       return generation === this.generation && owner === accountId() && owner === this.owner;
     }
 
-    notify(error) { (window as any).shiyan?.toast?.(error?.message || String(error)); }
+    notify(error: any) { (window as any).shiyan?.toast?.(error?.message || String(error)); }
 
     installContext() {
       // Start the web surface collapsed; tabs can restore without reserving space.
@@ -101,11 +101,11 @@ interface Window {
       const C = this.C, originalApi = C.api, originalOpen = C.openTab;
       const originalClose = C.closeTab, originalSelectProject = C.selectProject;
       const originalTool = C.workspaceTool;
-      C.api = (path, method = 'GET', body) => {
+      C.api = (path: any, method = 'GET', body: any) => {
         const result = remoteRequest(path, method, body, this.remoteFiles);
         if (result) {
           const owner = this.owner;
-          return result.then(data => {
+          return result.then((data: any) => {
             if (owner !== this.owner || owner !== accountId()) throw new DOMException('账户会话已更改','AbortError');
             const file = data?.file;
             const projectId = id(body?.projectId) || queryProjectId(path) || id(body?.fileId && this.remoteFiles.get(body.fileId)?.projectId);
@@ -129,7 +129,7 @@ interface Window {
         // The web client has one remote project-file workspace. Older entry
         // points used to create a second tab named “设备文件” for the same pane.
         if ((options.type === 'files' || options.type === 'file') && !options.webAttachment) {
-          const existing = C.tabs?.find(tab => (tab.type === 'files' || tab.type === 'file') && !tab.webAttachment);
+          const existing = C.tabs?.find((tab: any) => (tab.type === 'files' || tab.type === 'file') && !tab.webAttachment);
           if (existing) {
             const projectId = isRemoteProjectId(options.projectId) ? options.projectId : existing.projectId;
             Object.assign(existing, options, {type:'files', webDevicePane:true, ...(projectId ? {projectId, webDeviceId:options.webDeviceId || this.project(projectId)?.deviceId || existing.webDeviceId} : {})});
@@ -141,7 +141,7 @@ interface Window {
           options = {...options, type:'files', webDevicePane:true, title:options.title === '设备文件' ? '项目文件' : (options.title || '项目文件')};
         }
         if (options.type === 'execution' || options.type === 'changes') {
-          const existing = C.tabs?.find(tab => tab.type === options.type);
+          const existing = C.tabs?.find((tab: any) => tab.type === options.type);
           if (existing) {
             Object.assign(existing, options);
             C.selectTab(existing.id);
@@ -149,7 +149,7 @@ interface Window {
           }
         }
         if (options.webAttachment) {
-          const existing = C.tabs?.find(tab => tab.webAttachment);
+          const existing = C.tabs?.find((tab: any) => tab.webAttachment);
           if (existing) {
             Object.assign(existing, {title:options.title || existing.title, assetId:options.assetId, webAttachment:true});
             C.selectTab(existing.id);
@@ -160,33 +160,33 @@ interface Window {
         if (tab && (tab.type === 'files' || tab.type === 'file')) queueMicrotask(() => this.decorateTab(tab.id));
         return tab;
       };
-      C.closeTab = async idValue => {
+      C.closeTab = async (idValue: any) => {
         try { return await originalClose(idValue); }
         finally {
           this.disposeFile(idValue);
           this.scheduleReconcile();
         }
       };
-      C.selectProject = async (...args) => {
-        const active = C.tabs?.find(tab => tab.id === C.activeTab);
+      C.selectProject = async (...args: any[]) => {
+        const active = C.tabs?.find((tab: any) => tab.id === C.activeTab);
         const preservedId = active && isRemoteProjectId(active.projectId) && (active.type === 'files' || active.type === 'file') ? active.id : '';
         const result = await originalSelectProject(...args);
-        if (preservedId && C.tabs?.some(tab => tab.id === preservedId)) C.selectTab(preservedId);
+        if (preservedId && C.tabs?.some((tab: any) => tab.id === preservedId)) C.selectTab(preservedId);
         return result;
       };
-      C.workspaceTool = type => {
+      C.workspaceTool = (type: any) => {
         if (BLOCKED_TOOLS.has(type)) return null;
-        if (type === 'files') { this.ensureFilesTab(); const tab=C.tabs.find(t=>(t.type==='files'||t.type==='file')&&!t.webAttachment); if(tab)C.selectTab(tab.id); return tab; }
+        if (type === 'files') { this.ensureFilesTab(); const tab=C.tabs.find((t: any)=>(t.type==='files'||t.type==='file')&&!t.webAttachment); if(tab)C.selectTab(tab.id); return tab; }
         return originalTool(type);
       };
     }
 
-    attach(result) {
+    attach(result: any) {
       if (!result) return result;
       const originalInit = result.initFile;
-      result.initFile = (tab, pane) => {
+      result.initFile = (tab: any, pane: any) => {
         if (isRemoteProjectId(tab.projectId)) { tab.webDevicePane=true;tab.webDeviceId=this.project(tab.projectId)?.deviceId; }
-        const asset = tab.assetId ? ((window as any).shiyan?.getState()?.conversations || []).flatMap(c=>(c.messages || []).flatMap(m=>m.assets || [])).find(a=>a.id===tab.assetId) : null;
+        const asset = tab.assetId ? ((window as any).shiyan?.getState()?.conversations || []).flatMap((c: any)=>(c.messages || []).flatMap((m: any)=>m.assets || [])).find((a: any)=>a.id===tab.assetId) : null;
         const restoredDocument = tab.assetId && documentTypes.has(extension(asset?.filename || tab.assetName || tab.title));
         if (restoredDocument) { tab.webAttachment=true;tab.projectId=undefined;tab.path=undefined;tab.selectedPath=undefined;tab.fileId=undefined; }
         const isolateSelectedProject = !tab.projectId;
@@ -209,7 +209,7 @@ interface Window {
         return f;
       };
       const originalAsset = result.openAsset;
-      result.openAsset = asset => this.openAsset(asset, originalAsset);
+      result.openAsset = (asset: any) => this.openAsset(asset, originalAsset);
       const originalAfterBoot = result.afterBoot;
       result.afterBoot = async () => {
         this.C.prefs.rightOpen = false;
@@ -217,12 +217,12 @@ interface Window {
         this.startTabObserver();
         await originalAfterBoot?.();
         await this.refreshProjects();
-        const savedActive = this.C.tabs.find(t=>t.id===this.C.activeTab);
+        const savedActive = this.C.tabs.find((t: any)=>t.id===this.C.activeTab);
         this.ensureFilesTab();
-        const filesTab = this.C.tabs.find(t => (t.type === 'files' || t.type === 'file') && !t.webAttachment);
-        if (!this.C.tabs.some(t => t.type === 'execution')) this.C.openTab({type:'execution',title:'执行过程',conversationId:(window as any).shiyan?.getState()?.selectedConversationId},true);
+        const filesTab = this.C.tabs.find((t: any) => (t.type === 'files' || t.type === 'file') && !t.webAttachment);
+        if (!this.C.tabs.some((t: any) => t.type === 'execution')) this.C.openTab({type:'execution',title:'执行过程',conversationId:(window as any).shiyan?.getState()?.selectedConversationId},true);
         const keepActive = savedActive && (isRemoteProjectId(savedActive.projectId) || savedActive.assetId || ['execution','changes'].includes(savedActive.type));
-        if (keepActive && this.C.tabs.some(t=>t.id===savedActive.id)) this.C.selectTab(savedActive.id);
+        if (keepActive && this.C.tabs.some((t: any)=>t.id===savedActive.id)) this.C.selectTab(savedActive.id);
         else if (filesTab) this.C.selectTab(filesTab.id);
         if ((window as any).workbench) (window as any).workbench.openTool = this.C.workspaceTool;
         this.C.prefs.rightOpen = false;
@@ -273,7 +273,7 @@ interface Window {
       // The desktop shell can create its default browser tab through a private
       // closure. Remove only unsupported tool tabs; never change left projects.
       for (const tab of tabs) if (BLOCKED_TOOLS.has(tab.type) || !tab.type) {
-        this.C.closeTab(tab.id).catch(error => this.notify(error));
+        this.C.closeTab(tab.id).catch((error: any) => this.notify(error));
       }
       const add = typeof document !== 'undefined' ? document.getElementById('addWorkspaceTab') : null;
       if (add) { add.hidden = true; add.setAttribute('aria-hidden','true'); }
@@ -306,7 +306,7 @@ interface Window {
     bindBrowserShortcut() {
       if (this.browserShortcutBound || typeof window === 'undefined') return;
       this.browserShortcutBound = true;
-      this.browserShortcut = event => {
+      this.browserShortcut = (event: any) => {
         if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
         if (event.key.toLowerCase() === 'l') event.stopImmediatePropagation();
         if (event.key.toLowerCase() === 'o') { event.preventDefault();event.stopImmediatePropagation();this.C.workspaceTool('files'); }
@@ -340,15 +340,15 @@ interface Window {
       this.loading = true;
       this.error = '';
       this.renderAllControls();
-      const promise = accountRequest('/projects').then(data => {
+      const promise = accountRequest('/projects').then((data: any) => {
         if (!this.valid(generation, owner)) return;
-        this.projects = Array.isArray(data.projects) ? data.projects.filter(project => isRemoteProjectId(project.id)) : [];
+        this.projects = Array.isArray(data.projects) ? data.projects.filter((project: any) => isRemoteProjectId(project.id)) : [];
         this.devices = Array.isArray(data.devices) ? data.devices : [];
         this.connected = data.connected === true;
         this.loadedFor = owner;
         this.loadedAt = Date.now();
         this.renderAllControls();
-      }).catch(error => {
+      }).catch((error: any) => {
         if (!this.valid(generation, owner)) return;
         this.error = (error as any).message || '远程项目暂时不可用';
         this.projects = [];
@@ -367,16 +367,16 @@ interface Window {
       return promise;
     }
 
-    project(projectId) { return this.projects.find(project => project.id === projectId) || null; }
-    device(deviceId) { return this.devices.find(device => device.deviceId === deviceId) || null; }
-    online(deviceId) { const device = this.device(deviceId); return !!device && device.online === true && device.ready !== false; }
-    availableDevice() { return this.connected ? this.devices.find(device => this.online(device.deviceId)) || null : null; }
+    project(projectId: any) { return this.projects.find((project: any) => project.id === projectId) || null; }
+    device(deviceId: any) { return this.devices.find((device: any) => device.deviceId === deviceId) || null; }
+    online(deviceId: any) { const device = this.device(deviceId); return !!device && device.online === true && device.ready !== false; }
+    availableDevice() { return this.connected ? this.devices.find((device: any) => this.online(device.deviceId)) || null : null; }
 
     ensureFilesTab() {
       if (!this.C.tabs) return null;
-      const fileTabs = this.C.tabs.filter(tab => (tab.type === 'files' || tab.type === 'file') && !tab.webAttachment);
-      const project = this.projects.find(item => this.online(item.deviceId));
-      let tab = fileTabs.find(item => item.webDevicePane || item.webDeviceId || isRemoteProjectId(item.projectId)) || fileTabs[0];
+      const fileTabs = this.C.tabs.filter((tab: any) => (tab.type === 'files' || tab.type === 'file') && !tab.webAttachment);
+      const project = this.projects.find((item: any) => this.online(item.deviceId));
+      let tab = fileTabs.find((item: any) => item.webDevicePane || item.webDeviceId || isRemoteProjectId(item.projectId)) || fileTabs[0];
       if (tab) {
         tab.type = 'files';
         tab.webDevicePane = true;
@@ -389,14 +389,14 @@ interface Window {
       return this.C.openTab({type:'files', title:project?.name || '项目文件', webDevicePane:true, ...(project ? {projectId:project.id, webDeviceId:project.deviceId} : {})}, false);
     }
 
-    decorateTab(tabId) {
-      const tab = (this.C.tabs || []).find(item => item.id === tabId);
+    decorateTab(tabId: any) {
+      const tab = (this.C.tabs || []).find((item: any) => item.id === tabId);
       if (!tab || (tab.type !== 'files' && tab.type !== 'file')) return;
       const f = this.files.get(tabId);
       if (f) this.attachFile(f);
     }
 
-    disposeFile(tabId) {
+    disposeFile(tabId: any) {
       const f = this.files.get(tabId);
       if (!f) return;
       f.disposed = true;
@@ -409,7 +409,7 @@ interface Window {
       }
     }
 
-    attachFile(f) {
+    attachFile(f: any) {
       if (!f || f.__webWorkspaceAttached) return;
       f.__webWorkspaceAttached = true;
       this.files.set(f.tab.id, f);
@@ -424,7 +424,7 @@ interface Window {
       const refresh = () => this.renderControls(f);
       (controls.querySelector('[data-web-refresh]') as any).onclick = () => this.refreshProjects(true).catch(this.notify.bind(this));
       (controls.querySelector('[data-web-device]') as any).onchange = refresh;
-      (controls.querySelector('[data-web-project]') as any).onchange = event => this.openProject((event.target as any).value);
+      (controls.querySelector('[data-web-project]') as any).onchange = (event: any) => this.openProject((event.target as any).value);
       (controls.querySelector('[data-web-open]') as any).onclick = () => this.openProject((controls.querySelector('[data-web-project]') as any).value);
       (controls.querySelector('[data-web-add]') as any).onclick = () => this.showProjectForm(f, 'add');
       (controls.querySelector('[data-web-rename]') as any).onclick = () => this.showProjectForm(f, 'rename');
@@ -435,9 +435,9 @@ interface Window {
       this.renderControls(f);
     }
 
-    bindEmptyPane(f) {
+    bindEmptyPane(f: any) {
       if (!f.pane || f.__webEmptyClick) return;
-      f.__webEmptyClick = event => {
+      f.__webEmptyClick = (event: any) => {
         const button = event.target?.closest?.('[data-open-project],[data-open-file]');
         if (!button || !f.pane.contains(button)) return;
         event.preventDefault();
@@ -450,12 +450,12 @@ interface Window {
       if (standalone) { standalone.hidden = true; standalone.setAttribute('aria-hidden', 'true'); }
     }
 
-    disableExternalEditor(f) {
+    disableExternalEditor(f: any) {
       const button = f.pane?.querySelector('.v2-open-editor');
       if (button) { button.disabled = true; button.hidden = true; button.setAttribute('aria-hidden', 'true'); }
     }
 
-    installDocumentBridge(f) {
+    installDocumentBridge(f: any) {
       if (f.__webDocumentObserver || typeof MutationObserver !== 'function') return;
       const render = () => this.renderWebDocument(f);
       f.__webDocumentObserver = new MutationObserver(render);
@@ -487,7 +487,7 @@ interface Window {
       });
     }
 
-    addDownloadControl(f, asset) {
+    addDownloadControl(f: any, asset: any) {
       const actions = f.pane?.querySelector('.v2-file-actions');
       if (!actions || !asset?.id) return;
       let button = actions.querySelector('[data-web-download]');
@@ -497,22 +497,22 @@ interface Window {
 
     renderAllControls() { for (const f of this.files.values()) this.renderControls(f); }
 
-    renderControls(f) {
+    renderControls(f: any) {
       const box = f?.__webControls;
       if (!box?.isConnected || f.disposed) return;
       const deviceSelect = box.querySelector('[data-web-device]'), projectSelect = box.querySelector('[data-web-project]');
       const priorDevice = deviceSelect.value || (isRemoteProjectId(f.projectId) ? this.project(f.projectId)?.deviceId : '');
-      const deviceOptions = this.devices.map(device => [device.deviceId, `${device.name || device.deviceId}${this.online(device.deviceId) ? ' · 在线' : ' · 离线'}`]);
+      const deviceOptions = this.devices.map((device: any) => [device.deviceId, `${device.name || device.deviceId}${this.online(device.deviceId) ? ' · 在线' : ' · 离线'}`]);
       const filter = this.device(priorDevice) ? priorDevice : '';
-      const visible = this.projects.filter(project => !filter || project.deviceId === filter);
+      const visible = this.projects.filter((project: any) => !filter || project.deviceId === filter);
       const stateText = this.loading ? '正在读取设备…' : this.error ? this.error : !this.devices.length ? '当前拾燕账号尚无绑定设备' : !this.connected ? '设备离线' : isRemoteProjectId(f.projectId) && !this.online(this.project(f.projectId)?.deviceId) ? '当前项目所在设备离线' : '';
-      const signature = JSON.stringify([deviceOptions,visible.map(project => [project.id,project.name,project.deviceId]),priorDevice,f.projectId || '',stateText,this.connected,this.loading]);
+      const signature = JSON.stringify([deviceOptions,visible.map((project: any) => [project.id,project.name,project.deviceId]),priorDevice,f.projectId || '',stateText,this.connected,this.loading]);
       if (box.dataset.renderSignature === signature) { this.renderModal(); return; }
       box.dataset.renderSignature = signature;
-      deviceSelect.innerHTML = '<option value="">全部设备</option>' + deviceOptions.map(([value,label]) => `<option value="${esc(value)}">${esc(label)}</option>`).join('');
+      deviceSelect.innerHTML = '<option value="">全部设备</option>' + deviceOptions.map(([value,label]: any) => `<option value="${esc(value)}">${esc(label)}</option>`).join('');
       deviceSelect.value = filter;
-      projectSelect.innerHTML = '<option value="">选择远程项目…</option>' + visible.map(project => `<option value="${esc(project.id)}" ${project.id === f.projectId ? 'selected' : ''} ${this.online(project.deviceId) ? '' : 'disabled'}>${esc(project.name)}${this.online(project.deviceId) ? '' : ' · 离线'}</option>`).join('');
-      if (isRemoteProjectId(f.projectId) && visible.some(project => project.id === f.projectId)) projectSelect.value = f.projectId;
+      projectSelect.innerHTML = '<option value="">选择远程项目…</option>' + visible.map((project: any) => `<option value="${esc(project.id)}" ${project.id === f.projectId ? 'selected' : ''} ${this.online(project.deviceId) ? '' : 'disabled'}>${esc(project.name)}${this.online(project.deviceId) ? '' : ' · 离线'}</option>`).join('');
+      if (isRemoteProjectId(f.projectId) && visible.some((project: any) => project.id === f.projectId)) projectSelect.value = f.projectId;
       const status = box.querySelector('[data-web-state]');
       status.textContent = stateText;
       status.hidden = !stateText;
@@ -536,7 +536,7 @@ interface Window {
       modal.innerHTML = `<form class="wb-dialog web-project-form" data-web-project-form aria-label="远程项目设置"><header><h2 data-web-form-title>添加远程项目</h2><button type="button" class="wb-icon-button" data-web-cancel aria-label="取消" title="取消">×</button></header><label>设备<select data-web-form-device required aria-label="远程项目设备"></select></label><label>名称<input data-web-form-name maxlength="100" required autocomplete="off"></label><label>目录<div class="path-picker web-path-field"><input data-web-form-path required placeholder="/Users/… 或 /workspace/…" autocomplete="off"><button type="button" class="wb-text-button" data-web-pick>选择…</button></div></label><p class="web-remote-form-error" data-web-form-error role="alert" hidden></p><footer><button type="button" class="wb-secondary" data-web-cancel>取消</button><button type="submit" class="wb-primary" data-web-submit>添加项目</button></footer></form>`;
       (document.body || document.documentElement).appendChild(modal);
       const form: any = modal.querySelector('[data-web-project-form]');
-      form.addEventListener('submit', event => { event.preventDefault(); this.submitProject().catch(error => this.formError(error)); });
+      form.addEventListener('submit', (event: any) => { event.preventDefault(); this.submitProject().catch(error => this.formError(error)); });
       modal.querySelectorAll('[data-web-cancel]').forEach((button: any) => button.onclick = () => { modal.hidden = true; this.formTarget = null; });
       (modal.querySelector('[data-web-pick]') as any).onclick = () => this.pickDirectory().catch(error => this.formError(error));
       modal.addEventListener('click', event => { if (event.target === modal) { modal.hidden = true; this.formTarget = null; } });
@@ -548,15 +548,15 @@ interface Window {
       const modal = this.modal, f = this.formTarget;
       if (!modal || !f || modal.hidden || f.disposed) return;
       const formDevice = modal.querySelector('[data-web-form-device]');
-      formDevice.innerHTML = this.devices.map(device => `<option value="${esc(device.deviceId)}" ${this.online(device.deviceId) ? '' : 'disabled'}>${esc(device.name || device.deviceId)}${this.online(device.deviceId) ? '' : ' · 离线'}</option>`).join('');
+      formDevice.innerHTML = this.devices.map((device: any) => `<option value="${esc(device.deviceId)}" ${this.online(device.deviceId) ? '' : 'disabled'}>${esc(device.name || device.deviceId)}${this.online(device.deviceId) ? '' : ' · 离线'}</option>`).join('');
       const project = this.project(f.projectId), mode = modal.querySelector('[data-web-project-form]').dataset.mode || 'add';
       if (project && mode === 'rename') formDevice.value = project.deviceId;
     }
 
-    openProject(projectId) {
+    openProject(projectId: any) {
       const project = this.project(projectId);
       if (!project) return;
-      let tab = this.C.tabs.find(item => (item.type === 'files' || item.type === 'file') && !item.webAttachment);
+      let tab = this.C.tabs.find((item: any) => (item.type === 'files' || item.type === 'file') && !item.webAttachment);
       if (tab) {
         tab.type = 'files'; tab.title = project.name; tab.projectId = project.id; tab.webDeviceId = project.deviceId; tab.webDevicePane = true;
         tab.selectedPath = undefined; tab.path = undefined; tab.fileId = undefined; tab.file = undefined; tab.directoryPath = '';
@@ -567,7 +567,7 @@ interface Window {
       if (tab) this.C.selectTab(tab.id);
     }
 
-    showProjectForm(f, mode) {
+    showProjectForm(f: any, mode: any) {
       const modal = this.ensureProjectModal();
       if (!modal) return;
       const form = modal.querySelector('[data-web-project-form]'), project = this.project(f.projectId);
@@ -599,7 +599,7 @@ interface Window {
       button.disabled = true;
       button.textContent = '选择中…';
       modal.querySelector('[data-web-form-error]').hidden = true;
-      const device = this.devices.find(item => item.deviceId === deviceId);
+      const device = this.devices.find((item: any) => item.deviceId === deviceId);
       (window as any).shiyan?.toast?.(`请在「${device?.name || '所选设备'}」上选择目录`);
       let timer;
       try {
@@ -618,7 +618,7 @@ interface Window {
       }
     }
 
-    formError(error) {
+    formError(error: any) {
       const target = this.modal?.querySelector('[data-web-form-error]');
       if (target) { target.textContent = (error as any).message || String(error); target.hidden = false; }
     }
@@ -634,21 +634,21 @@ interface Window {
       try {
         const data = mode === 'rename' ? await accountRequest(`/projects/${encodeURIComponent(f.projectId)}`, 'PATCH', {name}) : await accountRequest('/projects', 'POST', {deviceId, path, name});
         if (!this.valid(generation, owner)) return;
-        this.projects = Array.isArray(data.projects) ? data.projects.filter(project => isRemoteProjectId(project.id)) : (data.project ? [data.project] : this.projects);
-        const project = data.project || this.projects.find(item => item.name === name && item.deviceId === deviceId);
+        this.projects = Array.isArray(data.projects) ? data.projects.filter((project: any) => isRemoteProjectId(project.id)) : (data.project ? [data.project] : this.projects);
+        const project = data.project || this.projects.find((item: any) => item.name === name && item.deviceId === deviceId);
         if (mode === 'rename' && project) for (const tab of this.C.tabs || []) if (tab.projectId === f.projectId) tab.title = name;
         modal.hidden = true; this.formTarget = null; this.renderAllControls(); this.C.renderTabs();
         if (mode === 'add' && project) this.openProject(project.id);
       } finally { button.disabled = false; }
     }
 
-    async removeProject(f) {
+    async removeProject(f: any) {
       const project = this.project(f.projectId); if (!project) return;
       if (!(await (window as any).shiyan.confirmAction('移除远程项目？', `仅移除拾燕中的「${project.name}」记录，不删除设备文件。`, '移除'))) return;
       const generation = this.generation, owner = this.owner;
       const data = await accountRequest(`/projects/${encodeURIComponent(project.id)}`, 'DELETE');
       if (!this.valid(generation, owner)) return;
-      this.projects = Array.isArray(data.projects) ? data.projects.filter(item => isRemoteProjectId(item.id)) : this.projects.filter(item => item.id !== project.id);
+      this.projects = Array.isArray(data.projects) ? data.projects.filter((item: any) => isRemoteProjectId(item.id)) : this.projects.filter((item: any) => item.id !== project.id);
       for (const tab of this.C.tabs || []) if (tab.projectId === project.id) {
         Object.assign(tab,{projectId:undefined,webDeviceId:undefined,webDevicePane:true,title:'项目文件',selectedPath:undefined,path:undefined,fileId:undefined,directoryPath:''});
         const pane=this.C.panes.get(tab.id);if(pane)this.result?.initFile(tab,pane);
@@ -661,7 +661,7 @@ interface Window {
       const isDocument = documentTypes.has(type) || mime === 'application/pdf' || mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
       if (!isDocument) return original?.(asset);
       if (!asset?.id) throw Error('文件附件不存在');
-      let tab = (this.C.tabs || []).find(item => item.webAttachment);
+      let tab = (this.C.tabs || []).find((item: any) => item.webAttachment);
       if (!tab) tab = this.C.openTab({type:'files', title:asset.filename || '文件', assetId:asset.id, webAttachment:true}, false);
       if (!tab) throw Error('无法打开文件面板');
       Object.assign(tab,{assetId:asset.id,assetName:asset.filename,title:asset.filename || '文件',webAttachment:true});

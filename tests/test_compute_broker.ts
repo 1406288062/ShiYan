@@ -20,7 +20,7 @@ const clientToken = 'test-client-' + 'c'.repeat(40);
 const workerToken = 'test-worker-' + 'w'.repeat(40);
 const workerId = 'worker-test-mac';
 const ownerA = 'account:a', ownerB = 'account:b';
-const sha = data => createHash('sha256').update(data).digest('hex');
+const sha = (data: any) => createHash('sha256').update(data).digest('hex');
 const vector = (): number[] => Array.from({ length: 1024 }, (_, index) => index === 0 ? 1 : 0);
 function png(width = 2, height = 3) {
   const bytes = Buffer.alloc(33); Buffer.from([137,80,78,71,13,10,26,10]).copy(bytes);
@@ -32,13 +32,13 @@ function jpeg(width = 8, height = 12) {
   const bytes = Buffer.from('ffd8ffc0001108000c000803011100021100031100ffd9', 'hex');
   bytes.writeUInt16BE(height, 7); bytes.writeUInt16BE(width, 9); return bytes;
 }
-async function fixture(t, overrides = {}) {
+async function fixture(t: any, overrides = {}) {
   const root = await mkdtemp(path.join(tmpdir(), 'shiyan-compute-test-'));
   const active = new Set([ownerA, ownerB]); let authorizedWorker = true, clock = 1000000;
   const config: any = { dataDir: path.join(root, 'data'), clientToken, workerToken, workerId,
-    allowedOwners: [ownerA, ownerB], now: () => clock, authorizeOwner: owner => active.has(owner),
+    allowedOwners: [ownerA, ownerB], now: () => clock, authorizeOwner: (owner: any) => active.has(owner),
     authorizeWorker: () => authorizedWorker, ...overrides };
-  let server, base;
+  let server: any, base: any;
   async function start() {
     server = createComputeBroker(config);
     await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
@@ -46,18 +46,18 @@ async function fixture(t, overrides = {}) {
   }
   async function stop() {
     if (!server) return;
-    const closing = new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    const closing = new Promise<void>((resolve, reject) => server.close((error: any) => error ? reject(error) : resolve()));
     server.closeIdleConnections(); await closing; server = undefined;
   }
   t.after(async () => { await stop(); await rm(root, { recursive: true, force: true }); });
   await start();
-  async function call(route, { token = clientToken, owner = ownerA, lease, method = 'GET', body, bytes, headers = {} }: CallOptions = {}) {
+  async function call(route: any, { token = clientToken, owner = ownerA, lease, method = 'GET', body, bytes, headers = {} }: CallOptions = {}) {
     const allHeaders = { Authorization: `Bearer ${token}`, ...headers };
-    if (owner !== null) allHeaders['X-Shiyan-Owner'] = owner;
-    if (lease) allHeaders['X-Task-Lease'] = lease;
+    if (owner !== null) (allHeaders as any)['X-Shiyan-Owner'] = owner;
+    if (lease) (allHeaders as any)['X-Task-Lease'] = lease;
     let payload = bytes;
-    if (body !== undefined) { payload = JSON.stringify(body); allHeaders['Content-Type'] = 'application/json'; }
-    if (bytes) allHeaders['Content-Length'] = String(bytes.length);
+    if (body !== undefined) { payload = JSON.stringify(body); (allHeaders as any)['Content-Type'] = 'application/json'; }
+    if (bytes) (allHeaders as any)['Content-Length'] = String(bytes.length);
     const response = await fetch(base + route, { method, headers: allHeaders, body: payload });
     const data = response.headers.get('content-type')?.includes('json') ? await response.json() : Buffer.from(await response.arrayBuffer());
     return { status: response.status, data };
@@ -67,12 +67,12 @@ async function fixture(t, overrides = {}) {
       params: { texts: ['sample PDF text'], operation: 'document_embedding', instruction: '', ...params } } });
   }
   async function claim() { return call('/v1/worker/claim', { token: workerToken, owner: null, method: 'POST', body: {} }); }
-  async function complete(task, embeddings = [vector()]) {
+  async function complete(task: any, embeddings = [vector()]) {
     return call(`/v1/worker/tasks/${task.id}/result`, { token: workerToken, owner: null, lease: task.lease_token,
       method: 'PUT', body: { embeddings, device: 'mps', dimensions: 1024 } });
   }
   return { root, config, active, call, submitEmbed, claim, complete, stop, start,
-    advance: ms => { clock += ms; }, disableWorker: () => { authorizedWorker = false; } };
+    advance: (ms: any) => { clock += ms; }, disableWorker: () => { authorizedWorker = false; } };
 }
 
 test('credentials and trusted owner binding guard every task route', async t => {
@@ -106,7 +106,7 @@ test('per-owner immutable request deduplication survives a broker restart', asyn
 
 test('only fixed computation kinds and bounded parameter schemas are accepted', async t => {
   const f = await fixture(t);
-  const task = (kind, params) => f.call('/v1/tasks', { method: 'POST', body: { kind, request_id: 'invalid', params } });
+  const task = (kind: any, params: any) => f.call('/v1/tasks', { method: 'POST', body: { kind, request_id: 'invalid', params } });
   assert.equal((await task('shell', { command: 'id' })).status, 400);
   assert.equal((await f.submitEmbed('huge', ownerA, { texts: Array(9).fill('x') })).status, 400);
   assert.equal((await f.submitEmbed('huge', ownerA, { texts: ['x'.repeat(16385)] })).status, 400);
@@ -209,7 +209,7 @@ test('streamed image source is immutable and result must be a JPEG of exact 4x d
   assert.equal(JSON.stringify(task).includes(f.root), false);
   assert.equal((await f.call(`/v1/worker/tasks/${id}/input`, { token: workerToken, lease: 'wrong' })).status, 409);
   assert.deepEqual((await f.call(`/v1/worker/tasks/${id}/input`, { token: workerToken, lease: task.lease_token })).data, source);
-  const put = bytes => f.call(`/v1/worker/tasks/${id}/result`, { token: workerToken, lease: task.lease_token, method: 'PUT', bytes });
+  const put = (bytes: any) => f.call(`/v1/worker/tasks/${id}/result`, { token: workerToken, lease: task.lease_token, method: 'PUT', bytes });
   assert.equal((await put(png(8,12))).status, 422);
   assert.equal((await put(jpeg(7,12))).status, 422);
   const output = jpeg(8,12); assert.equal((await put(output)).status, 200);
@@ -357,21 +357,21 @@ test('concurrent claims cannot allocate two Mac jobs and crash temporaries are r
 function fakeCos() {
   const objects = new Map(), signedLog: any[] = [];
   return {host:'test-123456.cos.ap-guangzhou.myqcloud.com',objects,signedLog,
-    async head(key,etag) { const item=objects.get(key); if(!item || etag && etag!==item.etag)throw Error('missing object'); return item; },
-    signed(method,key,headers={},ttl=300) { const value={method,url:`https://test-123456.cos.ap-guangzhou.myqcloud.com/${key}?q-signature=test`,headers,expiresAt:1000000+ttl*1000}; signedLog.push({key,...value});return value; }
+    async head(key: any,etag: any) { const item=objects.get(key); if(!item || etag && etag!==item.etag)throw Error('missing object'); return item; },
+    signed(method: any,key: any,headers={},ttl=300) { const value={method,url:`https://test-123456.cos.ap-guangzhou.myqcloud.com/${key}?q-signature=test`,headers,expiresAt:1000000+ttl*1000}; signedLog.push({key,...value});return value; }
   };
 }
 function cosInput(owner=ownerA) {
   const id=randomUUID();return {id,key:`shiyan-web/assets/${sha(owner)}/input-${id}`,bytes:1200,etag:'"'+'e'.repeat(32)+'"',mime:'image/png',name:'example.png'};
 }
-async function cosTask(f,cos,request='cos-task',input=cosInput()) {
+async function cosTask(f: any,cos: any,request='cos-task',input=cosInput()) {
   cos.objects.set(input.key,{bytes:input.bytes,etag:input.etag,mime:input.mime});
   const created=await f.call('/v1/tasks',{method:'POST',body:{kind:'enhance_cos',request_id:request,params:{model:'anime',input}}});
   assert.equal(created.status,200);return created.data.task;
 }
-const cosClaim=f=>f.call('/v1/worker/claim',{token:workerToken,owner:null,method:'POST',body:{capabilities:['enhance_cos']}});
+const cosClaim=(f: any)=>f.call('/v1/worker/claim',{token:workerToken,owner:null,method:'POST',body:{capabilities:['enhance_cos']}});
 function resultInfo(kind='output') {return {kind,bytes:kind==='output'?2000:100,sha256:'d'.repeat(64),width:kind==='output'?400:100,height:kind==='output'?600:150,inputWidth:100,inputHeight:150,inputBytes:1500,inputSha256:'a'.repeat(64)};}
-async function prepareCosResult(f,cos,task,kind) {
+async function prepareCosResult(f: any,cos: any,task: any,kind: any) {
   const info=resultInfo(kind);
   const response=await f.call(`/v1/worker/tasks/${task.id}/cos-output`,{token:workerToken,owner:null,lease:task.lease_token,method:'POST',body:info});
   assert.equal(response.status,200);
@@ -382,7 +382,7 @@ async function prepareCosResult(f,cos,task,kind) {
 
 test('COS tasks require configured transport and an exact account-owned immutable input',async t=>{
   const f=await fixture(t),input=cosInput();
-  const submit=(params)=>f.call('/v1/tasks',{method:'POST',body:{kind:'enhance_cos',request_id:'cos',params}});
+  const submit=(params: any)=>f.call('/v1/tasks',{method:'POST',body:{kind:'enhance_cos',request_id:'cos',params}});
   assert.equal((await submit({model:'anime',input})).status,503);
   assert.equal((await submit({model:'anime',input:{...input,key:input.key.replace(sha(ownerA),sha(ownerB))}})).status,400);
   assert.equal((await submit({model:'anime',input:{...input,key:'https://localhost/private'}})).status,400);

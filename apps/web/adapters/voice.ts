@@ -6,7 +6,7 @@
   const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
   const Recognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
   let callId: any = null, playback: any = null, capture: any = null, audio: any = null;
-  const emit = detail => window.dispatchEvent(new CustomEvent('shiyan-native', {detail}));
+  const emit = (detail: any) => window.dispatchEvent(new CustomEvent('shiyan-native', {detail}));
   const state = (record: any, value: any, message?: any) => emit({type: 'voicePlaybackState', sessionId: record.id,
     state: value, ...(message ? {message} : {}), provider: 'xiaoxiao-neural'});
   const available = () => !!(AudioContext && Recognition);
@@ -35,7 +35,7 @@
     clearTimeout(record.timer);
     try { record.recognition.abort(); } catch {}
   }
-  function finishCapture(record) {
+  function finishCapture(record: any) {
     if (capture !== record) return;
     // 浏览器没检测到有人说话（没有 speechstart，或结果在开始后瞬间就到）时不发送：
     // 这类文字来自环境声音或浏览器残留的上一轮识别，不是这次说的话。
@@ -50,12 +50,12 @@
     if (text) emit({type: 'speech', sessionId: record.id, text, isFinal: true});
     else emit({type: 'speechState', sessionId: record.id, active: false});
   }
-  function normalizeTranscript(text) {
+  function normalizeTranscript(text: any) {
     // Chinese recognition can insert word separators between every Han character.
     // Keep Latin words, numbers, mixed-language boundaries and line breaks intact.
     return text.replace(/(\p{Script=Han})[ \t\u00a0\u3000]+(?=\p{Script=Han})/gu, '$1');
   }
-  function startCapture(detail) {
+  function startCapture(detail: any) {
     cancelCapture();
     const recognition = new Recognition();
     const record: any = {id: detail.sessionId, detail, recognition, text: '', timer: 0, speech: false, events: 0, startedAt: Date.now(), heardAt: 0};
@@ -68,7 +68,7 @@
       if (record.text.trim()) record.timer = setTimeout(() => finishCapture(record),
         Math.max(300, Number(detail.autoStopAfterSilence || 1.4) * 1000));
     };
-    recognition.onresult = event => {
+    recognition.onresult = (event: any) => {
       if (capture !== record) return;
       if (!record.heardAt) record.heardAt = Date.now();
       record.events++;
@@ -79,7 +79,7 @@
     recognition.onspeechstart = () => { if (capture === record) { record.speech = true; clearTimeout(record.timer); } };
     recognition.onspeechend = () => { if (capture === record) schedule(); };
     recognition.onend = () => finishCapture(record);
-    recognition.onerror = event => {
+    recognition.onerror = (event: any) => {
       if (capture !== record) return;
       cancelCapture(record.id);
       const denied = ['not-allowed', 'service-not-allowed', 'audio-capture'].includes(event.error);
@@ -104,11 +104,11 @@
   }
   // 第一段只放第一句（最多 60 字）：网络慢时也能很快开口；后面每段逐步变长（120、320 字），
   // 播放当前段时预取下一段。音频约 6KB/秒，下载比播放快时就不会断。
-  const partLimit = index => index === 0 ? 60 : index === 1 ? 120 : 320;
-  function speechParts(text) {
+  const partLimit = (index: any) => index === 0 ? 60 : index === 1 ? 120 : 320;
+  function speechParts(text: any) {
     const parts: any[] = [];
     let pending = '';
-    const append = value => {
+    const append = (value: any) => {
       if (pending && (parts.length === 0 || Array.from(pending + value).length > partLimit(parts.length))) {
         parts.push(pending); pending = '';
       }
@@ -125,7 +125,7 @@
     if (pending) parts.push(pending);
     return parts;
   }
-  async function fetchAudio(record, text) {
+  async function fetchAudio(record: any, text: any) {
     const response = await fetch('/api/voice/synthesize', {
       method: 'POST', credentials: 'same-origin', cache: 'no-store',
       headers: {'Content-Type': 'application/json', 'X-Shiyan-Local': '1'},
@@ -138,7 +138,7 @@
     if (!bytes.byteLength) throw Error('自然语音暂时不可用，请稍后重试。');
     return bytes;
   }
-  async function play(record, text, ready) {
+  async function play(record: any, text: any, ready: any) {
     const context = await ready;
     if (playback !== record) return;
     const parts = speechParts(text);
@@ -172,7 +172,7 @@
     emit({type: 'voicePlaybackLevel', sessionId: record.id, level: 0});
     state(record, 'finished');
   }
-  function speak(detail) {
+  function speak(detail: any) {
     cancelPlayback();
     const record = {id: detail.sessionId, controller: new AbortController(), source: null, finishPart: null, started: false};
     playback = record;

@@ -4,30 +4,30 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 const adapterSource=fs.readFileSync(new URL('../apps/web/adapters/cos-transfer.js',import.meta.url),'utf8');
 const appSource=fs.readFileSync(new URL('../shared/frontend/app.js',import.meta.url),'utf8');
-const extract=name=>appSource.match(new RegExp('  async function '+name+'\\([^\\n]*\\) \\{[\\s\\S]*?\\n  \\}'))![0];
+const extract=(name: any)=>appSource.match(new RegExp('  async function '+name+'\\([^\\n]*\\) \\{[\\s\\S]*?\\n  \\}'))![0];
 const settle=async()=>{for(let i=0;i<16;i++)await Promise.resolve();};
 const file=(name='fixture.png',size=100)=>({name,size,type:'image/png'});
 const ticket=(id='ticket-a')=>({ticketId:id,method:'PUT',url:'https://photos-12345.cos.ap-guangzhou.myqcloud.com/private/'+id+'?q-signature=fixture',headers:{'Content-Type':'image/png','x-cos-acl':'private'},expiresAt:2000000000});
 function setup({mode='web',available=true,uploads=[ticket()],initError,completeError,deferComplete=false,unknownDimensions=false}: any = {}): any {
   const requests: any[] = [], calls: any[] = [], legacy: any[] = [], updates: any[] = [], timers = new Map(), fields = new Map(), timings: any[] = [];
-  let count=0,clock=0,completeResolve;
+  let count=0,clock=0,completeResolve: any;
   class XHR { [key: string]: any;
     constructor(){this.headers={};this.upload={};requests.push(this);}
-    open(method,url){this.method=method;this.url=url;}
-    setRequestHeader(name,value){this.headers[name.toLowerCase()]=value;}
-    send(body){this.body=body;}
-    progress(loaded){this.upload.onprogress?.({loaded});}
+    open(method: any,url: any){this.method=method;this.url=url;}
+    setRequestHeader(name: any,value: any){this.headers[name.toLowerCase()]=value;}
+    send(body: any){this.body=body;}
+    progress(loaded: any){this.upload.onprogress?.({loaded});}
     sent(){this.upload.onload?.({loaded:this.body.size});}
     respond(status=200){this.status=status;this.onload?.();}
     abort(){this.onabort?.();}
   }
-  const window: any = {ShiYanPlatform:{mode},ShiYanUploadPriority:{begin(){count++;return ()=>count--;},upload:async(...args)=>{legacy.push(args);return {ok:true,assets:[{id:'legacy-asset'}]};}},ShiYanEnhancementTiming:{beginUpload(){return (...args)=>timings.push(args);}}};
-  const api=async(path,method,body)=>{
+  const window: any = {ShiYanPlatform:{mode},ShiYanUploadPriority:{begin(){count++;return ()=>count--;},upload:async(...args: any[])=>{legacy.push(args);return {ok:true,assets:[{id:'legacy-asset'}]};}},ShiYanEnhancementTiming:{beginUpload(){return (...args: any[])=>timings.push(args);}}};
+  const api=async(path: any,method: any,body: any)=>{
     calls.push({path,method,body});
     if(path==='/api/assets/cos/upload'){if(initError)throw initError;return {ok:true,available,uploads};}
     if(path==='/api/assets/cos/complete'){
       if(completeError)throw completeError;
-      const result={ok:true,assets:body.ticketIds.map((id,index)=>({id:'asset-'+index,width:unknownDimensions?null:32,height:unknownDimensions?null:24}))};
+      const result={ok:true,assets:body.ticketIds.map((id: any,index: any)=>({id:'asset-'+index,width:unknownDimensions?null:32,height:unknownDimensions?null:24}))};
       return deferComplete?new Promise(resolve=>completeResolve=()=>resolve(result)):result;
     }
     if(path.startsWith('/api/assets')){legacy.push({path,method,body});return {ok:true,assets:[{id:'legacy-asset'}]};}
@@ -35,15 +35,15 @@ function setup({mode='web',available=true,uploads=[ticket()],initError,completeE
   };
   class TestURL extends URL{static createObjectURL(){return 'blob:fixture';}static revokeObjectURL(){}}
   const context: any = {window,URL:TestURL,XMLHttpRequest:XHR,api,FormData:class{append(){}},ui:{input:null,result:null,feature:'enhance',model:'general'},state:{settings:{}},
-    remember:asset=>asset,renderPhoto(){},console,Image:class{naturalWidth=32;naturalHeight=24;onload: any;set src(v){this.onload?.();}},
-    $:id=>{if(!fields.has(id))fields.set(id,{value:'',disabled:false});return fields.get(id);},
+    remember:(asset: any)=>asset,renderPhoto(){},console,Image:class{naturalWidth=32;naturalHeight=24;onload: any;set src(v: any){this.onload?.();}},
+    $:(id: any)=>{if(!fields.has(id))fields.set(id,{value:'',disabled:false});return fields.get(id);},
     photoBusy:()=>false,toast(){},confirmAction:async()=>true,setText(){},show(){},
-    setTimeout:(fn,delay)=>{timers.set(++clock,{fn,delay});return clock;},clearTimeout:id=>timers.delete(id)};
+    setTimeout:(fn: any,delay: any)=>{timers.set(++clock,{fn,delay});return clock;},clearTimeout:(id: any)=>timers.delete(id)};
   vm.createContext(context);vm.runInContext(adapterSource,context);
   vm.runInContext('let workspaceSaveQueue=Promise.resolve();\n'+['upload','saveWorkspace','chooseHomeImage','choosePreviewHomeImage'].map(extract).join('\n'),context);
   return {window,context,requests,calls,legacy,updates,timers,fields,timings,get active(){return count>0;},finishComplete:()=>completeResolve?.(),
     run:(items=[file()],kind='input')=>context.upload(items,kind),
-    direct:(items=[file()],kind='input')=>window.ShiYanCosTransfer.upload(items,kind,api,p=>updates.push(p),'enhance')};
+    direct:(items=[file()],kind='input')=>window.ShiYanCosTransfer.upload(items,kind,api,(p: any)=>updates.push(p),'enhance')};
 }
 
 test('unconfigured COS falls back before any direct upload, under the existing priority scope',async()=>{
@@ -55,7 +55,7 @@ test('unconfigured COS falls back before any direct upload, under the existing p
 
 test('successful web upload sends raw bytes only to COS then finalizes compact asset IDs',async()=>{
   const s=setup({deferComplete:true}),original=file();let resolved=false;
-  const pending=s.run([original]).then(result=>{resolved=true;return result;});await settle();
+  const pending=s.run([original]).then((result: any)=>{resolved=true;return result;});await settle();
   assert.equal(s.active,true);assert.equal(s.requests.length,1);const xhr=s.requests[0];
   assert.equal(xhr.method,'PUT');assert.equal(xhr.body,original);assert.equal(xhr.withCredentials,false);
   assert.deepEqual(xhr.headers,{'content-type':'image/png','x-cos-acl':'private'});
@@ -73,7 +73,7 @@ test('desktop and attachments retain their existing transport without COS planni
   for(const [mode,kind] of [['desktop','input'],['web','attachment'],['web','mask']]){
     const s=setup({mode});const result=await s.run([file()],kind);
     assert.equal(result[0].id,'legacy-asset');assert.equal(s.requests.length,0);assert.equal(s.legacy.length,1);
-    assert(!s.calls.some(call=>call.path.includes('/cos/')));assert.equal(s.active,false);
+    assert(!s.calls.some((call: any)=>call.path.includes('/cos/')));assert.equal(s.active,false);
     if(mode==='desktop')assert.equal(s.window.ShiYanCosTransfer,undefined);
   }
 });
@@ -141,7 +141,7 @@ test('real image chooser preserves decoded local preview after COS completion',a
   s.requests[0].respond();await pending;
   assert.equal(s.context.ui.input.id,'asset-0');assert.equal(s.context.ui.input.url,'blob:fixture');
   assert.equal(s.context.ui.photoUploadFile,null);assert.equal(s.context.ui.photoUploading,false);
-  assert(s.calls.some(call=>call.path==='/api/settings?compact=1'));assert.equal(s.legacy.length,0);
+  assert(s.calls.some((call: any)=>call.path==='/api/settings?compact=1'));assert.equal(s.legacy.length,0);
 });
 
 test('progress resets inactivity timeout and completed transport removes the timer',async()=>{
@@ -163,7 +163,7 @@ test('unknown remote original dimensions keep the decoded single-image preview s
 });
 test('single-image preview remains local and gets dimensions when decode finishes after upload',async()=>{
  const s=setup({unknownDimensions:true});let loaded;
- s.context.Image=class{naturalWidth=0;naturalHeight=0;onload: any;set src(value){loaded=()=>{this.naturalWidth=88;this.naturalHeight=99;this.onload();};}};
+ s.context.Image=class{naturalWidth=0;naturalHeight=0;onload: any;set src(value: any){loaded=()=>{this.naturalWidth=88;this.naturalHeight=99;this.onload();};}};
  const pending=s.context.chooseHomeImage(file());await settle();s.requests[0].respond();await pending;
- assert.equal(s.context.ui.input.url,'blob:fixture');loaded();assert.equal(s.context.ui.input.width,88);assert.equal(s.context.ui.input.height,99);
+ assert.equal(s.context.ui.input.url,'blob:fixture');(loaded as any)?.();assert.equal(s.context.ui.input.width,88);assert.equal(s.context.ui.input.height,99);
 });

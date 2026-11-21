@@ -36,7 +36,7 @@
       document.documentElement.dataset.previewReady = 'true';
       fit();
       window.addEventListener('resize', fit);
-      content.querySelectorAll('img').forEach(image => image.addEventListener('load', fit, {once:true}));
+      content.querySelectorAll('img').forEach((image: any) => image.addEventListener('load', fit, {once:true}));
       if (document.fonts?.ready) document.fonts.ready.then(fit);
     } catch (error) {
       status.textContent = (error instanceof Error ? error.message : 'Word 预览失败') + '，请下载原文件查看。';

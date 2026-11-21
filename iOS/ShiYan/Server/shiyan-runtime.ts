@@ -19,8 +19,8 @@ const ARTIFACTS = path.join(DATA, 'artifacts');
 const WORKSPACES = path.join(ROOT, 'workspaces');
 const GENERATED = path.join(os.homedir(), '.codex/generated_images');
 for (const dir of [DATA, ARTIFACTS, WORKSPACES]) mkdirSync(dir, {recursive:true,mode:0o700});
-const atomic = (file, value) => { const tmp=file+'.tmp'; writeFileSync(tmp,JSON.stringify(value),{mode:0o600}); renameSync(tmp,file); };
-const readJSON = (file, fallback) => {try {return JSON.parse(readFileSync(file,'utf8'));} catch {return fallback;}};
+const atomic = (file: any, value: any) => { const tmp=file+'.tmp'; writeFileSync(tmp,JSON.stringify(value),{mode:0o600}); renameSync(tmp,file); };
+const readJSON = (file: any, fallback: any) => {try {return JSON.parse(readFileSync(file,'utf8'));} catch {return fallback;}};
 const statePath = path.join(DATA,'state.json');
 const state = readJSON(statePath,{jobs:{},conversations:{},assets:{},requests:{}});
 for (const job of Object.values(state.jobs) as any[]) if (['queued','running'].includes(job.status)) {
@@ -32,17 +32,17 @@ state.cancelledRequests ||= {};
 let active=0;
 const save=()=>atomic(statePath,state);
 save();
-const sha=s=>createHash('sha256').update(s).digest('hex');
-const validID=s=>typeof s==='string' && /^[A-Za-z0-9_-]{8,100}$/.test(s);
-const terminal=s=>['completed','failed','cancelled','interrupted'].includes(s);
-const fail=(message,status=400)=>Object.assign(new Error(message),{status});
+const sha=(s: any)=>createHash('sha256').update(s).digest('hex');
+const validID=(s: any)=>typeof s==='string' && /^[A-Za-z0-9_-]{8,100}$/.test(s);
+const terminal=(s: any)=>['completed','failed','cancelled','interrupted'].includes(s);
+const fail=(message: any,status=400)=>Object.assign(new Error(message),{status});
 function capabilities(){
   const cache=readJSON(path.join(os.homedir(),'.codex/models_cache.json'),{});
-  const model=(cache.models||[]).find(m=>m.slug===MODEL);
-  const supported=(model?.supported_reasoning_levels||[]).map(x=>x.effort).filter(x=>['low','medium','high','xhigh','max'].includes(x));
+  const model=(cache.models||[]).find((m: any)=>m.slug===MODEL);
+  const supported=(model?.supported_reasoning_levels||[]).map((x: any)=>x.effort).filter((x: any)=>['low','medium','high','xhigh','max'].includes(x));
   return {model:MODEL,reasoningEfforts:supported.length?supported:['low','medium','high'],defaultReasoning:'low',maxUploadImages:8,streams:true,resumable:true};
 }
-function sendEvent(res,event){
+function sendEvent(res: any,event: any){
   let outgoing=event;
   if(event.type==='artifact'&&event.asset&&res.shiyanInlineArtifacts!==false){
     const asset=state.assets[event.asset.id];
@@ -51,30 +51,30 @@ function sendEvent(res,event){
    
   res.write('id: '+event.seq+'\nevent: update\ndata: '+JSON.stringify(outgoing)+'\n\n');
 }
-function emit(job,type,values={}) {
+function emit(job: any,type: any,values={}) {
   const event={seq:(job.events.at(-1)?.seq||0)+1,type,at:Date.now(),...values};
   job.events.push(event);job.updatedAt=Date.now();
   if(job.events.length>12000)job.events.splice(0,job.events.length-12000);
   save();
   for(const res of listeners.get(job.id)||[])if(!res.destroyed)sendEvent(res,event);
 }
-function json(res,code,value){const body=JSON.stringify(value);res.writeHead(code,{'Content-Type':'application/json; charset=utf-8','Content-Length':Buffer.byteLength(body),'Cache-Control':'no-store'});res.end(body);}
-async function body(req,max=40*1024*1024){
+function json(res: any,code: any,value: any){const body=JSON.stringify(value);res.writeHead(code,{'Content-Type':'application/json; charset=utf-8','Content-Length':Buffer.byteLength(body),'Cache-Control':'no-store'});res.end(body);}
+async function body(req: any,max=40*1024*1024){
   let total=0;const chunks: any[]=[];
   for await(const chunk of req){total+=chunk.length;if(total>max)throw fail('上传内容过大',413);chunks.push(chunk);}
   const data=Buffer.concat(chunks);
   if(req.headers['x-shiyan-body-sha']&&digest(data)!==req.headers['x-shiyan-body-sha'])throw fail('请求校验失败',401);
   try{return JSON.parse(data.toString()||'{}');}catch{throw fail('请求格式无效');}
 }
-function imageValid(bytes,ext){
+function imageValid(bytes: any,ext: any){
   if(ext==='.png')return bytes.length>32 && bytes.subarray(0,8).equals(Buffer.from('89504e470d0a1a0a','hex')) && bytes.subarray(-8,-4).toString()==='IEND';
   if(['.jpg','.jpeg'].includes(ext))return bytes.length>4&&bytes[0]===255&&bytes[1]===216&&bytes.at(-2)===255&&bytes.at(-1)===217;
   if(ext==='.webp')return bytes.length>12&&bytes.toString('ascii',0,4)==='RIFF'&&bytes.toString('ascii',8,12)==='WEBP'&&bytes.readUInt32LE(4)+8<=bytes.length;
   return false;
 }
-const mimeFor=ext=>({'.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.pdf':'application/pdf','.txt':'text/plain','.md':'text/markdown','.csv':'text/csv','.json':'application/json','.html':'text/html','.zip':'application/zip','.mp3':'audio/mpeg','.wav':'audio/wav','.mp4':'video/mp4'}[ext]||'application/octet-stream');
+const mimeFor=(ext: any)=>(({'.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.pdf':'application/pdf','.txt':'text/plain','.md':'text/markdown','.csv':'text/csv','.json':'application/json','.html':'text/html','.zip':'application/zip','.mp3':'audio/mpeg','.wav':'audio/wav','.mp4':'video/mp4'} as any)[ext]||'application/octet-stream');
 
-async function capture(job,file,{imageOnly=false}={}){
+async function capture(job: any,file: any,{imageOnly=false}={}){
   if(job.cancelRequested||job.status==='cancelled')return;
   const ext=path.extname(file).toLowerCase();
   const real=await fs.realpath(file).catch(()=>null);
@@ -89,7 +89,7 @@ async function capture(job,file,{imageOnly=false}={}){
   const isImage=['.png','.jpg','.jpeg','.webp'].includes(ext);
   if(isImage&&!imageValid(bytes,ext))return;
   if(imageOnly&&!isImage)return;
-  const digest=sha(bytes);if(job.assets.some(x=>x.sha256===digest))return;
+  const digest=sha(bytes);if(job.assets.some((x: any)=>x.sha256===digest))return;
   const id=randomUUID();const stored=path.join(ARTIFACTS,id+ext);
   await fs.writeFile(stored,bytes,{mode:0o600});
   const asset={id,filename:base,mimeType:mimeFor(ext),bytes:bytes.length,sha256:digest};
@@ -108,20 +108,20 @@ async function capture(job,file,{imageOnly=false}={}){
   emit(job,'phase',{phase:'receiving',label:'结果已生成，正在接收'});
   emit(job,'artifact',{asset});
 }
-async function scanGenerated(job){
+async function scanGenerated(job: any){
   if(!job.threadId)return;
   const dir=path.join(GENERATED,job.threadId);
   for(const entry of await fs.readdir(dir,{withFileTypes:true}).catch(()=>[]))if(entry.isFile())await capture(job,path.join(dir,entry.name),{imageOnly:true});
 }
-async function monitorGenerated(job){
+async function monitorGenerated(job: any){
   if(!job.threadId)return async()=>{};
   const dir=path.join(GENERATED,job.threadId);await fs.mkdir(dir,{recursive:true});
-  let debounce,chain=Promise.resolve();
+  let debounce: any,chain=Promise.resolve();
   const watcher=watch(dir,()=>{clearTimeout(debounce);debounce=setTimeout(()=>{chain=chain.then(()=>scanGenerated(job)).catch(()=>{});},250);});
   watcher.on('error',()=>{});
   return async()=>{watcher.close();clearTimeout(debounce);await chain;await scanGenerated(job);};
 }
-async function runJob(job){
+async function runJob(job: any){
   active++;job.status='running';job.startedAt=Date.now();
   const abort=new AbortController();controls.set(job.id,abort);
   const deadline=setTimeout(()=>abort.abort(new Error('处理超过15分钟')),15*60*1000);
@@ -182,7 +182,7 @@ async function runJob(job){
           for(const change of item.changes||[])if(change.kind!=='delete')await capture(job,path.resolve(dir,change.path));
         }
         if(event.type==='item.completed'&&item.type!=='reasoning'){
-          job.items=job.items.filter(x=>x.id!==item.id);job.items.push(item);
+          job.items=job.items.filter((x: any)=>x.id!==item.id);job.items.push(item);
         }
       }
     }
@@ -210,7 +210,7 @@ function drain(){
   }
 }
 
-function cancelJob(job){
+function cancelJob(job: any){
   if(terminal(job.status))return job.status;
   job.cancelRequested=true; job.status='cancelled'; job.error='已停止处理';
   const at=queue.indexOf(job.id);if(at>=0)queue.splice(at,1);
@@ -219,8 +219,8 @@ function cancelJob(job){
   for(const res of listeners.get(job.id)||[])res.end();listeners.delete(job.id);
   save();return job.status;
 }
-function snapshot(job){return {ok:true,id:job.id,status:job.status,text:job.text||'',assets:job.assets,threadId:job.threadId||null,events:job.events,error:job.error||null,reasoning:job.reasoning};}
-async function makeJob(input,owner){
+function snapshot(job: any){return {ok:true,id:job.id,status:job.status,text:job.text||'',assets:job.assets,threadId:job.threadId||null,events:job.events,error:job.error||null,reasoning:job.reasoning};}
+async function makeJob(input: any,owner: any){
   if(!validID(input.conversationId)||!validID(input.requestId))throw fail('会话标识无效');
   const requestKey=owner+':'+input.requestId;
   if(state.requests[requestKey])return state.jobs[state.requests[requestKey]];
@@ -288,7 +288,7 @@ export function createServer(){return http.createServer(async(req,res)=>{
         const after=Number(url.searchParams.get('after')||req.headers['last-event-id']||0);
         for(const event of job.events)if(event.seq>after)sendEvent(res,event);
         if(terminal(job.status)){
-          if(!job.events.some(event=>terminal(event.type)))res.write('data: '+JSON.stringify({seq:after+1,type:job.status,error:job.error})+'\n\n');
+          if(!job.events.some((event: any)=>terminal(event.type)))res.write('data: '+JSON.stringify({seq:after+1,type:job.status,error:job.error})+'\n\n');
           res.end();return;
         }
         if(!listeners.has(job.id))listeners.set(job.id,new Set());listeners.get(job.id).add(res);
@@ -318,7 +318,7 @@ export function createServer(){return http.createServer(async(req,res)=>{
 }).on('clientError',(error,socket)=>{
   const e = error as any;
   const raw=e.rawPacket?.toString('latin1')||'';
-  const safe=raw.split('\r\n').filter((line,i)=>i===0||/^(content-length|transfer-encoding|connection):/i.test(line)).join(' | ');
+  const safe=raw.split('\r\n').filter((line: any,i: any)=>i===0||/^(content-length|transfer-encoding|connection):/i.test(line)).join(' | ');
   console.error('[ShiyanHTTPParse]',e.code,e.reason,e.bytesParsed,safe.slice(0,600));
   if(socket.writable)socket.end('HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
 });}

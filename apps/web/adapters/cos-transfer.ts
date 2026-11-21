@@ -4,7 +4,7 @@
   if ((window as any).ShiYanPlatform?.mode !== 'web') return;
   const fail = (message: any, status?: any) => Object.assign(new Error(message),
     {code: 'COS_UPLOAD_FAILED', ...(status ? {status} : {})});
-  function validateUpload(upload, file) {
+  function validateUpload(upload: any, file: any) {
     let url;
     try { url = new URL(upload?.url); } catch (_) {}
     if (!url || url.protocol !== 'https:' || url.username || url.password || url.hash ||
@@ -29,11 +29,11 @@
     if (!Object.entries(headers).some(([name, value]) => name.toLowerCase() === 'x-cos-acl' && value === 'private'))
       throw fail('图片上传凭证缺少隐私保护，请重试');
   }
-  function put(upload, file, progress) {
+  function put(upload: any, file: any, progress: any) {
     return new Promise<void>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      let settled = false, timer;
-      const finish = error => {
+      let settled = false, timer: any;
+      const finish = (error: any) => {
         if (settled) return;
         settled = true; clearTimeout(timer);
         error ? reject(error) : resolve();
@@ -65,7 +65,7 @@
       try { xhr.send(file); } catch (_) { finish(fail('图片上传未能开始，请检查网络后重试')); }
     });
   }
-  async function upload(files, kind, api, onProgress, purpose) {
+  async function upload(files: any, kind: any, api: any, onProgress: any, purpose: any) {
     if ((window as any).ShiYanPlatform?.mode !== 'web' || kind !== 'input' || purpose !== 'enhance') return null;
     const items: any[] = Array.from(files);
     if (!items.length || items.length > 10) throw fail('一次最多上传 10 张增强图片');
@@ -75,18 +75,18 @@
     if (plan.available === false) return null;
     if (plan.available !== true || !Array.isArray(plan.uploads) || plan.uploads.length !== items.length || !items.length)
       throw fail('图片上传凭证不完整，请重试');
-    plan.uploads.forEach((entry, index) => validateUpload(entry, items[index]));
+    plan.uploads.forEach((entry: any, index: any) => validateUpload(entry, items[index]));
     const total = items.reduce((sum, file) => sum + file.size, 0);
     let uploaded = 0;
     for (let index = 0; index < items.length; index++) {
-      await put(plan.uploads[index], items[index], (loaded, sent) => {
+      await put(plan.uploads[index], items[index], (loaded: any, sent: any) => {
         try { onProgress?.({loaded: uploaded + loaded, total,
           percent: total ? Math.min(100, Math.floor((uploaded + loaded) / total * 100)) : null,
           sent: sent && index === items.length - 1}); } catch (_) {}
       });
       uploaded += items[index].size;
     }
-    const data = await api('/api/assets/cos/complete', 'POST', {ticketIds: plan.uploads.map(entry => entry.ticketId)});
+    const data = await api('/api/assets/cos/complete', 'POST', {ticketIds: plan.uploads.map((entry: any) => entry.ticketId)});
     if (!Array.isArray(data.assets) || data.assets.length !== items.length)
       throw fail('图片已发送，但保存结果未确认，请重试');
     return data;

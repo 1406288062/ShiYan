@@ -13,23 +13,23 @@ const TERMINAL = new Set(['completed', 'failed', 'cancelled']);
 const IMAGE_LIMIT = 40 * MIB;
 const RESULT_LIMIT = 512 * MIB;
 const JSON_LIMIT = 4 * MIB;
-const fail = (status, code, message) => Object.assign(new Error(message), { status, code });
-const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
-const digest = value => createHash('sha256').update(value).digest();
-const equalToken = (value, expected) => typeof value === 'string' && typeof expected === 'string' &&
+const fail = (status: any, code: any, message: any) => Object.assign(new Error(message), { status, code });
+const object = (value: any) => value !== null && typeof value === 'object' && !Array.isArray(value);
+const digest = (value: any) => createHash('sha256').update(value).digest();
+const equalToken = (value: any, expected: any) => typeof value === 'string' && typeof expected === 'string' &&
   timingSafeEqual(digest(value), digest(expected));
-const keysOnly = (value, keys) => object(value) && Object.keys(value).every(key => keys.includes(key));
-const strictText = (value, max) => typeof value === 'string' && value.length > 0 && value.length <= max && !/[\0\r\n]/.test(value);
-const validOwner = value => strictText(value, 256) && value !== '*';
-const validId = id => typeof id === 'string' && /^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/.test(id);
+const keysOnly = (value: any, keys: any) => object(value) && Object.keys(value).every(key => keys.includes(key));
+const strictText = (value: any, max: any) => typeof value === 'string' && value.length > 0 && value.length <= max && !/[\0\r\n]/.test(value);
+const validOwner = (value: any) => strictText(value, 256) && value !== '*';
+const validId = (id: any) => typeof id === 'string' && /^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/.test(id);
 
-function sendJson(res, status, value) {
+function sendJson(res: any, status: any, value: any) {
   const bytes = Buffer.from(JSON.stringify(value));
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': bytes.length,
     'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
   res.end(bytes);
 }
-async function jsonBody(req) {
+async function jsonBody(req: any) {
   const parts: any[] = []; let size = 0;
   for await (const part of req) {
     size += part.length;
@@ -42,7 +42,7 @@ async function jsonBody(req) {
   if (!object(value)) throw fail(400, 'INVALID_JSON', '请求格式无效');
   return value;
 }
-function lengthHeader(req, limit) {
+function lengthHeader(req: any, limit: any) {
   const raw = req.headers['content-length'];
   if (typeof raw !== 'string') throw fail(411, 'LENGTH_REQUIRED', '必须提供文件长度');
   if (!/^\d+$/.test(raw)) throw fail(400, 'INVALID_LENGTH', '文件长度无效');
@@ -52,7 +52,7 @@ function lengthHeader(req, limit) {
 }
 
 // Header inspection avoids decoding an untrusted image on the small server.
-function imageHeader(data) {
+function imageHeader(data: any) {
   if (data.length >= 24 && data.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])) &&
       data.toString('ascii', 12, 16) === 'IHDR') {
     return { format: 'png', width: data.readUInt32BE(16), height: data.readUInt32BE(20) };
@@ -88,7 +88,7 @@ function imageHeader(data) {
   }
   throw fail(422, 'INVALID_IMAGE', '图片格式或尺寸信息无效');
 }
-async function receiveFile(req, filename, limit, beforeChunk) {
+async function receiveFile(req: any, filename: any, limit: any, beforeChunk: any) {
   const expected = lengthHeader(req, limit);
   const handle = await open(filename, 'wx', 0o600);
   const hash = createHash('sha256');
@@ -109,10 +109,10 @@ async function receiveFile(req, filename, limit, beforeChunk) {
   } catch (error) { await unlink(filename).catch(() => {}); throw error; }
   finally { await handle.close(); }
 }
-const ownerHash = owner => createHash('sha256').update(owner).digest('hex');
-const validSha = value => typeof value === 'string' && /^[a-f\d]{64}$/.test(value);
-const validEtag = value => typeof value === 'string' && /^"[a-fA-F0-9]{32}(?:-[0-9]{1,6})?"$/.test(value);
-function validateParams(kind, value, owner) {
+const ownerHash = (owner: any) => createHash('sha256').update(owner).digest('hex');
+const validSha = (value: any) => typeof value === 'string' && /^[a-f\d]{64}$/.test(value);
+const validEtag = (value: any) => typeof value === 'string' && /^"[a-fA-F0-9]{32}(?:-[0-9]{1,6})?"$/.test(value);
+function validateParams(kind: any, value: any, owner: any) {
   if (kind === 'enhance_cos') {
     const input = value?.input;
     if (!keysOnly(value, ['model', 'input']) || !['general','anime'].includes(value.model) ||
@@ -137,8 +137,8 @@ function validateParams(kind, value, owner) {
   }
   if (kind === 'embed') {
     if (!keysOnly(value, ['texts', 'operation', 'instruction']) || !Array.isArray(value.texts) || value.texts.length < 1 || value.texts.length > 8 ||
-        value.texts.some(text => typeof text !== 'string' || text.length > 16384 || !text.trim()) ||
-        value.texts.reduce((sum, text) => sum + text.length, 0) > 65536 ||
+        value.texts.some((text: any) => typeof text !== 'string' || text.length > 16384 || !text.trim()) ||
+        value.texts.reduce((sum: any, text: any) => sum + text.length, 0) > 65536 ||
         !['document_embedding', 'question_embedding'].includes(value.operation) ||
         typeof value.instruction !== 'string' || value.instruction.length > 16384) {
       throw fail(400, 'INVALID_PARAMS', '向量参数无效');
@@ -147,9 +147,9 @@ function validateParams(kind, value, owner) {
   }
   throw fail(400, 'INVALID_KIND', '只支持图片增强和文本向量计算');
 }
-function validateEmbeddings(value, count) {
+function validateEmbeddings(value: any, count: any) {
   if (!keysOnly(value, ['embeddings', 'device', 'dimensions']) || value.device !== 'mps' || value.dimensions !== 1024 ||
-      !Array.isArray(value.embeddings) || value.embeddings.length !== count || value.embeddings.some(vector =>
+      !Array.isArray(value.embeddings) || value.embeddings.length !== count || value.embeddings.some((vector: any) =>
         !Array.isArray(vector) || vector.length !== 1024 || vector.some(number => typeof number !== 'number' || !Number.isFinite(number)) ||
         !vector.some(number => number !== 0))) {
     throw fail(422, 'INVALID_EMBEDDINGS', 'Mac 返回的向量结果无效');
@@ -194,20 +194,20 @@ export function createComputeBroker(options: any = {}) {
       UNIQUE(owner_id,request_id));
     CREATE INDEX IF NOT EXISTS compute_ready ON compute_tasks(state,created_at);
     CREATE TABLE IF NOT EXISTS compute_cos_uploads(task_id TEXT NOT NULL,lease_hash TEXT NOT NULL,kind TEXT NOT NULL,metadata_json TEXT NOT NULL,PRIMARY KEY(task_id,lease_hash,kind));`);
-  let accounts;
+  let accounts: any;
   if (!options.authorizeOwner) {
     try { accounts = new DatabaseSync(options.accountsDb, { readOnly: true }); }
     catch (error) { db.close(); throw new Error('Cannot open account authorization database', { cause: error }); }
   }
   const accountStatement = accounts?.prepare('SELECT status FROM account_users WHERE owner=?');
-  const authorizeOwner = options.authorizeOwner || (owner => accountStatement.get(owner)?.status === 'active');
+  const authorizeOwner = options.authorizeOwner || ((owner: any) => accountStatement.get(owner)?.status === 'active');
   // This fixed compute service authenticates with its own client/worker credentials.
   // Sponge pairing and revocation must not control enhancement availability.
   const authorizeWorker = options.authorizeWorker || (() => true);
   const find = (id: any): any => db.prepare('SELECT * FROM compute_tasks WHERE id=?').get(id);
-  const file = (id, suffix) => path.join(fileDir, `${id}.${suffix}`);
+  const file = (id: any, suffix: any) => path.join(fileDir, `${id}.${suffix}`);
   let lastHeartbeat = -Infinity;
-  async function ownerAllowed(owner) {
+  async function ownerAllowed(owner: any) {
     // Availability follows current account status, including newly registered
     // accounts. Legacy allowedOwners configuration must not restrict routing.
     if (!validOwner(owner)) return false;
@@ -217,12 +217,12 @@ export function createComputeBroker(options: any = {}) {
     if (!workerEnabled) return false;
     try { return await authorizeWorker(workerId) === true; } catch { return false; }
   }
-  function invalidate(row, code, message, state = 'cancelled') {
+  function invalidate(row: any, code: any, message: any, state = 'cancelled') {
     if (TERMINAL.has(row.state)) return;
     db.prepare(`UPDATE compute_tasks SET state=?,lease_token=NULL,lease_expires_at=NULL,error=?,error_code=?,updated_at=? WHERE id=? AND state NOT IN ('completed','failed','cancelled')`)
       .run(state, message, code, now(), row.id);
   }
-  async function requireOwner(owner) {
+  async function requireOwner(owner: any) {
     if (!await ownerAllowed(owner)) throw fail(403, 'OWNER_FORBIDDEN', '账号未授权或已停用');
   }
   async function requireWorker() {
@@ -232,19 +232,19 @@ export function createComputeBroker(options: any = {}) {
       throw fail(403, 'WORKER_DISABLED', '计算服务已停用');
     }
   }
-  async function requireTaskOwner(owner, id) {
+  async function requireTaskOwner(owner: any, id: any) {
     await requireOwner(owner); await requireWorker();
     const row = find(id);
     if (!row || row.owner_id !== owner) throw fail(404, 'TASK_NOT_FOUND', '任务不存在');
     return expireTask(row);
   }
-  function expireTask(row) {
+  function expireTask(row: any) {
     if (!TERMINAL.has(row.state) && row.first_started_at !== null && taskTimeoutMs && now() - row.first_started_at >= taskTimeoutMs) {
       invalidate(row, 'COMPUTE_TIMEOUT', 'Mac 计算超时', 'failed'); return find(row.id);
     }
     return row;
   }
-  async function requireLease(id, token) {
+  async function requireLease(id: any, token: any) {
     await requireWorker();
     const row = find(id);
     if (!row) throw fail(404, 'TASK_NOT_FOUND', '任务不存在');
@@ -259,7 +259,7 @@ export function createComputeBroker(options: any = {}) {
     }
     return current;
   }
-  function taskView(row, online) {
+  function taskView(row: any, online: any) {
     const task: any = { id: row.id, state: row.state, progress: row.progress,
       label: row.state === 'queued' ? online ? '等待 Mac 处理' : '等待 Mac 上线' : row.label,
       details: JSON.parse(row.details_json) };
@@ -271,7 +271,7 @@ export function createComputeBroker(options: any = {}) {
     return task;
   }
   const online = () => now() - lastHeartbeat <= 60000;
-  async function streamFile(res, filename, type, authorize) {
+  async function streamFile(res: any, filename: any, type: any, authorize: any) {
     let stat;
     try { stat = statSync(filename); } catch { throw fail(503, 'RESULT_UNAVAILABLE', '任务文件暂不可用'); }
     await authorize();
@@ -339,7 +339,7 @@ export function createComputeBroker(options: any = {}) {
       if (req.method === 'POST' && url.pathname === '/v1/worker/claim') {
         const input = await jsonBody(req);
         if (!keysOnly(input,['capabilities']) || input.capabilities !== undefined &&
-            (!Array.isArray(input.capabilities) || input.capabilities.length > 1 || input.capabilities.some(v => v !== 'enhance_cos')))
+            (!Array.isArray(input.capabilities) || input.capabilities.length > 1 || input.capabilities.some((v: any) => v !== 'enhance_cos')))
           throw fail(400, 'INVALID_CLAIM', '领取参数无效');
         const supportsCos = input.capabilities?.includes('enhance_cos');
         await requireWorker();
@@ -457,7 +457,7 @@ export function createComputeBroker(options: any = {}) {
           }
           const details = { device: 'mps' };
           for (const [key, value] of Object.entries(input.details || {})) {
-            if (/^[a-z_]{1,40}$/.test(key) && (typeof value === 'number' && Number.isFinite(value) || typeof value === 'boolean')) details[key] = value;
+            if (/^[a-z_]{1,40}$/.test(key) && (typeof value === 'number' && Number.isFinite(value) || typeof value === 'boolean')) (details as any)[key] = value;
           }
           row = await requireLease(id, lease); lastHeartbeat = now();
           db.prepare("UPDATE compute_tasks SET progress=MAX(progress,?),label=?,details_json=?,lease_expires_at=?,updated_at=? WHERE id=? AND state='running' AND lease_token=?")

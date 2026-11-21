@@ -1,7 +1,7 @@
  
 import path from 'node:path';
 const pending = new Map();
-export async function conversationTitle({codex, state, key, owner, model, workspaces, save}) {
+export async function conversationTitle({codex, state, key, owner, model, workspaces, save}: any) {
   const conversation = state.conversations[key];
   if (!conversation || conversation.owner !== owner) return null;
   if (conversation.title) return conversation.title;
