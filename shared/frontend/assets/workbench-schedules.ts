@@ -1,8 +1,8 @@
  
 (() => {
   'use strict';
-  const $ = id => document.getElementById(id);
-  const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const $: any = (id: string): any => document.getElementById(id);
+  const esc = (value: any): any => String(value ?? '').replace(/[&<>"']/g, (c: string): string => (({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'} as Record<string,string>)[c]));
   const paths = {
     clock:'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM12 6v6l-3 2',
     play:'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM10 8l6 4-6 4Z',
@@ -20,16 +20,16 @@
     {icon:'😴',title:'睡眠指导',instruction:'跟踪我的睡眠质量，并帮助我改善生活习惯。'},
     {icon:'💰',title:'每周财务状况更新',instruction:'回顾我最近的支出，看看有什么需要注意。',repeat:'weekly'}
   ];
-  let C, installed = false, active = false, tasks = [], selected = null, record = null;
+  let C: any, installed = false, active = false, tasks: any[] = [], selected: any = null, record: any = null;
   let query = '', expanded = false, filters = new Set(['enabled','paused','completed']);
-  let loadVersion = 0, detailVersion = 0, refreshing = false, timer = null, popupAnchor = '';
-  let dialogTask = null, dialogPendingKey = '', saving = false, sending = false, drafts = {}, replyOptions = {};
-  let catalog = {local:{available:false,models:[]},cloud:{available:false,models:[]},defaults:{}}, catalogLoading = null;
-  let pendingHydration, pendingReady=false, pendingChain=Promise.resolve();
+  let loadVersion = 0, detailVersion = 0, refreshing = false, timer: any = null, popupAnchor = '';
+  let dialogTask: any = null, dialogPendingKey = '', saving = false, sending = false, drafts: any = {}, replyOptions: any = {};
+  let catalog: any = {local:{available:false,models:[]},cloud:{available:false,models:[]},defaults:{}}, catalogLoading: any = null;
+  let pendingHydration: any, pendingReady=false, pendingChain=Promise.resolve();
   const pendingKey = window.ShiYanAccount.storageKey('shiyan.desktop.schedules.pending.v1');
-  let pending = {};
+  let pending: any = {};
   try { pending = JSON.parse(localStorage.getItem(pendingKey) || '{}'); } catch (_) {}
-  const api = (path, method = 'GET', body) => window.shiyan.api('/api/schedules' + path, method, body);
+  const api = (path: any, method: any = 'GET', body?: any) => window.shiyan.api('/api/schedules' + path, method, body);
   const report = error => window.shiyan?.toast?.(error?.message || String(error));
   const notifyNative = () => C?.scheduleNative?.();
   function icon(name) {
@@ -62,7 +62,7 @@
     const previous=pending[slot];delete pending[slot];
     try{await persistPending();}catch(error){if(previous)pending[slot]=previous;cachePending();throw error;}
   }
-  const rejected = error => Number(error?.status) >= 400 && Number(error?.status) < 500 && ![408,409,429].includes(Number(error.status));
+  const rejected = error => Number(error?.status) >= 400 && Number(error?.status) < 500 && ![408,409,429].includes(Number((error as any).status));
   function timestamp(value) { return typeof value === 'number' ? value < 1e12 ? value * 1000 : value : value; }
   function dateText(value) {
     if (!value) return '';
@@ -130,7 +130,7 @@
     if (!stage.querySelector('#scheduleMessages')) {
       stage.innerHTML = '<header class="schedule-conversation-toolbar"><span></span><div>'+button('copy-task','copy','复制任务')+button('share-task','share','分享任务')+button('edit-task','rename','编辑任务')+'</div></header><div id="scheduleMessagesScroller" class="schedule-messages-scroller"><div id="scheduleMessages" class="schedule-messages"></div></div><form id="scheduleReplyForm" class="schedule-reply-form"><div class="schedule-reply-surface"><span class="schedule-reply-context" aria-hidden="true">'+icon('plus')+'</span><textarea id="scheduleReply" rows="1" maxlength="16000" placeholder="针对此任务回复…" aria-label="针对此任务回复"></textarea><button type="button" class="schedule-reply-model" data-schedule-action="reply-model"></button><button id="scheduleReplySend" type="submit" class="schedule-send" aria-label="发送">'+icon('send')+'</button></div><p id="scheduleReplyError" class="schedule-inline-error" role="alert" hidden></p></form>';
       $('scheduleReplyForm').onsubmit = sendMessage;
-      $('scheduleReply').oninput = e=>{drafts[String(selected)]=e.target.value;resizeInput();};
+      $('scheduleReply').oninput = e=>{drafts[String(selected)]=(e as any).target.value;resizeInput();};
       $('scheduleReply').onkeydown = e=>{if(e.key==='Enter' && !e.shiftKey && !e.isComposing){e.preventDefault();sendMessage(e);}};
     }
     const list = $('scheduleMessages'),scroll = $('scheduleMessagesScroller');
@@ -160,7 +160,7 @@
       if (version!==detailVersion || String(selected)!==String(id)) return;
       record = {...data,task:data.task || data.schedule || activeTask(),messages:data.messages || data.conversation?.messages || []};
       renderConversation(initial);
-    } catch (error) {if(version===detailVersion){$('scheduleReplyError')&&( $('scheduleReplyError').textContent=error.message, $('scheduleReplyError').hidden=false );report(error);}}
+    } catch (error) {if(version===detailVersion){$('scheduleReplyError')&&( $('scheduleReplyError').textContent=(error as any).message, $('scheduleReplyError').hidden=false );report(error);}}
   }
   function openTask(id) {
     closePopup();selected=String(id);record=null;detailVersion++;
@@ -175,7 +175,7 @@
       if (selected && !tasks.some(task=>String(task.id)===String(selected))) {selected=null;record=null;renderLanding();}
       renderSidebar();
       if(selected) await loadDetail(selected);$('scheduleLoadError').hidden=true;
-    } catch(error) {if(version===loadVersion){$('scheduleLoadError').textContent=error.message;$('scheduleLoadError').hidden=false;}}
+    } catch(error) {if(version===loadVersion){$('scheduleLoadError').textContent=(error as any).message;$('scheduleLoadError').hidden=false;}}
     finally {refreshing=false;}
   }
   function closePopup() {const popup=$('schedulePopup');if(popup){popup.hidden=true;popup.replaceChildren();}popupAnchor='';notifyNative();}
@@ -199,7 +199,7 @@
     catalogLoading=api('/models').then(data=>{catalog=data;return data;}).catch(error=>{report(error);return catalog;}).finally(()=>{catalogLoading=null;});
     return catalogLoading;
   }
-  function models(runLocally) {
+  function models(runLocally?: any) {
     const local=runLocally ?? $('scheduleRunLocally')?.checked ?? catalog.defaults?.runLocally ?? true;
     return (catalog[local?'local':'cloud']?.models || []).filter(m=>m.id);
   }
@@ -222,7 +222,7 @@
   function option(value,label,selected) {return '<option value="'+esc(value)+'"'+(value===selected?' selected':'')+'>'+esc(label)+'</option>';}
   function selectField(id,label,choices,current) {return '<label class="schedule-setting-row"><span>'+label+'</span><span class="schedule-select-wrap"><select id="'+id+'" aria-label="'+label+'">'+choices.map(([value,text])=>option(value,text,current)).join('')+'</select>'+icon('down')+'</span></label>';}
   function toggleField(id,label,checked) {return '<label class="schedule-setting-row"><span>'+label+'</span><span class="schedule-toggle"><input id="'+id+'" type="checkbox" role="switch"'+(checked?' checked':'')+'><span aria-hidden="true"></span></span></label>';}
-  function openEditor(task = null, preset = null) {
+  function openEditor(task: any = null, preset: any = null) {
     if(!pendingReady){ensurePending().then(()=>openEditor(task,preset)).catch(report);return;}
     closePopup();dialogTask=task;
     const runLocally=task?.runLocally ?? catalog.defaults?.runLocally ?? true,defaultModel=models(runLocally)[0];
@@ -241,14 +241,14 @@
     dialog.dataset.title=values.title || '';dialog.hidden=false;
     updateReasoning(values.reasoning);$('scheduleTaskModel').onchange=()=>{updateReasoning();updateSaveState();};
     $('scheduleRunLocally').onchange=()=>updateModelOptions();
-    $('scheduleTaskRepeat').onchange=e=>{$('scheduleOnceRow').hidden=e.target.value!=='once';};
+    $('scheduleTaskRepeat').onchange=e=>{$('scheduleOnceRow').hidden=(e as any).target.value!=='once';};
     const instruction=$('scheduleTaskInstruction');instruction.oninput=updateSaveState;
     $('scheduleEditorForm').onsubmit=saveTask;dialog.querySelector('.schedule-advanced').addEventListener('toggle',notifyNative);
     if(waiting)dialog.querySelectorAll('input,textarea,select').forEach(field=>field.disabled=true);
     updateSaveState();notifyNative();requestAnimationFrame(()=>instruction.focus({preventScroll:true}));
     if(!waiting)loadCatalog().then(()=>{if(!dialog.hidden && !saving)updateModelOptions(values.model,values.reasoning);});
   }
-  function updateModelOptions(current,reasoning) {
+  function updateModelOptions(current?: any, reasoning?: any) {
     const select=$('scheduleTaskModel');if(!select)return;
     const choices=models(),wanted=current || select.value,selected=choices.find(m=>m.id===wanted) || choices[0];
     select.innerHTML=choices.length?choices.map(m=>option(m.id,modelLabel(m,choices),selected?.id)).join(''):option('','暂无可用模型','');
@@ -257,7 +257,7 @@
     else if(!pending[dialogPendingKey])error.hidden=true;
     updateReasoning(reasoning);updateSaveState();
   }
-  function updateReasoning(current) {
+  function updateReasoning(current?: any) {
     const model=models().find(m=>m.id===$('scheduleTaskModel').value),efforts=model?.reasoningEfforts || [];
     const choices=efforts.length?efforts:['medium'];
     const selected=current && choices.includes(current)?current:model?.defaultReasoning || choices[0];
@@ -276,7 +276,7 @@
     const slot=dialogPendingKey,payload=request(slot,values),id=dialogTask?.id;const error=$('scheduleEditorError');saving=true;updateSaveState();error.hidden=true;
     $('scheduleEditor').querySelectorAll('input,textarea,select').forEach(field=>field.disabled=true);
     try{await persistPending();const data=await api(id?'/'+encodeURIComponent(id):'',id?'PATCH':'POST',payload);await release(slot);saving=false;closeEditor();await refresh();const saved=data.task || data.schedule;if(saved?.id)openTask(saved.id);}
-    catch(cause){if(rejected(cause)){await release(slot);$('scheduleEditor').querySelectorAll('input,textarea,select').forEach(field=>field.disabled=false);}error.textContent=cause.message;error.hidden=false;}
+    catch(cause){if(rejected(cause)){await release(slot);$('scheduleEditor').querySelectorAll('input,textarea,select').forEach(field=>field.disabled=false);}error.textContent=(cause as any).message;error.hidden=false;}
     finally{saving=false;updateSaveState();if(!$('scheduleEditor').hidden)$('scheduleSave').textContent=pending[slot]?'重试保存':id?'保存':'创建';}
   }
   async function controlTask(id,action) {
@@ -297,7 +297,7 @@
   async function shareTask(id) {
     closePopup();const task=tasks.find(t=>String(t.id)===String(id));if(!task)return;
     const text=task.title+'\n'+task.instruction+'\n'+repeatText(task)+' · '+(task.timezone || 'Asia/Shanghai')+'\n'+JSON.stringify({runLocally:task.runLocally,notificationMode:task.notificationMode,newChatEachRun:task.newChatEachRun,model:task.model,reasoning:task.reasoning},null,2);
-    if(navigator.share){try{await navigator.share({title:task.title,text});return;}catch(error){if(error.name==='AbortError')return;}}
+    if(navigator.share){try{await navigator.share({title:task.title,text});return;}catch(error){if((error as any).name==='AbortError')return;}}
     await window.shiyan.copyText(text);window.shiyan.toast('任务内容已复制');
   }
   async function sendMessage(event) {
@@ -306,7 +306,7 @@
     const id=selected,input=$('scheduleReply'),text=input.value.trim(),slot='message:'+id;if(!text && !pending[slot])return;
     const payload=request(slot,{message:text,...replySettings(activeTask())}),error=$('scheduleReplyError');sending=true;error.hidden=true;renderConversation();
     try{await persistPending();await api('/'+encodeURIComponent(id)+'/messages','POST',payload);await release(slot);drafts[String(id)]='';await loadDetail(id);}
-    catch(cause){if(rejected(cause))await release(slot);error.textContent=cause.message;error.hidden=false;}
+    catch(cause){if(rejected(cause))await release(slot);error.textContent=(cause as any).message;error.hidden=false;}
     finally{sending=false;if(String(selected)===String(id))renderConversation();}
   }
   function applyLayout() {
@@ -338,25 +338,25 @@
   function build() {
     const rail=document.createElement('button');rail.id='railSchedules';rail.type='button';rail.className='wb-icon-button schedule-rail-button';rail.title=rail.ariaLabel='定时任务';rail.innerHTML='<svg class="wb-icon" viewBox="0 0 24 24" aria-hidden="true"><defs><mask id="scheduleRailFillMask"><rect width="24" height="24" fill="white"/><path d="M12 6v6l-3 2" fill="none" stroke="black" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></mask></defs><path class="rail-glyph-outline" d="'+paths.clock+'"/><circle class="rail-glyph-filled" cx="12" cy="12" r="9" mask="url(#scheduleRailFillMask)"/></svg>';
     // 网页端不在左侧导航显示定时任务入口。
-    if(window.__SHIYAN_PLATFORM__?.mode==='web'){rail.hidden=true;rail.style.display='none';}
+    if((window as any).__SHIYAN_PLATFORM__?.mode==='web'){rail.hidden=true;rail.style.display='none';}
     $('railEnhance').after(rail);rail.onclick=()=>window.shiyan.navigate('schedules');
     const sidebar=document.createElement('aside');sidebar.id='scheduleSidebar';sidebar.className='schedule-sidebar';sidebar.hidden=true;sidebar.setAttribute('aria-label','定时任务');
     sidebar.innerHTML='<header class="schedule-sidebar-header"><h2>定时任务</h2>'+button('search','search','搜索任务')+'</header><div id="scheduleSearch" class="schedule-search" hidden><input id="scheduleSearchInput" type="search" aria-label="搜索任务" placeholder="搜索定时任务"></div><button type="button" class="schedule-new" data-schedule-action="new">'+icon('plus')+'<span>新建任务</span></button><div class="schedule-section-heading"><h3>即将执行</h3>'+button('filter','filter','筛选任务')+'</div><p id="scheduleLoadError" class="schedule-inline-error" role="alert" hidden></p><div id="scheduledTaskList" class="schedule-task-list"></div>';
     $('leftContainer').appendChild(sidebar);
-    sidebar.addEventListener('contextmenu',event=>{const row=event.target.closest('[data-schedule-open]');if(row){event.preventDefault();taskMenu(row,row.dataset.scheduleOpen);}});
+    sidebar.addEventListener('contextmenu',event=>{const row=(event.target as any)?.closest('[data-schedule-open]');if(row){event.preventDefault();taskMenu(row,row.dataset.scheduleOpen);}});
     const stage=document.createElement('section');stage.id='scheduleView';stage.className='schedule-view';stage.hidden=true;stage.setAttribute('aria-label','定时任务对话');stage.innerHTML='<div id="scheduleConversation" class="schedule-conversation"></div>';$('centerContent').appendChild(stage);
     const popup=document.createElement('div');popup.id='schedulePopup';popup.className='v2-popup schedule-popup';popup.hidden=true;popup.setAttribute('role','menu');$('app').appendChild(popup);
     const dialog=document.createElement('div');dialog.id='scheduleEditor';dialog.className='wb-modal schedule-editor-overlay';dialog.hidden=true;dialog.setAttribute('role','dialog');dialog.setAttribute('aria-modal','true');$('app').appendChild(dialog);
-    $('scheduleSearchInput').oninput=e=>{query=e.target.value;renderSidebar();};
+    $('scheduleSearchInput').oninput=e=>{query=(e as any).target.value;renderSidebar();};
     document.addEventListener('click',handleClick);
     document.addEventListener('click',e=>{
       if(!active)return;
-      if(e.target.closest('[data-open-execution],[data-show-message-changes],[data-message-changes]'))showTools();
-      if(e.target.closest('#toggleRightWorkspace'))queueMicrotask(()=>{if(active){document.body.classList.toggle('schedules-tools-open',!!C.prefs.rightOpen);applyLayout();}});
+      if((e as any).target.closest('[data-open-execution],[data-show-message-changes],[data-message-changes]'))showTools();
+      if((e as any).target.closest('#toggleRightWorkspace'))queueMicrotask(()=>{if(active){document.body.classList.toggle('schedules-tools-open',!!C.prefs.rightOpen);applyLayout();}});
     },true);
-    document.addEventListener('click',e=>{if(active && e.target.closest('#toggleLeftSidebar')){if(C.prefs.leftOpen && innerWidth<=780){document.body.classList.remove('schedules-tools-open');C.prefs.rightOpen=false;}applyLayout();notifyNative();}});
+    document.addEventListener('click',e=>{if(active && (e as any).target.closest('#toggleLeftSidebar')){if(C.prefs.leftOpen && innerWidth<=780){document.body.classList.remove('schedules-tools-open');C.prefs.rightOpen=false;}applyLayout();notifyNative();}});
     document.addEventListener('keydown',e=>{if(!active)return;if(e.key==='Escape'){if(!dialog.hidden){closeEditor();e.preventDefault();}else if(!popup.hidden){closePopup();e.preventDefault();}}});
-    dialog.addEventListener('click',e=>{if(e.target===dialog)closeEditor();});
+    dialog.addEventListener('click',e=>{if((e as any).target===dialog)closeEditor();});
     window.addEventListener('shiyan-view',activate);
     window.addEventListener('shiyan-state',()=>{if(active){applyLayout();renderConversation();}});
     window.addEventListener('resize',()=>{if(active){closePopup();requestAnimationFrame(applyLayout);}});
@@ -365,8 +365,8 @@
   }
   async function handleClick(event) {
     if(!active)return;
-    const target=event.target.closest('[data-schedule-action],[data-schedule-open],[data-schedule-more],[data-schedule-filter],[data-schedule-preset],[data-schedule-copy-message],[data-schedule-reply-model],[data-schedule-reply-effort]');
-    if(!event.target.closest('#schedulePopup,[data-schedule-more],[data-schedule-action="filter"],[data-schedule-action="reply-model"]'))closePopup();
+    const target=(event.target as any)?.closest('[data-schedule-action],[data-schedule-open],[data-schedule-more],[data-schedule-filter],[data-schedule-preset],[data-schedule-copy-message],[data-schedule-reply-model],[data-schedule-reply-effort]');
+    if(!(event.target as any)?.closest('#schedulePopup,[data-schedule-more],[data-schedule-action="filter"],[data-schedule-action="reply-model"]'))closePopup();
     if(!target)return;
     try{
       if(target.hasAttribute('data-schedule-open')){openTask(target.dataset.scheduleOpen);return;}
