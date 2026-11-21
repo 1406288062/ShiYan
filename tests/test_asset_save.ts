@@ -6,11 +6,11 @@ import vm from 'node:vm';
 const source=fs.readFileSync(new URL('../shared/frontend/app.js',import.meta.url),'utf8');
 const saveSource=source.slice(source.indexOf('  async function saveAsset(a)'),source.indexOf('  async function shareAssets(items)'));
 function setup(mode){
- const nativeCalls=[],downloads=[];
- const context={window:{ShiYanPlatform:{mode}},URL,location:{href:'http://127.0.0.1:17861/'},
+ const nativeCalls: any[]=[],downloads: any[]=[];
+ const context: any={window:{ShiYanPlatform:{mode}},URL,location:{href:'http://127.0.0.1:17861/'},
   assetUrl:a=>a.downloadUrl,exportFilename:a=>a.filename,
   native:(action,body)=>{nativeCalls.push({action,body});return mode==='desktop';},
-  document:{createElement:()=>({click(){downloads.push({url:this.href,filename:this.download});},remove(){}}),body:{appendChild(){}}}};
+  document:{createElement:(): any=>({click(){downloads.push({url:this.href,filename:this.download});},remove(){}}),body:{appendChild(){}}}};
  vm.createContext(context);vm.runInContext(saveSource,context);
  return {...context,nativeCalls,downloads};
 }
