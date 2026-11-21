@@ -55,7 +55,7 @@ export async function sendRegistrationEmail(message, env = process.env) {
         signal: AbortSignal.timeout(20000) });
       if (!response.ok) throw new Error('delivery');
     } else {
-      await new Promise((resolve, reject) => {
+      await new Promise<void>((resolve, reject) => {
         const child = spawn('/usr/bin/python3', ['-c', smtpScript], { env, stdio: ['pipe', 'ignore', 'ignore'] });
         const timer = setTimeout(() => { child.kill(); reject(new Error('timeout')); }, 25000);
         child.on('error', error => { clearTimeout(timer); reject(error); });
@@ -67,7 +67,13 @@ export async function sendRegistrationEmail(message, env = process.env) {
 }
 
 export class RegistrationEmail {
-  constructor(store, { send = sendRegistrationEmail, configured = () => mailConfigured(), secret, purpose = 'register' } = {}) {
+  reset: boolean;
+  table: string;
+  store: any;
+  send: (message: any) => Promise<void>;
+  configured: () => boolean;
+  secret: any;
+  constructor(store, { send = sendRegistrationEmail, configured = () => mailConfigured(), secret, purpose = 'register' }: { send?: (message: any) => Promise<void>; configured?: () => boolean; secret?: any; purpose?: string } = {}) {
     if (!['register', 'password-reset'].includes(purpose)) throw failure('验证码用途无效');
     this.reset = purpose === 'password-reset';
     this.table = this.reset ? 'password_reset_email_codes' : 'registration_email_codes';
@@ -77,9 +83,9 @@ export class RegistrationEmail {
       const filename = path.join(root, 'registration-email.key');
       try { secret = readFileSync(filename); }
       catch (error) {
-        if (error.code !== 'ENOENT') throw error;
+        if ((error as any).code !== 'ENOENT') throw error;
         try { writeFileSync(filename, randomBytes(32), { mode: 0o600, flag: 'wx' }); }
-        catch (error) { if (error.code !== 'EEXIST') throw error; }
+        catch (error) { if ((error as any).code !== 'EEXIST') throw error; }
         secret = readFileSync(filename);
       }
     }
