@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {chatMemoryScope,createChatMemory} from './memory-chat.ts';
 
 function fixture(){
-  const reads=[],contexts=[],captures=[],warnings=[];
+  const reads: any[]=[],contexts: any[]=[],captures: any[]=[],warnings: any[]=[];
   const state={conversations:{c:{id:'conversation',owner:'owner'}}};
   const records=new Map([['conversations:conversation',{data:{projectId:'project'}}],['projects:project',{data:{id:'project'}}]]);
   const syncStore={get(owner,kind,id){reads.push({owner,kind,id});return records.get(kind+':'+id);}};
@@ -21,7 +21,7 @@ test('memory context uses authenticated conversation/project metadata, never the
   assert.ok(f.reads.every(r=>r.owner==='owner'));
   assert.equal(JSON.stringify(f.job),before);
   f.records.delete('projects:project');
-  assert.equal(chatMemoryScope(f.job,f).projectId,undefined);
+  assert.equal(chatMemoryScope(f.job,f)?.projectId,undefined);
   f.state.conversations.c.owner='foreign';
   assert.equal(f.bridge.context(f.job),'');
   assert.equal(f.bridge.completed(f.job),false);
