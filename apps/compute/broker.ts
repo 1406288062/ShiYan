@@ -6,7 +6,7 @@ import { createReadStream, mkdirSync, chmodSync, statSync, readFileSync, readdir
 import { open, rename, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CosStore } from './cos-store.mjs';
+import { CosStore } from './cos-store.ts';
 
 const MIB = 1024 * 1024;
 const TERMINAL = new Set(['completed', 'failed', 'cancelled']);

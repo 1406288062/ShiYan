@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
-import { createComputeBroker } from '../apps/compute/broker.mjs';
+import { createComputeBroker } from '../apps/compute/broker.ts';
 
 const clientToken = 'test-client-' + 'c'.repeat(40);
 const workerToken = 'test-worker-' + 'w'.repeat(40);

@@ -8,8 +8,8 @@ import os from 'node:os';
 import { promises as fs, watch, readFileSync, mkdirSync, writeFileSync, renameSync } from 'node:fs';
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { Codex } from '@openai/codex-sdk';
-import { conversationTitle } from './session-title.mjs';
-import { authenticateDevice as authenticate, enrollDevice, digest } from './device-auth.mjs';
+import { conversationTitle } from './session-title.ts';
+import { authenticateDevice as authenticate, enrollDevice, digest } from './device-auth.ts';
 
 const ROOT = process.env.SHIYAN_ROOT || '/home/ubuntu/boss-codex-service/shiyan-v2';
 const PORT = Number(process.env.SHIYAN_PORT || 4323);
