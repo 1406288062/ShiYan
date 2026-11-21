@@ -1,8 +1,8 @@
  
 (() => {
   'use strict';
-  const $ = id => document.getElementById(id);
-  const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const $ = (id: string): any => document.getElementById(id);
+  const esc = value => String(value ?? '').replace(/[&<>"']/g, c => (({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'} as Record<string, string>)[c] || ''));
   const icons = {
     copy:'<rect x="8" y="3" width="13" height="13" rx="3"/><rect x="3" y="8" width="13" height="13" rx="3"/>',
     read:'<path d="M11 4 6 8H3v8h3l5 4V4Z M15 8a6 6 0 0 1 0 8 M18 5a10 10 0 0 1 0 14"/>',
@@ -22,17 +22,17 @@
   const icon = kind => kind === 'copy' ? '<span class="symbol dots-panel-icon" data-symbol="dots-copy" style="--symbol:url(\'/assets/symbols/dots-copy.png\')" aria-hidden="true"></span>' : '<svg class="dots-panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(icons[kind] || icons.file)+'</svg>';
   const colors = ['#bdc4d5','#00b4ef','#ffd139','#d469da','#bada10','#ed729c','#f79557','#7293f1'];
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
-  let C, profile = {}, pets = [], cataloguePromise, snapshot = {}, activities = [], outputs = [];
+  let C: any, profile: any = {}, pets: any[] = [], cataloguePromise: any, snapshot: any = {}, activities: any[] = [], outputs: any[] = [];
   let loading = false, activityError = '', expanded = false, outputExpanded = false, lastActivityFetch = 0, refreshTimer;
   let profileDraft, profileDialog, conversationDialog, scheduleDialog, outputDialog, browserDialog, returnFocus;
   let currentConversation, conversationFull = false, conversationVersion = 0, scheduleValue, scheduleBusy = false;
   let conversationTimer, conversationPolling = false;
-  let readSession=null, readingIndex=-1, readUtterance=null;
-  let floatingPet=null;
+  let readSession: any = null, readingIndex=-1, readUtterance: any = null;
+  let floatingPet: any = null;
   let currentModal, savedSignature = '', activitySignature = '', lastOpen = false, outputRaw = '';
-  let browserTasks = [], browserTakeover = null;
-  const api = (route, method = 'GET', data) => C.api(route, method, data);
-  const rejected = error => [400,403,404,422].includes(error.status) && error.code !== 'action_uncertain';
+  let browserTasks: any[] = [], browserTakeover: any = null;
+  const api = (route: string, method: string = 'GET', data?: any) => C.api(route, method, data);
+  const rejected = error => [400,403,404,422].includes((error as any).status) && (error as any).code !== 'action_uncertain';
   const name = () => profile.name || 'Dots';
   // Dots pet characters are disabled for every account.
   const petById = id => pets.find(p => p.id === id) || pets.find(p => p.is_active) || pets[0];
@@ -111,7 +111,7 @@
       if (!cw || !ch) return;
       const state = sprite ? ((pet.states||[]).find(s=>s.name==='idle') || (pet.states||[])[0]) : null;
       const canvas = document.createElement('canvas'); canvas.width = cw; canvas.height = ch;
-      const ctx = canvas.getContext('2d', {willReadFrequently:true});
+      const ctx: any = canvas.getContext('2d', {willReadFrequently:true});
       ctx.drawImage(img, 0, sprite ? (state?.row||0)*ch : 0, cw, ch, 0, 0, cw, ch);
       const data = ctx.getImageData(0, 0, cw, ch).data; let top = ch, leftEdge = cw;
       for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) if (data[(y*cw+x)*4+3] > 24) { if (y < top) top = y; if (x < leftEdge) leftEdge = x; }
@@ -194,7 +194,7 @@
       await getCatalogue();
       const [result] = await Promise.all([api('/activity'), loadBrowserTasks()]);
       activities = result.activities || []; outputs = result.outputs || []; lastActivityFetch = Date.now();
-    } catch (error) { activityError = error.message || String(error); }
+    } catch (error) { activityError = (error as any).message || String(error); }
     finally { loading = false; savedSignature = ''; renderPanel(); }
   }
   function renderPanel() {
@@ -252,7 +252,7 @@
       .catch(()=>{if(attempt<4)setTimeout(()=>send(attempt+1),1500*attempt);});
     send(1);
   }
-  function showDialog(dialog, target) {
+  function showDialog(dialog?: any, target?: any) {
     if(dialog!==conversationDialog){stopReading();clearInterval(conversationTimer);conversationTimer=null;}
     if (currentModal && currentModal !== dialog) { if(currentModal===browserDialog)stopBrowserSession(); currentModal.hidden = true; }
     else if (!currentModal) { const focused=document.activeElement;returnFocus=focused?.closest('.dots-menu')?.querySelector('[data-dots-more]') || (focused?.getClientRects().length?focused:$('dotsTasksButton')); }
@@ -260,7 +260,7 @@
     C.scheduleNative?.(); requestAnimationFrame(() => (target || dialog.querySelector('input,button,textarea,select') || dialog)?.focus({preventScroll:true}));
     positionPet();
   }
-  function closeDialog(force) {
+  function closeDialog(force?: any) {
     if (!currentModal && previewOpen()) {
       stopReading();conversationDialog.hidden=true;conversationDialog.classList.remove('is-inline');document.body.appendChild(conversationDialog);
       $('dotsActivity')?.classList.remove('is-conversation-preview');conversationVersion++;
@@ -282,7 +282,7 @@
   const connectorGlyph={mail:'M4 6h16v12H4zM4 7l8 6 8-6',calendar:'M5 6h14v13H5zM5 10h14M9 4v4M15 4v4',dev:'M9 8l-4 4 4 4M15 8l4 4-4 4',feeds:'M5 19a1 1 0 1 0 0-.01M5 12a7 7 0 0 1 7 7M5 5a14 14 0 0 1 14 14',devices:'M4 5h16v11H4zM9 20h6M12 16v4',messaging:'M5 5h14v10H9l-4 4z',docs:'M7 4h7l4 4v12H7zM14 4v4h4',custom:'M10 4h4v3a2 2 0 0 0 4 0V4h2v6h-3a2 2 0 0 0 0 4h3v6h-6v-3a2 2 0 0 0-4 0v3H4v-6h3a2 2 0 0 0 0-4H4V4z',builtin:'M12 3l2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-.5z'};
   const glyph=c=>'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+(connectorGlyph[c]||connectorGlyph.builtin)+'"/></svg>';
   const providerCategory={github:'dev',email:'mail','google-calendar':'calendar',rss:'feeds'};
-  const sourceRow=({id,icon,name,line,side,more,open,state})=>'<li class="dots-src'+(state?' is-'+state:'')+(open?' is-open':'')+'"'+(id?' data-src="'+esc(id)+'"':'')+'><div class="dots-src-row"'+(more!==undefined?' data-src-toggle role="button" tabindex="0" aria-expanded="'+!!open+'"':'')+'>'+(String(icon||'').startsWith('logo:')?'<span class="dots-src-icon dots-src-logo"><img src="/assets/connector-logos/'+esc(icon.slice(5))+'.png" alt="" loading="lazy"></span>':'<span class="dots-src-icon">'+glyph(icon)+'</span>')+'<span class="dots-src-text"><strong>'+esc(name)+'</strong>'+(line?'<small>'+esc(line)+'</small>':'')+'</span><span class="dots-src-side">'+side+'</span></div>'+(open&&more?'<div class="dots-src-more">'+more+'</div>':'')+'</li>';
+  const sourceRow=({id,icon,name,line,side,more,open,state}: any)=>'<li class="dots-src'+(state?' is-'+state:'')+(open?' is-open':'')+'"'+(id?' data-src="'+esc(id)+'"':'')+'><div class="dots-src-row"'+(more!==undefined?' data-src-toggle role="button" tabindex="0" aria-expanded="'+!!open+'"':'')+'>'+(String(icon||'').startsWith('logo:')?'<span class="dots-src-icon dots-src-logo"><img src="/assets/connector-logos/'+esc(icon.slice(5))+'.png" alt="" loading="lazy"></span>':'<span class="dots-src-icon">'+glyph(icon)+'</span>')+'<span class="dots-src-text"><strong>'+esc(name)+'</strong>'+(line?'<small>'+esc(line)+'</small>':'')+'</span><span class="dots-src-side">'+side+'</span></div>'+(open&&more?'<div class="dots-src-more">'+more+'</div>':'')+'</li>';
   const stateLabel=(text,state)=>'<span class="dots-src-state is-'+esc(state)+'"><i></i>'+esc(text)+'</span>';
   // 事件订阅：只列出已订阅的来源；新增订阅在 Dots 对话里完成。
   async function openSubscriptions() {
@@ -303,7 +303,7 @@
             if (!await window.shiyan.confirmAction('取消这项订阅？','之后可以随时重新订阅。','取消订阅')) return;
             const error = dialog.querySelector('[data-subscription-error]'); error.hidden = true; button.disabled = true;
             try { subscriptions = (await api('/subscriptions/'+button.dataset.removeSubscription,'DELETE')).subscriptions || []; draw(); }
-            catch (cause) { error.textContent = cause.message; error.hidden = false; button.disabled = false; }
+            catch (cause) { (error as any).textContent = (cause as any).message; error.hidden = false; button.disabled = false; }
           };
         });
       };
@@ -311,20 +311,20 @@
     } catch(error) { C.showError(error); }
   }
   // 连接器：微信 + MCP（常用插件一键授权，或手动填写地址绑定）。目录和状态由服务器给出，三端一致。
-  async function openConnectors(focusId) {
+  async function openConnectors(focusId?: any) {
     const dialog = makeDialog('dotsConnectorsDialog','dots-conversation-overlay');
     dialog.innerHTML = '<section class="dots-conversation-card dots-sources-card"><header><div><h2>连接器</h2><small data-connectors-summary>正在读取…</small></div><button type="button" class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button></header><p class="dots-src-notice" data-connector-notice hidden></p><div class="dots-src-body" data-connector-body></div><p role="alert" class="dots-dialog-error" data-connector-error hidden></p></section>';
     showDialog(dialog, dialog);
-    let data, expanded = focusId || '', adding = false, busy = '', pollTimer = null, pollUntil = 0, confirming = '', showTools = '', noticeTimer = null;
-    let spongeStatus = null, spongeBusy = false, spongeError = '', spongeFallback = '', spongePendingUntil = 0, spongePollTimer = null, spongeConfirm = false;
+    let data, expanded = focusId || '', adding = false, busy = '', pollTimer: any = null, pollUntil = 0, confirming = '', showTools = '', noticeTimer: any = null;
+    let spongeStatus: any = null, spongeBusy = false, spongeError = '', spongeFallback = '', spongePendingUntil = 0, spongePollTimer: any = null, spongeConfirm = false;
     const errorBox = dialog.querySelector('[data-connector-error]'), noticeBox = dialog.querySelector('[data-connector-notice]');
-    const fail = cause => { errorBox.textContent = cause?.message || String(cause); errorBox.hidden = false; };
-    const notice = (html, autoHide) => { clearTimeout(noticeTimer); noticeBox.innerHTML = html || ''; noticeBox.hidden = !html; if (html && autoHide) noticeTimer = setTimeout(() => notice(''), 5000); };
+    const fail = cause => { errorBox.textContent = (cause as any)?.message || String(cause); errorBox.hidden = false; };
+    const notice = (html?: any, autoHide?: any) => { clearTimeout(noticeTimer); noticeBox.innerHTML = html || ''; noticeBox.hidden = !html; if (html && autoHide) noticeTimer = setTimeout(() => notice(''), 5000); };
     const chevron = '<svg class="dots-src-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
     const hues = [212,262,152,24,338,190,45,290];
-    const mono = name => { let h = 0; for (const ch of String(name)) h = (h*31 + ch.codePointAt(0)) >>> 0; return '<span class="dots-src-icon dots-src-mono" style="--mono-hue:'+hues[h % hues.length]+'">'+esc(String(name).trim().charAt(0).toUpperCase())+'</span>'; };
+    const mono = name => { let h = 0; for (const ch of String(name)) h = (h*31 + (ch.codePointAt(0) || 0)) >>> 0; return '<span class="dots-src-icon dots-src-mono" style="--mono-hue:'+hues[h % hues.length]+'">'+esc(String(name).trim().charAt(0).toUpperCase())+'</span>'; };
     // 每个插件点开都先说明：连上后 Dots 能做什么、怎么连接（去官网授权 / 需要 Key / 直接可用），再给出连接或断开操作。
-    const aboutHTML = (abilities, example) => (abilities||[]).length ? '<p class="dots-src-label">连上后，Dots 可以</p><ul class="dots-src-abilities">'+abilities.map(a=>'<li>'+esc(a)+'</li>').join('')+'</ul>'+(example?'<p class="dots-src-example">比如对 Dots 说：“'+esc(example)+'”</p>':'') : '';
+    const aboutHTML = (abilities?: any, example?: any) => (abilities||[]).length ? '<p class="dots-src-label">连上后，Dots 可以</p><ul class="dots-src-abilities">'+abilities.map(a=>'<li>'+esc(a)+'</li>').join('')+'</ul>'+(example?'<p class="dots-src-example">比如对 Dots 说：“'+esc(example)+'”</p>':'') : '';
     const spaced = name => (/^[A-Za-z0-9]/.test(name)?' ':'')+name+(/[A-Za-z0-9]$/.test(name)?' ':'');
     const confirmHTML = (name, act) => '<div class="dots-src-confirm" role="group" aria-label="确认断开"><span>断开后 Dots 就不能再用'+esc(spaced(name))+'了，之后可以随时重新连接。</span><div class="dots-src-actions"><button type="button" class="dots-src-button" data-confirm-cancel>取消</button><button type="button" class="dots-src-button is-danger" '+act+'>确定断开</button></div></div>';
     const mcpRow = (c, entry) => {
@@ -385,7 +385,7 @@
       const plugins = data.plugins||[], custom = data.custom||[], weixin = data.connectors||[];
       const count = (data.summary?.connected)||0;
       dialog.querySelector('[data-connectors-summary]').textContent = count ? '已连接 '+count+' 个' : '让 Dots 使用你的应用和工具';
-      const sorted = [...plugins].sort((a,b)=>(b.state==='connected')-(a.state==='connected'));
+      const sorted = [...plugins].sort((a,b)=>Number(b.state==='connected')-Number(a.state==='connected'));
       const groups = new Map();
       const pluginCategory = plugin => {
         const supplied = String(plugin.category || plugin.group || '').trim();
@@ -430,11 +430,11 @@
         spongeStatus = await service.status();
         spongeError = '';
         if (spongeStatus?.connected === true) { spongePendingUntil = 0; spongeFallback = ''; }
-      } catch (cause) { spongeError = cause?.message || '读取设备状态失败，请重试。'; }
+      } catch (cause) { spongeError = (cause as any)?.message || '读取设备状态失败，请重试。'; }
       draw(); scheduleSpongePoll();
     };
     const load = async () => { data = await api('/connectors'); draw(); await refreshSponge(); };
-    const openAuth = (url, popup) => {
+    const openAuth = (url?: any, popup?: any) => {
       const native = !!window.webkit?.messageHandlers?.native;
       if (native) window.ShiYanPlatform?.postNative?.('openExternal',{url});
       else if (popup && !popup.closed) popup.location.href = url;
@@ -443,7 +443,7 @@
       pollUntil = Date.now() + 5*60_000;
     };
     const connect = async (payload, id, oauthLikely) => {
-      let popup = null;
+      let popup: any = null;
       if (oauthLikely && !window.webkit?.messageHandlers?.native) { try { popup = window.open('about:blank','_blank'); if (popup) popup.opener = null; } catch {} }
       busy = id; errorBox.hidden = true; draw();
       try {
@@ -535,7 +535,7 @@
   // 微信扫码绑定：二维码由服务器生成，状态每 2 秒轮询一次。
   async function openWeixinLogin(onDone) {
     const dialog = makeDialog('dotsWeixinDialog','dots-conversation-overlay');
-    let timer = null, closed = false, last = '';
+    let timer: any = null, closed = false, last = '';
     const stop = () => { closed = true; clearTimeout(timer); };
     const text = s => s.state === 'connected' ? '绑定成功' : s.state === 'login_expired' ? (s.message || '二维码已过期') :
       s.loginStatus === 'scaned' || s.loginStatus === 'scaned_but_redirect' ? '已扫码，请在手机微信上点“确认”' :
@@ -576,7 +576,7 @@
   async function openDotsSettings() {
     const dialog = makeDialog('dotsSettingsDialog','dots-conversation-overlay');
     const modes = [['smart','智能审批','只有删除、提权、重启、推送代码等高风险操作才需要你批准，其余自动执行。'],['auto','全部自动','除提权和灾难性命令外全部自动执行，最少打扰。'],['ask','每次都问','每个需要审批的操作都等你确认。']];
-    let settings, grants = [];
+    let settings, grants: any[] = [];
     const scopeText = grant => grant.scope==='always'?'一直允许':grant.scope==='task'?'仅限这个任务':grant.expiresAt?'到 '+new Date(grant.expiresAt*1000).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
     const grantsHTML = () => grants.length ? '<ul class="dots-grant-list">'+grants.map(g=>'<li><span><strong>'+esc((g.labels||g.signatures||[]).join('、'))+'</strong><small>'+esc(scopeText(g))+(g.uses?' · 已自动执行 '+g.uses+' 次':'')+'</small></span><button type="button" data-revoke-grant="'+Number(g.id)+'">撤销</button></li>').join('')+'</ul>' : '<p class="dots-settings-empty">还没有授权过的操作。</p>';
     const draw = () => {
@@ -585,7 +585,7 @@
     const save = async patch => {
       const before = settings; settings = {...settings, ...patch}; draw();
       try { settings = (await api('/settings','PATCH',patch)).settings || settings; draw(); }
-      catch (cause) { settings = before; draw(); const box = dialog.querySelector('[data-settings-error]'); box.textContent = cause.message; box.hidden = false; }
+      catch (cause) { settings = before; draw(); const box = dialog.querySelector('[data-settings-error]'); box.textContent = (cause as any).message; box.hidden = false; }
     };
     dialog.addEventListener('click', async event => {
       const mode = event.target.closest('[data-approval-mode]'); if (mode && mode.dataset.approvalMode !== settings.approvalMode) save({approvalMode: mode.dataset.approvalMode});
@@ -602,7 +602,7 @@
   // 影子人：导入和某个人的微信聊天记录，Dots 在主页对话里用 Ta 的方式回复。同一时间只启用一个。
   async function openShadow() {
     const dialog = makeDialog('dotsShadowDialog','dots-conversation-overlay');
-    let people = [], activeId = null, step = '', draft = {name:'',relationship:''}, target = null, pending = null, busy = '', notice = '', error = '';
+    let people: any[] = [], activeId: any = null, step = '', draft = {name:'',relationship:''}, target: any = null, pending: any = null, busy = '', notice = '', error = '';
     const day = at => at ? new Date(at).toLocaleDateString('zh-CN',{year:'numeric',month:'numeric',day:'numeric'}) : '';
     const route = (id, tail = '') => '/people/'+encodeURIComponent(id)+tail;
     const load = async () => { const r = await api('/people'); people = r.people || []; activeId = r.activePersonId || people.find(p => p.active)?.id || null; };
@@ -640,7 +640,7 @@
     };
     const parse = async file => {
       try { pending = await window.ShiYanShadowParser.read(file, target?.name || draft.name); step = 'map'; error = ''; }
-      catch (cause) { error = cause.message || '无法读取文件'; if (step !== 'new') target = null; }
+      catch (cause) { error = (cause as any).message || '无法读取文件'; if (step !== 'new') target = null; }
       draw();
     };
     const learnNow = async () => {
@@ -650,7 +650,7 @@
       try {
         if (!target) { target = (await api('/people','POST',{name:draft.name, relationship:draft.relationship})).person; people = [target, ...people.filter(p => p.id !== target.id)]; }
         busy = target.id; step = ''; pending = null;
-        const importId = crypto.randomUUID(); let result = null;
+        const importId = crypto.randomUUID(); let result: any = null;
         for (let i = 0; i < rows.length; i += 40) {
           const final = i + 40 >= rows.length;
           notice = final ? '正在学习 Ta 的说话方式，大约需要一两分钟…' : '正在上传聊天记录 '+Math.min(i+40, rows.length)+' / '+rows.length; draw();
@@ -659,12 +659,12 @@
         if (target.id !== activeId) await api(route(target.id),'PATCH',{active:true});
         if (result?.learnError) error = result.learnError;
         draft = {name:'',relationship:''};
-      } catch (cause) { error = cause.message || '导入失败，请重试'; }
+      } catch (cause) { error = (cause as any).message || '导入失败，请重试'; }
       finally { busy = ''; notice = ''; target = null; try { await load(); } catch {} draw(); }
     };
     const act = async (id, text, fn) => {
       busy = id; notice = text; error = ''; draw();
-      try { await fn(); } catch (cause) { error = cause.message || '操作失败'; }
+      try { await fn(); } catch (cause) { error = (cause as any).message || '操作失败'; }
       finally { busy = ''; notice = ''; try { await load(); } catch {} draw(); }
     };
     // 删除需要第二次点击确认（不弹系统对话框）。
@@ -691,13 +691,13 @@
       if (form.matches('[data-shadow-confirm]')) learnNow();
     });
     draw(); showDialog(dialog, dialog);
-    try { await load(); step = ''; draw(); } catch (cause) { error = cause.message; draw(); }
+    try { await load(); step = ''; draw(); } catch (cause) { error = (cause as any).message; draw(); }
   }
   // 长期目标：Dots 拆成里程碑，并按你选的频率主动来问进展。
   async function openLifeGoals() {
     const dialog = makeDialog('dotsGoalsDialog','dots-conversation-overlay');
     const cadences = [['daily','每天'],['weekly','每周'],['biweekly','每两周'],['monthly','每月']];
-    let goals = [], creating = false, busy = false, error = '', poll = null, adding = null;
+    let goals: any[] = [], creating = false, busy = false, error = '', poll: any = null, adding: any = null;
     const when = at => at ? new Date(at*1000).toLocaleString('zh-CN',{month:'numeric',day:'numeric',weekday:'short',hour:'2-digit',minute:'2-digit'}) : '';
     const shortDay = d => d ? d.slice(5).replace('-','/') : '';
     const statusText = {active:'进行中',paused:'已暂停',done:'已达成'};
@@ -720,7 +720,7 @@
     const schedulePoll = () => { clearTimeout(poll); if (goals.some(g => g.planState === 'planning') && dialog.isConnected) poll = setTimeout(() => load().catch(() => {}), 3000); };
     const load = async () => { goals = (await api('/life-goals')).goals || []; draw(); schedulePoll(); };
     const replace = goal => { goals = goals.map(g => g.id === goal.id ? goal : g); draw(); schedulePoll(); };
-    const act = async fn => { error = ''; try { await fn(); } catch (cause) { error = cause.message || '操作失败'; draw(); } };
+    const act = async fn => { error = ''; try { await fn(); } catch (cause) { error = (cause as any).message || '操作失败'; draw(); } };
     dialog.addEventListener('click', event => {
       const t = event.target.closest('button'); if (!t) return;
       if (t.matches('[data-goal-new]')) { creating = true; draw(); }
@@ -741,14 +741,14 @@
       if (form.matches('[data-goal-add]')) act(async () => { const goal = (await api('/life-goals/'+form.dataset.goalAdd+'/milestones','POST',{add:data.title,due:data.due||null})).goal; adding = null; replace(goal); });
     });
     draw(); showDialog(dialog, dialog);
-    try { await load(); } catch (cause) { error = cause.message; draw(); }
+    try { await load(); } catch (cause) { error = (cause as any).message; draw(); }
   }
   // 「做过的事」：Dots 以你的名义实际做过的事，按天分组，可筛选、可加载更早。
   async function openAudit() {
     const dialog = makeDialog('dotsAuditDialog','dots-conversation-overlay');
     const filters = [['','全部'],['action','操作'],['message','消息']];
     const glyph = {action:'⌘',message:'✉',change:'⚙'};
-    let category = '', items = [], next = null, loading = false, error = '';
+    let category = '', items: any[] = [], next = null, loading = false, error = '';
     const day = at => { const d = new Date(at*1000), t = new Date(); const y = new Date(t); y.setDate(t.getDate()-1); return d.toDateString()===t.toDateString()?'今天':d.toDateString()===y.toDateString()?'昨天':d.toLocaleDateString('zh-CN',{month:'long',day:'numeric',weekday:'short'}); };
     const draw = () => {
       let last = '', rows = '';
@@ -761,7 +761,7 @@
     const load = async more => {
       if (loading) return; loading = true; error = ''; if (!more) { items = []; next = null; } draw();
       try { const data = await api('/audit?limit=50'+(category?'&category='+category:'')+(more&&next?'&before='+next:'')); items = more ? items.concat(data.items||[]) : (data.items||[]); next = data.nextBefore || null; }
-      catch (cause) { error = cause.message || '暂时无法读取'; }
+      catch (cause) { error = (cause as any).message || '暂时无法读取'; }
       finally { loading = false; draw(); }
     };
     dialog.addEventListener('click', event => {
@@ -786,7 +786,7 @@
     return '<div class="dots-choice-header"><h3>'+label+'</h3><div class="dots-choice-arrows"><button type="button" data-dots-scroll="-1" aria-label="'+label+'向左">'+icon('back')+'</button><button type="button" data-dots-scroll="1" aria-label="'+label+'向右">'+icon('forward')+'</button></div></div>';
   }
   function renderProfile() {
-    const offsets=Array.from(profileDialog.querySelectorAll('.dots-color-options,.dots-pet-options'),row=>row.scrollLeft);
+    const offsets=Array.from(profileDialog.querySelectorAll('.dots-color-options,.dots-pet-options'),(row: any)=>row.scrollLeft);
     profileDialog.innerHTML = '<form class="dots-profile-card" id="dotsProfileForm"><div class="dots-profile-options"><h2>自定义你的 Dot</h2>'+
       '<section>'+profileSectionTitle('颜色')+'<div class="dots-color-options">'+colors.map(color=>'<button type="button" class="dots-color-option '+(color===profileDraft.accent?'is-selected':'')+'" data-dots-select-color="'+color+'" style="--pet-color:'+color+'" aria-label="选择颜色 '+color+'" aria-pressed="'+String(color===profileDraft.accent)+'"></button>').join('')+'</div></section>'+
       '<section>'+profileSectionTitle('角色')+'<div class="dots-pet-options">'+petChoices(false)+'</div></section><section>'+profileSectionTitle('虚拟宠物')+'<div class="dots-pet-options">'+petChoices(true)+'</div></section></div>'+
@@ -812,17 +812,17 @@
     $('dotsProfileForm').onsubmit = async e => {
       e.preventDefault(); const button = profileDialog.querySelector('[data-dots-profile-save]'), error = profileDialog.querySelector('[data-profile-error]');
       const value = {name:$('dotsProfileName').value.trim(),accent:profileDraft.accent,petId:profileDraft.petId};
-      if (!value.name) { error.textContent='请输入名称';error.hidden=false;return; }
+      if (!value.name) { (error as any).textContent='请输入名称';error.hidden=false;return; }
       button.disabled = true;
       try { const result = await api('/profile','PATCH',value);profile={...profile,...result.profile};document.documentElement.style.setProperty('--dots-profile-accent',profile.accent || colors[0]);C.nameChanged();savedSignature='';renderPanel();closeDialog(); }
-      catch (cause) { error.textContent=cause.message;error.hidden=false; }
+      catch (cause) { (error as any).textContent=(cause as any).message;error.hidden=false; }
       finally { button.disabled=false; }
     };
   }
   async function markSeen(type,id) {
     const item = activities.find(a => a.type===type && String(type==='schedule'?(a.scheduleId||a.schedule?.id||String(a.id).replace(/^schedule:/,'')):(a.taskId||a.id))===String(id));
     const seen = {...profile.seenActivities,[type+':'+id]:item?.updatedAt || Date.now()};
-    const limited = Object.fromEntries(Object.entries(seen).sort((a,b)=>b[1]-a[1]).slice(0,500));
+    const limited = Object.fromEntries(Object.entries(seen).sort((a: any, b: any)=>b[1]-a[1]).slice(0,500));
     profile.seenActivities=limited;savedSignature='';renderPanel();
     try { await api('/profile','PATCH',{seenActivities:limited}); } catch (error) { C.showError(error); }
   }
@@ -858,7 +858,7 @@
   }
   function readError(error) {
     stopReading();const label=conversationDialog?.querySelector('.dots-read-error');
-    if(label){label.textContent=error.message||String(error);label.hidden=false;}else C.showError(error);
+    if(label){label.textContent=(error as any).message||String(error);label.hidden=false;}else C.showError(error);
   }
   function readMessage(index) {
     if(readSession && readingIndex===index){stopReading();return;}
@@ -914,9 +914,9 @@
     const dialog = makeDialog('dotsBrowserTasksDialog','dots-conversation-overlay');
     dialog.innerHTML = '<section class="dots-conversation-card dots-sources-card"><header><div><h2>浏览器任务</h2><small>Dots 在服务器浏览器里替你做的事</small></div><button type="button" class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button></header><div class="dots-src-body" data-bt-body></div><p role="alert" class="dots-dialog-error" data-bt-error hidden></p></section>';
     showDialog(dialog, dialog);
-    let open = focusTaskId || '', timer = null, lastHTML = '';
+    let open = focusTaskId || '', timer: any = null, lastHTML = '';
     const errorBox = dialog.querySelector('[data-bt-error]'), body = dialog.querySelector('[data-bt-body]');
-    const fail = cause => { errorBox.textContent = cause?.message || String(cause); errorBox.hidden = false; };
+    const fail = cause => { errorBox.textContent = (cause as any)?.message || String(cause); errorBox.hidden = false; };
     const draw = () => {
       const tasks = browserTasks || [];
       const html = tasks.length ? '<ul class="dots-src-list">'+tasks.map(t => {
@@ -969,8 +969,8 @@
     dialog.innerHTML = '<section class="dots-conversation-card dots-sources-card"><header><div><h2>浏览器</h2><small>Dots 使用服务器浏览器时的权限和登录</small></div><button type="button" class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button></header><div class="dots-src-body" data-bs-body></div><p role="alert" class="dots-dialog-error" data-bs-error hidden></p></section>';
     showDialog(dialog, dialog);
     const body = dialog.querySelector('[data-bs-body]'), errorBox = dialog.querySelector('[data-bs-error]');
-    const fail = cause => { errorBox.textContent = cause?.message || String(cause); errorBox.hidden = false; };
-    let perms = {}, rules = [], identities = [], vault = [];
+    const fail = cause => { errorBox.textContent = (cause as any)?.message || String(cause); errorBox.hidden = false; };
+    let perms = {}, rules: any[] = [], identities: any[] = [], vault: any[] = [];
     const opts = {allow:'允许',ask:'询问',deny:'拒绝'};
     const select = (key, label, values) => '<label class="dots-src-row" style="cursor:default"><span class="dots-src-text"><strong>'+esc(label)+'</strong></span><span class="dots-src-side"><select data-bs-perm="'+key+'">'+values.map(v=>'<option value="'+v+'"'+(perms[key]===v?' selected':'')+'>'+opts[v]+'</option>').join('')+'</select></span></label>';
     const draw = () => {
@@ -999,7 +999,7 @@
     });
     try { await load(); } catch (cause) { fail(cause); }
   }
-  async function openComputer(takeover = null) {
+  async function openComputer(takeover: any = null) {
     const dialog=browserDialog=makeDialog('dotsBrowserDialog','dots-browser-overlay');
     dialog.innerHTML='<section class="dots-browser-card"><div class="dots-browser-loading" data-browser-loading>正在启动服务器 Chrome…</div><iframe class="dots-browser-frame" data-browser-frame title="拾燕浏览器" sandbox="allow-scripts allow-same-origin allow-forms" referrerpolicy="no-referrer" hidden></iframe><p class="dots-browser-error" data-browser-error role="alert" hidden></p></section>';
     const frameMessage=event=>{if(event.origin!==location.origin||event.source!==dialog.querySelector('[data-browser-frame]')?.contentWindow||!['shiyan-browser-close','shiyan-browser-handback'].includes(event.data?.type))return;window.removeEventListener('message',frameMessage);
@@ -1016,7 +1016,7 @@
       frame.hidden=false;dialog.querySelector('[data-browser-loading]').hidden=true;
     } catch(error) {
       const loading=dialog.querySelector('[data-browser-loading]'),label=dialog.querySelector('[data-browser-error]');
-      if(loading)loading.hidden=true;if(label){label.textContent=error.message||String(error);label.hidden=false;}
+      if(loading)loading.hidden=true;if(label){label.textContent=(error as any).message||String(error);label.hidden=false;}
     }
   }
   async function openConversation(id, full = false) {
@@ -1043,7 +1043,7 @@
       clearInterval(conversationTimer);conversationTimer=setInterval(refreshConversation,4000);
     }catch(error){
       if(version!==conversationVersion)return;
-      conversationDialog.innerHTML='<section class="dots-conversation-card"><p class="dots-dialog-error">'+esc(error.message)+'</p></section>';
+      conversationDialog.innerHTML='<section class="dots-conversation-card"><p class="dots-dialog-error">'+esc((error as any).message)+'</p></section>';
     }
   }
   function conversationBody(data) {
@@ -1099,7 +1099,7 @@
   // 批准范围：仅这次 / 这个任务 / 1 小时 / 24 小时 / 一直允许（按动作类型授权）。选择在重新渲染之间保留。
   const SCOPES=[['once','仅这一次'],['task','这个任务内都允许'],['hour','1 小时内都允许'],['day','24 小时内都允许'],['always','以后一直允许']];
   const scopeChoices=new Map();
-  document.addEventListener('change',event=>{const select=event.target.closest?.('[data-dots-approval-scope]');const card=select?.closest('[data-dots-approval]');if(!card)return;scopeChoices.set(Number(card.dataset.dotsApprovalGoal)+':'+Number(card.dataset.dotsApproval),select.value);});
+  document.addEventListener('change',event=>{const select=(event.target as any)?.closest?.('[data-dots-approval-scope]');const card=select?.closest('[data-dots-approval]');if(!card)return;scopeChoices.set(Number(card.dataset.dotsApprovalGoal)+':'+Number(card.dataset.dotsApproval),select.value);});
   const approvalScope=(goalId,id)=>scopeChoices.get(goalId+':'+id)||'once';
   function scopeRow(goalId,id,approval,disabled){
     const labels=Array.isArray(approval.grant_labels)?approval.grant_labels.filter(Boolean):[];
@@ -1134,12 +1134,12 @@
     const id=currentConversation.id,slot='dotsChild:'+id+':'+crypto.randomUUID(),ended=['done','completed','cancelled','failed'].includes(currentConversation.goal.status),route=ended?'/manager/messages':'/goals/'+id+'/instruct';
     const payload=C.request(slot,ended?{message,taskId:Number(id),host:'shiyan_desktop'}:{message});button.disabled=true;error.hidden=true;
     try { await C.persist();await api(route,'POST',payload);await C.releaseRequest(slot);input.value='';await C.refresh();await openConversation(id,true); }
-    catch(cause){if(rejected(cause))await C.releaseRequest(slot);error.textContent=cause.message;error.hidden=false;}
+    catch(cause){if(rejected(cause))await C.releaseRequest(slot);(error as any).textContent=(cause as any).message;error.hidden=false;}
     finally{button.disabled=false;input.readOnly=false;input.disabled=false;button.setAttribute('aria-label','发送');}
   }
 
   function today() { const d=new Date();return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); }
-  async function openSchedule(id) {
+  async function openSchedule(id?: any) {
     try {
       scheduleValue=id?(await api('/schedules/'+id)).schedule:{title:'',instruction:'',enabled:true,repeat:'daily',time:'21:00',timezone:'Asia/Shanghai',startDate:today(),endDate:null};
       scheduleDialog=makeDialog('dotsScheduleDialog','dots-schedule-overlay');renderSchedule();showDialog(scheduleDialog,$('dotsScheduleTitle'));if(id)markSeen('schedule',id);
@@ -1167,13 +1167,13 @@
     const id=scheduleValue.id,slot='dotsSchedule:'+(id||'new'),fields={title:$('dotsScheduleTitle').value.trim(),instruction:$('dotsSchedulePrompt').value.trim(),enabled:$('dotsScheduleEnabled').checked,repeat:$('dotsScheduleRepeating').checked?$('dotsScheduleRepeat').value:'once',time:$('dotsScheduleTime').value,timezone:$('dotsScheduleTimezone').value,startDate:$('dotsScheduleStart').value,endDate:$('dotsScheduleRepeating').checked&&$('dotsScheduleEnd').value==='date'?$('dotsScheduleEndDate').value:null};
     const payload=C.request(slot,fields),error=$('dotsScheduleError');scheduleBusy=true;syncSchedulePending();error.hidden=true;
     try{await C.persist();await api('/schedules'+(id?'/'+id:''),id?'PATCH':'POST',payload);await C.releaseRequest(slot);scheduleBusy=false;closeDialog();await loadActivity(true);}
-    catch(cause){if(rejected(cause))await C.releaseRequest(slot);error.textContent=cause.message;error.hidden=false;}
+    catch(cause){if(rejected(cause))await C.releaseRequest(slot);(error as any).textContent=(cause as any).message;error.hidden=false;}
     finally{scheduleBusy=false;if(currentModal===scheduleDialog)syncSchedulePending();}
   }
   async function controlSchedule() {
     if(scheduleBusy||!scheduleValue.id)return;const slot='dotsScheduleControl:'+scheduleValue.id,payload=C.request(slot,{action:scheduleValue.enabled?'pause':'resume'}),button=scheduleDialog.querySelector('[data-dots-schedule-pause]');scheduleBusy=true;syncSchedulePending();
     try{await C.persist();const result=await api('/schedules/'+scheduleValue.id+'/control','POST',payload);await C.releaseRequest(slot);scheduleValue.enabled=result.schedule.enabled;$('dotsScheduleEnabled').checked=scheduleValue.enabled;button.textContent=scheduleValue.enabled?'暂停':'继续';await loadActivity(true);}
-    catch(cause){if(rejected(cause))await C.releaseRequest(slot);$('dotsScheduleError').textContent=cause.message;$('dotsScheduleError').hidden=false;}
+    catch(cause){if(rejected(cause))await C.releaseRequest(slot);$('dotsScheduleError').textContent=(cause as any).message;$('dotsScheduleError').hidden=false;}
     finally{scheduleBusy=false;syncSchedulePending();}
   }
   async function openOutput(id) {
@@ -1195,7 +1195,7 @@
       }
       else if(output.attachmentId)content='<p>'+esc(output.summary || output.filename)+'</p><p><a class="dots-output-download" href="'+esc(url)+'" download="'+esc(output.filename || '')+'">下载 '+esc(output.filename || '文件')+'</a></p>';
       else content='<p>'+esc(output.summary || output.title || '文件已生成，点击下方保存文件下载。')+'</p>';
-    } catch(cause){error=cause.message;}
+    } catch(cause){error=(cause as any).message;}
     outputDialog.innerHTML='<section class="dots-output-card"><header><h2>'+esc(output.filename || output.title || '任务结果')+'</h2><button type="button" class="dots-modal-close" data-dots-close-dialog aria-label="关闭">'+icon('close')+'</button></header><div class="dots-output-body message-body">'+content+(error?'<p class="dots-dialog-error">'+esc(error)+'</p>':'')+'</div><a class="dots-white-button" download href="'+esc(url)+'">'+icon('download')+'保存文件</a></section>';showDialog(outputDialog);
   }
   async function handle(e) {
@@ -1223,9 +1223,9 @@
       else if(target.hasAttribute('data-dots-schedule-pause'))await controlSchedule();
       else if(target.hasAttribute('data-dots-child-control')){await api('/goals/'+currentConversation.id+'/control','POST',{requestId:crypto.randomUUID(),action:target.dataset.dotsChildControl});await openConversation(currentConversation.id,true);await C.refresh();}
       else if(target.hasAttribute('data-dots-decision')){e.stopPropagation();const card=target.closest('[data-dots-approval]'),id=Number(card.dataset.dotsApprovalGoal),full=conversationFull;await C.decideApproval(id,card.dataset.dotsApproval,target.dataset.dotsDecision,decodeURIComponent(card.dataset.dotsApprovalCommand),approvalScope(id,Number(card.dataset.dotsApproval)));if(currentConversation?.id==id)await openConversation(id,full);}
-    } catch(error){if(target.hasAttribute('data-dots-decision')){const label=conversationDialog?.querySelector('.dots-read-error');if(label){label.textContent=error.message||String(error);label.hidden=false;}}C.showError(error);}
+    } catch(error){if(target.hasAttribute('data-dots-decision')){const label=conversationDialog?.querySelector('.dots-read-error');if(label){label.textContent=(error as any).message||String(error);label.hidden=false;}}C.showError(error);}
   }
-  const spriteImages=new Map();let pointer=null,petFrame=0;
+  const spriteImages=new Map();let pointer: any = null,petFrame=0;
   function animatePanelPet(now) {
     petFrame=0;
     if(!document.hidden&&floatingPet&&!floatingPet.hidden&&floatingPet.isConnected) {
@@ -1291,7 +1291,7 @@
     floating.id = 'dotsFloatingPet'; floating.hidden = true;
     document.body.appendChild(floating);
     // Rename lives on the pet itself (drawn above it) and reuses the existing profile/rename dialog.
-    floating.addEventListener('click',event=>{if(event.target.closest('[data-dots-pet-rename]')){event.stopPropagation();openProfile();}});
+    floating.addEventListener('click',event=>{if((event.target as any)?.closest('[data-dots-pet-rename]')){event.stopPropagation();openProfile();}});
     $('dotsActivity').addEventListener('scroll',positionPet,{passive:true});
     document.addEventListener('pointermove',event=>{if(event.pointerType!=='touch')pointer={x:event.clientX,y:event.clientY};},{passive:true});
     document.addEventListener('pointerleave',()=>{pointer=null;});window.addEventListener('blur',()=>{pointer=null;});
@@ -1325,7 +1325,7 @@
       if(snapshot.drawerOpen&&$('toggleRightWorkspace').getAttribute('aria-expanded')!=='true')C.closePanel();
     },true);
     document.addEventListener('click',e=>{
-      if(e.target.closest('.dots-dialog-overlay'))handle(e);
+      if((e.target as any)?.closest('.dots-dialog-overlay'))handle(e);
       if(currentModal&&e.target===currentModal)closeDialog();
        
 
@@ -1334,7 +1334,7 @@
       if(currentModal || previewOpen()){
         if(e.key==='Escape'){e.preventDefault();e.stopImmediatePropagation();closeDialog();return;}
         if(currentModal&&e.key==='Tab'){
-          const controls=Array.from(currentModal.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href],summary')).filter(x=>x.getClientRects().length);
+          const controls: any[] = Array.from(currentModal.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href],summary')).filter((x: any)=>x.getClientRects().length);
           const first=controls[0],last=controls.at(-1);if(e.shiftKey&&(document.activeElement===first||!currentModal.contains(document.activeElement))){e.preventDefault();last?.focus();}else if(!e.shiftKey&&(document.activeElement===last||!currentModal.contains(document.activeElement))){e.preventDefault();first?.focus();}
         }
       }
@@ -1344,9 +1344,9 @@
     window.addEventListener('shiyan-view',()=>{if(window.shiyan.getView()!=='dots'){C.closePanel();closeDialog();}});
     // Leaving Dots only hides the browser (session kept); coming back shows it again.
     window.addEventListener('shiyan-view',()=>{if(currentModal&&currentModal===browserDialog)browserDialog.hidden=window.shiyan.getView()!=='dots';});
-    reduced.addEventListener('change',()=>{const floating=$('dotsFloatingPet');if(floating){delete floating.dataset.petId;positionPet();}document.querySelectorAll('img[data-dots-pet]').forEach(img=>{const pet=petById(img.dataset.dotsPet);if(pet)img.src=imageURL(pet);});});
+    reduced.addEventListener('change',()=>{const floating=$('dotsFloatingPet');if(floating){delete floating.dataset.petId;positionPet();}document.querySelectorAll('img[data-dots-pet]').forEach((img: any)=>{const pet=petById(img.dataset.dotsPet);if(pet)img.src=imageURL(pet);});});
     window.addEventListener('shiyan-native',event=>{
-      const d=event.detail || {};if(d.type!=='voicePlaybackState' || d.sessionId!==readSession)return;
+      const d=(event as CustomEvent).detail || {};if(d.type!=='voicePlaybackState' || d.sessionId!==readSession)return;
       if(d.state==='error'||d.state==='failed'){readError(Error(d.message || '朗读未能完成，请重试'));return;}
       if(['finished','cancelled'].includes(d.state)){readSession=null;readingIndex=-1;syncReadButtons();}
     });
