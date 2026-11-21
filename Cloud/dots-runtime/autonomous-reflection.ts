@@ -44,7 +44,7 @@ export function createAutonomousReflection({db,managerId,now,stateRow,latestUser
   };
   const evidence=()=>{
     const topics=db.prepare('SELECT * FROM dots_relationship_topics WHERE manager_id=? AND memory_blocked=0 ORDER BY updated_at DESC,id').all(managerId);
-    const seen=new Set(),all=[];
+    const seen=new Set(),all: any[]=[];
     for(const topic of topics){
       let count=0;
       for(const source of evidenceFor(topic)){
@@ -56,7 +56,7 @@ export function createAutonomousReflection({db,managerId,now,stateRow,latestUser
     // Fingerprint ALL eligible original content, not its title, timestamp,
     // database ID, alias topic or only the bounded prompt selection.
     const corpusKey=all.length?hash(JSON.stringify([...seen].sort())):null;
-    const topicIds=new Set(),materials=[];
+    const topicIds=new Set(),materials: any[]=[];
     for(const fact of all){
       if(!fact.selected)continue;
       if(!topicIds.has(fact.topicId)&&topicIds.size>=6)continue;
@@ -109,7 +109,7 @@ export function createAutonomousReflection({db,managerId,now,stateRow,latestUser
     const ordinary=db.prepare("SELECT id,content,responds_to_message_ids FROM manager_messages WHERE manager_id=? AND role='assistant' AND delivery_state='completed' ORDER BY id").all(managerId)
       .filter(message=>{const ids=parse(message.responds_to_message_ids,[]);return ids.some(id=>sourceIds.has(id))&&!ids.some(id=>forgotten.has(id));})
       .map(message=>({id:message.id,content:message.content}));
-    const proactive=[];
+    const proactive: any[]=[];
     for(const delivery of db.prepare("SELECT d.message_id,d.topic_id,d.new_value,m.content FROM dots_relationship_deliveries d JOIN manager_messages m ON m.id=d.message_id AND m.manager_id=d.manager_id WHERE d.manager_id=? AND d.new_value<>'' AND m.delivery_state='completed' ORDER BY d.message_id").all(managerId)){
       if(!topicRow(delivery.topic_id)||topicRow(delivery.topic_id).memory_blocked)continue;
       const priorThought=db.prepare('SELECT materials_json FROM dots_relationship_reflections WHERE manager_id=? AND message_id=?').get(managerId,delivery.message_id);
@@ -135,12 +135,12 @@ export function createAutonomousReflection({db,managerId,now,stateRow,latestUser
     }
   };
   const finish=(context,decision,publish)=>{
-    const work=context?.reflection&&row(context.reflection.id),materials=work?parse(work.materials_json,[]):[];
+    const work: any=context?.reflection&&row(context.reflection.id),materials=work?parse(work.materials_json,[]):[];
     const current=conversation();
     const noInput=!db.prepare('SELECT 1 FROM manager_inbox WHERE manager_id=? AND consumed_at IS NULL LIMIT 1').get(managerId);
     const noStream=!db.prepare("SELECT 1 FROM manager_messages WHERE manager_id=? AND delivery_state='streaming' LIMIT 1").get(managerId);
     const currentWork=work?.state==='claimed'&&work.run_id===context.reflection.run_id&&valid(work)&&noInput&&noStream&&current.awaitingUserInput!==true&&!current.ordinaryWork;
-    let state=currentWork?'discarded':'invalidated',reason=text(decision?.reason).slice(0,500),message=null;
+    let state=currentWork?'discarded':'invalidated',reason=text(decision?.reason).slice(0,500),message: any=null;
     const content=text(decision?.message),insight=text(decision?.insight),quotes=Array.isArray(decision?.source_quotes)?decision.source_quotes:[];
     const citations=quotes.map(ref=>materials.find(fact=>ref?.message_id===fact.messageId&&typeof ref.quote==='string'&&normalizedText(ref.quote).length>=8&&fact.quote.includes(ref.quote)));
     const grounded=quotes.length>=1&&quotes.length<=8&&citations.every(Boolean);
@@ -155,7 +155,7 @@ export function createAutonomousReflection({db,managerId,now,stateRow,latestUser
       const repeated=replies.some(reply=>connectionAlreadyCovered(insight,reply.content)||connectionAlreadyCovered(content,reply.content))||previous.some(reply=>connectionAlreadyCovered(insight,reply.new_value))||previousMessages.some(reply=>normalizedText(reply.content)===normalizedText(content));
       const copied=materials.some(fact=>connectionAlreadyCovered(insight,fact.quote)||normalizedText(fact.quote)===normalizedText(content));
       const rendered=normalizedText(content);
-      const usesSources=citations.filter(Boolean).every(fact=>[...contentAnchors(fact.quote)].some(term=>rendered.includes(term)));
+      const usesSources=citations.filter(Boolean).every(fact=>[...contentAnchors(fact.quote)].some(term=>rendered.includes(String(term))));
       const pressure=/(?:怎么|为什么|为何).{0,10}(?:不回|没回|不理)|(?:还没|还没有).{0,6}(?:回复|回答)|我一直在等|不理我|再问你一次/.test(content);
       if(content&&content.length<=1200&&insight.length>=12&&insight.length<=1400&&reason&&text(decision.not_covered_by_history).length>=8&&decision.conversation_appropriate===true&&grounded&&enoughSources&&usesSources&&!unsafe.test(content+insight)&&!repeated&&!copied&&!pressure){
         const topicId=citations[0].topicId;

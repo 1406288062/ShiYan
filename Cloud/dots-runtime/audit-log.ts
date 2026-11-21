@@ -23,7 +23,7 @@ export function createAuditLog(db, { now = () => Math.floor(Date.now() / 1000) }
   function list(managerId, { before = null, limit = 50, category = null } = {}) {
     limit = Math.max(1, Math.min(200, Number(limit) || 50));
     const cutoff = Number.isFinite(Number(before)) && Number(before) > 0 ? Number(before) : now() + 1;
-    const out = [];
+    const out: any[] = [];
     if (!category || category === 'action') for (const row of db.prepare(`SELECT a.id,a.payload,a.state,a.result,a.started_at,a.finished_at,r.goal_id,g.title FROM manager_actions a
         JOIN manager_runs r ON r.id=a.run_id LEFT JOIN goals g ON g.id=r.goal_id
         WHERE r.manager_id=? AND COALESCE(a.finished_at,a.started_at)<? ORDER BY COALESCE(a.finished_at,a.started_at) DESC LIMIT ?`).all(managerId, cutoff, limit)) {

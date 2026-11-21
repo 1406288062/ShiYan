@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createDotsHub, dotsConsumer } from './dots-hub.ts';
 
-const client = (route, reply = {}) => {
-  const calls = [];
+const client = (route, reply: any = {}) => {
+  const calls: any[] = [];
   return { calls, route: async consumer => { calls.push(['route', consumer]); return route; },
     infer: async (consumer, body, options) => { calls.push(['infer', consumer, body, options]); if (reply.error) throw new Error(reply.error); return { finalResponse: reply.text ?? '{"ok":true}' }; } };
 };
@@ -34,7 +34,7 @@ test('Claude 路由：交给中枢，返回解析好的 JSON，并带上取消�
   const controller = new AbortController();
   const out = await createDotsHub(c).plan('dots-github-summary', { data: '提示词', schema: { type: 'object' }, signal: controller.signal });
   assert.deepEqual(out, { result: { action: 'discard', reason: '测试' } });
-  const infer = c.calls.find(call => call[0] === 'infer');
+  const infer = c.calls.find(call => call[0] === 'infer')!;
   assert.equal(infer[1], 'dots.github'); assert.deepEqual(infer[2], { prompt: '提示词', outputSchema: { type: 'object' } }); assert.equal(infer[3].signal, controller.signal);
 });
 

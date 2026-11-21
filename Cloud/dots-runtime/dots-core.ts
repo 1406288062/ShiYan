@@ -56,7 +56,7 @@ function json(res, code, body) {
   res.end(text);
 }
 async function body(req) {
-  const chunks=[];
+  const chunks: any[]=[];
   for await (const c of req) chunks.push(c);
   return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
 }
@@ -94,7 +94,7 @@ async function wake(id, trigger="manual") {
       headers:{"authorization":"Bearer "+CODEX_TOKEN,"content-type":"application/json"},
       body:JSON.stringify({prompt,threadKey:"dots:"+id,threadId:g.thread_id||undefined,reasoningEffort:"medium"})
     });
-    const data=await r.json();
+    const data: any=await r.json();
     if(!r.ok || !data.ok) throw new Error(data.error || "codex failed");
     const answer=String(data.finalResponse||"");
     const finished=now();
@@ -105,9 +105,9 @@ async function wake(id, trigger="manual") {
     return {ok:true,goalId:id,response:answer,nextRunAt:nextRun(goal(id))};
   } catch(e) {
     const finished=now();
-    db.prepare("UPDATE runs SET status='error',finished_at=?,error=? WHERE id=?").run(finished,String(e?.message||e),run.lastInsertRowid);
-    db.prepare("INSERT INTO inbox(goal_id,message,created_at) VALUES(?,?,?)").run(id,"Run failed: "+String(e?.message||e),finished);
-    return {ok:false,error:String(e?.message||e)};
+    db.prepare("UPDATE runs SET status='error',finished_at=?,error=? WHERE id=?").run(finished,String((e as any)?.message||e),run.lastInsertRowid);
+    db.prepare("INSERT INTO inbox(goal_id,message,created_at) VALUES(?,?,?)").run(id,"Run failed: "+String((e as any)?.message||e),finished);
+    return {ok:false,error:String((e as any)?.message||e)};
   } finally {
     busy.delete(id);
   }
@@ -150,6 +150,6 @@ http.createServer(async(req,res)=>{
     }
     return json(res,404,{ok:false,error:"not found"});
   } catch(e) {
-    return json(res,500,{ok:false,error:String(e?.message||e)});
+    return json(res,500,{ok:false,error:String((e as any)?.message||e)});
   }
 }).listen(PORT,HOST,()=>console.log("dots-core listening on 127.0.0.1:"+PORT));

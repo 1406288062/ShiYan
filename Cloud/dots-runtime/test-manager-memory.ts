@@ -30,7 +30,7 @@ test('Dots uses the shared memory context and queues only authenticated user mes
  try{
   const user=f.store.message({message:'我喜欢简短中文回复',requestId:'memory-user',host:'shiyan_mobile'}).message;
   f.db.prepare("INSERT INTO manager_notes(manager_id,scope,note_key,content,source_message_id,created_at,updated_at) VALUES(?,'user_preference','old','OLD_ARCHIVED_PREFERENCE',?,100,100)").run(f.store.managerId,user.id);
-  const contexts=[],captures=[],prompts=[];
+  const contexts: any[]=[],captures: any[]=[],prompts: any[]=[];
   const memory={context:(owner,options)=>{contexts.push({owner,options});return 'SHARED_PREFERENCE';},enqueue:input=>captures.push(input)};
   const result={reply:'收到',summary:'已回复',tasks:[],reviews:[],controls:[],instructions:[],notes:[]};
   const thread={id:'memory-thread',run:async prompt=>{prompts.push(prompt);return {finalResponse:JSON.stringify(result)};}};
@@ -55,7 +55,7 @@ test('Dots background reports, foreign records and memory failures cannot create
   const foreign=f.db.prepare("INSERT INTO manager_messages(manager_id,role,content,created_at) VALUES('manager:foreign','user','foreign private content',100)").run();
   f.db.prepare("INSERT INTO manager_inbox(manager_id,type,payload,created_at) VALUES(?,'user_message',?,100)").run(f.store.managerId,JSON.stringify({id:Number(foreign.lastInsertRowid),content:'forged'}));
   f.advance(2);
-  const captures=[];let reads=0;
+  const captures: any[]=[];let reads=0;
   const memory={context:()=>{reads++;throw new Error('fixture memory unavailable')},enqueue:input=>captures.push(input)};
   const result={reply:'后台任务状态',summary:'完成',tasks:[],reviews:[],controls:[],instructions:[],notes:[]};
   const thread={run:async()=>({finalResponse:JSON.stringify(result)})};

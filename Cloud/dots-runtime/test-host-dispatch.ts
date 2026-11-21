@@ -10,7 +10,7 @@ const actionSource = source.slice(source.indexOf('async function executeSafeActi
 const action = command => ({type:'inspect_host', command, path:'', content:'', reason:'User requested a current-host read-only check'});
 function fixture(execFile, durable = false) {
   let status = 'active';
-  const receipts = [];
+  const receipts: any[] = [];
   const store = {
     isCurrent:() => true,
     beginAction:(_run, ordinal) => ({id:'inspection:'+ordinal, state:'started'}),
@@ -28,7 +28,7 @@ function fixture(execFile, durable = false) {
   };
 }
 test('actual dispatcher returns a current-host receipt without an approval or workspace container', async () => {
-  const commands = [];
+  const commands: any[] = [];
   const f = fixture((binary,args,options,callback) => {
     commands.push({binary,args,options}); callback(null, 'actual fixed-command output', '');
   }, true);
