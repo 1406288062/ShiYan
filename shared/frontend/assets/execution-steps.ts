@@ -2,7 +2,7 @@
 // 步骤标题和说明由服务端按内容生成并缓存，拿到之前先显示原始标题。
 (() => {
  'use strict';
- const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ const esc = (v: any) => String(v ?? '').replace(/[&<>"']/g, (c: string): string => (({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'} as Record<string,string>)[c]));
  const limit=(v,n=4000)=>{const s=String(v??'');return s.length>n?s.slice(0,n)+'…':s;};
  const STATUS={done:['已完成','is-done'],running:['进行中','is-running'],failed:['未完成','is-failed'],waiting:['等待确认','is-waiting']};
  const cache=new Map();
@@ -28,7 +28,7 @@
  const ACTIONS={mac_codex:'在 Mac 上执行',host_command:'执行命令',write_file:'写入文件',append_file:'追加文件',mkdir:'创建目录',delete_file:'删除文件',run_command:'执行命令',inspect_host:'检查运行环境'};
  // Dots 任务时间线 → 步骤
  function fromTimeline(timeline){
-  const out=[];
+  const out: any[] = [];
   for(const entry of timeline||[]){
    const kind=entry.kind||'';if(!['tool_action','tool_error','approval_executed','approval_failed','approval_unknown'].includes(kind))continue;
    let data=entry.data;if(typeof data==='string'){try{data=JSON.parse(data);}catch{data={};}}data=data&&typeof data==='object'?data:{};
@@ -71,9 +71,9 @@
    '</div><div class="xs-detail" hidden></div></div>';
   const list=container.querySelector('.xs-list'),detail=container.querySelector('.xs-detail');
   container.onclick=e=>{
-   const row=e.target.closest('[data-xs-step]');
+   const row=(e as any).target.closest('[data-xs-step]');
    if(row){const step=steps.find(s=>s.id===row.dataset.xsStep);if(!step)return;detail.innerHTML=detailHTML(step,(cache.get(key)||{})[step.id]);list.hidden=true;detail.hidden=false;detail.scrollIntoView?.({block:'start'});detail.querySelector('[data-xs-back]')?.focus({preventScroll:true});return;}
-   if(e.target.closest('[data-xs-back]')){detail.hidden=true;list.hidden=false;return;}
+   if((e as any).target.closest('[data-xs-back]')){detail.hidden=true;list.hidden=false;return;}
   };
   // 中间的结果只显示简短总结，不照搬模型原文。
   if(result&&!roundCache.has(resultKey))summarizeRounds([{id:resultKey,prompt:o.prompt||o.title||'',reply:result}]).then(map=>{const box=container.querySelector('[data-xs-result]');if(!box||container.dataset.xsKey!==key)return;const text=map[resultKey];box.textContent=text||limit(result,100);});
@@ -110,21 +110,21 @@
   const overlay=document.createElement('div');overlay.className='xs-modal-overlay';
   overlay.innerHTML='<div class="xs-modal xs-page" role="dialog" aria-modal="true" aria-label="执行过程"><header class="xs-modal-head"><div><span class="xs-badge '+cls+'">'+label+'</span><h1>'+esc(o.title||'执行过程')+'</h1></div><button type="button" class="xs-modal-close" data-xs-close aria-label="关闭">'+closeIcon+'</button></header><div class="xs-modal-body"><nav class="xs-modal-list"><ol>'+all.map(row).join('')+'</ol></nav><section class="xs-modal-detail" tabindex="-1"></section></div></div>';
   document.body.appendChild(overlay);
-  const detail=overlay.querySelector('.xs-modal-detail');let current=steps[0]?.id||'__end';
-  const select=id=>{const step=all.find(s=>s.id===id);if(!step)return;current=id;for(const b of overlay.querySelectorAll('[data-xs-select]')){const on=b.dataset.xsSelect===id;b.classList.toggle('is-selected',on);b.setAttribute('aria-current',on?'true':'false');if(on)b.scrollIntoView?.({block:'nearest'});}detail.innerHTML=modalDetail(step,(cache.get(key)||{})[id],o);detail.scrollTop=0;};
+  const detail: any = overlay.querySelector('.xs-modal-detail');let current=steps[0]?.id||'__end';
+  const select=id=>{const step=all.find(s=>s.id===id);if(!step)return;current=id;for(const b of ([...overlay.querySelectorAll('[data-xs-select]')] as any[])){const on=b.dataset.xsSelect===id;b.classList.toggle('is-selected',on);b.setAttribute('aria-current',on?'true':'false');if(on)b.scrollIntoView?.({block:'nearest'});}detail.innerHTML=modalDetail(step,(cache.get(key)||{})[id],o);detail.scrollTop=0;};
   const close=()=>{overlay.remove();document.removeEventListener('keydown',onKey,true);o.onClose?.();};
-  const onKey=e=>{if(!overlay.isConnected)return document.removeEventListener('keydown',onKey,true);if(e.key==='Escape'){e.preventDefault();e.stopPropagation();close();return;}if((e.key==='ArrowDown'||e.key==='ArrowUp')&&!e.target.closest?.('input,textarea')){e.preventDefault();const i=all.findIndex(s=>s.id===current);const next=all[Math.max(0,Math.min(all.length-1,i+(e.key==='ArrowDown'?1:-1)))];select(next.id);overlay.querySelector('[data-xs-select="'+CSS.escape(next.id)+'"]')?.focus({preventScroll:true});}};
+  const onKey=e=>{if(!overlay.isConnected)return document.removeEventListener('keydown',onKey,true);if(e.key==='Escape'){e.preventDefault();e.stopPropagation();close();return;}if((e.key==='ArrowDown'||e.key==='ArrowUp')&&!(e as any).target.closest?.('input,textarea')){e.preventDefault();const i=all.findIndex(s=>s.id===current);const next=all[Math.max(0,Math.min(all.length-1,i+(e.key==='ArrowDown'?1:-1)))];select(next.id);(overlay.querySelector('[data-xs-select="'+CSS.escape(next.id)+'"]') as any)?.focus({preventScroll:true});}};
   document.addEventListener('keydown',onKey,true);
   overlay.addEventListener('click',async e=>{
-   if(e.target===overlay||e.target.closest('[data-xs-close]')){close();return;}
-   const pick=e.target.closest('[data-xs-select]');if(pick){select(pick.dataset.xsSelect);return;}
-   const copy=e.target.closest('[data-xs-copy]'),dl=e.target.closest('[data-xs-download]');
+   if(e.target===overlay||(e as any).target.closest('[data-xs-close]')){close();return;}
+   const pick=(e as any).target.closest('[data-xs-select]');if(pick){select(pick.dataset.xsSelect);return;}
+   const copy=(e as any).target.closest('[data-xs-copy]'),dl=(e as any).target.closest('[data-xs-download]');
    if(copy||dl){const text=(copy||dl).closest('.xs-code').querySelector('pre').textContent;
     if(dl){const url=URL.createObjectURL(new Blob([text],{type:'text/plain;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download=dl.dataset.xsDownload||'step.txt';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);return;}
     try{if(window.shiyan?.copyText)await window.shiyan.copyText(text);else await navigator.clipboard.writeText(text);copy.classList.add('is-copied');copy.innerHTML=check;setTimeout(()=>{copy.classList.remove('is-copied');copy.innerHTML=copyIcon;},1400);}catch{}}
   });
-  select(current);overlay.querySelector('[data-xs-close]').focus({preventScroll:true});
-  if(steps.length&&!cache.has(key))window.shiyan?.api?.('/api/dots/steps/summary','POST',{steps}).then(res=>{const map={};for(const s of res?.steps||[])map[s.id]=s;cache.set(key,map);if(!overlay.isConnected)return;for(const b of overlay.querySelectorAll('[data-xs-select]')){const v=map[b.dataset.xsSelect];if(v)b.querySelector('[data-xs-title]').textContent=v.title;}select(current);}).catch(()=>{});
+  select(current);(overlay.querySelector('[data-xs-close]') as any).focus({preventScroll:true});
+  if(steps.length&&!cache.has(key))window.shiyan?.api?.('/api/dots/steps/summary','POST',{steps}).then(res=>{const map={};for(const s of res?.steps||[])map[s.id]=s;cache.set(key,map);if(!overlay.isConnected)return;for(const b of ([...overlay.querySelectorAll('[data-xs-select]')] as any[])){const v=map[b.dataset.xsSelect];if(v)b.querySelector('[data-xs-title]').textContent=v.title;}select(current);}).catch(()=>{});
   return {close,select};
  }
  // 每轮“在干嘛 / 结果总结”，按 id 缓存。
