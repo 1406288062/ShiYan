@@ -74,6 +74,7 @@ export function prepareScheduleMutation(store,owner,mutation,auth) {
 }
 
 export class SyncedSchedules {
+  store: any;
   constructor(store){
     this.store=store;store.db.exec(`CREATE TABLE IF NOT EXISTS schedule_hosts(owner TEXT NOT NULL,device TEXT NOT NULL,seen_at INTEGER NOT NULL,data TEXT NOT NULL,PRIMARY KEY(owner,device));
       CREATE TABLE IF NOT EXISTS schedule_host_sessions(owner TEXT NOT NULL,session_id TEXT NOT NULL,device TEXT NOT NULL,PRIMARY KEY(owner,session_id));
@@ -120,7 +121,7 @@ export class SyncedSchedules {
     const host=this.store.db.prepare('SELECT * FROM schedule_hosts WHERE owner=? ORDER BY seen_at DESC LIMIT 1').get(auth.owner);
     return {ok:true,tasks:rows.map(r=>({...JSON.parse(r.data),revision:Number(r.revision)})),host:memberExecution(auth)?{deviceId:'isolated',deviceName:'独立工作区',online:true,local:[],cloud:verifiedCatalog(),executionMode:'isolated'}:host?{deviceId:host.device,online:Date.now()-host.seen_at<45000,...JSON.parse(host.data)}:null};
   }
-  mutate(auth,input,taskId=null,remove=false){
+  mutate(auth,input,taskId: any=null,remove=false){
     if(!id(input.requestId)||!id(input.id||taskId)||!Number.isSafeInteger(input.revision)||input.revision<0)throw fail('缺少有效请求标识或版本');
     const identifier=taskId||input.id;
     const data=input.task||{};

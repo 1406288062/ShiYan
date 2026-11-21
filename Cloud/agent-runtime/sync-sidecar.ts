@@ -15,15 +15,15 @@ const ROOT=process.env.SHIYAN_ROOT||'/home/ubuntu/boss-codex-service/shiyan-v2';
 const PORT=Number(process.env.SHIYAN_SYNC_PORT||4324);
 const fail=(message,status=400)=>Object.assign(new Error(message),{status});
 const json=(res,status,value)=>{const data=JSON.stringify(value);res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Content-Length':Buffer.byteLength(data)});res.end(data);};
-async function body(req,max){let total=0;const chunks=[];for await(const chunk of req){total+=chunk.length;if(total>max)throw fail('上传内容过大',413);chunks.push(chunk);}const data=Buffer.concat(chunks);if(digest(data)!==req.headers['x-shiyan-body-sha'])throw fail('请求校验失败',401);try{return JSON.parse(data.toString()||'{}');}catch{throw fail('请求格式无效');}}
+async function body(req,max){let total=0;const chunks: Buffer[]=[];for await(const chunk of req){total+=chunk.length;if(total>max)throw fail('上传内容过大',413);chunks.push(chunk);}const data=Buffer.concat(chunks);if(digest(data)!==req.headers['x-shiyan-body-sha'])throw fail('请求校验失败',401);try{return JSON.parse(data.toString()||'{}');}catch{throw fail('请求格式无效');}}
 
 export function createSyncSidecar({root=ROOT,authenticate=authenticateDevice,store=new SyncStore(path.join(root,'data')),runtimeWrites=process.env.SHIYAN_SYNC_RUNTIME_WRITES==='1'}={}){
-  let state={jobs:{},conversations:{},assets:{},requests:{}},version='';
+  let state: any={jobs:{},conversations:{},assets:{},requests:{}},version='';
   const resolvePaths=createFilePathResolver(root,store,{stateFallback:!runtimeWrites});
   const supplementChanges=createRemoteFileChangeProjector(root,store);
   const schedules=new SyncedSchedules(store);
   const jobVersions=new Map();
-  const materialize=(force=false,owner=null)=>{for(const job of Object.values(state.jobs||{})){
+  const materialize=(force=false,owner=null)=>{for(const job of (Object.values(state.jobs||{}) as any[])){
     if(owner&&job.owner!==owner)continue;
     const conversation=state.conversations?.[job.conversationKey];
     const fingerprint=[job.updatedAt,job.status,job.threadId,conversation?.threadId,conversation?.title].join(':');
@@ -41,16 +41,16 @@ export function createSyncSidecar({root=ROOT,authenticate=authenticateDevice,sto
   const server=http.createServer(async(req,res)=>{
     try{
       const auth=authenticate(req);if(!auth)return json(res,401,{ok:false,error:'服务连接未获授权'});
-      const url=new URL(req.url,'http://localhost'),pathname=url.pathname.replace(/^\/shiyan/,'');const owner=auth.owner;
+      const url=new URL(req.url||'/','http://localhost'),pathname=url.pathname.replace(/^\/shiyan/,'');const owner=auth.owner;
       const mobile=auth.platform==='ios'||req.headers['x-shiyan-sync-profile']==='mobile';
       // A compact desktop response must keep macOS execution authorization.
       const compact=mobile||req.headers['x-shiyan-sync-profile']==='compact';
       const projectChange=change=>{const resolved=resolvePaths(reconcileSyncImageResult(change,owner,store),owner);return compact?mobileSyncChange(resolved):resolved;};
       const fullProject=async change=>{const resolved=await supplementChanges(resolvePaths(reconcileSyncImageResult(change,owner,store),owner),owner);return compact?mobileSyncChange(resolved):resolved;};
       const project=async response=>{
-        const changes=[];
+        const changes: any[]=[];
         for(const change of response.changes)changes.push(await fullProject(change));
-        const conflicts=[];
+        const conflicts: any[]=[];
         for(const conflict of response.conflicts||[])conflicts.push({...conflict,current:conflict.current?await fullProject(conflict.current):conflict.current});
         return {...response,changes,...(response.conflicts?{conflicts}:{})};
       };
@@ -83,15 +83,15 @@ export function createSyncSidecar({root=ROOT,authenticate=authenticateDevice,sto
       const scheduled=pathname.match(/^\/v1\/sync\/schedules(?:\/([A-Za-z0-9_-]{1,120}))?(?:\/(claim))?$/);
       if(req.method==='POST'&&pathname==='/v1/sync/schedules/host')return json(res,200,schedules.host(auth,await body(req,256*1024)));
       if(req.method==='GET'&&pathname==='/v1/sync/schedules')return json(res,200,schedules.listing(auth));
-      if(scheduled&&['POST','PATCH','DELETE'].includes(req.method)){
+      if(scheduled&&['POST','PATCH','DELETE'].includes(req.method||'')){
         const input=await body(req,256*1024);
         if(scheduled[2]==='claim'&&req.method!=='POST')return json(res,405,{ok:false,error:'执行声明只接受 POST'});
         if(scheduled[2]==='claim'&&req.method==='POST')return json(res,200,schedules.claim(auth,scheduled[1],input));
         return json(res,200,schedules.mutate({...auth,mobile},input,scheduled[1],req.method==='DELETE'));
       }
       if(req.method==='GET'&&pathname==='/v1/sync'){
-        const after=url.searchParams.get('after')||0;
-        return json(res,200,await projectPage(store.list(owner,after,url.searchParams.get('limit')||200,{mobile,projectChange,includeOrder:true}),after));
+        const after=Number(url.searchParams.get('after')||0);
+        return json(res,200,await projectPage(store.list(owner,after,Number(url.searchParams.get('limit')||200),{mobile,projectChange,includeOrder:true}),after));
       }
       const details=pathname.match(/^\/v1\/sync\/messages\/([A-Za-z0-9_-]{1,120})\/details$/);
       if(req.method==='GET'&&details){
@@ -106,7 +106,7 @@ export function createSyncSidecar({root=ROOT,authenticate=authenticateDevice,sto
         // Validate original identity before any hydration/archive work. apply()
         // checks again in its transaction, including races with another writer.
         const replayed=new Set(input.mutations.filter(mutation=>store.hasMutation(owner,mutation)));
-        const unresolved=[];
+        const unresolved: any[]=[];
         let mutations=input.mutations.map(original=>{
           if(replayed.has(original))return original;
           const compactMutation=hydrateCompactMutation(original,owner,store);
@@ -117,12 +117,12 @@ export function createSyncSidecar({root=ROOT,authenticate=authenticateDevice,sto
         });
         // Runtime-backed sync must never replay the entire execution archive.
         // Legacy/missing bindings are resolved only for this request's jobs.
-        const requestState=runtimeWrites?{jobs:{},conversations:{},assets:{},requests:{}}:state;
+        const requestState: any=runtimeWrites?{jobs:{},conversations:{},assets:{},requests:{}}:state;
         if(runtimeWrites&&unresolved.length){
           let archive;
           archive=combinedRuntimeState(['state.json','member-runtime-state.json'].map(name=>{
             try{return JSON.parse(readFileSync(path.join(root,'data',name),'utf8'));}
-            catch(error){if(error.code!=='ENOENT')throw error;return null;}
+            catch(error){if((error as any).code!=='ENOENT')throw error;return null;}
           }));
           for(const mutation of unresolved){
             const data=mutation.data;
@@ -140,7 +140,7 @@ export function createSyncSidecar({root=ROOT,authenticate=authenticateDevice,sto
         mutations=mutations.map((mutation,i)=>replayed.has(input.mutations[i])?mutation:hydrateMutation(mutation,owner,requestState));
         const result=store.apply(owner,mutations,after,limit,{...auth,mobile},{includeDelta:false});
         if(!runtimeWrites)materialize(true,owner);
-        else for(const job of Object.values(requestState.jobs))materializeJob(store,job,requestState.conversations[job.conversationKey]);
+        else for(const job of (Object.values(requestState.jobs) as any[]))materializeJob(store,job,requestState.conversations[job.conversationKey]);
         const delta=await projectPage(store.list(owner,after,limit,{mobile,projectChange,includeOrder:true}),after);
         return json(res,200,await project(withAcceptedSnapshots({...result,...delta},store,owner)));
       }
@@ -152,10 +152,10 @@ export function createSyncSidecar({root=ROOT,authenticate=authenticateDevice,sto
         const bytes=readFileSync(asset.file);return sendSyncAsset(res,url,asset,bytes);
       }
       return json(res,404,{ok:false,error:'接口不存在'});
-    }catch(error){if(!res.headersSent)json(res,error.status||500,{ok:false,error:String(error.message||error).slice(0,1000)});else res.end();}
+    }catch(error){if(!res.headersSent)json(res,(error as any).status||500,{ok:false,error:String((error as any).message||error).slice(0,1000)});else res.end();}
     finally{if(runtimeWrites){state={jobs:{},conversations:{},assets:{},requests:{}};version='';}}
   });
-  const timer=runtimeWrites?null:setInterval(()=>{try{refresh();}catch(error){console.error('[SyncRefresh]',String(error.message||error).slice(0,200));}},1500);timer?.unref();
+  const timer=runtimeWrites?null:setInterval(()=>{try{refresh();}catch(error){console.error('[SyncRefresh]',String((error as any).message||error).slice(0,200));}},1500);timer?.unref();
   server.on('close',()=>{if(timer)clearInterval(timer);store.close();});
   return server;
 }
