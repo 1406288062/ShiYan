@@ -4,9 +4,9 @@ import {readFileSync,existsSync,writeFileSync,renameSync} from 'node:fs';
 export const emptyRuntimeState=(): any=>({jobs:{},conversations:{},assets:{},requests:{},cancelledRequests:{}});
 export function partitionRuntimeState(source,includeOwner){
   const result=emptyRuntimeState();
-  for(const kind of ['jobs','conversations','assets'])for(const [id,value] of Object.entries(source?.[kind]||{}))
+  for(const kind of ['jobs','conversations','assets'])for(const [id,value] of (Object.entries(source?.[kind]||{}) as [string, any][]))
     if(value?.owner&&includeOwner(value.owner))result[kind][id]=value;
-  for(const [key,id] of Object.entries(source?.requests||{}))if(result.jobs[id])result.requests[key]=id;
+  for(const [key,id] of (Object.entries(source?.requests||{}) as [string, any][]))if(result.jobs[id])result.requests[key]=id;
   for(const [key,value] of Object.entries(source?.cancelledRequests||{})){
     const separator=key.lastIndexOf(':');
     if(separator>0&&includeOwner(key.slice(0,separator)))result.cancelledRequests[key]=value;
