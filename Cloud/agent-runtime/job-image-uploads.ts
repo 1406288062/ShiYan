@@ -22,6 +22,7 @@ async function locked(key, action) {
 }
 
 export class JobImageUploads {
+  root: string;
   constructor(dataDirectory) {
     this.root = path.resolve(dataDirectory, 'job-image-uploads');
   }
@@ -100,7 +101,7 @@ export class JobImageUploads {
       let metadata;
       try { metadata = await this.load(directory, id); }
       catch (error) {
-        if (error.status !== 404) throw error;
+        if ((error as any).status !== 404) throw error;
         if (input.offset !== 0) throw failure('图片上传位置不匹配', 409);
         await this.prepare(directory);
         metadata = {id, sha256: id, offset: 0, total: input.total, suffix: input.suffix, complete: false};
