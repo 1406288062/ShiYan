@@ -16,10 +16,10 @@ function addMailLink(links,byURL,raw,text=''){
  const value={...link,...(label?{text:label}:{})};links.push(value);byURL.set(link.url,value);
 }
 export function decodeMailBody({content='',type='text/plain',truncated=false}){
- const links=[],byURL=new Map(),add=(raw,text)=>addMailLink(links,byURL,raw,text);
+ const links: any[]=[],byURL=new Map(),add=(raw,text='')=>addMailLink(links,byURL,raw,text);
  let text=String(content).slice(0,MAX_BODY_BYTES);
  if(type==='text/html'){
-  let anchor=null;
+  let anchor: { href: string; text: string; fallback: string } | null = null;
   const finishAnchor=()=>{if(anchor){add(anchor.href,anchor.text.trim()||anchor.fallback);anchor=null;}};
   const p=new Parser({
    onopentag(name,attrs){
@@ -38,7 +38,7 @@ export function decodeMailBody({content='',type='text/plain',truncated=false}){
 }
 function normalizeMailText(value){
  const lines=String(value??'').replace(/\r\n?/g,'\n').replace(/[\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]/g,' ').replace(/[\u200b-\u200d\ufeff]/g,'').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u202a-\u202e\u2066-\u2069]/g,'').split('\n').map(line=>line.replace(/[ \t]+/g,' ').trim());
- const paragraphs=[];let current=[];
+ const paragraphs: string[]=[];let current: string[]=[];
  const flush=()=>{if(!current.length)return;const value=current.join('\n').trim();current=[];if(!value)return;if(paragraphs.length&&paragraphs[paragraphs.length-1].replace(/\s+/g,' ').toLowerCase()===value.replace(/\s+/g,' ').toLowerCase())return;paragraphs.push(value);};
  for(const line of lines){if(!line)flush();else current.push(line);}flush();
  const canonical=value=>value.toLowerCase().replace(/[\s.,:;!?，。！？、]/g,'');
@@ -46,17 +46,17 @@ function normalizeMailText(value){
  return paragraphs.join('\n\n').replace(/\n{3,}/g,'\n\n').trim();
 }
 function mailBodyQuality(text){const value=String(text||''),compact=value.replace(/\s+/g,' ').trim();if(!compact)return 0;const lines=value.split('\n'),nonEmpty=lines.filter(line=>line.trim());const blank=lines.length-nonEmpty.length;const longLines=nonEmpty.filter(line=>line.length>240).length;return compact.length/(value.length||1)-Math.min(.35,blank/Math.max(1,lines.length)*.5)-Math.min(.25,longLines/Math.max(1,nonEmpty.length)*.08);}
-export function selectMailPart(structure,preferred=null){
- const nodes=[];const walk=(node,depth=0)=>{if(!node||depth>20||String(node.disposition||'').toLowerCase()==='attachment'||node.dispositionParameters?.filename||node.parameters?.name||node.type==='message/rfc822')return;if(['text/plain','text/html'].includes(node.type))nodes.push(node);for(const child of node.childNodes||[])walk(child,depth+1);};walk(structure);
+export function selectMailPart(structure: any,preferred: string | null = null){
+ const nodes: any[]=[];const walk=(node,depth=0)=>{if(!node||depth>20||String(node.disposition||'').toLowerCase()==='attachment'||node.dispositionParameters?.filename||node.parameters?.name||node.type==='message/rfc822')return;if(['text/plain','text/html'].includes(node.type))nodes.push(node);for(const child of node.childNodes||[])walk(child,depth+1);};walk(structure);
  return preferred?nodes.find(node=>node.type===preferred)||null:nodes.find(node=>node.type==='text/plain')||nodes.find(node=>node.type==='text/html')||null;
 }
 export async function readMailBody(client,mail){
- const parts=[selectMailPart(mail.bodyStructure,'text/plain'),selectMailPart(mail.bodyStructure,'text/html')].filter(Boolean),bodies=[];
+ const parts: any[]=[selectMailPart(mail.bodyStructure,'text/plain'),selectMailPart(mail.bodyStructure,'text/html')].filter(Boolean),bodies: any[]=[];
  if(!parts.length)return {text:'',links:[],truncated:false};
  for(const part of parts){
   const download=await client.download(mail.uid,part.part||'1',{uid:true,maxBytes:MAX_BODY_BYTES});
   if(!download?.content)throw Error('mail_body_unavailable');
-  const chunks=[];let bytes=0;
+  const chunks: Buffer[]=[];let bytes=0;
   for await(const chunk of download.content){const buffer=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);bytes+=buffer.length;if(bytes>MAX_BODY_BYTES){download.content.destroy();throw Error('mail_body_limit_exceeded');}chunks.push(buffer);}
   bodies.push(decodeMailBody({content:Buffer.concat(chunks).toString('utf8'),type:part.type,truncated:bytes>=MAX_BODY_BYTES}));
  }
@@ -72,12 +72,12 @@ export function isEnglishMail(text){
  return latin>=8 && (prose.match(/[a-z]{2,}/gi)||[]).length>=2 && latin>han*3;
 }
 function mailTextChunks(text,limit=2500){
- const chars=Array.from(String(text)),parts=[];
+ const chars=Array.from(String(text)),parts: string[]=[];
  for(let at=0;at<chars.length;){let end=Math.min(chars.length,at+limit);if(end<chars.length){for(let i=end-1;i>at+limit*.6;i--)if(/\s/u.test(chars[i])){end=i+1;break;}}parts.push(chars.slice(at,end).join(''));at=end;}
  return parts;
 }
 async function translateMail(body,{assess,reserve,signal}){
- const text=String(body.text||''),links=body.links||[],translations=[],allChunks=mailTextChunks(text,10000),chunks=allChunks.slice(0,1);
+ const text=String(body.text||''),links=body.links||[],translations: string[]=[],allChunks=mailTextChunks(text,10000),chunks=allChunks.slice(0,1);
  const deadline=AbortSignal.timeout(45_000),combined=signal?AbortSignal.any([deadline,signal]):deadline;
  for(const chunk of chunks){
   if(signal?.aborted)throw Error('mail_summary_cancelled');
@@ -124,7 +124,7 @@ export const MAIL_TRIAGE_SCHEMA={type:'object',additionalProperties:false,requir
 export function createMailPresenter({store,assess,now=()=>Date.now(),maxCallsPerHour=24}){
  const {db,managerId}=store;db.exec('CREATE TABLE IF NOT EXISTS dots_mail_summary_budget(manager_id TEXT PRIMARY KEY,window_start INTEGER NOT NULL,calls INTEGER NOT NULL DEFAULT 0)');db.prepare('INSERT OR IGNORE INTO dots_mail_summary_budget(manager_id,window_start) VALUES(?,?)').run(managerId,now());
  const reserve=()=>store.transaction(()=>{let state=db.prepare('SELECT * FROM dots_mail_summary_budget WHERE manager_id=?').get(managerId);if(now()-state.window_start>=3600_000){db.prepare('UPDATE dots_mail_summary_budget SET calls=0,window_start=? WHERE manager_id=?').run(now(),managerId);state={calls:0};}if(state.calls>=maxCallsPerHour)return false;db.prepare('UPDATE dots_mail_summary_budget SET calls=calls+1 WHERE manager_id=?').run(managerId);return true;});
- return async function present(body,{signal}={}){
+ return async function present(body,{signal}: { signal?: AbortSignal } = {}){
   const links=body.links||[],text=String(body.text||'');
   if(isAdvertisingMail(body))return {kind:'ignored_advertisement'};
   const rule=mailTriageRule(body),classifyImportance=rule==='unsure';
@@ -160,9 +160,9 @@ export function mailPresentationText(presentation){
  const p=presentation||{kind:'body',text:'（邮件没有可显示的文字正文）',links:[]};
  const label=p.kind==='summary'?'邮件摘要':p.kind==='excerpt'?'正文节选（暂未生成摘要）':'正文';
  const suffix=p.truncated&&p.kind==='summary'?'\n\n（正文较长，摘要基于本次读取的部分。）':p.kind==='excerpt'?'\n\n（以上为正文节选。）':'';
- const base=`${label}：\n${mailLiteral(p.text)}${suffix}`,unique=[],byURL=new Map();
+ const base=`${label}：\n${mailLiteral(p.text)}${suffix}`,unique: any[]=[],byURL=new Map();
  for(const link of p.links||[])if(link)addMailLink(unique,byURL,link.url,link.text);
- const lines=[];let size=base.length+'\n\n邮件中的链接：\n'.length;
+ const lines: string[]=[];let size=base.length+'\n\n邮件中的链接：\n'.length;
  for(const link of unique){
   const label=link.text||link.url;
   const suffix=label.startsWith(link.url)?label.slice(link.url.length):'';
@@ -180,7 +180,7 @@ export function mailPresentationText(presentation){
 // never discard the original just because translation makes a message longer.
 export function mailPresentationParts(presentation){
  if(presentation?.kind!=='translated')return [mailPresentationText(presentation)];
- const p=presentation,parts=[];
+ const p=presentation,parts: string[]=[];
  const add=(label,text)=>{const chunks=mailTextChunks(text,4000);for(const [i,chunk]of chunks.entries())parts.push(`${label}${chunks.length>1?'（第 '+(i+1)+'/'+chunks.length+' 段）':''}：\n${mailLiteral(chunk)}`);};
  add('英文原文',p.text);
  if(p.truncated)parts.push('（原文为本次成功读取的内容，原邮件超出读取范围的部分请在邮箱查看。）');
@@ -189,8 +189,8 @@ export function mailPresentationParts(presentation){
  if(p.translationStatus==='unavailable')parts.push('（中文翻译暂时不可用，英文原文已保留。）');
  const links=mailPresentationText({kind:'body',text:'',links:p.links||[]}).replace(/^正文：\n/,'').trim();
  if(links)parts.push(links);
- const messages=[];
- for(const part of parts){if(messages.length&&messages.at(-1).length+part.length+2<=12000)messages[messages.length-1]+='\n\n'+part;else messages.push(part);}
+ const messages: string[]=[];
+ for(const part of parts){if(messages.length&&messages.at(-1)!.length+part.length+2<=12000)messages[messages.length-1]+='\n\n'+part;else messages.push(part);}
  return messages;
 }
 
