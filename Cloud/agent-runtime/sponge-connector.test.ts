@@ -14,7 +14,7 @@ import { createHash, createHmac } from 'node:crypto';
 // network service, secret or member workspace is opened by these tests.
 const bundle = await mkdtemp(path.join(os.tmpdir(), 'sponge-audit-module-'));
 await copyFile(new URL('./sponge-connector.ts', import.meta.url), path.join(bundle, 'sponge-connector.ts'));
-await writeFile(path.join(bundle, 'accounts.mjs'), "export function getAccountStore(){throw Error('An account fixture is required');}\n");
+await writeFile(path.join(bundle, 'accounts.ts'), "export function getAccountStore(){throw Error('An account fixture is required');}\n");
 const { SpongeConnector, createSpongeServer, prepareSpongeSocket, removeOwnedSpongeSocket } = await import(pathToFileURL(path.join(bundle, 'sponge-connector.ts')).href);
 after(() => rm(bundle, { recursive: true, force: true }));
 const issuer = 'https://mcp.yandot.ai';
