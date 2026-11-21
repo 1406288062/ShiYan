@@ -28,7 +28,8 @@ export const FINISH_PROPERTIES = {
   approval_command: { type: 'string', description: 'needs_approval 时：完整可执行的主机命令' },
 };
 
-export function buildWorkerAgentPrompt(goal, { memories = [], timeline = [], events = [], trigger = '', cwd, privateOwner = false, resumed = false } = {}) {
+export interface BuildWorkerAgentPromptOptions { memories?: any[]; timeline?: any[]; events?: any[]; trigger?: string; cwd?: string; privateOwner?: boolean; resumed?: boolean; }
+export function buildWorkerAgentPrompt(goal, { memories = [], timeline = [], events = [], trigger = '', cwd, privateOwner = false, resumed = false }: BuildWorkerAgentPromptOptions = {}) {
   const list = (rows, map, empty) => rows.length ? rows.map(map).join('\n') : empty;
   const context = `任务：${goal.title}
 要求：
@@ -72,7 +73,8 @@ ${privateOwner ? '- 只读检查服务器本机（磁盘、网卡、运行时长
 
 // One agent tool call -> the execution-step record the 执行过程 page already understands
 // (same shapes as Codex items: command_execution / mcp_tool_call / file_change / web_search).
-export function stepRecord({ name = '', input, output, ok = true } = {}) {
+export interface StepRecordOptions { name?: string; input?: any; output?: any; ok?: boolean; }
+export function stepRecord({ name = '', input, output, ok = true }: StepRecordOptions = {}) {
   const status = ok ? 'completed' : 'failed', text = typeof output === 'string' ? output : output == null ? '' : JSON.stringify(output);
   const args = input && typeof input === 'object' ? input : {};
   if (name === 'Bash' || name === 'shell') return { type: 'command_execution', command: typeof input === 'string' ? input : String(args.command || ''), aggregated_output: text, status };
@@ -86,9 +88,10 @@ export function stepRecord({ name = '', input, output, ok = true } = {}) {
 }
 
 export function createWorkerAgent({ runAgent, route, toolGroups, logger = console }) {
-  async function run(goal, { owner, memories, timeline, events, trigger, signal, onStep, privateOwner = false }) {
+  interface WorkerRunOptions { owner: string; memories?: any[]; timeline?: any[]; events?: any[]; trigger?: string; signal?: AbortSignal; onStep?: (step: any) => any; privateOwner?: boolean; }
+  async function run(goal, { owner, memories, timeline, events, trigger, signal, onStep, privateOwner = false }: WorkerRunOptions) {
     const chosen = await route('dots.worker');
-    let finished = null;
+    let finished: any = null;
     const finish = tool('finish_run', '结束本轮并汇报结果。每轮最后必须调用一次。', FINISH_PROPERTIES, ['status', 'summary'], args => {
       finished = {
         status: ['continue', 'done', 'blocked', 'needs_approval'].includes(args.status) ? args.status : 'continue',

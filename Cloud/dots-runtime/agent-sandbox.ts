@@ -33,7 +33,7 @@ export function dockerRunner(command = (process.env.SHIYAN_AGENT_DOCKER || 'sudo
           if (error) reject(Object.assign(new Error(String(stderr || error.message).replace(/\s+/g, ' ').trim().slice(0, 600)), { code: error.code, stdout, stderr }));
           else resolve({ stdout: String(stdout), stderr: String(stderr) });
         });
-        if (input !== null) child.stdin.end(input);
+        if (input !== null) child.stdin!.end(input);
       });
     },
     spawn(args, options = {}) { return spawn(bin, [...prefix, ...args], { stdio: ['pipe', 'pipe', 'pipe'], ...options }); },
@@ -150,7 +150,8 @@ export function createSandboxManager({
   // Spawns a process inside the account's container. Returns a ChildProcess-like object for the
   // Agent SDK / Codex transport. Secrets go through an --env-file (never on a command line), and the
   // in-container pid is recorded so kill() really stops the agent process, not only `docker exec`.
-  function spawnIn(owner, { command, args = [], cwd = '/workspace', env = {} }) {
+  interface SpawnInOptions { command: string; args?: string[]; cwd?: string; env?: Record<string, string>; }
+  function spawnIn(owner, { command, args = [], cwd = '/workspace', env = {} }: SpawnInOptions) {
     const entry = state.get(owner);
     if (!entry?.ready) throw fail('沙箱尚未准备好', 503);
     const proc = randomBytes(8).toString('hex');
@@ -187,7 +188,7 @@ export function createSandboxManager({
 }
 // A stdio-only stand-in for tests: behaves like a spawned process.
 export function fakeProcess() {
-  const child = new EventEmitter();
+  const child: any = new EventEmitter();
   child.stdin = new PassThrough(); child.stdout = new PassThrough(); child.stderr = new PassThrough();
   child.killed = false; child.exitCode = null;
   child.kill = () => { child.killed = true; child.exitCode = 0; child.emit('exit', 0, null); return true; };

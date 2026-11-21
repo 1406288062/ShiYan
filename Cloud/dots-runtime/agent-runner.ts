@@ -12,7 +12,7 @@ import { createManagerThread } from './manager-stream-transport.ts';
 
 const clip = (value, max = 1200) => { const s = typeof value === 'string' ? value : JSON.stringify(value ?? ''); return s.length > max ? s.slice(0, max) + '…' : s; };
 const SDK_PATH = process.env.SHIYAN_CLAUDE_SDK || '/home/ubuntu/boss-codex-service/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs';
-let sdkPromise = null;
+let sdkPromise: any = null;
 export const loadClaudeSdk = () => (sdkPromise ||= import(SDK_PATH));
 // Session ids carry their provider: a hub switch (Claude <-> Codex) starts a new session.
 export const sessionRef = (provider, id) => (id ? provider + ':' + id : null);
@@ -49,8 +49,8 @@ export function createAgentRunner({ sandbox, claudeSdk = loadClaudeSdk, managerT
       strictMcpConfig: true,
       spawnClaudeCodeProcess: opts => sandbox.spawn(owner, { command: sandbox.paths.claude, args: opts.args, cwd, env: { ...claudeChildEnv(opts.env), ENABLE_CLAUDEAI_MCP_SERVERS: 'false' } }),
     };
-    const pendingTools = new Map(), items = [], texts = [];
-    let sessionId = session || null, usage = null, result = null, turns = 0;
+    const pendingTools = new Map(), items: any[] = [], texts: any[] = [];
+    let sessionId = session || null, usage: any = null, result: any = null, turns = 0;
     const q = query({ prompt: input(), options });
     try {
       for await (const message of q) {
@@ -79,13 +79,13 @@ export function createAgentRunner({ sandbox, claudeSdk = loadClaudeSdk, managerT
     if (!result) throw new Error(signal?.aborted ? String(signal.reason?.message || '已停止') : 'Claude 会话意外结束');
     if (result.is_error || result.subtype !== 'success') {
       const reason = result.subtype === 'error_max_turns' ? '达到本轮最大步数' : (result.errors || []).join('; ') || result.result || result.subtype;
-      const error = new Error('Claude 智能体执行失败：' + clip(reason, 500)); error.sessionId = sessionId; error.items = items; throw error;
+      const error = new Error('Claude 智能体执行失败：' + clip(reason, 500)); (error as any).sessionId = sessionId; (error as any).items = items; throw error;
     }
     return { provider: 'anthropic', sessionId, text: String(result.result || texts.at(-1) || ''), usage, items, turns: result.num_turns || turns };
   }
 
   async function runCodex({ owner, model, reasoning, session, cwd, system, prompt, servers, signal, onEvent }) {
-    const items = [];
+    const items: any[] = [];
     const onItem = raw => {
       const name = raw.type === 'commandExecution' ? 'shell' : raw.type === 'mcpToolCall' ? `mcp__${raw.server}__${raw.tool}` : raw.type === 'fileChange' ? 'file_change' : raw.type === 'webSearch' ? 'web_search' : raw.type;
       if (['reasoning', 'userMessage', 'contextCompaction'].includes(raw.type)) return;
@@ -98,7 +98,7 @@ export function createAgentRunner({ sandbox, claudeSdk = loadClaudeSdk, managerT
       threadId: session || null, codexPath: sandbox.paths.codex,
       options: { model, modelReasoningEffort: reasoning && reasoning !== 'default' ? reasoning : undefined, workingDirectory: cwd, sandboxMode: 'danger-full-access', approvalPolicy: 'never',
         webSearchMode: 'live', threadSource: 'dots-agent', mcpServers: servers.codex, onItem },
-      spawnProcess: (bin, args, spawnOptions = {}) => sandbox.spawn(owner, { command: bin, args, cwd: spawnOptions.cwd || cwd, env: { CODEX_HOME: '/home/agent/.codex', PATH: '/home/agent/.local/bin:/opt/shiyan/bin:/opt/shiyan/codex:/usr/local/bin:/usr/bin:/bin' } }),
+      spawnProcess: (bin, args, spawnOptions: any = {}) => sandbox.spawn(owner, { command: bin, args, cwd: spawnOptions.cwd || cwd, env: { CODEX_HOME: '/home/agent/.codex', PATH: '/home/agent/.local/bin:/opt/shiyan/bin:/opt/shiyan/codex:/usr/local/bin:/usr/bin:/bin' } }),
       rpcTimeoutMs: 60_000,
     });
     const text = [system ? '<operating_instructions>\n' + system + '\n</operating_instructions>' : '', prompt].filter(Boolean).join('\n\n');
@@ -112,7 +112,8 @@ export function createAgentRunner({ sandbox, claudeSdk = loadClaudeSdk, managerT
   }
 
   // groups: { name: tools[] } exposed to the agent as MCP servers (mcp__<name>__<tool>).
-  async function runAgent({ owner, provider, model, reasoning, sessionRef: ref = null, cwd, system = '', prompt, groups = {}, signal, onEvent, onToolCall, maxTurns = 200 }) {
+  interface RunAgentOptions { owner: string; provider: string; model: string; reasoning?: string; sessionRef?: string | null; cwd?: string; system?: string; prompt: string; groups?: Record<string, any>; signal?: AbortSignal; onEvent?: (event: any) => void; onToolCall?: (call: any) => any; maxTurns?: number; }
+  async function runAgent({ owner, provider, model, reasoning, sessionRef: ref = null, cwd, system = '', prompt, groups = {}, signal, onEvent, onToolCall, maxTurns = 200 }: RunAgentOptions) {
     if (!['anthropic', 'openai'].includes(provider)) throw new Error('不支持的智能体提供方：' + provider);
     const box = await sandbox.ensure(owner);
     await sandbox.exec(owner, ['mkdir', '-p', cwd]);

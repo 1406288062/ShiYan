@@ -15,7 +15,7 @@ const RELAY = path.join(path.dirname(fileURLToPath(import.meta.url)), 'agent-san
 const tmp = () => mkdtempSync(path.join(os.tmpdir(), 'dots-agent-'));
 
 test('host tool socket + in-container relay speak MCP end to end', async () => {
-  const dir = tmp(), calls = [];
+  const dir = tmp(), calls: any[] = [];
   const servers = await openToolServers({ rpcDir: dir, groups: { dots: [tool('echo', 'echo', { text: { type: 'string' } }, ['text'], args => ({ said: args.text })), tool('boom', 'fails', {}, [], () => { throw new Error('nope'); })] }, onCall: call => calls.push(call) });
   try {
     const args = servers.claude.dots.args;
@@ -24,7 +24,7 @@ test('host tool socket + in-container relay speak MCP end to end', async () => {
     const relay = spawn(process.execPath, [RELAY, path.join(dir, path.basename(args[1]))], { stdio: ['pipe', 'pipe', 'inherit'] });
     const lines = createInterface({ input: relay.stdout }); const replies = new Map();
     lines.on('line', line => { const m = JSON.parse(line); replies.get(m.id)?.(m); });
-    const ask = (id, method, params) => new Promise(resolve => { replies.set(id, resolve); relay.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n'); });
+    const ask = (id, method, params): Promise<any> => new Promise(resolve => { replies.set(id, resolve); relay.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n'); });
     assert.equal((await ask(1, 'initialize', {})).result.serverInfo.name, 'shiyan-dots');
     assert.deepEqual((await ask(2, 'tools/list', {})).result.tools.map(t => t.name), ['echo', 'boom']);
     assert.deepEqual(JSON.parse((await ask(3, 'tools/call', { name: 'echo', arguments: { text: 'hi' } })).result.content[0].text), { said: 'hi' });
@@ -37,7 +37,7 @@ test('host tool socket + in-container relay speak MCP end to end', async () => {
 });
 
 test('sandbox manager creates one hardened container per account and execs inside it with an env file', async () => {
-  const dir = tmp(), runs = [], spawns = [];
+  const dir = tmp(), runs: any[] = [], spawns: any[] = [];
   const docker = { run: async args => { runs.push(args); if (args[0] === 'inspect') throw new Error('no such container'); return { stdout: '', stderr: '' }; }, spawn: args => { spawns.push(args); return fakeProcess(); } };
   const claudeEnv = path.join(dir, 'claude.env'); writeFileSync(claudeEnv, 'CLAUDE_CODE_OAUTH_TOKEN=secret-token\n');
   const creds = path.join(dir, 'cred.json'); writeFileSync(creds, '{"t":1}');
@@ -61,13 +61,13 @@ test('sandbox manager creates one hardened container per account and execs insid
 });
 
 function fakeSandbox(dir) {
-  return { paths: { claude: '/opt/shiyan/bin/claude', codex: '/opt/shiyan/codex/codex', relay: '/opt/shiyan/mcp-relay.mjs' }, ensured: [], execs: [],
-    async ensure(owner) { this.ensured.push(owner); return { layout: { rpc: dir } }; }, async exec(owner, argv) { this.execs.push(argv); return { stdout: '' }; }, spawn() { return fakeProcess(); } };
+  return { paths: { claude: '/opt/shiyan/bin/claude', codex: '/opt/shiyan/codex/codex', relay: '/opt/shiyan/mcp-relay.mjs' }, ensured: [] as any[], execs: [] as any[],
+    async ensure(owner) { this.ensured.push(owner); return { layout: { rpc: dir } }; }, async exec(owner, argv) { this.execs.push(argv); return { stdout: '' }; }, spawn(_owner: any, _spec: any) { return fakeProcess(); } };
 }
 
 test('claude driver runs the Agent SDK inside the sandbox, resumes its session and maps tool steps', async () => {
   const dir = tmp(), sandbox = fakeSandbox(dir);
-  let options = null;
+  let options: any = null;
   const claudeSdk = async () => ({ query({ prompt, options: opts }) { options = opts; return (async function* () {
     for await (const first of prompt) { assert.equal(first.message.content[0].text, 'do it'); break; }
     opts.spawnClaudeCodeProcess({ args: ['--x'], env: { CLAUDE_CODE_ENTRYPOINT: 'sdk-ts', SECRET_HOST_VAR: 'no' } });
@@ -76,7 +76,7 @@ test('claude driver runs the Agent SDK inside the sandbox, resumes its session a
     yield { type: 'user', session_id: 's-2', message: { content: [{ type: 'tool_result', tool_use_id: 'u1', content: 'a.txt' }] } };
     yield { type: 'result', subtype: 'success', is_error: false, result: '完成', num_turns: 2, session_id: 's-2', usage: { input_tokens: 5, output_tokens: 7 } };
   })(); } });
-  let spawned = null; sandbox.spawn = (owner, spec) => { spawned = { owner, spec }; return fakeProcess(); };
+  let spawned: any = null; sandbox.spawn = (owner, spec) => { spawned = { owner, spec }; return fakeProcess(); };
   const runner = createAgentRunner({ sandbox, claudeSdk });
   try {
     const out = await runner.runAgent({ owner: 'alice', provider: 'anthropic', model: 'claude-sonnet-5-5', reasoning: 'medium', sessionRef: 'anthropic:s-1', cwd: '/workspace/dots/3', prompt: 'do it', groups: { dots: [tool('x', 'x', {}, [], () => 1)] } });
@@ -95,7 +95,7 @@ test('claude driver runs the Agent SDK inside the sandbox, resumes its session a
 
 test('codex driver runs app-server in the sandbox with full access and relay MCP servers', async () => {
   const dir = tmp(), sandbox = fakeSandbox(dir);
-  let captured = null;
+  let captured: any = null;
   const managerThread = ({ threadId, codexPath, options, spawnProcess }) => {
     captured = { threadId, codexPath, options, spawnProcess };
     return { id: threadId, async runStreamed(text) { captured.text = text; options.onItem({ type: 'commandExecution', command: 'pytest', aggregatedOutput: 'ok', status: 'completed' }); this.id = 'th-9';
@@ -111,9 +111,9 @@ test('codex driver runs app-server in the sandbox with full access and relay MCP
 });
 
 test('worker agent: hub route, finish_run result, session resume and fallback when finish is missing', async () => {
-  let seen = null;
+  let seen: any = null;
   const runAgent = async args => { seen = args; await args.groups.dots.find(t => t.name === 'finish_run').handler({ status: 'done', summary: '写好了报告', notify: true, notification: '报告已完成', memories: ['用 pandas'] }); args.onEvent({ type: 'tool_result', name: 'Bash', ok: true }); return { sessionRef: 'anthropic:w-1', text: 'x', usage: null }; };
-  const steps = [];
+  const steps: any[] = [];
   const worker = createWorkerAgent({ runAgent, route: async consumer => { assert.equal(consumer, 'dots.worker'); return { provider: 'anthropic', model: 'claude-sonnet-5-5', reasoning: 'medium' }; },
     toolGroups: async () => ({ groups: { browser: [tool('browse', 'b', {}, [], () => 1)] }, close() {} }) });
   const goal = { id: 12, title: '整理周报', instruction: '汇总数据', thread_id: 'anthropic:w-0', run_count: 3 };

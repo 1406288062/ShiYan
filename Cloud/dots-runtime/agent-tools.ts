@@ -62,8 +62,15 @@ function shut({ server, socketPath }) { for (const socket of server.sockets || [
 
 // Opens one socket per tool group. Returns MCP server configs as seen INSIDE the container (both the
 // Claude and the Codex config shapes) and close() to remove the sockets after the run.
-export async function openToolServers({ rpcDir, groups, relay = '/opt/shiyan/mcp-relay.mjs', onCall = null, toolTimeoutSec = 7200 }) {
-  const run = randomBytes(6).toString('hex'), servers = [], claude = {}, codex = {};
+export interface OpenToolServersOptions {
+  rpcDir: string;
+  groups: Record<string, any>;
+  relay?: string;
+  onCall?: ((call: any) => any) | null;
+  toolTimeoutSec?: number;
+}
+export async function openToolServers({ rpcDir, groups, relay = '/opt/shiyan/mcp-relay.mjs', onCall = null, toolTimeoutSec = 7200 }: OpenToolServersOptions) {
+  const run = randomBytes(6).toString('hex'), servers: any[] = [], claude: Record<string, any> = {}, codex: Record<string, any> = {};
   try {
     for (const [name, tools] of Object.entries(groups || {})) {
       if (!tools?.length) continue;
@@ -71,8 +78,8 @@ export async function openToolServers({ rpcDir, groups, relay = '/opt/shiyan/mcp
       const file = `${run}-${name}.sock`, socketPath = path.join(rpcDir, file);
       const sockets = new Set();
       const server = net.createServer(socket => { sockets.add(socket); socket.once('close', () => sockets.delete(socket)); serveMcp(socket, { name, tools, onCall }); });
-      server.sockets = sockets;
-      await new Promise((resolve, reject) => { server.once('error', reject); server.listen(socketPath, resolve); });
+      (server as any).sockets = sockets;
+      await new Promise((resolve, reject) => { server.once('error', reject); server.listen(socketPath, () => resolve(undefined)); });
       servers.push({ server, socketPath });
       const args = [relay, '/run/shiyan/' + file];
       claude[name] = { type: 'stdio', command: 'node', args };
@@ -90,7 +97,7 @@ export async function hostMcpTools(spec, { timeoutMs = 20_000, prefix = '' } = {
   lines.on('line', line => { let m; try { m = JSON.parse(line); } catch { return; } const p = pending.get(m.id); if (p) { pending.delete(m.id); m.error ? p.reject(new Error(m.error.message || 'MCP error')) : p.resolve(m.result); } });
   const finish = () => { closed = true; for (const p of pending.values()) p.reject(new Error('MCP 服务已退出')); pending.clear(); };
   child.once('exit', finish); child.once('error', finish);
-  const rpc = (method, params, ms = timeoutMs) => new Promise((resolve, reject) => {
+  const rpc = (method, params, ms = timeoutMs): Promise<any> => new Promise((resolve, reject) => {
     if (closed) return reject(new Error('MCP 服务不可用'));
     const id = ++seq, timer = setTimeout(() => { pending.delete(id); reject(new Error('MCP 调用超时：' + method)); }, ms);
     pending.set(id, { resolve: v => { clearTimeout(timer); resolve(v); }, reject: e => { clearTimeout(timer); reject(e); } });
