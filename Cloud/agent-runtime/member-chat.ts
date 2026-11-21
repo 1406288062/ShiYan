@@ -9,14 +9,15 @@ import { createInterface } from 'node:readline';
 
 const unavailable = () => Object.assign(new Error('对话服务暂不可用，请稍后重试'), { status: 503 });
 const textPart = text => ({ type: 'input_text', text });
-export function memberRequest(job, { history = [], memory = '' } = {}) {
-  const input = [];
+interface MemberRequestOptions { history?: any[]; memory?: string; }
+export function memberRequest(job, { history = [], memory = '' }: MemberRequestOptions = {}) {
+  const input: any[] = [];
   if (memory) input.push({ role: 'user', content: [textPart(memory)] });
   for (const item of history.slice(-40)) {
     if (!['user', 'assistant'].includes(item.role) || typeof item.text !== 'string') continue;
     input.push({ role: item.role, content: [{ type: item.role === 'assistant' ? 'output_text' : 'input_text', text: item.text.slice(0, 20000) }] });
   }
-  const content = [textPart(job.prompt || '请查看附件。')];
+  const content: any[] = [textPart(job.prompt || '请查看附件。')];
   for (const image of job.uploads || []) {
     const mime = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp' }[image.suffix];
     if (!mime || typeof image.data !== 'string') throw new Error('图片格式无效');
@@ -61,7 +62,7 @@ let refreshing;
 export function refreshMemberProvider() {
   if(refreshing)return refreshing;
   // Auth control messages only: no thread or model turn is started here.
-  refreshing=new Promise((resolve,reject)=>{
+  refreshing=new Promise<void>((resolve,reject)=>{
     const env={};for(const key of ['HOME','PATH','USER','LANG','CODEX_HOME','HTTPS_PROXY','HTTP_PROXY','ALL_PROXY','NO_PROXY','SSL_CERT_FILE','SSL_CERT_DIR'])if(process.env[key]!==undefined)env[key]=process.env[key];
     const child=spawn('/home/ubuntu/.local/bin/codex',['app-server','--listen','stdio://'],{env,stdio:['pipe','pipe','ignore']});
     const lines=createInterface({input:child.stdout});let settled=false;
@@ -78,8 +79,9 @@ export function refreshMemberProvider() {
   return refreshing;
 }
 
-export async function runMemberChat(job, { history, memory, schema, signal, onText = () => {}, onActivity = () => {}, fetchImpl = fetch, getProvider = memberProvider, refreshProvider = refreshMemberProvider } = {}) {
-  const request = memberRequest(job, { history, memory });
+interface RunMemberChatOptions { history?: any[]; memory?: string; schema?: any; signal?: AbortSignal; onText?: (text: string) => void; onActivity?: () => void; fetchImpl?: any; getProvider?: any; refreshProvider?: any; }
+export async function runMemberChat(job, { history, memory, schema, signal, onText = () => {}, onActivity = () => {}, fetchImpl = fetch, getProvider = memberProvider, refreshProvider = refreshMemberProvider }: RunMemberChatOptions = {}) {
+  const request: any = memberRequest(job, { history, memory });
   if(schema)request.text={format:{type:'json_schema',name:'shiyan_result',strict:true,schema}};
   let response;
   try {
