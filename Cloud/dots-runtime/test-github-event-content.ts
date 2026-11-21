@@ -8,12 +8,12 @@ const repository='owner/repo',before='a'.repeat(40),head='b'.repeat(40);
 const commit=(n,message='改善知识检索')=>({sha:n.toString(16).padStart(40,'0'),commit:{message}});
 const push=(payload={})=>({id:'new',type:'PushEvent',repo:{name:repository},actor:{login:'yu'},payload:{ref:'refs/heads/main',before,head,...payload}});
 const file=(filename,additions=5,deletions=2,status='modified')=>({filename,additions,deletions,status});
-const run=(event,load,extra={})=>formatGithubEvent(event,{repository,load,summarize:async({commits=[],description,title})=>({text:commits.length?commits.map(c=>c.commit?.message||c.message).join('；'):description||title||'已更新相关功能。'}),...extra});
-const compare=(commits=[commit(1)],files=[file('src/search.js')],total=commits.length)=>({commits,files,total_commits:total,status:'ahead'});
+const run=async(event,load,extra={})=>(await formatGithubEvent(event,{repository,load,summarize:async({commits=[],description,title}: any)=>({text:commits.length?commits.map(c=>c.commit?.message||c.message).join('；'):description||title||'已更新相关功能。'}),...extra}))!;
+const compare=(commits: any[]=[commit(1)],files: any[]=[file('src/search.js')],total=commits.length)=>({commits,files,total_commits:total,status:'ahead'});
 
 test('one unsupported summary point does not discard other independently verified points',async()=>{
- const summarize=createGithubChangeSummarizer({logger:{warn(){}},assess:async()=>({changes:[{text:'修复登录状态恢复。',evidence_quotes:['Fix login restoration']},{text:'增加语音功能。',evidence_quotes:['invented evidence']}]})});
- const result=await summarize({commits:[commit(1,'Fix login restoration')]});assert.equal(result.text,'修复登录状态恢复。');assert.equal(result.partial,true);
+ const summarize=createGithubChangeSummarizer({logger:{warn(){}} as any,assess:async()=>({changes:[{text:'修复登录状态恢复。',evidence_quotes:['Fix login restoration']},{text:'增加语音功能。',evidence_quotes:['invented evidence']}]})});
+ const result=await summarize({commits:[commit(1,'Fix login restoration')]});assert.equal(result!.text,'修复登录状态恢复。');assert.equal(result!.partial,true);
 });
 
 test('failed summaries survive restart, back off and refresh the original notification once',async t=>{
@@ -23,18 +23,18 @@ test('failed summaries survive restart, back off and refresh the original notifi
  db.prepare('INSERT INTO manager_messages(id,manager_id,content) VALUES(240,?,?)').run('manager:fixture',content);
  db.prepare('INSERT INTO dots_app_events VALUES(?,?,?,240)').run('manager:fixture','github:'+repository,'push:refs/heads/main:'+head);
  const store={db,managerId:'manager:fixture',transaction:fn=>fn(),publishAppEvent:()=>{publishes++;throw Error('duplicate');},refreshAppEvent:({content})=>{updates++;db.prepare('UPDATE manager_messages SET content=?,revision=revision+1 WHERE id=240').run(content);return {id:240};}};
- const options={store,dataDir:'/fixture',now:()=>clock,loadConfig:async p=>p.endsWith('github-events.json')?{repository}:null,githubToken:async()=>'fixture',logger:{warn(){}},fetchImpl:async raw=>{const url=new URL(raw);if(url.pathname.endsWith('/events'))return new Response(null,{status:304});if(url.pathname.endsWith('/actions/runs'))return Response.json({workflow_runs:[]});if(url.pathname.includes('/compare/'))return Response.json(compare());throw Error('unused');},summarizeGithub:async()=>{calls++;return available?{text:'改善知识检索。'}:null;}};
- let subscription=createAppSubscriptions(options);await subscription.tick();
- let job=db.prepare('SELECT * FROM dots_github_summary_jobs').get();assert.equal(job.attempts,1);assert.ok(job.retry_at>clock);assert.equal(updates,0);subscription.close();
- subscription=createAppSubscriptions(options);await subscription.tick();assert.equal(calls,1);
- clock=job.retry_at+1;available=true;await Promise.all([subscription.tick(),subscription.tick()]);
- assert.equal(updates,1);assert.equal(publishes,0);assert.equal(db.prepare('SELECT COUNT(*) n FROM dots_github_summary_jobs').get().n,0);
- const message=db.prepare('SELECT * FROM manager_messages WHERE id=240').get();assert.equal(message.revision,2);assert.match(message.content,/改善知识检索/);assert.doesNotMatch(message.content,/暂未生成/);
+ const options={store,dataDir:'/fixture',now:()=>clock,loadConfig:async p=>p.endsWith('github-events.json')?{repository}:null,githubToken:async()=>'fixture',logger:{warn(){}} as any,fetchImpl:async raw=>{const url=new URL(raw);if(url.pathname.endsWith('/events'))return new Response(null,{status:304});if(url.pathname.endsWith('/actions/runs'))return Response.json({workflow_runs:[]});if(url.pathname.includes('/compare/'))return Response.json(compare());throw Error('unused');},summarizeGithub:async()=>{calls++;return available?{text:'改善知识检索。'}:null;}};
+ let subscription=createAppSubscriptions(options as any);await subscription.tick();
+ let job=db.prepare('SELECT * FROM dots_github_summary_jobs').get();assert.equal(job!.attempts,1);assert.ok(Number(job!.retry_at)>clock);assert.equal(updates,0);subscription.close();
+ subscription=createAppSubscriptions(options as any);await subscription.tick();assert.equal(calls,1);
+ clock=Number(job!.retry_at)+1;available=true;await Promise.all([subscription.tick(),subscription.tick()]);
+ assert.equal(updates,1);assert.equal(publishes,0);assert.equal(db.prepare('SELECT COUNT(*) n FROM dots_github_summary_jobs').get()?.n,0);
+ const message=db.prepare('SELECT * FROM manager_messages WHERE id=240').get();assert.equal(message!.revision,2);assert.match(String(message!.content),/改善知识检索/);assert.doesNotMatch(String(message!.content),/暂未生成/);
  await subscription.tick();assert.equal(updates,1);subscription.close();
 });
 
 test('modern slim PushEvent reads real net diff, operations, total lines and change prose without file details',async()=>{
- const paths=[];const result=await run(push(),async path=>{paths.push(path);return compare([commit(1,'修复知识库同步\nmore'),commit(2,'增加单元测试')],[file('src/sync.js',12,3),file('test/sync.js',20,0,'added')]);});
+ const paths: string[]=[];const result=await run(push(),async path=>{paths.push(path);return compare([commit(1,'修复知识库同步\nmore'),commit(2,'增加单元测试')],[file('src/sync.js',12,3),file('test/sync.js',20,0,'added')]);});
  assert.equal(paths.length,1);assert.match(result.content,/具体操作：推送代码/);assert.doesNotMatch(result.content,/改动文件|主要文件|涉及范围|sync\.js/);assert.match(result.content,/代码总计：新增 32 行，删除 3 行（本次推送净变更）/);assert.match(result.content,/修复知识库同步/);assert.match(result.content,/操作人：yu/);assert.ok(result.content.indexOf('改动摘要')<result.content.indexOf('代码总计'));
 });
 test('large push paginates compare commits and commit files, deduplicating touched filenames',async()=>{
@@ -91,7 +91,7 @@ test('untrusted summary text remains escaped and notification remains inside sto
  assert.ok(result.content.length<6000);assert.match(result.content,/\\<script\\>/);assert.doesNotMatch(result.content,/<script>/);
 });
 test('subscription baseline, replay suppression, enrichment and ETag path never publish duplicate notifications',async t=>{
- const db=new DatabaseSync(':memory:'),published=[],calls=[];t.after(()=>db.close());
+ const db=new DatabaseSync(':memory:'),published: any[]=[],calls: string[]=[];t.after(()=>db.close());
  let newest=push({head:'c'.repeat(40)}),baseline=true,unchanged=false,summaryCalls=0;
  const store={db,managerId:'manager:fixture',transaction:fn=>fn(),publishAppEvent:event=>{published.push(event);return {id:published.length};}};
  const fetchImpl=async(raw,options)=>{
@@ -101,7 +101,7 @@ test('subscription baseline, replay suppression, enrichment and ETag path never 
   if(url.pathname.includes('/compare/'))return Response.json(compare());
   throw Error('unexpected url '+raw);
  };
- const subscription=createAppSubscriptions({store,dataDir:'/fixture',fetchImpl,summarizeGithub:async()=>{summaryCalls++;return {text:'改善知识检索的更新行为。'};},loadConfig:async path=>path.endsWith('github-events.json')?{repository}:null,githubToken:async()=>'fixture',logger:{warn(){}}});t.after(()=>subscription.close());
+ const subscription=createAppSubscriptions({store,dataDir:'/fixture',fetchImpl,summarizeGithub:async()=>{summaryCalls++;return {text:'改善知识检索的更新行为。'};},loadConfig:async path=>path.endsWith('github-events.json')?{repository}:null,githubToken:async()=>'fixture',logger:{warn(){}} as any});t.after(()=>subscription.close());
  await subscription.tick();assert.equal(published.length,0);assert.equal(calls.filter(p=>p.includes('/compare/')).length,0);
  baseline=false;await subscription.tick();assert.equal(published.length,1);assert.match(published[0].content,/代码总计：新增 5 行，删除 2 行/);
  await subscription.tick();assert.equal(published.length,1);assert.equal(calls.filter(p=>p.includes('/compare/')).length,1);
@@ -139,17 +139,17 @@ test('invalid, ungrounded, English-only or path-centric model output degrades ex
 test('large evidence is bounded and partial scope is exposed without file lists',async()=>{
  let seen;const summarize=createGithubChangeSummarizer({assess:async(data)=>{seen=JSON.parse(data);return {changes:[{text:'调整登录流程。',evidence_quotes:['Fix login']}]};}});
  const result=await summarize({commits:Array.from({length:50},()=>commit(1,'Fix login '+ 'x'.repeat(3000))),files:Array.from({length:100},(_,n)=>({...file('src/'+n+'.js'),patch:'p'.repeat(10000)}))});
- assert.ok(result.partial);assert.ok(Buffer.byteLength(JSON.stringify(seen))<128*1024);assert.ok(seen.evidence.diffs.length<=16);assert.ok(seen.evidence.commits.length<=20);
+ assert.ok(result!.partial);assert.ok(Buffer.byteLength(JSON.stringify(seen))<128*1024);assert.ok(seen.evidence.diffs.length<=16);assert.ok(seen.evidence.commits.length<=20);
  const unavailable=createGithubChangeSummarizer({assess:async()=>{throw Error('timeout');}});assert.equal(await unavailable({commits:[commit(1)]}),null);
 });
 
 test('quoted evidence tolerates diff comment wrapping but not invented content',async()=>{
  const summarize=createGithubChangeSummarizer({assess:async()=>({changes:[{text:'结束通话后释放播放资源。',evidence_quotes:['ending the call tears it down immediately']}]})});
- const result=await summarize({files:[{...file('voice.swift'),patch:'+/// ending\n+/// the call tears it down immediately'}]});assert.equal(result.text,'结束通话后释放播放资源。');
+ const result=await summarize({files:[{...file('voice.swift'),patch:'+/// ending\n+/// the call tears it down immediately'}]});assert.equal(result!.text,'结束通话后释放播放资源。');
 });
 
 test('branch head detects a push before Events API and delayed event does not notify twice',async t=>{
- const db=new DatabaseSync(':memory:');t.after(()=>db.close());const published=[];
+ const db=new DatabaseSync(':memory:');t.after(()=>db.close());const published: any[]=[];
  let head='a'.repeat(40),late=false;
  const store={db,managerId:'fallback',transaction:fn=>fn(),publishAppEvent:e=>{published.push(e);return {id:published.length};}};
  const fetchImpl=async raw=>{const path=new URL(raw).pathname;
@@ -159,7 +159,7 @@ test('branch head detects a push before Events API and delayed event does not no
   if(path.includes('/compare/'))return Response.json(compare());
   return Response.json({default_branch:'main',owner:{login:'fixture'}});
  };
- const sub=createAppSubscriptions({store,dataDir:'/fixture',fetchImpl,githubToken:async()=>'fixture',loadConfig:async p=>p.endsWith('github-events.json')?{repository}:null,summarizeGithub:async()=>({text:'调整登录布局。'}),logger:{warn(){}}});t.after(()=>sub.close());
+ const sub=createAppSubscriptions({store,dataDir:'/fixture',fetchImpl,githubToken:async()=>'fixture',loadConfig:async p=>p.endsWith('github-events.json')?{repository}:null,summarizeGithub:async()=>({text:'调整登录布局。'}),logger:{warn(){}} as any});t.after(()=>sub.close());
  await sub.tick();assert.equal(published.length,0);
  head='b'.repeat(40);await sub.tick();assert.equal(published.length,1);assert.match(published[0].content,/调整登录布局/);
  late=true;await sub.tick();await sub.tick();assert.equal(published.length,1);

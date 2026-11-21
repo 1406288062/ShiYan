@@ -13,7 +13,7 @@ function reason(error){
  return '详情暂不可用';
 }
 function filesValid(files){return Array.isArray(files)&&files.every(f=>typeof f.filename==='string'&&number(f.additions)&&number(f.deletions));}
-function statsLines({additions,deletions,linesExact=false,basis='本次推送净变更'}={}){
+function statsLines({additions,deletions,linesExact=false,basis='本次推送净变更'}: {additions?: number; deletions?: number; linesExact?: boolean; basis?: string; files?: any; filesExact?: boolean; checked?: number; total?: number} = {}){
  return [linesExact?`代码总计：新增 ${additions} 行，删除 ${deletions} 行（${basis}）`:'代码总计：暂未获取完整增减统计'];
 }
 async function mainChanges(commits,files,summarize,extra='',context={}){
@@ -23,13 +23,20 @@ async function mainChanges(commits,files,summarize,extra='',context={}){
  return summary?.text?['','改动摘要'+scope+'：',...summary.text.split('\n').filter(Boolean).map(t=>'- '+clip(t,240)),'']:['','改动摘要：暂未生成，可通过下方链接查看详情。',''];
 }
 export const isGithubEventSupported=event=>Boolean(types[event.type]);
-export async function formatGithubEvent(event,{repository,load,summarize,maxRequests=80,maxPages=20}={}){
+export interface GithubEventFormatOptions {
+  repository?: string;
+  load?: (path: string) => Promise<any>;
+  summarize?: (input: any) => Promise<any>;
+  maxRequests?: number;
+  maxPages?: number;
+}
+export async function formatGithubEvent(event: any, {repository, load, summarize, maxRequests=80, maxPages=20}: GithubEventFormatOptions = {}) {
  let summaryPending=false;
  const summarizeChanges=async input=>{let result;try{result=await summarize?.(input);}catch{}if(!result?.text)summaryPending=true;return result;};
  if(!types[event.type])return null;
  if(!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository||''))throw Error('github_repository_invalid');
  let requests=0;
- const get=async path=>{if(++requests>maxRequests)throw Error('github_detail_limit');return load(path);};
+ const get=async path=>{if(++requests>maxRequests)throw Error('github_detail_limit');return load!(path);};
  const p=event.payload||{},repoUrl='https://github.com/'+repository;
  const lines=[`GitHub · ${clip(repository,240)}`,'',`操作人：${clip(event.actor?.login||'未知',120)}`];
  let url=repoUrl;
@@ -38,8 +45,8 @@ export async function formatGithubEvent(event,{repository,load,summarize,maxRequ
   lines.push('具体操作：'+(zero(head)||p.deleted?'删除分支或标签':zero(before)||p.created?'创建引用并推送代码':p.forced?'强制推送代码':'推送代码'),`分支 / 标签：${clip(ref||'未提供',200)}`);
   if(zero(head)||p.deleted){lines.push('代码变更统计：不适用（删除引用）');}
   else {
-   const stats=[];
-   let comparison,commits=[],complete=false,error,files,filesExact=false,additions,deletions,linesExact=false,basis='本次推送净变更',checked=0,total;
+   const stats: string[]=[];
+   let comparison,commits: any[]=[],complete=false,error,files,filesExact=false,additions,deletions,linesExact=false,basis='本次推送净变更',checked=0,total;
    if(sha(before)&&sha(head)){
     url=repoUrl+'/compare/'+before+'...'+head;
     try{
@@ -71,7 +78,7 @@ export async function formatGithubEvent(event,{repository,load,summarize,maxRequ
      for(const c of commits){
       if(!sha(c.sha)){allFilesComplete=false;allStats=false;continue;}
       try{
-       let data,commitFiles=[],commitComplete=false;
+       let data,commitFiles: any[]=[],commitComplete=false;
        for(let page=1;page<=30;page++){
         data=await get('/commits/'+c.sha+'?per_page=100&page='+page);
         if(!Array.isArray(data?.files))throw Error('github_commit_invalid');
